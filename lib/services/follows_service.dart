@@ -195,7 +195,7 @@ class FollowsService {
           .collection('follows')
           .where('followerId', isEqualTo: currentUserId)
           .get();
-      String? _readFollowerId(Map<String, dynamic> data) {
+      String? readFollowerId(Map<String, dynamic> data) {
         final val = data['followerUserId'] ??
             data['followerId'] ??
             data['follower'] ??
@@ -203,7 +203,7 @@ class FollowsService {
         return val is String ? val : null;
       }
 
-      String? _readFollowingId(Map<String, dynamic> data) {
+      String? readFollowingId(Map<String, dynamic> data) {
         final val = data['targetUserId'] ??
             data['followingId'] ??
             data['followedId'] ??
@@ -211,7 +211,7 @@ class FollowsService {
         return val is String ? val : null;
       }
 
-      bool _isActive(Map<String, dynamic> data) {
+      bool isActiveFollowDoc(Map<String, dynamic> data) {
         if (!data.containsKey('isActive')) return true;
         final val = data['isActive'];
         if (val is bool) return val;
@@ -221,27 +221,27 @@ class FollowsService {
       final followerIds = <String>{};
       for (final doc in followersPrimary.docs) {
         final data = doc.data();
-        if (!_isActive(data)) continue;
-        final id = _readFollowerId(data);
+        if (!isActiveFollowDoc(data)) continue;
+        final id = readFollowerId(data);
         if (id != null && id.isNotEmpty) followerIds.add(id);
       }
       for (final doc in [...followersLegacy1.docs, ...followersLegacy2.docs]) {
         final data = doc.data();
-        if (!_isActive(data)) continue;
-        final id = _readFollowerId(data);
+        if (!isActiveFollowDoc(data)) continue;
+        final id = readFollowerId(data);
         if (id != null && id.isNotEmpty) followerIds.add(id);
       }
       final followingIds = <String>{};
       for (final doc in followingPrimary.docs) {
         final data = doc.data();
-        if (!_isActive(data)) continue;
-        final id = _readFollowingId(data);
+        if (!isActiveFollowDoc(data)) continue;
+        final id = readFollowingId(data);
         if (id != null && id.isNotEmpty) followingIds.add(id);
       }
       for (final doc in followingLegacy.docs) {
         final data = doc.data();
-        if (!_isActive(data)) continue;
-        final id = _readFollowingId(data);
+        if (!isActiveFollowDoc(data)) continue;
+        final id = readFollowingId(data);
         if (id != null && id.isNotEmpty) followingIds.add(id);
       }
       Set<String> targetUserIds;

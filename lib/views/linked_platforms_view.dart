@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 import '../models/scheduled_post.dart';
 import '../services/scheduled_post_service.dart';
 
@@ -74,7 +75,8 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to reconnect ${_displayName(platform.name)}: $e'),
+          content:
+              Text('Failed to reconnect ${_displayName(platform.name)}: $e'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -89,6 +91,8 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final highlightedPlatforms = widget.initialPlatforms
         .map((platform) => platform.toLowerCase())
         .toSet();
@@ -99,19 +103,21 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
         Navigator.of(context).pop(_didUpdateConnections);
       },
       child: Scaffold(
-        backgroundColor: AppColors.supportBackground,
+        backgroundColor: shell.scaffold,
         appBar: AppBar(
-          backgroundColor: AppColors.supportTopSurface,
+          backgroundColor: shell.panelSurface,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(Icons.arrow_back, color: shell.onChrome),
             onPressed: () => Navigator.of(context).pop(_didUpdateConnections),
           ),
-          title: const Text(
+          title: Text(
             'Linked Platforms',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: shell.onChrome),
           ),
         ),
         body: RefreshIndicator(
+          color: shell.refreshColor,
+          backgroundColor: shell.refreshBackground,
           onRefresh: _loadConnections,
           child: ListView(
             padding: const EdgeInsets.all(20),
@@ -120,33 +126,34 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF182233),
+                    color: shell.surfaceCard,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF335C8A)),
+                    border: Border.all(
+                        color: scheme.primary.withValues(alpha: 0.35)),
                   ),
                   child: Text(
                     'Reconnect ${highlightedPlatforms.map(_displayName).join(', ')} to retry publishing from Manage Posts.',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: shell.onChrome,
                       fontSize: 14,
                     ),
                   ),
                 ),
                 const SizedBox(height: 20),
               ],
-              const Text(
+              Text(
                 'Connection Status',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: shell.onChrome,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Keep your connected destinations healthy here so cross-post retries can succeed later.',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: shell.muted,
                   fontSize: 14,
                 ),
               ),
@@ -176,13 +183,13 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
                       Navigator.of(context).pop(_didUpdateConnections),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.18),
+                      color: shell.surfaceCardBorder,
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Done',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: shell.onChrome),
                   ),
                 ),
               ),
@@ -194,6 +201,8 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
   }
 
   Widget _buildPlatformCard(PlatformKey platform, bool highlighted) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final isConnected = _connections[platform.name] ?? false;
     final isReconnecting = _reconnectingPlatform == platform.name;
 
@@ -201,13 +210,13 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: highlighted
-            ? const Color(0xFF201C35)
-            : Colors.white.withValues(alpha: 0.05),
+            ? scheme.primary.withValues(alpha: shell.isLight ? 0.12 : 0.22)
+            : shell.surfaceCard,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: highlighted
-              ? AppColors.supportAccent
-              : Colors.white.withValues(alpha: 0.12),
+              ? scheme.primary.withValues(alpha: 0.55)
+              : shell.surfaceCardBorder,
         ),
       ),
       child: Row(
@@ -228,8 +237,8 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
               children: [
                 Text(
                   _displayName(platform.name),
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: shell.onChrome,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -239,8 +248,8 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
                   isConnected
                       ? 'Connected and ready for cross-posting.'
                       : 'Reconnect this destination before retrying failed posts.',
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  style: TextStyle(
+                    color: shell.muted,
                     fontSize: 13,
                   ),
                 ),
@@ -249,9 +258,8 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
           ),
           const SizedBox(width: 10),
           ElevatedButton(
-            onPressed: isReconnecting
-                ? null
-                : () => _reconnectPlatform(platform),
+            onPressed:
+                isReconnecting ? null : () => _reconnectPlatform(platform),
             style: ElevatedButton.styleFrom(
               backgroundColor: isConnected
                   ? const Color(0xFF2B3548)

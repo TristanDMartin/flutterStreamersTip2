@@ -387,73 +387,101 @@ class ConnectionsService {
     try {
       log('📤 ConnectionsService: Sending DM share to $recipientId for video $videoId');
 
-      // Fetch video data for better display
       String videoTitle = 'Shared a video';
       String videoThumbnailUrl = '';
+      String creatorUsername = '';
+      Map<String, dynamic> videoData = <String, dynamic>{};
 
       try {
-        final videoDoc =
+        final DocumentSnapshot<Map<String, dynamic>> videoDoc =
             await _firestore.collection('videos').doc(videoId).get();
         if (videoDoc.exists) {
-          final videoData = videoDoc.data()!;
+          videoData = videoDoc.data() ?? <String, dynamic>{};
           videoTitle =
-              videoData['caption'] ?? videoData['title'] ?? 'Shared a video';
-          videoThumbnailUrl = videoData['thumbnailUrl'] ?? '';
+              videoData['caption'] as String? ??
+                  videoData['title'] as String? ??
+                  'Shared a video';
+          videoThumbnailUrl = videoData['thumbnailUrl'] as String? ?? '';
+          creatorUsername = (videoData['username'] as String?)?.trim() ??
+              (videoData['creatorUsername'] as String?)?.trim() ??
+              (videoData['displayName'] as String?)?.trim() ??
+              '';
           log('📤 ConnectionsService: Fetched video data - title: "$videoTitle", thumbnail: "$videoThumbnailUrl"');
-          log('📤 ConnectionsService: Full video data keys: ${videoData.keys.toList()}');
-          log('📤 ConnectionsService: Raw caption: "${videoData['caption']}", title: "${videoData['title']}"');
         } else {
           log('⚠️ ConnectionsService: Video document does not exist: $videoId');
         }
       } catch (e) {
         log('⚠️ ConnectionsService: Could not fetch video data: $e');
-        // Continue with default values
       }
 
-      // Create DM share message
-      final messageData = {
+      final String publicUrl =
+          'https://streamerstip.com/video/$videoId';
+      final String deepLink = 'streamerstip://video/$videoId';
+
+      final messageData = <String, dynamic>{
         'type': 'video_share',
-        'messageType': 'video_share', // Add messageType for ChatView
-        'from': _auth.currentUser!.uid, // Use 'from' field for Firestore rules
-        'senderId': _auth.currentUser!.uid, // Keep for compatibility
+        'messageType': 'video_share',
+        'from': _auth.currentUser!.uid,
+        'senderId': _auth.currentUser!.uid,
+        'to': recipientId,
         'recipientId': recipientId,
         'videoId': videoId,
         'shareToken': shareToken,
-        'videoTitle': videoTitle, // Real video title
-        'videoThumbnailUrl': videoThumbnailUrl, // Real thumbnail URL
-        'text': 'Shared a video', // Fallback text for compatibility
+        'videoTitle': videoTitle,
+        'videoThumbnailUrl': videoThumbnailUrl,
+        'publicUrl': publicUrl,
+        'deepLink': deepLink,
+        'creatorUsername': creatorUsername,
+        'text': 'Shared a video',
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
-        'readBy': [_auth.currentUser!.uid], // Mark as read by sender
+        'isRead': false,
+        'readBy': <String>[_auth.currentUser!.uid],
       };
 
-      // Find or create chat in the chats collection
-      final chatId = await _findOrCreateChat(recipientId);
+      final String chatId = await _findOrCreateChat(recipientId);
 
-      // Add message to the chat
       await _firestore
           .collection('chats')
           .doc(chatId)
           .collection('messages')
           .add(messageData);
 
-      // Update chat metadata
-      await _firestore.collection('chats').doc(chatId).update({
+      final String unreadField = 'unreadCount_$recipientId';
+      await _firestore.collection('chats').doc(chatId).update(<String, dynamic>{
         'lastMessage': 'Shared a video',
         'lastTimestamp': FieldValue.serverTimestamp(),
-        'unreadCount': FieldValue.increment(1),
+        unreadField: FieldValue.increment(1),
       });
 
-      // Update connection ranking (bump lastInteraction)
-      await _firestore
-          .collection('users')
-          .doc(_auth.currentUser!.uid)
-          .collection('connections')
-          .doc(recipientId)
-          .update({
-        'lastInteraction': FieldValue.serverTimestamp(),
-        'lastSeen': FieldValue.serverTimestamp(),
-      });
+      try {
+        await _firestore
+            .collection('users')
+            .doc(_auth.currentUser!.uid)
+            .collection('connections')
+            .doc(recipientId)
+            .set(<String, dynamic>{
+          'userId': recipientId,
+          'lastInteraction': FieldValue.serverTimestamp(),
+          'lastSeen': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        log('⚠️ ConnectionsService: Non-fatal connection bump: $e');
+      }
+
+      try {
+        await _firestore
+            .collection('users')
+            .doc(_auth.currentUser!.uid)
+            .collection('recentShares')
+            .add(<String, dynamic>{
+          'recipientId': recipientId,
+          'videoId': videoId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        log('⚠️ ConnectionsService: recentShares write skipped: $e');
+      }
 
       log('✅ ConnectionsService: DM share sent successfully to chat $chatId');
       return chatId;
@@ -509,6 +537,31 @@ class ConnectionsService {
 
       final connections = <ConnectionLite>[];
       final Set<String> processedUserIds = {}; // Prevent duplicates
+      final Set<String> recentShareUserIds = <String>{};
+      try {
+        final QuerySnapshot<Map<String, dynamic>> recentSnap =
+            await _firestore
+                .collection('users')
+                .doc(userId)
+                .collection('recentShares')
+                .limit(24)
+                .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in recentSnap.docs) {
+          final Map<String, dynamic> m = doc.data();
+          final String? peer = (m['recipientId'] ??
+                  m['userId'] ??
+                  m['toUserId'] ??
+                  m['peerUserId'] ??
+                  m['targetUserId'])
+              as String?;
+          if (peer != null && peer.isNotEmpty) {
+            recentShareUserIds.add(peer);
+          }
+        }
+      } catch (e) {
+        log('⚠️ ConnectionsService: recentShares unavailable: $e');
+      }
 
       // 1. Get connections from connections subcollection (app-created)
       try {
@@ -730,11 +783,20 @@ class ConnectionsService {
         log('⚠️ ConnectionsService: Error fetching mutual connections: $e');
       }
 
-      // Sort by ranking score and return top connections
-      connections.sort((a, b) => b.rankingScore.compareTo(a.rankingScore));
+      final List<ConnectionLite> ranked = connections
+          .map(
+            (ConnectionLite c) => recentShareUserIds.contains(c.userId)
+                ? c.copyWith(rankingScore: c.rankingScore + 40.0)
+                : c,
+          )
+          .toList();
+      ranked.sort(
+        (ConnectionLite a, ConnectionLite b) =>
+            b.rankingScore.compareTo(a.rankingScore),
+      );
 
-      log('🎯 ConnectionsService: Total connections found: ${connections.length}');
-      return connections.take(limit).toList();
+      log('🎯 ConnectionsService: Total connections found: ${ranked.length}');
+      return ranked.take(limit).toList();
     } catch (e) {
       log('❌ ConnectionsService: Error fetching connections with ranking: $e');
       return [];
@@ -802,12 +864,13 @@ class ConnectionsService {
 
       // Create new chat if none exists
       log('📱 ConnectionsService: Creating new chat with $otherUserId');
-      final chatData = {
-        'participants': [currentUserId, otherUserId],
+      final chatData = <String, dynamic>{
+        'participants': <String>[currentUserId, otherUserId],
         'lastMessage': '',
         'lastTimestamp': FieldValue.serverTimestamp(),
         'chatType': 'direct',
-        'unreadCount': 0,
+        'unreadCount_$currentUserId': 0,
+        'unreadCount_$otherUserId': 0,
       };
 
       final docRef = await _firestore.collection('chats').add(chatData);

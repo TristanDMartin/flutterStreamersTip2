@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
-import '../models/user_count_fields.dart';
-import '../models/user.dart';
+import '../utils/home_video_from_firestore.dart';
 import '../providers/home_provider.dart' as hp;
 import '../routing/app_navigator.dart';
 import '../widgets/player_screen.dart';
@@ -15,8 +12,6 @@ import '../widgets/player_screen.dart';
 /// - Handle deleted/unavailable posts
 /// - Maintain back stack for proper navigation
 class NotificationNavigationService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   /// Navigate to a video from a notification
   ///
   /// Opens the video using the canonical PlayerScreen (same as HomeView)
@@ -51,25 +46,13 @@ class NotificationNavigationService {
         }
       }
 
-      // Fallback: Fetch video data from Firestore
       debugPrint(
           '🎬 NotificationNavigationService: Video not found in available videos, fetching from Firestore: $videoId');
-      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
-
-      if (!videoDoc.exists) {
+      final HomeVideo? homeVideo = await loadHomeVideoForPlayback(videoId);
+      if (homeVideo == null) {
         if (context.mounted) _showVideoUnavailable(context);
         return;
       }
-
-      final videoData = videoDoc.data()!;
-
-      if (videoData['isDeleted'] == true) {
-        if (context.mounted) _showVideoUnavailable(context);
-        return;
-      }
-
-      // Convert to HomeVideo model
-      final homeVideo = _convertToHomeVideo(videoData, videoId);
 
       // Navigate using the canonical PlayerScreen (same as HomeView)
       // This ensures consistent HUD layout with proper screen edge anchoring
@@ -89,36 +72,6 @@ class NotificationNavigationService {
         _showErrorSnackBar(context, 'Unable to open video');
       }
     }
-  }
-
-  /// Convert Firestore data to HomeVideo model
-  HomeVideo _convertToHomeVideo(Map<String, dynamic> data, String videoId) {
-    // Create User object for the creator
-    final creator = User(
-      id: data['userId'] ?? '',
-      displayName: data['displayName'] ?? 'Unknown',
-      username: data['username'] ?? 'unknown',
-      avatarURL: data['userAvatarUrl'],
-      bio: data['bio'] ?? '',
-      onlineStatus: data['onlineStatus'] ?? 'offline',
-      hashtags: (data['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
-      followerCount: UserCountFields.readFollowersCount(data),
-      followingCount: UserCountFields.readFollowingCount(data),
-      postCount: data['postCount'] ?? 0,
-    );
-
-    return HomeVideo(
-      id: videoId,
-      creator: creator,
-      videoURL: resolveVideoUrl(data),
-      thumbnailURL: data['thumbnailUrl'],
-      likes: data['likeCount'] ?? 0,
-      comments: data['commentCount'] ?? 0,
-      views: data['viewCount'] ?? 0,
-      caption: data['caption'] ?? '',
-      categoryId: data['category'] ?? 'general',
-      createdAt: data['timestamp'] as Timestamp?,
-    );
   }
 
   /// Show video unavailable dialog

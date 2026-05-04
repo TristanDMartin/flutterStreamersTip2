@@ -60,7 +60,8 @@ void main() {
       expect(snapshot.tippyAiEnabled, isTrue);
       expect(snapshot.draftCount, 3);
       expect(snapshot.consistencyScorePercent, 82);
-      expect(snapshot.alertCount, 2);
+      expect(snapshot.alertCount, 1);
+      expect(snapshot.scheduledQueueCount, 1);
       expect(snapshot.nextPostOverdue, isTrue);
       expect(snapshot.growthPercent, 12);
     });

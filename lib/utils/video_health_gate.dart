@@ -11,7 +11,7 @@ class Playable extends VideoPlayableResult {
   final String url;
   final String quality;
   final String sourceType; // 'canonical', '720p', '480p', 'primary'
-  
+
   Playable({
     required this.url,
     required this.quality,
@@ -22,7 +22,7 @@ class Playable extends VideoPlayableResult {
 class Unplayable extends VideoPlayableResult {
   final String reason;
   final Map<String, dynamic> debugInfo;
-  
+
   Unplayable({
     required this.reason,
     this.debugInfo = const {},
@@ -41,24 +41,33 @@ class VideoHealthGate {
     required String selectedSourceType,
   }) {
     final sourceSummary = <String, bool>{
-      'muxPlaybackId': (data?['muxPlaybackId'] as String?)?.trim().isNotEmpty ?? false,
+      'muxPlaybackId':
+          (data?['muxPlaybackId'] as String?)?.trim().isNotEmpty ?? false,
       'hlsUrl': (data?['hlsUrl'] ?? data?['hls_url']) is String &&
           ((data?['hlsUrl'] ?? data?['hls_url']) as String).trim().isNotEmpty,
-      'canonicalPlaybackUrl': (data?['canonicalPlaybackUrl'] as String?)?.trim().isNotEmpty ?? false,
-      'mp4_1080_url': (data?['mp4_1080_url'] as String?)?.trim().isNotEmpty ?? false,
-      'mp4_720_url': (data?['mp4_720_url'] as String?)?.trim().isNotEmpty ?? false,
-      'mp4_480_url': (data?['mp4_480_url'] as String?)?.trim().isNotEmpty ?? false,
-      'videoUrl': ((data?['videoUrl'] ?? data?['videoURL']) as String?)?.trim().isNotEmpty ?? false,
+      'canonicalPlaybackUrl':
+          (data?['canonicalPlaybackUrl'] as String?)?.trim().isNotEmpty ??
+              false,
+      'mp4_1080_url':
+          (data?['mp4_1080_url'] as String?)?.trim().isNotEmpty ?? false,
+      'mp4_720_url':
+          (data?['mp4_720_url'] as String?)?.trim().isNotEmpty ?? false,
+      'mp4_480_url':
+          (data?['mp4_480_url'] as String?)?.trim().isNotEmpty ?? false,
+      'videoUrl': ((data?['videoUrl'] ?? data?['videoURL']) as String?)
+              ?.trim()
+              .isNotEmpty ??
+          false,
     };
     developer.log(
       '🎥 VideoQuality: video=$videoId selected=$selectedSourceType/$selectedQuality '
       'available=$sourceSummary',
     );
   }
-  
+
   /// Resolve playable source for a video
   /// Returns Playable(url, quality, sourceType) or Unplayable(reason, debugInfo)
-  /// 
+  ///
   /// [fallbackUrl] - Optional URL to use if health gate doesn't find one (from widget.video.videoURL)
   Future<VideoPlayableResult> resolvePlayableSource(
     String videoId, {
@@ -69,22 +78,30 @@ class VideoHealthGate {
       // 🔥 FIX: If fallback URL is provided, use it immediately (non-blocking)
       // Only fetch Firestore if no fallback URL is available
       Map<String, dynamic>? data = cachedData;
-      
-      if (data == null && fallbackUrl != null && fallbackUrl.trim().isNotEmpty) {
+
+      if (data == null &&
+          fallbackUrl != null &&
+          fallbackUrl.trim().isNotEmpty) {
         if (containsOriginalMp4(fallbackUrl)) {
-          developer.log('FATAL: VideoHealthGate fallback is original.mp4 - rejecting on mobile');
-          if (!kIsWeb) return Unplayable(reason: 'original_mp4_forbidden', debugInfo: {'videoId': videoId});
+          developer.log(
+              'FATAL: VideoHealthGate fallback is original.mp4 - rejecting on mobile');
+          if (!kIsWeb) {
+            return Unplayable(
+                reason: 'original_mp4_forbidden',
+                debugInfo: {'videoId': videoId});
+          }
         }
         if (_isValidUrl(fallbackUrl.trim())) {
           final urlLower = fallbackUrl.toLowerCase();
           if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
-            developer.log('✅ VideoHealthGate: Using fallback URL instantly (zero blocking)');
+            developer.log(
+                '✅ VideoHealthGate: Using fallback URL instantly (zero blocking)');
             return _playableIfNotOriginal(
                 fallbackUrl.trim(), 'fallback', 'fallback', videoId);
           }
         }
       }
-      
+
       // Only fetch Firestore if no cached data AND no valid fallback URL
       if (data == null) {
         try {
@@ -92,17 +109,22 @@ class VideoHealthGate {
               .collection('videos')
               .doc(videoId)
               .get()
-              .timeout(const Duration(seconds: 2)); // Reduced timeout to prevent freezes
-          
+              .timeout(const Duration(
+                  seconds: 2)); // Reduced timeout to prevent freezes
+
           if (!snapshot.exists) {
-            if (fallbackUrl != null && fallbackUrl.trim().isNotEmpty && _isValidUrl(fallbackUrl.trim())) {
+            if (fallbackUrl != null &&
+                fallbackUrl.trim().isNotEmpty &&
+                _isValidUrl(fallbackUrl.trim())) {
               if (containsOriginalMp4(fallbackUrl) && !kIsWeb) {
-                return Unplayable(reason: 'original_mp4_forbidden', debugInfo: {'videoId': videoId});
+                return Unplayable(
+                    reason: 'original_mp4_forbidden',
+                    debugInfo: {'videoId': videoId});
               }
               final urlLower = fallbackUrl.toLowerCase();
               if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
                 return _playableIfNotOriginal(
-                fallbackUrl.trim(), 'fallback', 'fallback', videoId);
+                    fallbackUrl.trim(), 'fallback', 'fallback', videoId);
               }
             }
             return Unplayable(
@@ -110,17 +132,21 @@ class VideoHealthGate {
               debugInfo: {'videoId': videoId},
             );
           }
-          
+
           data = snapshot.data();
           if (data == null) {
-            if (fallbackUrl != null && fallbackUrl.trim().isNotEmpty && _isValidUrl(fallbackUrl.trim())) {
+            if (fallbackUrl != null &&
+                fallbackUrl.trim().isNotEmpty &&
+                _isValidUrl(fallbackUrl.trim())) {
               if (containsOriginalMp4(fallbackUrl) && !kIsWeb) {
-                return Unplayable(reason: 'original_mp4_forbidden', debugInfo: {'videoId': videoId});
+                return Unplayable(
+                    reason: 'original_mp4_forbidden',
+                    debugInfo: {'videoId': videoId});
               }
               final urlLower = fallbackUrl.toLowerCase();
               if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
                 return _playableIfNotOriginal(
-                fallbackUrl.trim(), 'fallback', 'fallback', videoId);
+                    fallbackUrl.trim(), 'fallback', 'fallback', videoId);
               }
             }
             return Unplayable(
@@ -131,18 +157,21 @@ class VideoHealthGate {
         } catch (e) {
           if (fallbackUrl != null && fallbackUrl.trim().isNotEmpty) {
             if (containsOriginalMp4(fallbackUrl) && !kIsWeb) {
-              return Unplayable(reason: 'original_mp4_forbidden', debugInfo: {'videoId': videoId});
+              return Unplayable(
+                  reason: 'original_mp4_forbidden',
+                  debugInfo: {'videoId': videoId});
             }
             if (_isValidUrl(fallbackUrl.trim())) {
               final urlLower = fallbackUrl.toLowerCase();
               if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
-                developer.log('⚠️ VideoHealthGate: Firestore fetch failed, using fallback URL');
+                developer.log(
+                    '⚠️ VideoHealthGate: Firestore fetch failed, using fallback URL');
                 return _playableIfNotOriginal(
                     fallbackUrl.trim(), 'fallback', 'fallback', videoId);
               }
             }
           }
-          
+
           return Unplayable(
             reason: 'fetch_timeout',
             debugInfo: {
@@ -153,10 +182,23 @@ class VideoHealthGate {
           );
         }
       }
-      
+
       final status = data['status'] as String?;
       final muxId = data['muxPlaybackId'] as String?;
       final hasMux = muxId != null && muxId.trim().isNotEmpty;
+      if (data['deleted'] == true ||
+          data['isDeleted'] == true ||
+          data['visible'] == false ||
+          status == 'failed') {
+        return Unplayable(
+          reason: 'hidden_or_failed',
+          debugInfo: {
+            'videoId': videoId,
+            'status': status,
+            'visible': data['visible'],
+          },
+        );
+      }
       if (status != null && status.isNotEmpty) {
         if (status != 'ready' &&
             status != 'published' &&
@@ -181,7 +223,7 @@ class VideoHealthGate {
           );
         }
       }
-      
+
       // Check playbackReady flag if exists
       final playbackReady = data['playbackReady'] as bool?;
       if (playbackReady == false) {
@@ -190,7 +232,7 @@ class VideoHealthGate {
           debugInfo: {'videoId': videoId},
         );
       }
-      
+
       final raw = data['raw'] as String?;
       final isOriginal = data['isOriginal'] == true;
       if (raw == 'YES' || isOriginal) {
@@ -209,8 +251,8 @@ class VideoHealthGate {
           selectedQuality: 'mux_hls',
           selectedSourceType: 'mux',
         );
-        return _playableIfNotOriginal(
-            muxUrl, 'mux_hls', 'mux', videoId, data: data);
+        return _playableIfNotOriginal(muxUrl, 'mux_hls', 'mux', videoId,
+            data: data);
       }
 
       // Prefer the sharpest safe source first, then step down only if needed.
@@ -230,16 +272,19 @@ class VideoHealthGate {
           selectedQuality: 'hls',
           selectedSourceType: 'hls',
         );
-        return _playableIfNotOriginal(
-            normalizedHlsUrl, 'hls', 'hls', videoId, data: data);
+        return _playableIfNotOriginal(normalizedHlsUrl, 'hls', 'hls', videoId,
+            data: data);
       }
       final canonical = data['canonicalPlaybackUrl'] as String?;
-      if (canonical != null && canonical.trim().isNotEmpty && !containsOriginalMp4(canonical)) {
+      if (canonical != null &&
+          canonical.trim().isNotEmpty &&
+          !containsOriginalMp4(canonical)) {
         final normalizedCanonical = normalizeMuxHlsUrl(canonical.trim());
         if (_isValidUrl(normalizedCanonical)) {
           final canonicalLower = normalizedCanonical.toLowerCase();
           if (isLowMemory && canonicalLower.contains('1080')) {
-            developer.log('⚠️ VideoHealthGate: Skipping 1080p canonical URL on low-memory device');
+            developer.log(
+                '⚠️ VideoHealthGate: Skipping 1080p canonical URL on low-memory device');
           } else {
             _logSourceDiagnostics(
               videoId,
@@ -253,13 +298,16 @@ class VideoHealthGate {
           }
         }
       }
-      
+
       // 2. For low-memory devices: Prefer 720p → 480p (NEVER 1080p)
       // 🔥 FIX: Prefer 720p over 480p for better quality (only avoid 1080p)
       if (isLowMemory) {
         // Try 720p first (better quality, still safe for low-memory)
         final url720 = data['mp4_720_url'] as String?;
-        if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720) && _isValidUrl(url720.trim())) {
+        if (url720 != null &&
+            url720.trim().isNotEmpty &&
+            !containsOriginalMp4(url720) &&
+            _isValidUrl(url720.trim())) {
           final normalized720 = normalizeMuxHlsUrl(url720.trim());
           _logSourceDiagnostics(
             videoId,
@@ -267,11 +315,14 @@ class VideoHealthGate {
             selectedQuality: '720p',
             selectedSourceType: '720p',
           );
-          return _playableIfNotOriginal(
-              normalized720, '720p', '720p', videoId, data: data);
+          return _playableIfNotOriginal(normalized720, '720p', '720p', videoId,
+              data: data);
         }
         final url480 = data['mp4_480_url'] as String?;
-        if (url480 != null && url480.trim().isNotEmpty && !containsOriginalMp4(url480) && _isValidUrl(url480.trim())) {
+        if (url480 != null &&
+            url480.trim().isNotEmpty &&
+            !containsOriginalMp4(url480) &&
+            _isValidUrl(url480.trim())) {
           final normalized480 = normalizeMuxHlsUrl(url480.trim());
           _logSourceDiagnostics(
             videoId,
@@ -279,13 +330,15 @@ class VideoHealthGate {
             selectedQuality: '480p',
             selectedSourceType: '480p',
           );
-          return _playableIfNotOriginal(
-              normalized480, '480p', '480p', videoId, data: data);
+          return _playableIfNotOriginal(normalized480, '480p', '480p', videoId,
+              data: data);
         }
         if (fallbackUrl != null && fallbackUrl.trim().isNotEmpty) {
           final normalizedFallback = normalizeMuxHlsUrl(fallbackUrl.trim());
           final urlLower = normalizedFallback.toLowerCase();
-          if (!urlLower.contains('1080') && !containsOriginalMp4(normalizedFallback) && _isValidUrl(normalizedFallback)) {
+          if (!urlLower.contains('1080') &&
+              !containsOriginalMp4(normalizedFallback) &&
+              _isValidUrl(normalizedFallback)) {
             if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
               _logSourceDiagnostics(
                 videoId,
@@ -294,11 +347,11 @@ class VideoHealthGate {
                 selectedSourceType: 'fallback',
               );
               return _playableIfNotOriginal(
-                normalizedFallback, 'fallback', 'fallback', videoId);
+                  normalizedFallback, 'fallback', 'fallback', videoId);
             }
           }
         }
-        
+
         // For low-memory: DO NOT fallback to 1080p - mark as Unplayable
         return Unplayable(
           reason: 'missing_variants_low_memory',
@@ -311,9 +364,12 @@ class VideoHealthGate {
           },
         );
       }
-      
+
       final url1080 = data['mp4_1080_url'] as String?;
-      if (url1080 != null && url1080.trim().isNotEmpty && !containsOriginalMp4(url1080) && _isValidUrl(url1080.trim())) {
+      if (url1080 != null &&
+          url1080.trim().isNotEmpty &&
+          !containsOriginalMp4(url1080) &&
+          _isValidUrl(url1080.trim())) {
         final normalized1080 = normalizeMuxHlsUrl(url1080.trim());
         _logSourceDiagnostics(
           videoId,
@@ -321,11 +377,14 @@ class VideoHealthGate {
           selectedQuality: '1080p',
           selectedSourceType: '1080p',
         );
-        return _playableIfNotOriginal(
-            normalized1080, '1080p', '1080p', videoId, data: data);
+        return _playableIfNotOriginal(normalized1080, '1080p', '1080p', videoId,
+            data: data);
       }
       final url720 = data['mp4_720_url'] as String?;
-      if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720) && _isValidUrl(url720.trim())) {
+      if (url720 != null &&
+          url720.trim().isNotEmpty &&
+          !containsOriginalMp4(url720) &&
+          _isValidUrl(url720.trim())) {
         final normalized720 = normalizeMuxHlsUrl(url720.trim());
         _logSourceDiagnostics(
           videoId,
@@ -333,11 +392,14 @@ class VideoHealthGate {
           selectedQuality: '720p',
           selectedSourceType: '720p',
         );
-        return _playableIfNotOriginal(
-            normalized720, '720p', '720p', videoId, data: data);
+        return _playableIfNotOriginal(normalized720, '720p', '720p', videoId,
+            data: data);
       }
       final url480 = data['mp4_480_url'] as String?;
-      if (url480 != null && url480.trim().isNotEmpty && !containsOriginalMp4(url480) && _isValidUrl(url480.trim())) {
+      if (url480 != null &&
+          url480.trim().isNotEmpty &&
+          !containsOriginalMp4(url480) &&
+          _isValidUrl(url480.trim())) {
         final normalized480 = normalizeMuxHlsUrl(url480.trim());
         _logSourceDiagnostics(
           videoId,
@@ -345,8 +407,8 @@ class VideoHealthGate {
           selectedQuality: '480p',
           selectedSourceType: '480p',
         );
-        return _playableIfNotOriginal(
-            normalized480, '480p', '480p', videoId, data: data);
+        return _playableIfNotOriginal(normalized480, '480p', '480p', videoId,
+            data: data);
       }
       final legacyKeys = [
         'hlsUrl',
@@ -358,12 +420,16 @@ class VideoHealthGate {
       ];
       for (final key in legacyKeys) {
         final url = data[key] as String?;
-        if (url != null && url.trim().isNotEmpty && !containsOriginalMp4(url) && _isValidUrl(url.trim())) {
+        if (url != null &&
+            url.trim().isNotEmpty &&
+            !containsOriginalMp4(url) &&
+            _isValidUrl(url.trim())) {
           final normalizedUrl = normalizeMuxHlsUrl(url.trim());
           final urlLower = normalizedUrl.toLowerCase();
           if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
             if (isLowMemory && urlLower.contains('1080')) {
-              developer.log('⚠️ VideoHealthGate: Skipping 1080p legacy URL on low-memory device');
+              developer.log(
+                  '⚠️ VideoHealthGate: Skipping 1080p legacy URL on low-memory device');
               continue;
             }
             _logSourceDiagnostics(
@@ -372,14 +438,15 @@ class VideoHealthGate {
               selectedQuality: 'legacy',
               selectedSourceType: key,
             );
-            return _playableIfNotOriginal(
-                normalizedUrl, 'legacy', key, videoId, data: data);
+            return _playableIfNotOriginal(normalizedUrl, 'legacy', key, videoId,
+                data: data);
           }
         }
       }
       if (fallbackUrl != null && fallbackUrl.trim().isNotEmpty) {
         final normalizedFallback = normalizeMuxHlsUrl(fallbackUrl.trim());
-        if (!containsOriginalMp4(normalizedFallback) && _isValidUrl(normalizedFallback)) {
+        if (!containsOriginalMp4(normalizedFallback) &&
+            _isValidUrl(normalizedFallback)) {
           final urlLower = normalizedFallback.toLowerCase();
           if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
             if (!(isLowMemory && urlLower.contains('1080'))) {
@@ -390,13 +457,13 @@ class VideoHealthGate {
                 selectedSourceType: 'fallback',
               );
               return _playableIfNotOriginal(
-                normalizedFallback, 'fallback', 'fallback', videoId,
-                data: data);
+                  normalizedFallback, 'fallback', 'fallback', videoId,
+                  data: data);
             }
           }
         }
       }
-      
+
       // No valid URL found
       return Unplayable(
         reason: 'no_valid_url',
@@ -411,7 +478,7 @@ class VideoHealthGate {
         },
       );
     } catch (e, stackTrace) {
-      developer.log('❌ VideoHealthGate: Error resolving playable source: $e', 
+      developer.log('❌ VideoHealthGate: Error resolving playable source: $e',
           error: e, stackTrace: stackTrace);
       return Unplayable(
         reason: 'resolver_error',
@@ -422,7 +489,7 @@ class VideoHealthGate {
       );
     }
   }
-  
+
   bool _isImageUrl(String url) {
     final lower = url.toLowerCase();
     return lower.contains('placehold.co') ||
@@ -442,7 +509,8 @@ class VideoHealthGate {
     Map<String, dynamic>? data,
   }) {
     if (!kIsWeb && containsOriginalMp4(url)) {
-      developer.log('FATAL: original.mp4 attempted on mobile in VideoHealthGate');
+      developer
+          .log('FATAL: original.mp4 attempted on mobile in VideoHealthGate');
       return Unplayable(
           reason: 'original_mp4_forbidden', debugInfo: {'videoId': videoId});
     }
@@ -462,14 +530,14 @@ class VideoHealthGate {
   /// Check if URL is valid format
   bool _isValidUrl(String url) {
     if (url.isEmpty) return false;
-    
+
     final urlLower = url.toLowerCase();
     final isValidFormat = urlLower.startsWith('http://') ||
-                         urlLower.startsWith('https://') ||
-                         urlLower.startsWith('gs://');
-    
+        urlLower.startsWith('https://') ||
+        urlLower.startsWith('gs://');
+
     if (!isValidFormat) return false;
-    
+
     // Try to parse as URI
     try {
       final uri = Uri.parse(url);
@@ -478,16 +546,16 @@ class VideoHealthGate {
       return false;
     }
   }
-  
+
   /// Log unplayable video for backend recovery
   void logUnplayableVideo(
     String videoId,
     String reason,
     Map<String, dynamic> debugInfo,
   ) {
-    developer.log('🚫 VideoHealthGate: Unplayable video detected', 
+    developer.log('🚫 VideoHealthGate: Unplayable video detected',
         name: 'video_playback_unplayable');
-    
+
     // TODO: Send to analytics/backend
     // AnalyticsService.instance.logEvent('video_playback_unplayable', {
     //   'videoId': videoId,
@@ -495,7 +563,7 @@ class VideoHealthGate {
     //   'debugInfo': debugInfo,
     //   'timestamp': DateTime.now().toIso8601String(),
     // });
-    
+
     developer.log('  VideoId: $videoId');
     developer.log('  Reason: $reason');
     developer.log('  Debug: $debugInfo');

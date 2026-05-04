@@ -27,13 +27,13 @@ import '../widgets/streamer_card_view.dart';
 import '../widgets/home_view_components/home_content_widget.dart';
 import '../widgets/player_screen.dart';
 import '../widgets/creator_command_center_overlay.dart';
+import '../widgets/share_profile_view.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
 import '../models/creator_command_snapshot.dart';
 import '../controllers/home_view_controller.dart';
 import '../routing/app_navigator.dart';
 import '../constants/playback_owners.dart';
-import '../constants/app_colors.dart';
 
 class HomeView extends ConsumerStatefulWidget {
   const HomeView({super.key});
@@ -52,6 +52,10 @@ class _HomeViewState extends ConsumerState<HomeView>
   CreatorCommandCenterState _commandCenterState =
       CreatorCommandCenterState.closed;
   int _lastObservedFeedIndex = 0;
+  bool _homeServicesStarted = false;
+  Timer? _firebaseReadyRetryTimer;
+  static const int _firebaseReadyRetryLimit = 10;
+  static const Duration _firebaseReadyRetryDelay = Duration(milliseconds: 500);
 
   HomeViewController get _controller =>
       ref.read(homeViewControllerProvider.notifier);
@@ -107,28 +111,45 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 🔥 CRITICAL FIX: Check if Firebase is ready before accessing services
-      if (Firebase.apps.isEmpty) {
-        log('⚠️ HomeView: Firebase not ready yet, deferring video load');
-        // Retry after a short delay
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && Firebase.apps.isNotEmpty) {
-            _setupFavoritesManager();
-            _loadUserLikedVideos();
-            _loadUserFavorites();
-            _loadVideos();
-            _controller.markAsActiveOwner();
-          }
+      _startHomeServicesWhenFirebaseReady();
+    });
+  }
+
+  void _startHomeServicesWhenFirebaseReady({int attempt = 0}) {
+    if (!mounted) return;
+    if (_homeServicesStarted) return;
+
+    if (Firebase.apps.isEmpty) {
+      if (attempt >= _firebaseReadyRetryLimit) {
+        log('⚠️ HomeView: Firebase not ready after startup retries');
+        _showSnackBar('Still connecting. We will load your feed shortly.');
+        _firebaseReadyRetryTimer?.cancel();
+        _firebaseReadyRetryTimer = Timer(_firebaseReadyRetryDelay * 2, () {
+          _startHomeServicesWhenFirebaseReady(attempt: 0);
         });
         return;
       }
 
-      _setupFavoritesManager();
-      _loadUserLikedVideos();
-      _loadUserFavorites();
-      _loadVideos();
-      _controller.markAsActiveOwner();
-    });
+      log(
+        '⚠️ HomeView: Firebase not ready yet, retrying feed startup '
+        '(${attempt + 1}/$_firebaseReadyRetryLimit)',
+      );
+      _firebaseReadyRetryTimer?.cancel();
+      _firebaseReadyRetryTimer = Timer(_firebaseReadyRetryDelay, () {
+        _startHomeServicesWhenFirebaseReady(attempt: attempt + 1);
+      });
+      return;
+    }
+
+    _homeServicesStarted = true;
+    _firebaseReadyRetryTimer?.cancel();
+    _firebaseReadyRetryTimer = null;
+
+    _setupFavoritesManager();
+    unawaited(_loadUserLikedVideos());
+    unawaited(_loadUserFavorites());
+    unawaited(_loadVideos());
+    _controller.markAsActiveOwner();
   }
 
   /// ✅ IMPROVEMENT: Handle return to HomeView with simplified logic
@@ -339,7 +360,8 @@ class _HomeViewState extends ConsumerState<HomeView>
       final activeFeed = ref.read(activeFeedProvider);
       final List<HomeVideo> candidateVideos = switch (activeFeed) {
         FeedTab.forYou => homeState.forYouVideos,
-        FeedTab.following => homeState.followingVideos,
+        // Progression and Threads are not Home video feeds.
+        FeedTab.following => const <HomeVideo>[],
         FeedTab.threads => const <HomeVideo>[],
       };
 
@@ -357,11 +379,7 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       // Update provider with ranked videos
       final homeVM = ref.read(hp.homeProvider.notifier);
-      if (activeFeed == FeedTab.forYou) {
-        homeVM.updateForYouVideos(rankedVideos);
-      } else {
-        homeVM.updateFollowingVideos(rankedVideos);
-      }
+      homeVM.updateForYouVideos(rankedVideos);
 
       // Update cache timestamp
       _lastRankingTime = DateTime.now();
@@ -392,6 +410,8 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   @override
   void dispose() {
+    _firebaseReadyRetryTimer?.cancel();
+    _firebaseReadyRetryTimer = null;
     _homeViewReactivateSubscription?.close();
     _homeViewReactivateSubscription = null;
     WidgetsBinding.instance.removeObserver(this);
@@ -741,10 +761,10 @@ class _HomeViewState extends ConsumerState<HomeView>
   @override
   Widget build(BuildContext context) {
     final controllerState = ref.watch(homeViewControllerProvider);
-
+    final Color homeBg = Theme.of(context).scaffoldBackgroundColor;
     return NetworkStatusWidget(
       child: Material(
-        color: AppColors.supportBackground,
+        color: homeBg,
         child: SizedBox.expand(
           child: Stack(
             children: [
@@ -782,14 +802,6 @@ class _HomeViewState extends ConsumerState<HomeView>
                     currentUserId:
                         firebase_auth.FirebaseAuth.instance.currentUser?.uid,
                     onDismiss: _dismissStreamerCard,
-                    onMessage: (userId) {
-                      HapticFeedback.lightImpact();
-                      if (kDebugMode) {
-                        print(
-                          'HomeView: Message action triggered for user: $userId',
-                        );
-                      }
-                    },
                     onNavigateToTab: (tabName) {
                       HapticFeedback.lightImpact();
                       if (kDebugMode) {
@@ -826,9 +838,20 @@ class _HomeViewState extends ConsumerState<HomeView>
                         return;
                       }
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Share profile feature coming soon!'),
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (context) => ShareProfileView(
+                            user: <String, dynamic>{
+                              'id': currentStreamer.id,
+                              'displayName': currentStreamer.displayName,
+                              'username': currentStreamer.username,
+                              'avatarURL': currentStreamer.avatarURL,
+                              'bio': currentStreamer.bio,
+                              'hashtags': currentStreamer.hashtags,
+                            },
+                            dismiss: () => Navigator.of(context).pop(),
+                          ),
+                          settings: const RouteSettings(name: '/share_profile'),
                         ),
                       );
                     },
@@ -846,7 +869,7 @@ class _HomeViewState extends ConsumerState<HomeView>
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                         colors: [
-                          AppColors.supportBackground.withValues(alpha: 0.92),
+                          homeBg.withValues(alpha: 0.92),
                           Colors.transparent,
                         ],
                         stops: const [0.0, 0.8],

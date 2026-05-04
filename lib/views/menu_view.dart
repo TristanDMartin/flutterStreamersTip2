@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'settings/appearance_settings_view.dart';
 import 'settings_view.dart';
 import '../pages/bookmark_view.dart';
 import '../widgets/account_management_menu.dart';
@@ -52,9 +53,10 @@ class _MenuViewState extends ConsumerState<MenuView> {
   @override
   Widget build(BuildContext context) {
     final metrics = _MenuMetrics.of(context);
-
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: isLight ? const Color(0xFF0F172A) : colorScheme.surface,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: metrics.pagePadding,
@@ -63,7 +65,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
             children: [
               _buildTopSurface(context, metrics),
               SizedBox(height: metrics.sectionGap),
-              _buildMenuSectionHeader(metrics),
+              _buildMenuSectionHeader(context, metrics),
               SizedBox(height: metrics.gridTopGap),
               _buildMenuGrid(context, metrics),
             ],
@@ -74,17 +76,23 @@ class _MenuViewState extends ConsumerState<MenuView> {
   }
 
   Widget _buildTopSurface(BuildContext context, _MenuMetrics metrics) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
     return Container(
       padding: metrics.surfacePadding,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: isLight
+            ? Colors.white.withValues(alpha: 0.08)
+            : colorScheme.onSurface.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(metrics.surfaceRadius),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.14),
+          color: isLight
+              ? Colors.white.withValues(alpha: 0.22)
+              : colorScheme.onSurface.withValues(alpha: 0.14),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
+            color: colorScheme.shadow,
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -102,11 +110,13 @@ class _MenuViewState extends ConsumerState<MenuView> {
   }
 
   Widget _buildHeader(BuildContext context, _MenuMetrics metrics) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    final Color onSurface = isLight ? Colors.white : colorScheme.onSurface;
     final now = TimeOfDay.now();
     final formattedHour = now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod;
     final formattedMinute = now.minute.toString().padLeft(2, '0');
     final period = now.period == DayPeriod.am ? 'AM' : 'PM';
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -116,7 +126,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
             Text(
               'Menu',
               style: TextStyle(
-                color: Colors.white,
+                color: onSurface,
                 fontSize: metrics.titleFontSize,
                 fontWeight: FontWeight.w900,
                 height: 1.0,
@@ -126,7 +136,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
             Text(
               '$formattedHour:$formattedMinute $period',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.68),
+                color: onSurface.withValues(alpha: 0.68),
                 fontSize: metrics.timeFontSize,
                 fontWeight: FontWeight.w600,
                 height: 1.0,
@@ -136,10 +146,10 @@ class _MenuViewState extends ConsumerState<MenuView> {
         ),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: onSurface.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(metrics.closeRadius),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: onSurface.withValues(alpha: 0.12),
             ),
           ),
           child: IconButton(
@@ -151,7 +161,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
             padding: EdgeInsets.zero,
             icon: Icon(
               Icons.close,
-              color: Colors.white,
+              color: onSurface,
               size: metrics.closeIconSize,
             ),
           ),
@@ -161,6 +171,9 @@ class _MenuViewState extends ConsumerState<MenuView> {
   }
 
   Widget _buildProfileSection(BuildContext context, _MenuMetrics metrics) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    final Color onSurface = isLight ? Colors.white : colorScheme.onSurface;
     final user = fa.FirebaseAuth.instance.currentUser;
     final avatarURL = resolveAvatarUrl(_userData);
     final displayName =
@@ -175,7 +188,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _buildAvatarWithGradientRing(avatarURL, metrics),
+            _buildAvatarWithGradientRing(context, avatarURL, metrics),
             SizedBox(width: metrics.profileTextGap),
             Expanded(
               child: Column(
@@ -186,7 +199,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: onSurface,
                       fontSize: metrics.profileNameFontSize,
                       fontWeight: FontWeight.w900,
                       height: 1.0,
@@ -198,7 +211,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: onSurface.withValues(alpha: 0.7),
                       fontSize: metrics.usernameFontSize,
                       fontWeight: FontWeight.w600,
                       height: 1.0,
@@ -210,7 +223,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
                     maxLines: metrics.compact ? 2 : 3,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.64),
+                      color: onSurface.withValues(alpha: 0.64),
                       fontSize: metrics.descriptionFontSize,
                       fontWeight: FontWeight.w500,
                       height: 1.24,
@@ -225,7 +238,13 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  Widget _buildMenuSectionHeader(_MenuMetrics metrics) {
+  Widget _buildMenuSectionHeader(
+    BuildContext context,
+    _MenuMetrics metrics,
+  ) {
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    final Color onSurface =
+        isLight ? Colors.white : Theme.of(context).colorScheme.onSurface;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: metrics.sectionHeaderInset),
       child: Column(
@@ -234,7 +253,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
           Text(
             'Quick Access',
             style: TextStyle(
-              color: Colors.white,
+              color: onSurface,
               fontSize: metrics.sectionTitleFontSize,
               fontWeight: FontWeight.w800,
               height: 1.0,
@@ -244,7 +263,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
           Text(
             'Everything you need from one calm place.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.66),
+              color: onSurface.withValues(alpha: 0.66),
               fontSize: metrics.sectionSubtitleFontSize,
               fontWeight: FontWeight.w500,
             ),
@@ -254,7 +273,12 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  Widget _buildAvatarWithGradientRing(String? avatarURL, _MenuMetrics metrics) {
+  Widget _buildAvatarWithGradientRing(
+    BuildContext context,
+    String? avatarURL,
+    _MenuMetrics metrics,
+  ) {
+    final Color on = Theme.of(context).colorScheme.onSurface;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -278,7 +302,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
               height: metrics.avatarInnerSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.2),
+                color: on.withValues(alpha: 0.12),
               ),
               child: ClipOval(
                 child: avatarURL != null && avatarURL.isNotEmpty
@@ -288,13 +312,13 @@ class _MenuViewState extends ConsumerState<MenuView> {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) => Icon(
                           Icons.person,
-                          color: Colors.white,
+                          color: on,
                           size: metrics.avatarIconSize,
                         ),
                       )
                     : Icon(
                         Icons.person,
-                        color: Colors.white,
+                        color: on,
                         size: metrics.avatarIconSize,
                       ),
               ),
@@ -351,6 +375,17 @@ class _MenuViewState extends ConsumerState<MenuView> {
       _buildMenuCard(
         context,
         metrics: metrics,
+        icon: Icons.palette_outlined,
+        title: 'Appearance',
+        subtitle: 'Light, dark, or system',
+        onTap: () => _navigateToPage(
+          context,
+          const AppearanceSettingsView(),
+        ),
+      ),
+      _buildMenuCard(
+        context,
+        metrics: metrics,
         icon: Icons.logout,
         title: 'Log Out',
         subtitle: 'Sign out of account',
@@ -381,6 +416,9 @@ class _MenuViewState extends ConsumerState<MenuView> {
     required VoidCallback onTap,
     bool isPrimary = false,
   }) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    final Color on = isLight ? Colors.white : colorScheme.onSurface;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -393,15 +431,23 @@ class _MenuViewState extends ConsumerState<MenuView> {
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: isPrimary ? null : Colors.white.withValues(alpha: 0.08),
+          color: isPrimary
+              ? null
+              : isLight
+                  ? Colors.white.withValues(alpha: 0.10)
+                  : on.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(metrics.cardRadius),
           border: Border.all(
-            color: Colors.white.withValues(alpha: isPrimary ? 0.22 : 0.12),
+            color: on.withValues(
+              alpha: isPrimary
+                  ? 0.22
+                  : (isLight ? 0.22 : 0.12),
+            ),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.14),
+              color: colorScheme.shadow,
               blurRadius: 14,
               offset: const Offset(0, 8),
             ),
@@ -415,15 +461,19 @@ class _MenuViewState extends ConsumerState<MenuView> {
               width: metrics.cardIconBoxSize,
               height: metrics.cardIconBoxSize,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: isPrimary ? 0.18 : 0.1),
+                color: on.withValues(
+                  alpha: isPrimary
+                      ? 0.18
+                      : (isLight ? 0.14 : 0.1),
+                ),
                 borderRadius: BorderRadius.circular(metrics.cardIconRadius),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
+                  color: on.withValues(alpha: 0.12),
                 ),
               ),
               child: Icon(
                 icon,
-                color: Colors.white,
+                color: isPrimary ? Colors.white : on,
                 size: metrics.cardIconSize,
               ),
             ),
@@ -435,7 +485,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: isPrimary ? Colors.white : on,
                     fontSize: metrics.cardTitleFontSize,
                     fontWeight: FontWeight.w700,
                     height: 1.1,
@@ -445,7 +495,9 @@ class _MenuViewState extends ConsumerState<MenuView> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.78),
+                    color: isPrimary
+                        ? Colors.white.withValues(alpha: 0.85)
+                        : on.withValues(alpha: 0.75),
                     fontSize: metrics.cardSubtitleFontSize,
                     fontWeight: FontWeight.w500,
                     height: 1.25,
@@ -459,7 +511,9 @@ class _MenuViewState extends ConsumerState<MenuView> {
                     Text(
                       'Open',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.82),
+                        color: isPrimary
+                            ? Colors.white.withValues(alpha: 0.9)
+                            : on.withValues(alpha: 0.82),
                         fontSize: metrics.cardActionFontSize,
                         fontWeight: FontWeight.w700,
                       ),
@@ -467,7 +521,9 @@ class _MenuViewState extends ConsumerState<MenuView> {
                     SizedBox(width: metrics.cardArrowGap),
                     Icon(
                       Icons.arrow_forward_rounded,
-                      color: Colors.white.withValues(alpha: 0.82),
+                      color: isPrimary
+                          ? Colors.white.withValues(alpha: 0.9)
+                          : on.withValues(alpha: 0.82),
                       size: metrics.cardArrowSize,
                     ),
                   ],
@@ -506,73 +562,76 @@ class _MenuViewState extends ConsumerState<MenuView> {
 
   void _showLogOutDialog(BuildContext context) {
     final metrics = _MenuMetrics.of(context);
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        padding: EdgeInsets.fromLTRB(
-          metrics.sheetHorizontalPadding,
-          16,
-          metrics.sheetHorizontalPadding,
-          24 + MediaQuery.paddingOf(context).bottom,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.supportBackground,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.1),
+      builder: (BuildContext sheetContext) {
+        final ColorScheme colorScheme = Theme.of(sheetContext).colorScheme;
+        final Color on = colorScheme.onSurface;
+        return Container(
+          padding: EdgeInsets.fromLTRB(
+            metrics.sheetHorizontalPadding,
+            16,
+            metrics.sheetHorizontalPadding,
+            24 + MediaQuery.paddingOf(sheetContext).bottom,
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border.all(
+              color: on.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: on.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Account Management',
+                style: TextStyle(
+                  color: on,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Manage your account settings and sign out from one place.',
+                style: TextStyle(
+                  color: on.withValues(alpha: 0.7),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: EdgeInsets.all(metrics.sheetInnerPadding),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(999),
+                  color: on.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: on.withValues(alpha: 0.1),
+                  ),
                 ),
+                child: const AccountManagementMenu(),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Account Management',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Manage your account settings and sign out from one place.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: EdgeInsets.all(metrics.sheetInnerPadding),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
-                ),
-              ),
-              child: const AccountManagementMenu(),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 }

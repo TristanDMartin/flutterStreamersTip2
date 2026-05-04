@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'dart:async';
 import 'dart:io';
+import '../core/theme/support_shell_style.dart';
 import '../providers/favorites_provider.dart';
 import '../services/unified_bookmark_service.dart';
 import '../models/home_video.dart';
@@ -489,9 +491,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       future: _shouldShowFavorites(),
       builder: (context, privacySnapshot) {
         if (privacySnapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
+          return Center(
             child: CircularProgressIndicator(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.primary,
               strokeWidth: 2,
             ),
           );
@@ -540,9 +542,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             future: _fetchFavoriteVideos(favorites),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
+                return Center(
                   child: CircularProgressIndicator(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.primary,
                     strokeWidth: 2,
                   ),
                 );
@@ -575,9 +577,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             future: _fetchUserFavorites(widget.userId!),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
+                return Center(
                   child: CircularProgressIndicator(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.primary,
                     strokeWidth: 2,
                   ),
                 );
@@ -607,9 +609,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                 builder: (context, videoSnapshot) {
                   if (videoSnapshot.connectionState ==
                       ConnectionState.waiting) {
-                    return const Center(
+                    return Center(
                       child: CircularProgressIndicator(
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.primary,
                         strokeWidth: 2,
                       ),
                     );
@@ -660,9 +662,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       future: _fetchTaggedVideos(targetUserId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
+          return Center(
             child: CircularProgressIndicator(
-              color: Color(0xFF9248d2),
+              color: Theme.of(context).colorScheme.primary,
             ),
           );
         }
@@ -702,7 +704,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
     final itemCount =
         (drafts.isNotEmpty ? 1 : 0) + optimisticVideos.length + videos.length;
-
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return RefreshIndicator(
       onRefresh: () async {
         _resetCachedFutures();
@@ -720,16 +722,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
         }
       },
-      color: const Color(0xFF9248d2),
-      child: GridView.builder(
+      color: shell.refreshColor,
+      backgroundColor: shell.refreshBackground,
+      child: MasonryGridView.count(
+        crossAxisCount: 3,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 16, // Tight gutters = 16pt
-          mainAxisSpacing: 16, // Tight gutters = 16pt
-          childAspectRatio: 9 / 16, // Strict 9:16 aspect ratio (portrait)
-        ),
         itemCount: itemCount,
         itemBuilder: (context, index) {
           final draftOffset = drafts.isNotEmpty ? 1 : 0;
@@ -818,7 +818,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     final progress = ((video.uploadProgress ?? 0.0) * 100).clamp(0, 100);
 
     return AspectRatio(
-      aspectRatio: 9 / 16,
+      aspectRatio: _resolveAspectRatioFromOptimisticVideo(video),
       child: Opacity(
         opacity: 0.92,
         child: Container(
@@ -934,7 +934,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   Widget _buildVideoGridWithoutDrafts(List<HomeVideo> videos) {
     _scheduleRealtimeDeletionSync(videos);
-
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return RefreshIndicator(
       onRefresh: () async {
         _resetCachedFutures();
@@ -952,16 +952,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
         }
       },
-      color: const Color(0xFF9248d2),
-      child: GridView.builder(
+      color: shell.refreshColor,
+      backgroundColor: shell.refreshBackground,
+      child: MasonryGridView.count(
+        crossAxisCount: 3,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 9 / 16,
-        ),
         itemCount: videos.length,
         itemBuilder: (context, index) {
           final video = videos[index];
@@ -1010,7 +1008,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         .toList();
 
     _scheduleRealtimeDeletionSync(homeVideos);
-
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return RefreshIndicator(
       onRefresh: () async {
         _resetCachedFutures();
@@ -1028,16 +1026,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
         }
       },
-      color: const Color(0xFF9248d2),
-      child: GridView.builder(
+      color: shell.refreshColor,
+      backgroundColor: shell.refreshBackground,
+      child: MasonryGridView.count(
+        crossAxisCount: 3,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 16, // Tight gutters = 16pt
-          mainAxisSpacing: 16, // Tight gutters = 16pt
-          childAspectRatio: 9 / 16, // Strict 9:16 aspect ratio (portrait)
-        ),
         itemCount: videos.length,
         itemBuilder: (context, index) {
           final video = videos[index];
@@ -1201,6 +1197,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     }
     return GridThumbnail(
       video: video,
+      aspectRatio: _resolveAspectRatioFromHomeVideo(video),
       onTap: () {
         widget.onVideoTap?.call();
         // ✅ FIX: Pass all videos so user can swipe up/down to see other videos
@@ -1238,6 +1235,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
     return GridThumbnail(
       video: homeVideo,
+      aspectRatio: _resolveAspectRatioFromVideoMap(video),
       onTap: () {
         widget.onVideoTap?.call();
         // ✅ FIX: Pass all videos and find correct index so user can swipe through them
@@ -1256,6 +1254,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     required String title,
     required String subtitle,
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1263,13 +1263,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           Icon(
             icon,
             size: 80,
-            color: Colors.white.withValues(alpha: 0.3),
+            color: shell.iconDim,
           ),
           const SizedBox(height: 16),
           Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: scheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w600,
             ),
@@ -1278,7 +1278,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           Text(
             subtitle,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: scheme.onSurface.withValues(alpha: 0.62),
               fontSize: 16,
             ),
             textAlign: TextAlign.center,
@@ -1289,6 +1289,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildLoadingGridPlaceholder() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1299,22 +1300,80 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         childAspectRatio: 9 / 16,
       ),
       itemCount: 6,
-      itemBuilder: (context, index) {
+      itemBuilder: (BuildContext context, int index) {
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.08),
-                Colors.white.withValues(alpha: 0.03),
+              colors: <Color>[
+                shell.skeletonFill,
+                shell.skeletonLineDim,
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  double _resolveAspectRatioFromHomeVideo(HomeVideo video) {
+    final ratio = video.thumbnails?.aspectRatio;
+    return _sanitizeAspectRatio(ratio);
+  }
+
+  double _resolveAspectRatioFromOptimisticVideo(OptimisticVideo video) {
+    final metadata = video.metadata;
+    if (metadata != null) {
+      final ratio = _readNum(metadata['aspectRatio']) ??
+          _readNum(metadata['videoAspectRatio']) ??
+          _readRatioFromDimensions(
+            _readNum(metadata['sourceWidth']),
+            _readNum(metadata['sourceHeight']),
+          );
+      if (ratio != null) {
+        return _sanitizeAspectRatio(ratio);
+      }
+    }
+    return 9 / 16;
+  }
+
+  double _resolveAspectRatioFromVideoMap(Map<String, dynamic> video) {
+    final ratio = _readNum(video['aspectRatio']) ??
+        _readNum(video['videoAspectRatio']) ??
+        _readNum(video['thumbnails']?['aspectRatio']) ??
+        _readRatioFromDimensions(
+          _readNum(video['sourceWidth'] ?? video['width']),
+          _readNum(video['sourceHeight'] ?? video['height']),
+        ) ??
+        _readRatioFromDimensions(
+          _readNum(video['metadata']?['sourceWidth']),
+          _readNum(video['metadata']?['sourceHeight']),
+        );
+    return _sanitizeAspectRatio(ratio);
+  }
+
+  double _sanitizeAspectRatio(double? ratio) {
+    const fallback = 9 / 16;
+    if (ratio == null || ratio.isNaN || ratio.isInfinite || ratio <= 0) {
+      return fallback;
+    }
+    return ratio.clamp(0.45, 2.2);
+  }
+
+  double? _readRatioFromDimensions(double? width, double? height) {
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return null;
+    }
+    return width / height;
+  }
+
+  double? _readNum(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    return null;
   }
 
   void _openAllDrafts(List<Map<String, dynamic>> drafts) {

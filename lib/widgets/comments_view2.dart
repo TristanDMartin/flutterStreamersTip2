@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -85,9 +83,8 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   void _setupRealtimeComments() {
     setState(() => _isLoading = true);
 
-    _commentsSubscription = CommentsService()
-        .watchCommentsForVideo(widget.videoId)
-        .listen(
+    _commentsSubscription =
+        CommentsService().watchCommentsForVideo(widget.videoId).listen(
       (snapshot) async {
         try {
           final enrichedComments = await Future.wait(
@@ -235,43 +232,46 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   Future<void> _deleteComment(Comment comment) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.supportBackground,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: Colors.white.withValues(alpha: 0.12),
-          ),
-        ),
-        title: const Text(
-          'Delete Comment',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        content: const Text(
-          'Are you sure you want to delete this comment?',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.textSecondary,
+      builder: (context) {
+        final ColorScheme scheme = Theme.of(context).colorScheme;
+        return AlertDialog(
+          backgroundColor: scheme.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: scheme.outline.withValues(alpha: 0.35),
             ),
-            child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.error,
+          title: Text(
+            'Delete Comment',
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.w600,
             ),
-            child: const Text('Delete'),
           ),
-        ],
-      ),
+          content: Text(
+            'Are you sure you want to delete this comment?',
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(
+                foregroundColor: scheme.onSurfaceVariant,
+              ),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
     );
 
     if (shouldDelete != true) return;
@@ -342,8 +342,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     if (currentUser == null) return _fallbackUser();
 
     try {
-      final data =
-          await _discussionAuthorService.loadUserData(currentUser.uid);
+      final data = await _discussionAuthorService.loadUserData(currentUser.uid);
       if (data != null) {
         return app_user.User(
           id: currentUser.uid,
@@ -391,15 +390,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
   @override
   Widget build(BuildContext context) {
-    final double screenHeight = MediaQuery.of(context).size.height;
-    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final double modalHeight =
-        screenHeight * 0.5; // Fixed height - keyboard will overlap comments
-
-    if (kDebugMode) {
-      debugPrint(
-          '🎬 CommentsView2: Building modal with height: $modalHeight, keyboard: $keyboardHeight');
-    }
+    final double modalHeight = MediaQuery.sizeOf(context).height * 0.5;
 
     return Stack(
       children: [
@@ -411,49 +402,40 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
             child: Container(color: Colors.transparent),
           ),
         ),
-        // Comments modal - the video from HomeView will show through the transparent background
-        _buildCommentsModal(modalHeight, keyboardHeight),
-      ],
-    );
-  }
-
-  Widget _buildCommentsModal(double modalHeight, double keyboardHeight) {
-    return Positioned(
-      bottom:
-          keyboardHeight > 0 ? keyboardHeight : 0, // Lift modal above keyboard
-      left: 0,
-      right: 0,
-      child: ClipRRect(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2), // Much lighter blur
-          child: Container(
-            height: modalHeight,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.primary.withValues(alpha: 0.28),
-                  AppColors.supportBackground.withValues(alpha: 0.42),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-            child: GestureDetector(
-              onTap: () {}, // Prevent tap from propagating to close modal
-              child: Column(
-                children: [
-                  _buildDragIndicator(),
-                  _buildHeader(),
-                  Expanded(child: _buildCommentList()),
-                  _buildEmojiRow(),
-                  _buildInputBar(),
-                ],
+        _CommentsModalWithKeyboardLift(
+          modalHeight: modalHeight,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: RepaintBoundary(
+              child: Container(
+                height: modalHeight,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.34),
+                      AppColors.supportBackground.withValues(alpha: 0.58),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+                child: GestureDetector(
+                  onTap: () {},
+                  child: Column(
+                    children: [
+                      _buildDragIndicator(),
+                      _buildHeader(),
+                      Expanded(child: _buildCommentList()),
+                      _HideWhenKeyboardOpen(child: _buildEmojiRow()),
+                      _buildInputBar(),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -822,5 +804,52 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         child: const Icon(Icons.send, color: Colors.white, size: 20),
       ),
     );
+  }
+}
+
+/// Isolates keyboard inset so [CommentsView2] state does not rebuild each frame.
+class _CommentsModalWithKeyboardLift extends StatelessWidget {
+  const _CommentsModalWithKeyboardLift({
+    required this.modalHeight,
+    required this.child,
+  });
+
+  final double modalHeight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(
+            height: modalHeight,
+            width: double.infinity,
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HideWhenKeyboardOpen extends StatelessWidget {
+  const _HideWhenKeyboardOpen({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
+      return const SizedBox.shrink();
+    }
+    return child;
   }
 }

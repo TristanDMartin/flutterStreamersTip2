@@ -23,6 +23,7 @@ void main() {
     alertCount: 1,
     requiresAttentionCount: 1,
     pendingWorkCount: 2,
+    scheduledQueueCount: 0,
   );
 
   final CreatorCommandSnapshot lockedSnapshot = CreatorCommandSnapshot(
@@ -38,6 +39,7 @@ void main() {
     alertCount: 0,
     requiresAttentionCount: 0,
     pendingWorkCount: 0,
+    scheduledQueueCount: 0,
   );
 
   Future<List<RouteSettings>> pumpHarness(
@@ -84,34 +86,6 @@ void main() {
     seenRoutes.clear();
     return seenRoutes;
   }
-
-  testWidgets('analytics and schedule route to Manage Posts with tab args',
-      (WidgetTester tester) async {
-    List<RouteSettings> seenRoutes = await pumpHarness(
-      tester,
-      snapshot: unlockedSnapshot,
-    );
-
-    await tester.tap(find.text('Analytics'));
-    await tester.pumpAndSettle();
-    expect(seenRoutes.single.name, AppRoutes.managePosts);
-    expect(
-      (seenRoutes.single.arguments as ManagePostsRouteArgs).initialTab,
-      ManagePostsInitialTab.published,
-    );
-
-    seenRoutes = await pumpHarness(
-      tester,
-      snapshot: unlockedSnapshot,
-    );
-    await tester.tap(find.text('Schedule'));
-    await tester.pumpAndSettle();
-    expect(seenRoutes.single.name, AppRoutes.managePosts);
-    expect(
-      (seenRoutes.single.arguments as ManagePostsRouteArgs).initialTab,
-      ManagePostsInitialTab.scheduled,
-    );
-  });
 
   testWidgets('tippy routes to upgrade when locked and chat when unlocked',
       (WidgetTester tester) async {

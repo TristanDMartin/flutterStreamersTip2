@@ -12,11 +12,11 @@ class NetworkEffectsService {
   NetworkEffectsService._();
 
   // Network boost multipliers
-  static const double CONNECTIONS_LIKED_BOOST =
+  static const double connectionsLikedBoost =
       1.5; // Your connections liked this
-  static const double TRENDING_IN_NETWORK_BOOST =
+  static const double trendingInNetworkBoost =
       1.3; // Trending among your network
-  static const double SIMILAR_USERS_BOOST = 1.2; // Similar users engaged
+  static const double similarUsersBoost = 1.2; // Similar users engaged
 
   /// Calculate network effects boost for a video
   Future<double> calculateNetworkBoost({
@@ -32,23 +32,23 @@ class NetworkEffectsService {
       if (connectionsLiked.isNotEmpty) {
         final boost =
             1.0 + (connectionsLiked.length * 0.1); // +10% per connection
-        multiplier *= boost.clamp(1.0, CONNECTIONS_LIKED_BOOST);
+        multiplier *= boost.clamp(1.0, connectionsLikedBoost);
         log('👥 Connections boost: ${connectionsLiked.length} connections liked - ${boost.toStringAsFixed(2)}x');
       }
 
       // 2. Check if trending in network
       final trendingScore = await _getTrendingInNetworkScore(userId, videoId);
       if (trendingScore > 0.5) {
-        multiplier *= TRENDING_IN_NETWORK_BOOST;
-        log('🔥 Trending in network boost - ${TRENDING_IN_NETWORK_BOOST}x');
+        multiplier *= trendingInNetworkBoost;
+        log('🔥 Trending in network boost - ${trendingInNetworkBoost}x');
       }
 
       // 3. Check similar users engagement
       final similarUsersScore =
           await _getSimilarUsersEngagement(userId, videoId);
       if (similarUsersScore > 0.6) {
-        multiplier *= SIMILAR_USERS_BOOST;
-        log('👤 Similar users boost - ${SIMILAR_USERS_BOOST}x');
+        multiplier *= similarUsersBoost;
+        log('👤 Similar users boost - ${similarUsersBoost}x');
       }
 
       log('✅ Total network boost for $videoId: ${multiplier.toStringAsFixed(2)}x');

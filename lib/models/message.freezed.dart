@@ -31,6 +31,14 @@ mixin _$Message implements DiagnosticableTreeMixin {
   String? get shareToken;
   String? get videoThumbnailUrl;
   String? get videoTitle;
+  String? get replyToMessageId;
+  String? get replyToSenderId;
+  String? get replyToSenderName;
+  String? get replyToType;
+  String? get replyPreviewText;
+  String? get replyThumbnailUrl;
+  String? get replyVideoId;
+  bool get deletedForEveryone;
 
   /// Create a copy of Message
   /// with the given fields replaced by the non-null parameter values.
@@ -61,7 +69,15 @@ mixin _$Message implements DiagnosticableTreeMixin {
       ..add(DiagnosticsProperty('videoId', videoId))
       ..add(DiagnosticsProperty('shareToken', shareToken))
       ..add(DiagnosticsProperty('videoThumbnailUrl', videoThumbnailUrl))
-      ..add(DiagnosticsProperty('videoTitle', videoTitle));
+      ..add(DiagnosticsProperty('videoTitle', videoTitle))
+      ..add(DiagnosticsProperty('replyToMessageId', replyToMessageId))
+      ..add(DiagnosticsProperty('replyToSenderId', replyToSenderId))
+      ..add(DiagnosticsProperty('replyToSenderName', replyToSenderName))
+      ..add(DiagnosticsProperty('replyToType', replyToType))
+      ..add(DiagnosticsProperty('replyPreviewText', replyPreviewText))
+      ..add(DiagnosticsProperty('replyThumbnailUrl', replyThumbnailUrl))
+      ..add(DiagnosticsProperty('replyVideoId', replyVideoId))
+      ..add(DiagnosticsProperty('deletedForEveryone', deletedForEveryone));
   }
 
   @override
@@ -91,33 +107,58 @@ mixin _$Message implements DiagnosticableTreeMixin {
             (identical(other.videoThumbnailUrl, videoThumbnailUrl) ||
                 other.videoThumbnailUrl == videoThumbnailUrl) &&
             (identical(other.videoTitle, videoTitle) ||
-                other.videoTitle == videoTitle));
+                other.videoTitle == videoTitle) &&
+            (identical(other.replyToMessageId, replyToMessageId) ||
+                other.replyToMessageId == replyToMessageId) &&
+            (identical(other.replyToSenderId, replyToSenderId) ||
+                other.replyToSenderId == replyToSenderId) &&
+            (identical(other.replyToSenderName, replyToSenderName) ||
+                other.replyToSenderName == replyToSenderName) &&
+            (identical(other.replyToType, replyToType) ||
+                other.replyToType == replyToType) &&
+            (identical(other.replyPreviewText, replyPreviewText) ||
+                other.replyPreviewText == replyPreviewText) &&
+            (identical(other.replyThumbnailUrl, replyThumbnailUrl) ||
+                other.replyThumbnailUrl == replyThumbnailUrl) &&
+            (identical(other.replyVideoId, replyVideoId) ||
+                other.replyVideoId == replyVideoId) &&
+            (identical(other.deletedForEveryone, deletedForEveryone) ||
+                other.deletedForEveryone == deletedForEveryone));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      id,
-      chatId,
-      text,
-      from,
-      to,
-      timestamp,
-      isRead,
-      const DeepCollectionEquality().hash(recipients),
-      const DeepCollectionEquality().hash(readBy),
-      gifUrl,
-      messageType,
-      isDeviceGif,
-      videoId,
-      shareToken,
-      videoThumbnailUrl,
-      videoTitle);
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        id,
+        chatId,
+        text,
+        from,
+        to,
+        timestamp,
+        isRead,
+        const DeepCollectionEquality().hash(recipients),
+        const DeepCollectionEquality().hash(readBy),
+        gifUrl,
+        messageType,
+        isDeviceGif,
+        videoId,
+        shareToken,
+        videoThumbnailUrl,
+        videoTitle,
+        replyToMessageId,
+        replyToSenderId,
+        replyToSenderName,
+        replyToType,
+        replyPreviewText,
+        replyThumbnailUrl,
+        replyVideoId,
+        deletedForEveryone
+      ]);
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle)';
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle, replyToMessageId: $replyToMessageId, replyToSenderId: $replyToSenderId, replyToSenderName: $replyToSenderName, replyToType: $replyToType, replyPreviewText: $replyPreviewText, replyThumbnailUrl: $replyThumbnailUrl, replyVideoId: $replyVideoId, deletedForEveryone: $deletedForEveryone)';
   }
 }
 
@@ -142,7 +183,15 @@ abstract mixin class $MessageCopyWith<$Res> {
       String? videoId,
       String? shareToken,
       String? videoThumbnailUrl,
-      String? videoTitle});
+      String? videoTitle,
+      String? replyToMessageId,
+      String? replyToSenderId,
+      String? replyToSenderName,
+      String? replyToType,
+      String? replyPreviewText,
+      String? replyThumbnailUrl,
+      String? replyVideoId,
+      bool deletedForEveryone});
 }
 
 /// @nodoc
@@ -173,6 +222,14 @@ class _$MessageCopyWithImpl<$Res> implements $MessageCopyWith<$Res> {
     Object? shareToken = freezed,
     Object? videoThumbnailUrl = freezed,
     Object? videoTitle = freezed,
+    Object? replyToMessageId = freezed,
+    Object? replyToSenderId = freezed,
+    Object? replyToSenderName = freezed,
+    Object? replyToType = freezed,
+    Object? replyPreviewText = freezed,
+    Object? replyThumbnailUrl = freezed,
+    Object? replyVideoId = freezed,
+    Object? deletedForEveryone = null,
   }) {
     return _then(_self.copyWith(
       id: freezed == id
@@ -239,6 +296,38 @@ class _$MessageCopyWithImpl<$Res> implements $MessageCopyWith<$Res> {
           ? _self.videoTitle
           : videoTitle // ignore: cast_nullable_to_non_nullable
               as String?,
+      replyToMessageId: freezed == replyToMessageId
+          ? _self.replyToMessageId
+          : replyToMessageId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyToSenderId: freezed == replyToSenderId
+          ? _self.replyToSenderId
+          : replyToSenderId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyToSenderName: freezed == replyToSenderName
+          ? _self.replyToSenderName
+          : replyToSenderName // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyToType: freezed == replyToType
+          ? _self.replyToType
+          : replyToType // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyPreviewText: freezed == replyPreviewText
+          ? _self.replyPreviewText
+          : replyPreviewText // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyThumbnailUrl: freezed == replyThumbnailUrl
+          ? _self.replyThumbnailUrl
+          : replyThumbnailUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyVideoId: freezed == replyVideoId
+          ? _self.replyVideoId
+          : replyVideoId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      deletedForEveryone: null == deletedForEveryone
+          ? _self.deletedForEveryone
+          : deletedForEveryone // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
@@ -350,7 +439,15 @@ extension MessagePatterns on Message {
             String? videoId,
             String? shareToken,
             String? videoThumbnailUrl,
-            String? videoTitle)?
+            String? videoTitle,
+            String? replyToMessageId,
+            String? replyToSenderId,
+            String? replyToSenderName,
+            String? replyToType,
+            String? replyPreviewText,
+            String? replyThumbnailUrl,
+            String? replyVideoId,
+            bool deletedForEveryone)?
         $default, {
     required TResult orElse(),
   }) {
@@ -373,7 +470,15 @@ extension MessagePatterns on Message {
             _that.videoId,
             _that.shareToken,
             _that.videoThumbnailUrl,
-            _that.videoTitle);
+            _that.videoTitle,
+            _that.replyToMessageId,
+            _that.replyToSenderId,
+            _that.replyToSenderName,
+            _that.replyToType,
+            _that.replyPreviewText,
+            _that.replyThumbnailUrl,
+            _that.replyVideoId,
+            _that.deletedForEveryone);
       case _:
         return orElse();
     }
@@ -410,7 +515,15 @@ extension MessagePatterns on Message {
             String? videoId,
             String? shareToken,
             String? videoThumbnailUrl,
-            String? videoTitle)
+            String? videoTitle,
+            String? replyToMessageId,
+            String? replyToSenderId,
+            String? replyToSenderName,
+            String? replyToType,
+            String? replyPreviewText,
+            String? replyThumbnailUrl,
+            String? replyVideoId,
+            bool deletedForEveryone)
         $default,
   ) {
     final _that = this;
@@ -432,7 +545,15 @@ extension MessagePatterns on Message {
             _that.videoId,
             _that.shareToken,
             _that.videoThumbnailUrl,
-            _that.videoTitle);
+            _that.videoTitle,
+            _that.replyToMessageId,
+            _that.replyToSenderId,
+            _that.replyToSenderName,
+            _that.replyToType,
+            _that.replyPreviewText,
+            _that.replyThumbnailUrl,
+            _that.replyVideoId,
+            _that.deletedForEveryone);
     }
   }
 
@@ -466,7 +587,15 @@ extension MessagePatterns on Message {
             String? videoId,
             String? shareToken,
             String? videoThumbnailUrl,
-            String? videoTitle)?
+            String? videoTitle,
+            String? replyToMessageId,
+            String? replyToSenderId,
+            String? replyToSenderName,
+            String? replyToType,
+            String? replyPreviewText,
+            String? replyThumbnailUrl,
+            String? replyVideoId,
+            bool deletedForEveryone)?
         $default,
   ) {
     final _that = this;
@@ -488,7 +617,15 @@ extension MessagePatterns on Message {
             _that.videoId,
             _that.shareToken,
             _that.videoThumbnailUrl,
-            _that.videoTitle);
+            _that.videoTitle,
+            _that.replyToMessageId,
+            _that.replyToSenderId,
+            _that.replyToSenderName,
+            _that.replyToType,
+            _that.replyPreviewText,
+            _that.replyThumbnailUrl,
+            _that.replyVideoId,
+            _that.deletedForEveryone);
       case _:
         return null;
     }
@@ -514,7 +651,15 @@ class _Message with DiagnosticableTreeMixin implements Message {
       this.videoId,
       this.shareToken,
       this.videoThumbnailUrl,
-      this.videoTitle})
+      this.videoTitle,
+      this.replyToMessageId,
+      this.replyToSenderId,
+      this.replyToSenderName,
+      this.replyToType,
+      this.replyPreviewText,
+      this.replyThumbnailUrl,
+      this.replyVideoId,
+      this.deletedForEveryone = false})
       : _recipients = recipients,
         _readBy = readBy;
   factory _Message.fromJson(Map<String, dynamic> json) =>
@@ -574,6 +719,23 @@ class _Message with DiagnosticableTreeMixin implements Message {
   final String? videoThumbnailUrl;
   @override
   final String? videoTitle;
+  @override
+  final String? replyToMessageId;
+  @override
+  final String? replyToSenderId;
+  @override
+  final String? replyToSenderName;
+  @override
+  final String? replyToType;
+  @override
+  final String? replyPreviewText;
+  @override
+  final String? replyThumbnailUrl;
+  @override
+  final String? replyVideoId;
+  @override
+  @JsonKey()
+  final bool deletedForEveryone;
 
   /// Create a copy of Message
   /// with the given fields replaced by the non-null parameter values.
@@ -609,7 +771,15 @@ class _Message with DiagnosticableTreeMixin implements Message {
       ..add(DiagnosticsProperty('videoId', videoId))
       ..add(DiagnosticsProperty('shareToken', shareToken))
       ..add(DiagnosticsProperty('videoThumbnailUrl', videoThumbnailUrl))
-      ..add(DiagnosticsProperty('videoTitle', videoTitle));
+      ..add(DiagnosticsProperty('videoTitle', videoTitle))
+      ..add(DiagnosticsProperty('replyToMessageId', replyToMessageId))
+      ..add(DiagnosticsProperty('replyToSenderId', replyToSenderId))
+      ..add(DiagnosticsProperty('replyToSenderName', replyToSenderName))
+      ..add(DiagnosticsProperty('replyToType', replyToType))
+      ..add(DiagnosticsProperty('replyPreviewText', replyPreviewText))
+      ..add(DiagnosticsProperty('replyThumbnailUrl', replyThumbnailUrl))
+      ..add(DiagnosticsProperty('replyVideoId', replyVideoId))
+      ..add(DiagnosticsProperty('deletedForEveryone', deletedForEveryone));
   }
 
   @override
@@ -639,33 +809,58 @@ class _Message with DiagnosticableTreeMixin implements Message {
             (identical(other.videoThumbnailUrl, videoThumbnailUrl) ||
                 other.videoThumbnailUrl == videoThumbnailUrl) &&
             (identical(other.videoTitle, videoTitle) ||
-                other.videoTitle == videoTitle));
+                other.videoTitle == videoTitle) &&
+            (identical(other.replyToMessageId, replyToMessageId) ||
+                other.replyToMessageId == replyToMessageId) &&
+            (identical(other.replyToSenderId, replyToSenderId) ||
+                other.replyToSenderId == replyToSenderId) &&
+            (identical(other.replyToSenderName, replyToSenderName) ||
+                other.replyToSenderName == replyToSenderName) &&
+            (identical(other.replyToType, replyToType) ||
+                other.replyToType == replyToType) &&
+            (identical(other.replyPreviewText, replyPreviewText) ||
+                other.replyPreviewText == replyPreviewText) &&
+            (identical(other.replyThumbnailUrl, replyThumbnailUrl) ||
+                other.replyThumbnailUrl == replyThumbnailUrl) &&
+            (identical(other.replyVideoId, replyVideoId) ||
+                other.replyVideoId == replyVideoId) &&
+            (identical(other.deletedForEveryone, deletedForEveryone) ||
+                other.deletedForEveryone == deletedForEveryone));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      id,
-      chatId,
-      text,
-      from,
-      to,
-      timestamp,
-      isRead,
-      const DeepCollectionEquality().hash(_recipients),
-      const DeepCollectionEquality().hash(_readBy),
-      gifUrl,
-      messageType,
-      isDeviceGif,
-      videoId,
-      shareToken,
-      videoThumbnailUrl,
-      videoTitle);
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        id,
+        chatId,
+        text,
+        from,
+        to,
+        timestamp,
+        isRead,
+        const DeepCollectionEquality().hash(_recipients),
+        const DeepCollectionEquality().hash(_readBy),
+        gifUrl,
+        messageType,
+        isDeviceGif,
+        videoId,
+        shareToken,
+        videoThumbnailUrl,
+        videoTitle,
+        replyToMessageId,
+        replyToSenderId,
+        replyToSenderName,
+        replyToType,
+        replyPreviewText,
+        replyThumbnailUrl,
+        replyVideoId,
+        deletedForEveryone
+      ]);
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle)';
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle, replyToMessageId: $replyToMessageId, replyToSenderId: $replyToSenderId, replyToSenderName: $replyToSenderName, replyToType: $replyToType, replyPreviewText: $replyPreviewText, replyThumbnailUrl: $replyThumbnailUrl, replyVideoId: $replyVideoId, deletedForEveryone: $deletedForEveryone)';
   }
 }
 
@@ -691,7 +886,15 @@ abstract mixin class _$MessageCopyWith<$Res> implements $MessageCopyWith<$Res> {
       String? videoId,
       String? shareToken,
       String? videoThumbnailUrl,
-      String? videoTitle});
+      String? videoTitle,
+      String? replyToMessageId,
+      String? replyToSenderId,
+      String? replyToSenderName,
+      String? replyToType,
+      String? replyPreviewText,
+      String? replyThumbnailUrl,
+      String? replyVideoId,
+      bool deletedForEveryone});
 }
 
 /// @nodoc
@@ -722,6 +925,14 @@ class __$MessageCopyWithImpl<$Res> implements _$MessageCopyWith<$Res> {
     Object? shareToken = freezed,
     Object? videoThumbnailUrl = freezed,
     Object? videoTitle = freezed,
+    Object? replyToMessageId = freezed,
+    Object? replyToSenderId = freezed,
+    Object? replyToSenderName = freezed,
+    Object? replyToType = freezed,
+    Object? replyPreviewText = freezed,
+    Object? replyThumbnailUrl = freezed,
+    Object? replyVideoId = freezed,
+    Object? deletedForEveryone = null,
   }) {
     return _then(_Message(
       id: freezed == id
@@ -788,6 +999,38 @@ class __$MessageCopyWithImpl<$Res> implements _$MessageCopyWith<$Res> {
           ? _self.videoTitle
           : videoTitle // ignore: cast_nullable_to_non_nullable
               as String?,
+      replyToMessageId: freezed == replyToMessageId
+          ? _self.replyToMessageId
+          : replyToMessageId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyToSenderId: freezed == replyToSenderId
+          ? _self.replyToSenderId
+          : replyToSenderId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyToSenderName: freezed == replyToSenderName
+          ? _self.replyToSenderName
+          : replyToSenderName // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyToType: freezed == replyToType
+          ? _self.replyToType
+          : replyToType // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyPreviewText: freezed == replyPreviewText
+          ? _self.replyPreviewText
+          : replyPreviewText // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyThumbnailUrl: freezed == replyThumbnailUrl
+          ? _self.replyThumbnailUrl
+          : replyThumbnailUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      replyVideoId: freezed == replyVideoId
+          ? _self.replyVideoId
+          : replyVideoId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      deletedForEveryone: null == deletedForEveryone
+          ? _self.deletedForEveryone
+          : deletedForEveryone // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }

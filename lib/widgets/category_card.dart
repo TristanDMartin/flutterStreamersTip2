@@ -26,6 +26,8 @@ class CategoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final ColorScheme cs = Theme.of(context).colorScheme;
+        final bool isDark = Theme.of(context).brightness == Brightness.dark;
         final useCompactSize = hasCategorySelected && !isSelected;
         final targetIconSize =
             useCompactSize ? _iconSizeUnselected : _iconSizeSelected;
@@ -61,19 +63,16 @@ class CategoryCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isSelected
-                        ? const Color(0xFF6633CC).withValues(alpha: 0.2)
-                        : const Color(0xFF1A1A1A),
+                        ? cs.primary.withValues(alpha: 0.2)
+                        : cs.surfaceContainerHighest,
                     border: isSelected
-                        ? Border.all(
-                            color: const Color(0xFF6633CC),
-                            width: 2,
-                          )
+                        ? Border.all(color: cs.primary, width: 2)
                         : null,
                     boxShadow: [
                       BoxShadow(
                         color: isSelected
-                            ? const Color(0xFF6633CC).withValues(alpha: 0.3)
-                            : Colors.black.withValues(alpha: 0.3),
+                            ? cs.primary.withValues(alpha: 0.28)
+                            : cs.shadow.withValues(alpha: isDark ? 0.35 : 0.1),
                         blurRadius: isSelected ? 12 : 8,
                         offset: const Offset(0, 4),
                       ),
@@ -94,8 +93,7 @@ class CategoryCard extends StatelessWidget {
                       fontSize: useCompactSize ? 11 : 14,
                       fontWeight:
                           isSelected ? FontWeight.bold : FontWeight.w500,
-                      color:
-                          isSelected ? const Color(0xFF6633CC) : Colors.white,
+                      color: isSelected ? cs.primary : cs.onSurface,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

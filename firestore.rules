@@ -5,9 +5,21 @@ service cloud.firestore {
   match /users/{userId} {
     // Allow unauthenticated reads for username lookups during login
     allow read: if true;
+    // Block self-escalation / ban bypass; privileged fields only via Admin SDK / Functions
     allow write: if request.auth != null && request.auth.uid == userId 
       && (!request.resource.data.keys().hasAny(['pinnedVideoIds']) 
-          || request.resource.data.pinnedVideoIds.size() <= 3);
+          || request.resource.data.pinnedVideoIds.size() <= 3)
+      && (
+        !exists(/databases/$(database)/documents/users/$(userId))
+          ? !request.resource.data.keys().hasAny([
+              'role', 'isAdmin', 'admin', 'accountStatus',
+              'bannedAt', 'bannedBy', 'banReason', 'adminNotes'
+            ])
+          : !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              'role', 'isAdmin', 'admin', 'accountStatus',
+              'bannedAt', 'bannedBy', 'banReason', 'adminNotes'
+            ])
+      );
       
       // TikTok-style: Allow any authenticated user to update follower/following counts and liked_videos array
       allow update: if request.auth != null 
@@ -15,6 +27,12 @@ service cloud.firestore {
             || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'followerCount', 'connectionsCount']) // Only these fields
                 && (!('liked_videos' in request.resource.data.diff(resource.data).affectedKeys()) 
                     || isValidBookmarkUpdate(request.resource.data.liked_videos)))); // Validate bookmark data only if liked_videos is being updated
+
+      // Presence: any signed-in user can read (avatars / network); only owner writes
+      match /presence/{presenceDocId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
       
       // Users can read and write their own subcollections
       match /{subcollection=**} {
@@ -113,7 +131,8 @@ service cloud.firestore {
     // Users can read and write video comments
     match /videos/{videoId}/comments/{commentId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && 
+      allow create: if request.auth != null &&
+        isNotBannedUser() &&
         request.auth.uid == request.resource.data.user.id &&
         (isUserAdmin() || isWithinCommentLimit(request.auth.uid));
       allow update: if request.auth != null && 
@@ -135,19 +154,24 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow list: if request.auth != null;
       allow create: if request.auth != null
+        && isNotBannedUser()
         && request.resource.data.userId == request.auth.uid;
       // Owner can update metadata after upload (Worker sets muxPlaybackId/hlsUrl/status:ready)
       // Viewers may only bump favorite counters (UnifiedBookmarkService batch).
       allow update: if request.auth != null
+        && isNotBannedUser()
         && (
           (
             isVideoDocumentOwner()
             && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly([
                 'caption','hashtags','privacy','visibility','allowComments',
-                'category','categoryId','categories','updatedAt','deletedAt',
+                'category','categoryId','category_id','categories',
+                'updatedAt','deletedAt',
                 'thumbnailUrl',
                 'thumbnails','status','moderation','metadata','videoUrl',
+                'visible','isReadyForFeed',
+                'uploadError','errorMessage',
                 'sourcePlatform','isMux','muxStatus','muxUploadId',
                 'views','likes','comments','shares','favorites',
                 'favoriteCount','id',
@@ -187,16 +211,6 @@ service cloud.firestore {
       match /{subcollection=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
-    }
-    
-    // Reports collection
-    match /reports/{reportId} {
-      // Anyone can create reports
-      allow create: if request.auth != null;
-      // Only reporter can read their own reports
-      allow read: if request.auth != null && request.auth.uid == resource.data.reporterId;
-      // No updates or deletes allowed (data integrity)
-      allow update, delete: if false;
     }
     
     // Users can read public likes and write their own likes
@@ -243,27 +257,25 @@ service cloud.firestore {
     
     // Users can read all engagement analytics and write their own
     match /engagement_analytics/{analyticsId} {
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow read, list: if request.auth != null;
+      allow create: if isRequestOwner();
+      allow update, delete: if isResourceOwner();
     }
     
     // TikTok-style: Engagement tracking for algorithm
     match /engagement/{engagementId} {
       allow read: if request.auth != null;
       allow list: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow create: if isRequestOwner();
+      allow update, delete: if isResourceOwner();
     }
     
     // TikTok-style: User retention profiles for algorithm
     match /user_retention_profiles/{userId} {
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
     
@@ -316,7 +328,7 @@ service cloud.firestore {
     // Hashtag permissions - allow authenticated users to read and write
     match /hashtag_permissions/{hashtag} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if isUserAdmin();
     }
     
     // Shared drafts permissions - allow users to read and write their own drafts
@@ -338,7 +350,18 @@ service cloud.firestore {
     // Video analytics permissions - allow users to read and write their own analytics
     match /video_analytics/{videoId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow create: if isRequestOwner() || isAnalyticsCounterCreate();
+      allow update: if isResourceOwner() || isAnalyticsCounterWrite();
+      allow delete: if isResourceOwner();
+    }
+
+    // Creator Command / growth aggregates — owner read-write; admins read
+    match /creator_metrics/{creatorId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == creatorId || isUserAdmin());
+      allow create, update: if request.auth != null &&
+        request.auth.uid == creatorId;
+      allow delete: if false;
     }
 
     match /support_tickets/{ticketId} {
@@ -351,7 +374,7 @@ service cloud.firestore {
 
     match /forumCategories/{categoryId} {
       allow read, list: if request.auth != null;
-      allow update: if request.auth != null;
+      allow update: if isUserAdmin();
       allow create, delete: if isUserAdmin();
     }
 
@@ -400,13 +423,17 @@ service cloud.firestore {
     // Video analytics aggregated data (camelCase) - read by InsightsView
     match /videoAnalytics/{videoId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow create: if isRequestOwner() || isAnalyticsCounterCreate();
+      allow update: if isResourceOwner() || isAnalyticsCounterWrite();
+      allow delete: if isResourceOwner();
     }
     
     // Video insights (additional insights data)
     match /videoInsights/{videoId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow create: if isRequestOwner() || isAnalyticsCounterCreate();
+      allow update: if isResourceOwner() || isAnalyticsCounterWrite();
+      allow delete: if isResourceOwner();
     }
     
     // Follow edges permissions - allow users to read and write their own follow relationships
@@ -433,23 +460,26 @@ service cloud.firestore {
     // Feed permissions - allow authenticated users to read and write feeds
     match /feeds/{feedType} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow create: if isRequestOwner();
+      allow update, delete: if isResourceOwner();
 
       match /videos/{videoId} {
         allow read, list: if request.auth != null;
-        allow create, update, delete: if request.auth != null;
+        allow create: if isRequestOwner();
+        allow update, delete: if isResourceOwner();
       }
       
       // Allow subcollections within feeds
       match /{subcollection=**} {
         allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow create: if isRequestOwner();
+        allow update, delete: if isResourceOwner();
       }
     }
     
     // Bookmark audit logging - allow users to create audit entries for their own actions
     match /bookmark_audit/{auditId} {
-      allow create: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
       allow read: if request.auth != null && request.auth.uid == resource.data.userId;
     }
 
@@ -526,16 +556,27 @@ service cloud.firestore {
     
     // Reports - content/user reporting system
     match /reports/{reportId} {
-      // Only allow reading your own reports or if you're admin (for moderation)
-      allow read: if request.auth != null && 
-        request.auth.uid == resource.data.reporterId;
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.reporterId ||
+        isAdmin()
+      );
       allow list: if request.auth != null;
-      // Anyone can create a report
-      allow create: if request.auth != null && 
+      allow create: if request.auth != null &&
         request.auth.uid == request.resource.data.reporterId;
-      // Cannot update or delete reports (immutable for integrity)
-      allow update: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'status', 'reviewedBy', 'reviewedAt', 'actionTaken', 'updatedAt'
+          ]);
       allow delete: if false;
+    }
+
+    match /tippy_rate_limits/{rateLimitId} {
+      allow read, write: if false;
+    }
+
+    match /tippy_usage_events/{eventId} {
+      allow read, write: if false;
     }
     
     // Tags - user/content tagging system
@@ -576,9 +617,8 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow list: if request.auth != null;
       // System can create moderation entries
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow create: if isRequestOwner() || isUserAdmin();
+      allow update, delete: if isResourceOwner();
     }
     
     // Admin logs - only admins can read/write
@@ -713,18 +753,111 @@ service cloud.firestore {
       && likedVideos.size() == likedVideos.toSet().size();  // No duplicates
   }
   
-  // Helper function to check if user is admin
-  function isAdmin() {
-    return request.auth != null &&
-      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-      (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+  // Admin: JWT claim and/or Firestore on the signed-in user (self-writes
+  // cannot set role/admin — see users/{userId} allow write).
+  function isFirestoreAdminSelf() {
+    let path = /databases/$(database)/documents/users/$(request.auth.uid);
+    return exists(path)
+      && (
+        get(path).data.role == 'admin' ||
+        get(path).data.isAdmin == true ||
+        (
+          'admin' in get(path).data &&
+          get(path).data.admin is map &&
+          get(path).data.admin.isAdmin == true
+        )
       );
   }
-  
+
+  function isAdmin() {
+    return request.auth != null && (
+      request.auth.token.admin == true ||
+      isFirestoreAdminSelf()
+    );
+  }
+
   function isUserAdmin() {
     return isAdmin();
+  }
+
+  function isNotBannedUser() {
+    return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+      || !('accountStatus' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+      || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus != 'banned';
+  }
+
+  function requestOwnerId() {
+    return 'userId' in request.resource.data
+      ? request.resource.data.userId
+      : ('ownerId' in request.resource.data
+        ? request.resource.data.ownerId
+        : ('authorId' in request.resource.data
+          ? request.resource.data.authorId
+          : ('creatorId' in request.resource.data
+            ? request.resource.data.creatorId
+            : ('viewerId' in request.resource.data
+              ? request.resource.data.viewerId
+              : ('likerId' in request.resource.data
+                ? request.resource.data.likerId
+                : ('commenterId' in request.resource.data
+                  ? request.resource.data.commenterId
+                  : ('sharerId' in request.resource.data
+                    ? request.resource.data.sharerId
+                    : ('uid' in request.resource.data
+                      ? request.resource.data.uid
+                      : null))))))));
+  }
+
+  function resourceOwnerId() {
+    return 'userId' in resource.data
+      ? resource.data.userId
+      : ('ownerId' in resource.data
+        ? resource.data.ownerId
+        : ('authorId' in resource.data
+          ? resource.data.authorId
+          : ('creatorId' in resource.data
+            ? resource.data.creatorId
+            : ('viewerId' in resource.data
+              ? resource.data.viewerId
+              : ('likerId' in resource.data
+                ? resource.data.likerId
+                : ('commenterId' in resource.data
+                  ? resource.data.commenterId
+                  : ('sharerId' in resource.data
+                    ? resource.data.sharerId
+                    : ('uid' in resource.data
+                      ? resource.data.uid
+                      : null))))))));
+  }
+
+  function isRequestOwner() {
+    return request.auth != null &&
+      (request.auth.uid == requestOwnerId() || isUserAdmin());
+  }
+
+  function isResourceOwner() {
+    return request.auth != null &&
+      (request.auth.uid == resourceOwnerId() || isUserAdmin());
+  }
+
+  function isAnalyticsCounterWrite() {
+    return request.auth != null &&
+      request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'views', 'likes', 'comments', 'shares', 'watchTime', 'watchTimeSeconds',
+        'averageWatchTime', 'completionRate', 'engagementRate',
+        'lastViewedAt', 'lastLikedAt', 'lastCommentedAt', 'lastSharedAt',
+        'updatedAt', 'timestamp'
+      ]);
+  }
+
+  function isAnalyticsCounterCreate() {
+    return request.auth != null &&
+      request.resource.data.keys().hasOnly([
+        'views', 'likes', 'comments', 'shares', 'watchTime', 'watchTimeSeconds',
+        'averageWatchTime', 'completionRate', 'engagementRate',
+        'lastViewedAt', 'lastLikedAt', 'lastCommentedAt', 'lastSharedAt',
+        'updatedAt', 'timestamp'
+      ]);
   }
   
   function isWithinCommentLimit(userId) {

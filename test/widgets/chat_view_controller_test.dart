@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,6 +14,8 @@ class _FakeChatViewService implements ChatViewService {
   final Map<String, Map<String, dynamic>> userInfoById;
   final List<String> markedReadChatIds = <String>[];
   final List<String> sentMessages = <String>[];
+  final List<String> sentGifUrls = <String>[];
+  int pastedImageSendCount = 0;
   final List<String> mutedChatIds = <String>[];
   final List<String> reportedUserIds = <String>[];
   final List<String> blockedUserIds = <String>[];
@@ -55,6 +58,28 @@ class _FakeChatViewService implements ChatViewService {
     sentMessages.add('$chatId::$text');
     return sendShouldSucceed;
   }
+
+  @override
+  Future<bool> sendGifMessage(String chatId, String gifUrl) async {
+    sentGifUrls.add('$chatId::$gifUrl');
+    return sendShouldSucceed;
+  }
+
+  @override
+  Future<bool> sendPastedImageBytes(String chatId, Uint8List bytes) async {
+    pastedImageSendCount++;
+    return sendShouldSucceed;
+  }
+
+  @override
+  Future<bool> deleteMessage(String chatId, String messageId) async => true;
+
+  @override
+  Stream<bool> listenToTypingStatus(String chatId, String userId) =>
+      Stream<bool>.value(false);
+
+  @override
+  Future<void> setTypingStatus(String chatId, bool isTyping) async {}
 
   @override
   Future<void> muteChat(String chatId, String userId) async {
@@ -155,6 +180,16 @@ void main() {
       expect(result, ChatComposerResult.sent);
       expect(service.sentMessages, contains('chat-1::hi there'));
       expect(states, containsAllInOrder(<bool>[true, false]));
+    });
+
+    test('submitComposerText sends remote GIF URLs as gif messages', () async {
+      const String gifUrl =
+          'https://media.giphy.com/media/abc123/200.gif';
+      final ChatComposerResult result =
+          await controller.submitComposerText('  $gifUrl  ');
+      expect(result, ChatComposerResult.sent);
+      expect(service.sentGifUrls, contains('chat-1::$gifUrl'));
+      expect(service.sentMessages, isEmpty);
     });
 
     test('settings actions execute real service intents', () async {

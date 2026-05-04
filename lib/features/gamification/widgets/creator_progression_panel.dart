@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../constants/app_colors.dart';
+import '../../../core/theme/support_shell_style.dart';
 import '../gamification_providers.dart';
 import '../models/gamification_summary_model.dart';
 import '../missions/mission_engine.dart';
@@ -18,13 +19,17 @@ class CreatorProgressionPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const _SignedOutMessage();
+      return ColoredBox(
+        color: shell.scaffold,
+        child: const _SignedOutMessage(),
+      );
     }
     final AsyncValue<UserProgressBundle> asyncBundle =
         ref.watch(userProgressBundleProvider);
-    return asyncBundle.when(
+    final Widget body = asyncBundle.when(
       data: (UserProgressBundle bundle) => _ProgressionBody(
         bundle: bundle,
         uid: user.uid,
@@ -39,18 +44,27 @@ class CreatorProgressionPanel extends ConsumerWidget {
       loading: () => const _LoadingOrEmpty(loading: true),
       error: (Object e, StackTrace st) {
         debugPrint('userProgressBundleProvider: $e\n$st');
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: SelectableText(
-              'Could not load progression. Pull to refresh or try again.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ),
+        return Builder(
+          builder: (BuildContext context) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: SelectableText(
+                  'Could not load progression. Pull to refresh or try again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface.withValues(
+                          alpha: 0.65,
+                        ),
+                  ),
+                ),
+              ),
+            );
+          },
         );
       },
     );
+    return ColoredBox(color: shell.scaffold, child: body);
   }
 }
 
@@ -67,6 +81,7 @@ class _ProgressionBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final GamificationSummaryModel model = bundle.progress;
     final String rankTitle =
         GamificationConstants.rankTitleForLevel(model.level);
@@ -74,7 +89,8 @@ class _ProgressionBody extends StatelessWidget {
     final bool hasHint =
         model.nextActionHint != null && model.nextActionHint!.isNotEmpty;
     return RefreshIndicator(
-      color: AppColors.supportAccent,
+      color: shell.refreshColor,
+      backgroundColor: shell.refreshBackground,
       onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -182,6 +198,7 @@ class _ProgressionBody extends StatelessWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (BuildContext context) {
+        final ColorScheme scheme = Theme.of(context).colorScheme;
         return _GlassSheet(
           title: 'Level rewards ladder',
           subtitle: 'See what your next creator milestones unlock.',
@@ -191,19 +208,37 @@ class _ProgressionBody extends StatelessWidget {
               final bool completed = level < model.level;
               final String reward =
                   GamificationConstants.rewardLabelForLevel(level);
+              final Color rowBg = scheme.surfaceContainerLow.withValues(
+                alpha: current ? 1.0 : 0.72,
+              );
+              final Color rowBorder = current
+                  ? scheme.primary.withValues(alpha: 0.35)
+                  : scheme.outline.withValues(alpha: 0.28);
+              final List<Color> orbColors = completed
+                  ? <Color>[
+                      Colors.greenAccent.withValues(alpha: 0.85),
+                      scheme.primary.withValues(alpha: 0.35),
+                    ]
+                  : current
+                      ? <Color>[
+                          AppColors.supportAccent,
+                          scheme.primary.withValues(alpha: 0.45),
+                        ]
+                      : <Color>[
+                          scheme.outline.withValues(alpha: 0.45),
+                          scheme.surfaceContainerHighest,
+                        ];
+              final Color levelNumColor = completed || current
+                  ? scheme.onPrimary
+                  : scheme.onSurface;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color:
-                        Colors.white.withValues(alpha: current ? 0.09 : 0.05),
+                    color: rowBg,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: current
-                          ? AppColors.supportAccent.withValues(alpha: 0.28)
-                          : Colors.white.withValues(alpha: 0.08),
-                    ),
+                    border: Border.all(color: rowBorder),
                   ),
                   child: Row(
                     children: <Widget>[
@@ -213,14 +248,7 @@ class _ProgressionBody extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
-                            colors: <Color>[
-                              completed
-                                  ? Colors.greenAccent.withValues(alpha: 0.8)
-                                  : current
-                                      ? AppColors.supportAccent
-                                      : Colors.white.withValues(alpha: 0.18),
-                              Colors.white.withValues(alpha: 0.08),
-                            ],
+                            colors: orbColors,
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -228,8 +256,8 @@ class _ProgressionBody extends StatelessWidget {
                         child: Center(
                           child: Text(
                             '$level',
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: levelNumColor,
                               fontSize: 15,
                               fontWeight: FontWeight.w900,
                             ),
@@ -243,8 +271,8 @@ class _ProgressionBody extends StatelessWidget {
                           children: <Widget>[
                             Text(
                               GamificationConstants.rankTitleForLevel(level),
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: scheme.onSurface,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -253,7 +281,7 @@ class _ProgressionBody extends StatelessWidget {
                             Text(
                               reward,
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.62),
+                                color: scheme.onSurface.withValues(alpha: 0.62),
                                 fontSize: 12,
                                 height: 1.3,
                               ),
@@ -272,8 +300,8 @@ class _ProgressionBody extends StatelessWidget {
                           color: completed
                               ? Colors.greenAccent
                               : current
-                                  ? AppColors.supportAccent
-                                  : Colors.white.withValues(alpha: 0.58),
+                                  ? scheme.primary
+                                  : scheme.onSurface.withValues(alpha: 0.55),
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                         ),
@@ -305,6 +333,7 @@ class _HeroHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -312,16 +341,12 @@ class _HeroHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[
-            AppColors.primary.withValues(alpha: 0.38),
-            AppColors.supportAccent.withValues(alpha: 0.18),
-            Colors.white.withValues(alpha: 0.06),
-          ],
+          colors: shell.heroGradient,
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        border: Border.all(color: shell.heroBorder),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
+            color: shell.shadowSoft,
             blurRadius: 30,
             offset: const Offset(0, 18),
           ),
@@ -333,13 +358,14 @@ class _HeroHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: shell.chipUnselectedBg,
               borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: shell.chipUnselectedBorder),
             ),
-            child: const Text(
+            child: Text(
               'Creator Progression',
               style: TextStyle(
-                color: Colors.white,
+                color: shell.onChrome,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.35,
@@ -350,7 +376,7 @@ class _HeroHeader extends StatelessWidget {
           Text(
             rankTitle,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.96),
+              color: shell.onChrome,
               fontSize: 26,
               fontWeight: FontWeight.w900,
               height: 1.05,
@@ -360,7 +386,7 @@ class _HeroHeader extends StatelessWidget {
           Text(
             'Level $level · Score ${creatorScore.toStringAsFixed(1)} · ${streakDays > 0 ? '$streakDays day streak' : 'Build your first streak'}',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
+              color: shell.muted,
               fontSize: 14,
               height: 1.35,
             ),
@@ -382,13 +408,14 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
           title,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.92),
+            color: shell.onChrome,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
@@ -397,7 +424,7 @@ class _SectionTitle extends StatelessWidget {
         Text(
           subtitle,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.55),
+            color: shell.mutedStrong,
             fontSize: 12,
             height: 1.4,
           ),
@@ -412,13 +439,16 @@ class _SignedOutMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
           'Sign in to track creator progression.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+          style: TextStyle(
+            color: scheme.onSurface.withValues(alpha: 0.65),
+          ),
         ),
       ),
     );
@@ -431,30 +461,32 @@ class _LoadingOrEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Center(
       child: loading
           ? Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: shell.skeletonFill,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                border: Border.all(color: shell.surfaceCardBorder),
               ),
-              child: const Column(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  CircularProgressIndicator(),
-                  SizedBox(height: 14),
+                  CircularProgressIndicator(color: scheme.primary),
+                  const SizedBox(height: 14),
                   Text(
                     'Loading your progression...',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: shell.muted),
                   ),
                 ],
               ),
             )
           : Text(
               'No profile data',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              style: TextStyle(color: shell.mutedStrong),
             ),
     );
   }
@@ -467,19 +499,27 @@ class _LevelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final String rankTitle =
         GamificationConstants.rankTitleForLevel(model.level);
     final int need = model.xpNeededForNextLevel;
     final int safeNeed = need <= 0 ? 1 : need;
     final int into = model.xpIntoLevel.clamp(0, safeNeed);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
+    final BoxDecoration outerDecoration = shell.isLight
+        ? BoxDecoration(
+            color: shell.surfaceCard,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: shell.surfaceCardBorder),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: shell.shadowSoft,
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          )
+        : BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -499,7 +539,63 @@ class _LevelCard extends StatelessWidget {
                 offset: const Offset(0, 12),
               ),
             ],
-          ),
+          );
+    final BoxDecoration orbDecoration = shell.isLight
+        ? BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                shell.glassCircleGradientStart,
+                shell.glassCircleGradientEnd,
+              ],
+            ),
+            border: Border.all(color: shell.glassCircleBorder),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: shell.shadowSoft,
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          )
+        : BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                AppColors.supportAccent.withValues(alpha: 0.28),
+                Colors.white.withValues(alpha: 0.08),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: AppColors.supportAccent.withValues(alpha: 0.18),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          );
+    final Color levelTextColor =
+        shell.isLight ? scheme.onSurface : Colors.white;
+    final Color trackBg = shell.isLight
+        ? scheme.surfaceContainerHighest.withValues(alpha: 0.9)
+        : Colors.black.withValues(alpha: 0.35);
+    final Color trackFg =
+        shell.isLight ? scheme.primary : AppColors.supportAccent;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: outerDecoration,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -508,32 +604,12 @@ class _LevelCard extends StatelessWidget {
                   Container(
                     width: 56,
                     height: 56,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: <Color>[
-                          AppColors.supportAccent.withValues(alpha: 0.28),
-                          Colors.white.withValues(alpha: 0.08),
-                        ],
-                      ),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12)),
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color:
-                              AppColors.supportAccent.withValues(alpha: 0.18),
-                          blurRadius: 18,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
+                    decoration: orbDecoration,
                     child: Center(
                       child: Text(
                         '${model.level}',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: levelTextColor,
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                         ),
@@ -548,7 +624,9 @@ class _LevelCard extends StatelessWidget {
                         Text(
                           rankTitle,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
+                            color: shell.isLight
+                                ? shell.onChrome
+                                : Colors.white.withValues(alpha: 0.9),
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
@@ -557,7 +635,7 @@ class _LevelCard extends StatelessWidget {
                         Text(
                           '${model.totalXp} total XP',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.62),
+                            color: shell.muted,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -569,16 +647,16 @@ class _LevelCard extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
+                            color: shell.chipUnselectedBg,
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.08),
+                              color: shell.chipUnselectedBorder,
                             ),
                           ),
                           child: Text(
                             '${(model.progressInLevel * 100).round()}% to next level',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.72),
+                              color: shell.chipUnselectedFg,
                               fontSize: 10.5,
                               fontWeight: FontWeight.w700,
                             ),
@@ -599,14 +677,12 @@ class _LevelCard extends StatelessWidget {
                   ),
                   duration: const Duration(milliseconds: 900),
                   curve: Curves.easeOutCubic,
-                  builder: (context, value, _) {
+                  builder: (BuildContext ctx, double value, Widget? _) {
                     return LinearProgressIndicator(
                       value: value,
                       minHeight: 10,
-                      backgroundColor: Colors.black.withValues(alpha: 0.35),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        AppColors.supportAccent,
-                      ),
+                      backgroundColor: trackBg,
+                      valueColor: AlwaysStoppedAnimation<Color>(trackFg),
                     );
                   },
                 ),
@@ -618,7 +694,7 @@ class _LevelCard extends StatelessWidget {
                     child: Text(
                       '$into / $safeNeed XP this level',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
+                        color: shell.mutedStrong,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -627,7 +703,7 @@ class _LevelCard extends StatelessWidget {
                   Text(
                     'View rewards',
                     style: TextStyle(
-                      color: AppColors.supportAccent,
+                      color: scheme.primary,
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
@@ -659,12 +735,13 @@ class _MiniStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.055),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -674,7 +751,7 @@ class _MiniStatCard extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.58),
+              color: shell.mutedStrong,
               fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
@@ -682,8 +759,8 @@ class _MiniStatCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: shell.onChrome,
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -692,7 +769,7 @@ class _MiniStatCard extends StatelessWidget {
           Text(
             helper,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.45),
+              color: shell.muted,
               fontSize: 11,
               height: 1.35,
             ),
@@ -709,14 +786,16 @@ class _NextActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.supportAccent.withValues(alpha: 0.35),
+          color: scheme.primary.withValues(alpha: 0.35),
         ),
       ),
       child: Column(
@@ -725,7 +804,7 @@ class _NextActionCard extends StatelessWidget {
           Text(
             'Next step',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.58),
+              color: shell.mutedStrong,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -733,8 +812,8 @@ class _NextActionCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             hint,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: shell.onChrome,
               fontSize: 15,
               fontWeight: FontWeight.w600,
             ),
@@ -812,9 +891,10 @@ class _AchievementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final Color accent = achievement.unlocked
         ? achievement.accent
-        : Colors.white.withValues(alpha: 0.42);
+        : shell.iconDim;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.97, end: 1),
       duration: const Duration(milliseconds: 420),
@@ -831,18 +911,18 @@ class _AchievementCard extends StatelessWidget {
             duration: const Duration(milliseconds: 280),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.055),
+              color: shell.surfaceCard,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: achievement.unlocked
                     ? accent.withValues(alpha: 0.26)
-                    : Colors.white.withValues(alpha: 0.08),
+                    : shell.surfaceCardBorder,
               ),
               boxShadow: <BoxShadow>[
                 BoxShadow(
                   color: achievement.unlocked
                       ? accent.withValues(alpha: 0.12)
-                      : Colors.black.withValues(alpha: 0.1),
+                      : shell.shadowSoft,
                   blurRadius: achievement.unlocked ? 22 : 18,
                   offset: const Offset(0, 10),
                 ),
@@ -865,8 +945,8 @@ class _AchievementCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               achievement.title,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: shell.onChrome,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -899,7 +979,7 @@ class _AchievementCard extends StatelessWidget {
                       Text(
                         achievement.subtitle,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.58),
+                          color: shell.muted,
                           fontSize: 11.5,
                           height: 1.3,
                         ),
@@ -927,6 +1007,7 @@ class _AchievementCard extends StatelessWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (BuildContext context) {
+        final ColorScheme scheme = Theme.of(context).colorScheme;
         return _GlassSheet(
           title: achievement.title,
           subtitle: statusCopy,
@@ -936,10 +1017,10 @@ class _AchievementCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: scheme.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: achievement.accent.withValues(alpha: 0.2),
+                    color: achievement.accent.withValues(alpha: 0.22),
                   ),
                 ),
                 child: Row(
@@ -954,7 +1035,7 @@ class _AchievementCard extends StatelessWidget {
                       child: Text(
                         achievement.subtitle,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.76),
+                          color: scheme.onSurface.withValues(alpha: 0.76),
                           fontSize: 13,
                           height: 1.35,
                         ),
@@ -1063,7 +1144,11 @@ class _AchievementOrbState extends State<_AchievementOrb>
       },
       child: Icon(
         widget.icon,
-        color: Colors.white,
+        color: widget.unlocked
+            ? Colors.white
+            : StSupportShellStyle.of(context).onChrome.withValues(
+                  alpha: 0.45,
+                ),
         size: 22,
       ),
     );
@@ -1103,15 +1188,16 @@ class _GlassSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return SafeArea(
       top: false,
       child: Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1440),
+          color: shell.panelSurface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          border: Border.all(color: shell.panelBorder),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -1124,15 +1210,15 @@ class _GlassSheet extends StatelessWidget {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
+                    color: shell.muted.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
               ),
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: shell.onChrome,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1141,7 +1227,7 @@ class _GlassSheet extends StatelessWidget {
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.64),
+                  color: shell.muted,
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -1167,6 +1253,7 @@ class _SheetFactRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -1177,7 +1264,7 @@ class _SheetFactRow extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.45),
+                color: shell.mutedStrong,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -1187,7 +1274,7 @@ class _SheetFactRow extends StatelessWidget {
             child: Text(
               value,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.82),
+                color: shell.onChrome.withValues(alpha: 0.88),
                 fontSize: 12.5,
                 height: 1.35,
               ),

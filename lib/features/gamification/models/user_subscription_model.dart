@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../billing/get_user_tier.dart';
+import '../../entitlements/subscription_tier_resolver.dart';
 import '../gamification_firestore_utils.dart';
 import 'subscription_plan.dart';
 
@@ -15,11 +17,19 @@ class UserSubscriptionModel {
   final DateTime? currentPeriodEnd;
   final bool willCancel;
 
+  /// True when [plan] is Pro and [status] is Stripe `trialing` (canonical fields).
+  final bool isProTrialing;
+
+  /// Stripe trial end when webhook writes `subscriptionTrialEndAt`.
+  final DateTime? subscriptionTrialEndAt;
+
   const UserSubscriptionModel({
     required this.plan,
     required this.status,
     this.currentPeriodEnd,
     this.willCancel = false,
+    this.isProTrialing = false,
+    this.subscriptionTrialEndAt,
   });
 
   bool get isResolved =>
@@ -47,7 +57,27 @@ class UserSubscriptionModel {
       willCancel: raw['cancelAtPeriodEnd'] as bool? ??
           raw['willCancel'] as bool? ??
           false,
+      isProTrialing: subscriptionPlanFromString(planStr) == SubscriptionPlan.pro &&
+          status.trim().toLowerCase() == 'trialing',
+      subscriptionTrialEndAt: readFirestoreDate(raw['subscriptionTrialEndAt']),
     );
+  }
+
+  static String _readStatusFromUserDocument(
+    Map<String, dynamic> raw,
+  ) {
+    final Object? sub = raw['subscription'];
+    if (sub is Map<String, dynamic>) {
+      final Object? st = sub['status'] ?? sub['subscriptionStatus'];
+      if (st is String && st.trim().isNotEmpty) {
+        return st;
+      }
+    }
+    final Object? r = raw['subscriptionStatus'] ?? raw['subscription_status'];
+    if (r is String && r.trim().isNotEmpty) {
+      return r;
+    }
+    return 'unknown';
   }
 
   factory UserSubscriptionModel.fromUserDocument(
@@ -66,13 +96,17 @@ class UserSubscriptionModel {
 
     if (uid != null && _bypassStudioUids.contains(uid)) {
       debugPrint(
-        '🔐 ProgressionSubscription: bypass studio override applied for uid=$uid',
+        '🔐 ProgressionSubscription: bypass studio override for uid=$uid',
       );
       return const UserSubscriptionModel(
         plan: SubscriptionPlan.studio,
         status: 'active',
       );
     }
+
+    final SubscriptionTierResolution tierRes =
+        resolveSubscriptionTierFromUserDocument(raw);
+    final BillingTierAccess billing = BillingTierAccess.fromUserDocument(raw);
 
     final Object? nested = raw['subscription'];
     final Map<String, dynamic> merged = nested is Map<String, dynamic>
@@ -110,8 +144,40 @@ class UserSubscriptionModel {
     }
 
     if (merged.isEmpty) {
+      if (billing.usedCanonicalFields) {
+        final String st = _readStatusFromUserDocument(raw);
+        debugPrint(
+          '🔐 ProgressionSubscription: canonical billing tier '
+          '${subscriptionPlanToApiValue(billing.effectivePlan)} status=$st',
+        );
+        return UserSubscriptionModel(
+          plan: billing.effectivePlan,
+          status: st,
+          currentPeriodEnd: readFirestoreDate(raw['subscriptionCurrentPeriodEnd']) ??
+              readFirestoreDate(raw['currentPeriodEnd']),
+          willCancel: raw['cancelAtPeriodEnd'] as bool? ?? false,
+          isProTrialing: billing.isProTrialing,
+          subscriptionTrialEndAt: billing.subscriptionTrialEndAt,
+        );
+      }
+      if (tierRes.plan != SubscriptionPlan.unknown) {
+        final String st = _readStatusFromUserDocument(raw);
+        debugPrint(
+          '🔐 ProgressionSubscription: empty merge; tier from ${tierRes.sourceField} '
+          '-> ${subscriptionPlanToApiValue(tierRes.plan)} status=$st',
+        );
+        final SubscriptionPlan p = tierRes.plan;
+        return UserSubscriptionModel(
+          plan: p,
+          status: st,
+          isProTrialing: p == SubscriptionPlan.pro &&
+              st.trim().toLowerCase() == 'trialing',
+          subscriptionTrialEndAt: readFirestoreDate(raw['subscriptionTrialEndAt']),
+        );
+      }
       debugPrint(
-        '🔐 ProgressionSubscription: no subscription fields found | nested=false | rootPlan=$rootPlan | rootStatus=$rootStatus',
+        '🔐 ProgressionSubscription: no subscription fields | rootPlan=$rootPlan | '
+        'rootStatus=$rootStatus',
       );
       return const UserSubscriptionModel(
         plan: SubscriptionPlan.unknown,
@@ -121,12 +187,38 @@ class UserSubscriptionModel {
 
     final UserSubscriptionModel resolved =
         UserSubscriptionModel.fromFirestoreMap(merged);
+    final SubscriptionPlan effectivePlan = billing.usedCanonicalFields
+        ? billing.effectivePlan
+        : (tierRes.plan != SubscriptionPlan.unknown
+            ? tierRes.plan
+            : resolved.plan);
+    final bool proTrial = billing.usedCanonicalFields
+        ? billing.isProTrialing
+        : (effectivePlan == SubscriptionPlan.pro &&
+            resolved.status.trim().toLowerCase() == 'trialing');
+    final DateTime? trialEnd = billing.usedCanonicalFields
+        ? billing.subscriptionTrialEndAt
+        : readFirestoreDate(raw['subscriptionTrialEndAt']);
+    final UserSubscriptionModel out = UserSubscriptionModel(
+      plan: effectivePlan,
+      status: resolved.status,
+      currentPeriodEnd: resolved.currentPeriodEnd,
+      willCancel: resolved.willCancel,
+      isProTrialing: proTrial,
+      subscriptionTrialEndAt: trialEnd,
+    );
     final String source = hasNestedSubscription
         ? (rootPlan != null || rootStatus != null ? 'nested+root' : 'nested')
         : 'root';
     debugPrint(
-      '🔐 ProgressionSubscription: source=$source | nestedPlan=${nestedMap?['plan'] ?? nestedMap?['tier'] ?? nestedMap?['productId']} | nestedStatus=${nestedMap?['status'] ?? nestedMap?['subscriptionStatus']} | rootPlan=$rootPlan | rootStatus=$rootStatus | resolvedPlan=${subscriptionPlanToApiValue(resolved.plan)} | resolvedStatus=${resolved.status} | willCancel=${resolved.willCancel} | currentPeriodEnd=${resolved.currentPeriodEnd?.toIso8601String()}',
+      '🔐 ProgressionSubscription: source=$source | tierField=${tierRes.sourceField} | '
+      'nestedPlan=${nestedMap?['plan'] ?? nestedMap?['tier'] ?? nestedMap?['productId']} | '
+      'nestedStatus=${nestedMap?['status'] ?? nestedMap?['subscriptionStatus']} | '
+      'rootPlan=$rootPlan | rootStatus=$rootStatus | '
+      'effectivePlan=${subscriptionPlanToApiValue(effectivePlan)} | '
+      'status=${out.status} | willCancel=${out.willCancel} | '
+      'currentPeriodEnd=${out.currentPeriodEnd?.toIso8601String()}',
     );
-    return resolved;
+    return out;
   }
 }

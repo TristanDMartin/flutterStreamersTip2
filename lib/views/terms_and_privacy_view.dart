@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 
 class TermsAndPrivacyView extends StatelessWidget {
   const TermsAndPrivacyView({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       appBar: AppBar(
-        backgroundColor: AppColors.supportTopSurface,
-        title: const Text(
+        backgroundColor: shell.panelSurface,
+        title: Text(
           'Terms & Privacy',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: shell.onChrome),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: shell.onChrome),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -51,15 +52,16 @@ class TermsAndPrivacyView extends StatelessWidget {
     String subtitle,
     VoidCallback onTap,
   ) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: shell.surfaceCardBorder,
           ),
         ),
         child: Row(
@@ -70,8 +72,8 @@ class TermsAndPrivacyView extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: shell.onChrome,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -80,7 +82,7 @@ class TermsAndPrivacyView extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: shell.muted,
                       fontSize: 14,
                     ),
                   ),
@@ -90,7 +92,7 @@ class TermsAndPrivacyView extends StatelessWidget {
             Icon(
               Icons.arrow_forward_ios,
               size: 16,
-              color: Colors.white.withValues(alpha: 0.5),
+              color: shell.mutedStrong,
             ),
           ],
         ),

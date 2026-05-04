@@ -25,6 +25,14 @@ sealed class Message with _$Message {
     String? shareToken,
     String? videoThumbnailUrl,
     String? videoTitle,
+    String? replyToMessageId,
+    String? replyToSenderId,
+    String? replyToSenderName,
+    String? replyToType,
+    String? replyPreviewText,
+    String? replyThumbnailUrl,
+    String? replyVideoId,
+    @Default(false) bool deletedForEveryone,
   }) = _Message;
 
   factory Message.fromJson(Map<String, dynamic> json) =>

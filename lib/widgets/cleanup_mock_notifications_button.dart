@@ -62,7 +62,13 @@ class CleanupMockNotificationsButton extends StatelessWidget {
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      return;
+    }
+
+    if (!context.mounted) {
+      return;
+    }
 
     try {
       _showSnackBar(context, 'Cleaning up mock notifications...');

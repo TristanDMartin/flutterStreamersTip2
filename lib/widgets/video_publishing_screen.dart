@@ -26,7 +26,8 @@ import '../providers/feed_state_provider.dart';
 import '../providers/video_service_provider.dart' as video_providers;
 import '../routing/app_navigator.dart';
 import '../widgets/platform_row.dart';
-import '../constants/app_colors.dart';
+import '../core/feature_flags.dart';
+import '../core/theme/support_shell_style.dart';
 import '../utils/category_schema.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -863,8 +864,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       resizeToAvoidBottomInset: true,
       body: Column(
         children: [
@@ -948,24 +950,25 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
                   const SizedBox(height: 16),
 
-                  _buildExpandableSection(
-                    icon: Icons.share_outlined,
-                    title: 'Cross-posting',
-                    subtitle: _connectedPlatforms.isEmpty
-                        ? 'No linked platforms yet'
-                        : _selectedPlatformCount > 0
-                            ? '$_selectedPlatformCount platform${_selectedPlatformCount == 1 ? '' : 's'} selected'
-                            : 'Optional: also share to linked platforms',
-                    isExpanded: _showCrossPostOptions,
-                    onToggle: () => setState(
-                      () => _showCrossPostOptions = !_showCrossPostOptions,
+                  if (FeatureFlags.crossPostingEnabled) ...[
+                    _buildExpandableSection(
+                      icon: Icons.share_outlined,
+                      title: 'Cross-posting',
+                      subtitle: _connectedPlatforms.isEmpty
+                          ? 'No linked platforms yet'
+                          : _selectedPlatformCount > 0
+                              ? '$_selectedPlatformCount platform${_selectedPlatformCount == 1 ? '' : 's'} selected'
+                              : 'Optional: also share to linked platforms',
+                      isExpanded: _showCrossPostOptions,
+                      onToggle: () => setState(
+                        () => _showCrossPostOptions = !_showCrossPostOptions,
+                      ),
+                      child: _connectedPlatforms.isNotEmpty
+                          ? _buildPlatformSelectorSection()
+                          : _buildConnectPlatformsHint(),
                     ),
-                    child: _connectedPlatforms.isNotEmpty
-                        ? _buildPlatformSelectorSection()
-                        : _buildConnectPlatformsHint(),
-                  ),
-
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
 
                   _buildExpandableSection(
                     icon: Icons.schedule_outlined,
@@ -994,22 +997,24 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildComposerGuidance() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: shell.surfaceCardBorder,
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
+          Icon(
             Icons.auto_awesome_outlined,
-            color: Color(0xFF9248D2),
+            color: scheme.primary,
             size: 18,
           ),
           const SizedBox(width: 10),
@@ -1017,7 +1022,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             child: Text(
               'Start with the basics: add a caption, pick a category, then publish. Everything below is optional.',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.82),
+                color: shell.muted,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.35,
@@ -1037,17 +1042,18 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     required VoidCallback onToggle,
     required Widget child,
   }) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
+          color: shell.surfaceCardBorder,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: shell.shadowSoft,
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -1066,15 +1072,15 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.10),
+                      color: shell.skeletonFill,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: shell.surfaceCardBorder,
                       ),
                     ),
                     child: Icon(
                       icon,
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: shell.onChrome.withValues(alpha: 0.9),
                       size: 18,
                     ),
                   ),
@@ -1085,8 +1091,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: shell.onChrome,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1095,7 +1101,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                         Text(
                           subtitle,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.62),
+                            color: shell.mutedStrong,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1107,7 +1113,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     isExpanded
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: shell.muted,
                   ),
                 ],
               ),
@@ -1117,7 +1123,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             Container(
               height: 1,
               margin: const EdgeInsets.symmetric(horizontal: 16),
-              color: Colors.white.withValues(alpha: 0.06),
+              color: shell.surfaceCardBorder,
             ),
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 220),
@@ -1136,6 +1142,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildHeader() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + 4,
@@ -1151,7 +1158,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               HapticFeedback.lightImpact();
               widget.onCancel();
             },
-            icon: const Icon(Icons.close, color: Colors.white, size: 22),
+            icon: Icon(Icons.close, color: shell.onChrome, size: 22),
           ),
           const Expanded(
             child: SizedBox.shrink(),
@@ -1159,8 +1166,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           Text(
             _isEditingDraft ? 'Finish Draft' : 'New Post',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                color: shell.onChrome,
+                fontSize: 17,
+                fontWeight: FontWeight.w600),
           ),
           const Expanded(child: SizedBox.shrink()),
           // Draft / status
@@ -1339,6 +1348,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: Stack(
+            fit: StackFit.expand,
             alignment: Alignment.center,
             children: [
               // Video player or error state
@@ -1380,9 +1390,19 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   ),
                 )
               else if (_isInitialized && !_hasError)
-                AspectRatio(
-                  aspectRatio: _controller.value.aspectRatio,
-                  child: VideoPlayer(_controller),
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: Colors.black,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: _controller.value.size.width,
+                        height: _controller.value.size.height,
+                        child: VideoPlayer(_controller),
+                      ),
+                    ),
+                  ),
                 )
               else
                 const CircularProgressIndicator(
@@ -2114,47 +2134,65 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildThumbnailPreview() {
-    const double w = 72;
-    const double h = 96;
+    const double box = 88.0;
+    Widget inSquare(Widget child) {
+      return SizedBox(
+        width: box,
+        height: box,
+        child: ColoredBox(color: Colors.black, child: child),
+      );
+    }
+
     if (_isGeneratingThumb) {
-      return Container(
-        width: w,
-        height: h,
-        color: Colors.black54,
-        child: const Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+      return SizedBox(
+        width: box,
+        height: box,
+        child: ColoredBox(
+          color: Colors.black54,
+          child: const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+              ),
             ),
           ),
         ),
       );
     }
     if (_isCustomThumbnail && _customThumbnailFile != null) {
-      return Image.file(
-        _customThumbnailFile!,
-        width: w,
-        height: h,
-        fit: BoxFit.cover,
+      return inSquare(
+        Image.file(
+          _customThumbnailFile!,
+          fit: BoxFit.contain,
+          width: box,
+          height: box,
+        ),
       );
     }
     if (_frameThumbBytes != null) {
-      return Image.memory(
-        _frameThumbBytes!,
-        width: w,
-        height: h,
-        fit: BoxFit.cover,
+      return inSquare(
+        Image.memory(
+          _frameThumbBytes!,
+          fit: BoxFit.contain,
+          width: box,
+          height: box,
+        ),
       );
     }
-    return Container(
-      width: w,
-      height: h,
-      color: Colors.black54,
-      child: Icon(Icons.movie_outlined,
-          color: Colors.white.withValues(alpha: 0.4), size: 28),
+    return SizedBox(
+      width: box,
+      height: box,
+      child: ColoredBox(
+        color: Colors.black54,
+        child: Icon(
+          Icons.movie_outlined,
+          color: Colors.white.withValues(alpha: 0.4),
+          size: 28,
+        ),
+      ),
     );
   }
 
@@ -2289,15 +2327,19 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     // Empty list means schedule for main platform only
     final List<PlatformKey> selectedPlatformKeys = <PlatformKey>[];
 
+    final double mediaAspectRatio = _isInitialized && _controller.value.isInitialized
+        ? _controller.value.aspectRatio
+        : (9.0 / 16.0);
+    final int mediaDurationMs = (_videoDuration?.inMilliseconds ?? 30000)
+        .clamp(1000, 300000);
     // Create media from video file
     final List<PostMedia> media = [
       PostMedia(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         type: MediaType.video,
         src: widget.videoFile.path,
-        aspectRatio: 9.0 / 16.0, // Default aspect ratio for vertical videos
-        durationMs:
-            30000, // Default 30 seconds, should be calculated from actual video
+        aspectRatio: mediaAspectRatio,
+        durationMs: mediaDurationMs,
       ),
     ];
 
@@ -2708,7 +2750,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       // 2. Generate video ID and create optimistic video
       final videoId = _generateVideoId();
       _syncSelectedPlatforms();
-      final selectedPlatforms = _effectiveSelectedPlatforms;
+      final selectedPlatforms = FeatureFlags.crossPostingEnabled
+          ? _effectiveSelectedPlatforms
+          : <String>{};
       debugPrint(
           '🎬 VideoPublishingScreen: Creating optimistic video: $videoId');
 
@@ -2796,6 +2840,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
         // Build cross-post requests for selected platforms.
         final crossPostRequests = _connectedPlatforms
+            .where((_) => FeatureFlags.crossPostingEnabled)
             .where((p) => _platformEnabled[p.name] == true)
             .map((p) => _buildCrossPostRequestForPlatform(
                   p.name,
@@ -2806,6 +2851,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         final publishController = ref.read(publishControllerProvider);
         final execution = await publishController.publishNow(
           PublishNowRequest(
+            videoId: videoId,
             videoFile: videoFileToUpload,
             caption: _caption,
             hashtags: _hashtags,
@@ -3078,7 +3124,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   Future<void> _saveAsDraft() async {
     _syncSelectedPlatforms();
-    final selectedPlatforms = _effectiveSelectedPlatforms;
+    final selectedPlatforms = FeatureFlags.crossPostingEnabled
+        ? _effectiveSelectedPlatforms
+        : <String>{};
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
@@ -3238,6 +3286,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     'cross_post_subscription_tier': _subscriptionTier,
                   },
                   crossPostRequests: _connectedPlatforms
+                      .where((_) => FeatureFlags.crossPostingEnabled)
                       .where((p) => _platformEnabled[p.name] == true)
                       .map((p) => _buildCrossPostRequestForPlatform(
                             p.name,
@@ -3360,10 +3409,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         'caption': _caption,
         'hashtags': _hashtags,
         'privacy': _selectedPrivacy,
+        'visibility': _selectedPrivacy,
         'allowComments': _allowComments,
         ...categoryFields,
         'status':
             'scheduled', // NOT 'published' - will be updated when scheduled time arrives
+        'visible': false,
+        'isReadyForFeed': false,
+        'scheduledAt': Timestamp.fromDate(_schedule!.scheduledAtUtc),
         'scheduledAtUtc': Timestamp.fromDate(_schedule!.scheduledAtUtc),
         'views': 0,
         'likes': 0,
@@ -3400,7 +3453,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           .doc(videoId)
           .set({
         'status': 'scheduled',
+        'visible': false,
+        'scheduledAt': Timestamp.fromDate(_schedule!.scheduledAtUtc),
+        'scheduledAtUtc': Timestamp.fromDate(_schedule!.scheduledAtUtc),
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       developer.log('✅ Scheduled video saved to Firestore: $videoId',

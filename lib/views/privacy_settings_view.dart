@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/st_theme_tokens.dart';
+
 class PrivacySettingsView extends ConsumerStatefulWidget {
   const PrivacySettingsView({super.key});
 
@@ -16,13 +18,12 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
   bool _isLoading = true;
   bool _isSaving = false;
 
-  // Privacy settings state
-  String _profileVisibility = 'public'; // public | followers | private
+  String _profileVisibility = 'public';
   String _videoPrivacy = 'public';
-  String _allowMentions = 'everyone'; // everyone | followers | nobody
+  String _allowMentions = 'everyone';
   bool _allowTags = true;
   bool _allowFollowers = true;
-  String _allowMessagesFrom = 'everyone'; // everyone | followers | nobody
+  String _allowMessagesFrom = 'everyone';
   bool _showOnlineStatus = true;
   bool _readReceipts = true;
 
@@ -33,7 +34,8 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
   }
 
   Future<void> _loadPrivacySettings() async {
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) {
       setState(() => _isLoading = false);
       return;
@@ -48,7 +50,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           .get();
 
       if (doc.exists && mounted) {
-        final data = doc.data()!;
+        final Map<String, dynamic> data = doc.data()!;
         setState(() {
           _profileVisibility = data['profileVisibility'] ?? 'public';
           _videoPrivacy = data['videoPrivacy'] ?? 'public';
@@ -63,14 +65,17 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
       } else {
         setState(() => _isLoading = false);
       }
-    } catch (e) {
+    } catch (_) {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _updateSetting(String key, dynamic value) async {
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
 
     setState(() => _isSaving = true);
 
@@ -84,10 +89,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Settings updated'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: const Text('Settings updated'),
+            backgroundColor: StThemeColors.successGreen,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -96,7 +101,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating settings: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
@@ -107,72 +112,75 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     }
   }
 
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return AppBar(
+      backgroundColor: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      leading: IconButton(
+        icon: Icon(Icons.arrow_back, color: cs.onSurface),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      title: Text(
+        'Privacy Settings',
+        style: TextStyle(
+          color: cs.onSurface,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: const Color(0xFF1C135D),
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          title: const Text(
-            'Privacy Settings',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+        backgroundColor: cs.surface,
+        appBar: _buildAppBar(context),
+        body: Center(
+          child: CircularProgressIndicator(color: cs.primary),
         ),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1C135D),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Privacy Settings',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-      ),
+      backgroundColor: cs.surface,
+      appBar: _buildAppBar(context),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_isSaving)
-              const LinearProgressIndicator(
-                backgroundColor: Colors.transparent,
+              LinearProgressIndicator(
+                backgroundColor: cs.surfaceContainerLow,
+                color: cs.primary,
               ),
             _buildSection(
+              context,
               'Profile',
               [
                 _buildDropdownSetting(
+                  context,
                   icon: Icons.visibility,
                   title: 'Profile Visibility',
                   subtitle: 'Who can see your profile',
                   value: _profileVisibility,
                   options: const ['public', 'followers', 'private'],
-                  onChanged: (value) {
+                  onChanged: (String? value) {
                     setState(() => _profileVisibility = value!);
                     _updateSetting('profileVisibility', value);
                   },
                 ),
                 _buildSwitchSetting(
+                  context,
                   icon: Icons.people_outline,
                   title: 'Allow Followers',
                   subtitle: 'Let people follow your account',
                   value: _allowFollowers,
-                  onChanged: (value) {
+                  onChanged: (bool value) {
                     setState(() => _allowFollowers = value);
                     _updateSetting('allowFollowers', value);
                   },
@@ -181,15 +189,17 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
             ),
             const SizedBox(height: 32),
             _buildSection(
+              context,
               'Content',
               [
                 _buildDropdownSetting(
+                  context,
                   icon: Icons.video_library,
                   title: 'Video Privacy',
                   subtitle: 'Default privacy for new videos',
                   value: _videoPrivacy,
                   options: const ['public', 'followers', 'private'],
-                  onChanged: (value) {
+                  onChanged: (String? value) {
                     setState(() => _videoPrivacy = value!);
                     _updateSetting('videoPrivacy', value);
                   },
@@ -198,36 +208,40 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
             ),
             const SizedBox(height: 32),
             _buildSection(
+              context,
               'Social',
               [
                 _buildDropdownSetting(
+                  context,
                   icon: Icons.alternate_email,
                   title: 'Mentions',
                   subtitle: 'Who can mention you',
                   value: _allowMentions,
                   options: const ['everyone', 'followers', 'nobody'],
-                  onChanged: (value) {
+                  onChanged: (String? value) {
                     setState(() => _allowMentions = value!);
                     _updateSetting('allowMentions', value);
                   },
                 ),
                 _buildSwitchSetting(
+                  context,
                   icon: Icons.label_outline,
                   title: 'Allow Tags',
                   subtitle: 'Let people tag you',
                   value: _allowTags,
-                  onChanged: (value) {
+                  onChanged: (bool value) {
                     setState(() => _allowTags = value);
                     _updateSetting('allowTags', value);
                   },
                 ),
                 _buildDropdownSetting(
+                  context,
                   icon: Icons.message_outlined,
                   title: 'Messages',
                   subtitle: 'Who can send you messages',
                   value: _allowMessagesFrom,
                   options: const ['everyone', 'followers', 'nobody'],
-                  onChanged: (value) {
+                  onChanged: (String? value) {
                     setState(() => _allowMessagesFrom = value!);
                     _updateSetting('allowMessagesFrom', value);
                   },
@@ -236,24 +250,28 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
             ),
             const SizedBox(height: 32),
             _buildSection(
+              context,
               'Activity',
               [
                 _buildSwitchSetting(
+                  context,
                   icon: Icons.circle,
                   title: 'Show Online Status',
                   subtitle: 'Let others see when you\'re online',
                   value: _showOnlineStatus,
-                  onChanged: (value) {
+                  onChanged: (bool value) {
                     setState(() => _showOnlineStatus = value);
                     _updateSetting('showOnlineStatus', value);
                   },
                 ),
                 _buildSwitchSetting(
+                  context,
                   icon: Icons.done_all,
                   title: 'Read Receipts',
-                  subtitle: 'Let others know when you\'ve read their messages',
+                  subtitle:
+                      'Let others know when you\'ve read their messages',
                   value: _readReceipts,
-                  onChanged: (value) {
+                  onChanged: (bool value) {
                     setState(() => _readReceipts = value);
                     _updateSetting('readReceipts', value);
                   },
@@ -267,14 +285,20 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     );
   }
 
-  Widget _buildSection(String title, List<Widget> children) {
+  Widget _buildSection(
+    BuildContext context,
+    String title,
+    List<Widget> children,
+  ) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: on,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
@@ -282,23 +306,22 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: on.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
+              color: cs.outline.withValues(alpha: 0.35),
             ),
           ),
           child: Column(
-            children: [
-              ...children,
-            ],
+            children: children,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildDropdownSetting({
+  Widget _buildDropdownSetting(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
@@ -306,12 +329,14 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     required List<String> options,
     required ValueChanged<String?> onChanged,
   }) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: on.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
@@ -321,10 +346,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: on.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: Icon(icon, color: on, size: 20),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -333,8 +358,8 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: on,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -343,7 +368,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: on.withValues(alpha: 0.65),
                     fontSize: 12,
                   ),
                 ),
@@ -354,23 +379,23 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: on.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: cs.outline.withValues(alpha: 0.4),
               ),
             ),
             child: DropdownButton<String>(
               value: value,
-              dropdownColor: const Color(0xFF1C135D),
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              dropdownColor: cs.surfaceContainerHigh,
+              style: TextStyle(color: on, fontSize: 14),
               underline: const SizedBox(),
-              items: options.map((option) {
+              items: options.map((String option) {
                 return DropdownMenuItem<String>(
                   value: option,
                   child: Text(
                     _formatOption(option),
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: on),
                   ),
                 );
               }).toList(),
@@ -382,19 +407,22 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     );
   }
 
-  Widget _buildSwitchSetting({
+  Widget _buildSwitchSetting(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: on.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
@@ -404,10 +432,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: on.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: Icon(icon, color: on, size: 20),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -416,8 +444,8 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: on,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -426,7 +454,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: on.withValues(alpha: 0.65),
                     fontSize: 12,
                   ),
                 ),
@@ -436,7 +464,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF9248D2),
+            activeThumbColor: cs.primary,
+            activeTrackColor: cs.primary.withValues(alpha: 0.45),
+            inactiveTrackColor: on.withValues(alpha: 0.18),
+            inactiveThumbColor: on.withValues(alpha: 0.65),
           ),
         ],
       ),

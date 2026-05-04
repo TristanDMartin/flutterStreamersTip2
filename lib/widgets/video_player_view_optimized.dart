@@ -35,6 +35,7 @@ import '../utils/responsive_layout.dart';
 import '../constants/app_colors.dart';
 import '../services/thumbnail_service.dart';
 import '../widgets/creator_command_center_overlay.dart';
+import '../models/creator_command_snapshot.dart';
 import '../providers/creator_command_provider.dart';
 
 class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
@@ -213,7 +214,7 @@ class _VideoPlayerViewOptimizedState
       _currentControllerInstance; // Track current controller instance
 
   // 🔥 PHASE 2.1: Surface/MediaCodec BAD_INDEX Fix - Surface recreation epoch (feature-flagged)
-  int _surfaceEpoch = 0;
+  final int _surfaceEpoch = 0;
   int _textureRebuildTick = 0;
   static const bool _enableSurfaceWatchdogRecreate =
       false; // Feature flag for surface recreation watchdog
@@ -271,9 +272,13 @@ class _VideoPlayerViewOptimizedState
     try {
       GlobalPlaybackManager.instance.markControllerDetached(widget.video.id);
       final owner = _ownerKey;
-      log('🗑️ VideoPlayer: Unregistering controller ${controllerHashCode} from owner $owner');
+      log(
+        '🗑️ VideoPlayer: Unregistering controller '
+        '$controllerHashCode from owner $owner',
+      );
       debugPrint(
-          '[VideoPlayer] unregister owner=$owner controller=$controllerHashCode');
+        '[VideoPlayer] unregister owner=$owner controller=$controllerHashCode',
+      );
       _unregisterFromPlaybackManagerIfSameInstance(
         videoId: widget.video.id,
         controller: controller,
@@ -1230,7 +1235,10 @@ class _VideoPlayerViewOptimizedState
     _lastBlackScreenRecoveryAt = now;
     _recoveryAttemptsPerVideo[widget.video.id] = _blackScreenRecoveryAttempts;
 
-    log('🔧 VideoPlayer: RECOVERY_ATTEMPT_${_blackScreenRecoveryAttempts} for ${widget.video.id} (controller: $controllerHashCode)');
+    log(
+      '🔧 VideoPlayer: RECOVERY_ATTEMPT_$_blackScreenRecoveryAttempts '
+      'for ${widget.video.id} (controller: $controllerHashCode)',
+    );
 
     // 🔥 TIERED RECOVERY STRATEGY
     if (_blackScreenRecoveryAttempts == 1) {
@@ -1451,7 +1459,12 @@ class _VideoPlayerViewOptimizedState
     // 🔥 FIX: Increment stall counter only if truly stalled
     if (!advanced || positionDiff < 50) {
       _consecutiveStallChecks++;
-      log('⚠️ VideoPlayer: Stall check ${_consecutiveStallChecks}/$_stallCheckThreshold for ${widget.video.id} (position: ${value.position.inSeconds}s, last: ${_lastPlaybackPosition.inSeconds}s)');
+      log(
+        '⚠️ VideoPlayer: Stall check $_consecutiveStallChecks/'
+        '$_stallCheckThreshold for ${widget.video.id} '
+        '(position: ${value.position.inSeconds}s, '
+        'last: ${_lastPlaybackPosition.inSeconds}s)',
+      );
     }
 
     _lastPlaybackPosition = value.position;
@@ -1470,7 +1483,10 @@ class _VideoPlayerViewOptimizedState
         _consecutiveStallChecks = 0; // Reset counter if recovery throttled
         return;
       }
-      log('🧊 VideoPlayer: Stall confirmed (${_consecutiveStallChecks} checks), reinitializing ${widget.video.id}');
+      log(
+        '🧊 VideoPlayer: Stall confirmed '
+        '($_consecutiveStallChecks checks), reinitializing ${widget.video.id}',
+      );
       _stuckRecoveryAttempted = true;
       _consecutiveStallChecks = 0; // Reset after triggering recovery
       _stallWatchdog?.cancel();
@@ -2079,7 +2095,8 @@ class _VideoPlayerViewOptimizedState
 
         if (kDebugMode) {
           debugPrint(
-            '🔄 VideoPlayer: Network error detected, retrying (${_videoRetryCount}/$_maxVideoRetries) after ${retryDelay.inSeconds}s',
+            '🔄 VideoPlayer: Network error detected, retrying '
+            '($_videoRetryCount/$_maxVideoRetries) after ${retryDelay.inSeconds}s',
           );
         }
 
@@ -3279,29 +3296,6 @@ class _VideoPlayerViewOptimizedState
 
               if (widget.showHUD) _buildPremiumFeedScrim(),
 
-              // DEBUG: show video id when in debug mode to aid identification
-              if (kDebugMode)
-                Positioned(
-                  left: 8,
-                  top: 8,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      widget.video.id,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-
               // HUD Overlays - only show if showHUD is true
               if (widget.showHUD) ...[
                 // UI Overlay (positioned above gesture detector)
@@ -4097,10 +4091,11 @@ class _VideoPlayerViewOptimizedState
     final commandSnapshot = ref.watch(creatorCommandSnapshotProvider);
     final bool showCommandCenterTrigger =
         widget.showCommandCenterTrigger && widget.tabId == 'home/forYou';
-    final bool showAlertPulse =
-        commandSnapshot.valueOrNull?.alertCount != null &&
-            (commandSnapshot.valueOrNull!.alertCount > 0 ||
-                commandSnapshot.valueOrNull!.pendingWorkCount > 0);
+    final CreatorCommandSnapshot? hub = commandSnapshot.valueOrNull;
+    final bool showAlertPulse = hub != null &&
+        (hub.alertCount > 0 ||
+            hub.scheduledQueueCount > 0 ||
+            hub.draftCount > 0);
 
     if (showCommandCenterTrigger) {
       return StreamersTipCommandCenterTrigger(

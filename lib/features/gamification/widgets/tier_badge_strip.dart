@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../constants/app_colors.dart';
+import '../../../core/theme/support_shell_style.dart';
 import '../models/subscription_plan.dart';
 import '../models/user_subscription_model.dart';
 
@@ -24,6 +25,18 @@ class TierBadgeStrip extends StatelessWidget {
     final String statusLabel = _statusLabel(sub.status);
     final _PlanVisual visual = _visualFor(sub.plan);
     final String detail = _detailLine(sub, statusLabel);
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final List<Color> gradientColors = shell.isLight
+        ? <Color>[
+            visual.start.withValues(alpha: 0.12),
+            visual.end.withValues(alpha: 0.08),
+            shell.surfaceCard,
+          ]
+        : <Color>[
+            visual.start.withValues(alpha: 0.38),
+            visual.end.withValues(alpha: 0.22),
+            Colors.white.withValues(alpha: 0.06),
+          ];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -32,13 +45,9 @@ class TierBadgeStrip extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[
-            visual.start.withValues(alpha: 0.38),
-            visual.end.withValues(alpha: 0.22),
-            Colors.white.withValues(alpha: 0.06),
-          ],
+          colors: gradientColors,
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(color: shell.surfaceCardBorder),
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: visual.shadow.withValues(alpha: 0.18),
@@ -63,7 +72,13 @@ class TierBadgeStrip extends StatelessWidget {
                   visual.end,
                 ],
               ),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+              border: Border.all(
+                color: shell.isLight
+                    ? Theme.of(context).colorScheme.onPrimary.withValues(
+                          alpha: 0.35,
+                        )
+                    : Colors.white.withValues(alpha: 0.22),
+              ),
               boxShadow: <BoxShadow>[
                 BoxShadow(
                   color: visual.shadow.withValues(alpha: 0.28),
@@ -74,7 +89,7 @@ class TierBadgeStrip extends StatelessWidget {
             ),
             child: Icon(
               visual.icon,
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onPrimary,
               size: 28,
             ),
           ),
@@ -86,7 +101,7 @@ class TierBadgeStrip extends StatelessWidget {
                 Text(
                   'Current plan',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.58),
+                    color: shell.muted,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
@@ -97,8 +112,8 @@ class TierBadgeStrip extends StatelessWidget {
                     Flexible(
                       child: Text(
                         label,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: shell.onChrome,
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                           height: 1,
@@ -113,10 +128,10 @@ class TierBadgeStrip extends StatelessWidget {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
+                        color: shell.surfaceCard.withValues(alpha: 0.9),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12),
+                          color: shell.surfaceCardBorder,
                         ),
                       ),
                       child: Text(
@@ -134,7 +149,7 @@ class TierBadgeStrip extends StatelessWidget {
                 Text(
                   detail,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.76),
+                    color: shell.muted,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     height: 1.35,

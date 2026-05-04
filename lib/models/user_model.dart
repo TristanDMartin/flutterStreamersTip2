@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:equatable/equatable.dart';
 import 'user_count_fields.dart';
+import 'user_stats.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/data_parsing_utils.dart';
 
@@ -60,7 +61,7 @@ class User extends Equatable {
       socialLinks: (data['socialLinks'] as List<dynamic>?)
           ?.map((s) => SocialLink.fromMap(s as Map<String, dynamic>))
           .toList() ?? [],
-      postCount: parseInteger(data['postCount']),
+      postCount: UserStats.readPostsCountFromUserDoc(data),
       followerCount: UserCountFields.readFollowersCount(data),
       followingCount: UserCountFields.readFollowingCount(data),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)

@@ -73,6 +73,10 @@ class FirestoreScheduledPostService {
         'thumbnailUrl': thumbnailUrl,
         'category': canonicalCategory,
         'privacy': privacy,
+        'userId': currentUser.uid,
+        'scheduledAt': Timestamp.fromDate(schedule.scheduledAtUtc),
+        'scheduledAtUtc': Timestamp.fromDate(schedule.scheduledAtUtc),
+        'visible': false,
         'allowComments': allowComments,
         'schedule': scheduleData,
         'platforms': platforms
@@ -155,7 +159,8 @@ class FirestoreScheduledPostService {
         throw Exception('User not authenticated');
       }
 
-      final postId = 'publish_followup_${DateTime.now().millisecondsSinceEpoch}';
+      final postId =
+          'publish_followup_${DateTime.now().millisecondsSinceEpoch}';
       final postData = {
         'id': postId,
         'authorId': currentUser.uid,
@@ -339,8 +344,7 @@ class FirestoreScheduledPostService {
     String scheduledPostId,
     PostStatus status, {
     String? historyMessage,
-  }
-  ) async {
+  }) async {
     try {
       await _firestore
           .collection('scheduled_posts')
@@ -490,7 +494,8 @@ class FirestoreScheduledPostService {
                       (platform.payload?['watermarkConfig'] as Map?)?.map(
                     (key, value) => MapEntry(key.toString(), value),
                   ),
-                  watermarkAsset: platform.payload?['watermarkAsset'] as String?,
+                  watermarkAsset:
+                      platform.payload?['watermarkAsset'] as String?,
                   subscriptionTier:
                       platform.payload?['subscriptionTier'] as String?,
                 ),
@@ -543,7 +548,8 @@ class FirestoreScheduledPostService {
         await updateScheduledPostStatus(
           scheduledPostId,
           PostStatus.failed,
-          historyMessage: 'Publishing failed before all destinations completed.',
+          historyMessage:
+              'Publishing failed before all destinations completed.',
         );
         await updatePlatformStatuses(
           scheduledPostId,
@@ -569,7 +575,10 @@ class FirestoreScheduledPostService {
     String? errorMessage,
     bool onlyEnabledPlatforms = false,
   }) async {
-    final doc = await _firestore.collection('scheduled_posts').doc(scheduledPostId).get();
+    final doc = await _firestore
+        .collection('scheduled_posts')
+        .doc(scheduledPostId)
+        .get();
     if (!doc.exists) {
       throw Exception('Scheduled post not found');
     }
@@ -583,8 +592,8 @@ class FirestoreScheduledPostService {
       );
       final key = platform['key'] as String?;
       final enabled = platform['enabled'] as bool? ?? true;
-      final matchesKey = platformKeys == null ||
-          (key != null && platformKeys.contains(key));
+      final matchesKey =
+          platformKeys == null || (key != null && platformKeys.contains(key));
       if ((!onlyEnabledPlatforms || enabled) && matchesKey) {
         platform['status'] = status.name;
         if (clearErrors) {
@@ -618,7 +627,10 @@ class FirestoreScheduledPostService {
   ) async {
     if (results.isEmpty) return;
 
-    final doc = await _firestore.collection('scheduled_posts').doc(scheduledPostId).get();
+    final doc = await _firestore
+        .collection('scheduled_posts')
+        .doc(scheduledPostId)
+        .get();
     if (!doc.exists) {
       throw Exception('Scheduled post not found');
     }
@@ -720,8 +732,8 @@ class FirestoreScheduledPostService {
         );
         final key = platform['key'] as String?;
         final status = platform['status'] as String?;
-        final matchesRequestedPlatform = platformKeys == null ||
-            (key != null && platformKeys.contains(key));
+        final matchesRequestedPlatform =
+            platformKeys == null || (key != null && platformKeys.contains(key));
         if (matchesRequestedPlatform &&
             (status == PlatformStatus.failed.name ||
                 status == PlatformStatus.needsReauth.name)) {
@@ -731,7 +743,10 @@ class FirestoreScheduledPostService {
         return platform;
       }).toList();
 
-      await _firestore.collection('scheduled_posts').doc(scheduledPostId).update({
+      await _firestore
+          .collection('scheduled_posts')
+          .doc(scheduledPostId)
+          .update({
         'status': PostStatus.scheduled.name,
         'platforms': updatedPlatforms,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -790,8 +805,8 @@ class FirestoreScheduledPostService {
       final caption = data['caption'] as String? ?? '';
       final platforms = _mapPlatforms(data);
       final targets = platforms.where((platform) {
-        final matchesRequestedPlatform = platformKeys == null ||
-            platformKeys.contains(platform.key);
+        final matchesRequestedPlatform =
+            platformKeys == null || platformKeys.contains(platform.key);
         final status = platform.status;
         return platform.enabled &&
             matchesRequestedPlatform &&
@@ -834,7 +849,10 @@ class FirestoreScheduledPostService {
       );
 
       await applyCrossPostResults(scheduledPostId, results);
-      await _firestore.collection('scheduled_posts').doc(scheduledPostId).update({
+      await _firestore
+          .collection('scheduled_posts')
+          .doc(scheduledPostId)
+          .update({
         'status': PostStatus.published.name,
         'updatedAt': FieldValue.serverTimestamp(),
       });

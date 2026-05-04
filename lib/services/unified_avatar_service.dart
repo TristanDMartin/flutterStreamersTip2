@@ -65,24 +65,26 @@ class UnifiedAvatarService {
     double radius = 20,
     Widget? placeholder,
     Widget? errorWidget,
-    bool showLoadingIndicator = true,
+    bool showLoadingIndicator = false,
     bool useProfileViewStyling = true,
   }) {
     try {
-      // Handle empty URLs
-      if (imageUrl.isEmpty) {
+      final String normalizedImageUrl = _normalizeImageUrl(imageUrl);
+      if (normalizedImageUrl.isEmpty) {
+        debugPrint(
+          '⚠️ UnifiedAvatarService: Empty avatar URL provided, using fallback.',
+        );
         return _buildDefaultAvatar(radius, useProfileViewStyling);
       }
-
-      // Validate URL
-      final uri = Uri.tryParse(imageUrl);
-      if (uri == null || !uri.hasAbsolutePath) {
+      final Uri? uri = Uri.tryParse(normalizedImageUrl);
+      if (uri == null || !_isSupportedAvatarUri(uri)) {
+        debugPrint(
+          '⚠️ UnifiedAvatarService: Unsupported avatar URL "$normalizedImageUrl", using fallback.',
+        );
         return _buildDefaultAvatar(radius, useProfileViewStyling);
       }
-
-      // Use simple, robust image loading to prevent Positioned widget errors
       return _buildSimpleAvatar(
-        imageUrl: imageUrl,
+        imageUrl: normalizedImageUrl,
         radius: radius,
         placeholder: placeholder,
         errorWidget: errorWidget,
@@ -93,6 +95,31 @@ class UnifiedAvatarService {
       debugPrint('❌ UnifiedAvatarService: Critical error in getAvatar: $e');
       return _buildDefaultAvatar(radius, useProfileViewStyling);
     }
+  }
+
+  String _normalizeImageUrl(String imageUrl) {
+    final String trimmed = imageUrl.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    if (trimmed.startsWith('//')) {
+      return 'https:$trimmed';
+    }
+    if (trimmed.startsWith('www.')) {
+      return 'https://$trimmed';
+    }
+    return trimmed;
+  }
+
+  bool _isSupportedAvatarUri(Uri uri) {
+    final String scheme = uri.scheme.toLowerCase();
+    if (scheme == 'http' || scheme == 'https') {
+      return uri.host.isNotEmpty;
+    }
+    if (scheme == 'file' || scheme == 'content' || scheme == 'data') {
+      return true;
+    }
+    return false;
   }
 
   /// Build simple avatar without complex image processing
@@ -126,8 +153,9 @@ class UnifiedAvatarService {
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
               ),
             )
-          : placeholder,
-      errorWidget: errorWidget,
+          : placeholder ?? _buildDefaultAvatar(radius, useProfileViewStyling),
+      errorWidget:
+          errorWidget ?? _buildDefaultAvatar(radius, useProfileViewStyling),
     );
 
     if (useProfileViewStyling) {
@@ -254,7 +282,9 @@ class UnifiedAvatarService {
   Future<void> _loadImageWithBufferManagement(String url) async {
     if (url.isEmpty ||
         _memoryCache.containsKey(url) ||
-        _loadingStates[url] == true) return;
+        _loadingStates[url] == true) {
+      return;
+    }
 
     if (_currentLoads >= _maxConcurrentLoads) {
       _loadQueue.add(url);

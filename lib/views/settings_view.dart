@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
 import 'about_view.dart';
 import 'blocked_accounts_view.dart';
 import 'linked_platforms_view.dart';
@@ -48,21 +47,22 @@ class _SettingsViewState extends State<SettingsView> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme c = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: c.surface,
       body: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: AppColors.supportSurfaceGradient,
+            colors: <Color>[c.surface, c.surfaceContainerLow],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
               _buildHeader(context),
-              _buildSearchField(),
+              _buildSearchField(context),
               Expanded(
                 child: SingleChildScrollView(
                   physics: const ClampingScrollPhysics(),
@@ -71,9 +71,11 @@ class _SettingsViewState extends State<SettingsView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildSection(
+                        context,
                         title: 'Account',
                         items: [
                           _buildSettingsItem(
+                            context,
                             icon: Icons.person,
                             title: 'Manage Account',
                             subtitle: 'Phone, email, password',
@@ -81,6 +83,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 _navigateToPage(context, 'Manage Account'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.link,
                             title: 'Linked Platforms',
                             subtitle:
@@ -92,9 +95,11 @@ class _SettingsViewState extends State<SettingsView> {
                       ),
                       const SizedBox(height: 24),
                       _buildSection(
+                        context,
                         title: 'Security',
                         items: [
                           _buildSettingsItem(
+                            context,
                             icon: Icons.security,
                             title: 'Two-Factor Authentication',
                             subtitle: 'Add an extra layer of security',
@@ -105,9 +110,11 @@ class _SettingsViewState extends State<SettingsView> {
                       ),
                       const SizedBox(height: 24),
                       _buildSection(
+                        context,
                         title: 'Privacy',
                         items: [
                           _buildSettingsItem(
+                            context,
                             icon: Icons.visibility,
                             title: 'Who can see your content',
                             subtitle: 'Control visibility settings',
@@ -115,6 +122,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 _navigateToPage(context, 'Privacy Settings'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.block,
                             title: 'Blocked Accounts',
                             subtitle: 'Manage blocked users',
@@ -122,6 +130,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 _navigateToPage(context, 'Blocked Accounts'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.alternate_email,
                             title: 'Mentions & Tags',
                             subtitle: 'Control who can mention you',
@@ -132,9 +141,11 @@ class _SettingsViewState extends State<SettingsView> {
                       ),
                       const SizedBox(height: 24),
                       _buildSection(
+                        context,
                         title: 'Content & Activity',
                         items: [
                           _buildSettingsItem(
+                            context,
                             icon: Icons.notifications,
                             title: 'Notifications',
                             subtitle: 'Push & in-app notifications',
@@ -142,6 +153,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 _navigateToPage(context, 'Notifications'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.category,
                             title: 'Video Categorization',
                             subtitle: 'Categorize existing videos',
@@ -149,6 +161,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 context, 'Video Categorization'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.tune,
                             title: 'Content Preferences',
                             subtitle: 'Language, restricted mode, screen time',
@@ -159,9 +172,11 @@ class _SettingsViewState extends State<SettingsView> {
                       ),
                       const SizedBox(height: 24),
                       _buildSection(
+                        context,
                         title: 'Support & About',
                         items: [
                           _buildSettingsItem(
+                            context,
                             icon: Icons.report_problem,
                             title: 'Report a Problem',
                             subtitle: 'Help us improve the app',
@@ -169,6 +184,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 _navigateToPage(context, 'Report a Problem'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.security,
                             title: 'Safety Center',
                             subtitle: 'Learn about safety features',
@@ -176,6 +192,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 _navigateToPage(context, 'Safety Center'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.rule,
                             title: 'Community Guidelines',
                             subtitle: 'Read our community rules',
@@ -183,6 +200,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 context, 'Community Guidelines'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.description,
                             title: 'Terms of Service & Privacy Policy',
                             subtitle: 'Legal information',
@@ -190,6 +208,7 @@ class _SettingsViewState extends State<SettingsView> {
                                 context, 'Terms & Privacy Policy'),
                           ),
                           _buildSettingsItem(
+                            context,
                             icon: Icons.info,
                             title: 'About',
                             subtitle: 'App version and info',
@@ -210,19 +229,20 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final Color on = Theme.of(context).colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 10, 18, 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: on.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.14),
+            color: on.withValues(alpha: 0.14),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.14),
+              color: on.withValues(alpha: 0.12),
               blurRadius: 18,
               offset: const Offset(0, 10),
             ),
@@ -232,16 +252,16 @@ class _SettingsViewState extends State<SettingsView> {
           children: [
             IconButton(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              icon: Icon(Icons.arrow_back, color: on),
             ),
             const SizedBox(width: 4),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Settings & Privacy',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: on,
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
                   height: 1.0,
@@ -254,15 +274,16 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _buildSearchField() {
+  Widget _buildSearchField(BuildContext context) {
+    final Color on = Theme.of(context).colorScheme.onSurface;
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 8, 20, 18),
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: on.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.16),
+          color: on.withValues(alpha: 0.16),
           width: 1,
         ),
       ),
@@ -273,14 +294,14 @@ class _SettingsViewState extends State<SettingsView> {
             _searchQuery = value.toLowerCase();
           });
         },
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: on),
         decoration: InputDecoration(
           hintText: 'Search settings...',
-          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+          hintStyle: TextStyle(color: on.withValues(alpha: 0.5)),
           border: InputBorder.none,
           icon: Icon(
             Icons.search,
-            color: Colors.white.withValues(alpha: 0.5),
+            color: on.withValues(alpha: 0.5),
           ),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
@@ -292,7 +313,7 @@ class _SettingsViewState extends State<SettingsView> {
                   },
                   icon: Icon(
                     Icons.clear,
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: on.withValues(alpha: 0.5),
                   ),
                 )
               : null,
@@ -301,28 +322,30 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _buildSection({
+  Widget _buildSection(
+    BuildContext context, {
     required String title,
     required List<Widget?> items,
   }) {
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final Color on = c.onSurface;
     final visibleItems = items.whereType<Widget>().toList(growable: false);
     if (visibleItems.isEmpty) {
       return const SizedBox.shrink();
     }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
           style: TextStyle(
-            color: Colors.white,
+            color: on,
             fontSize: 18,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.2,
             shadows: [
               Shadow(
-                color: Colors.black.withValues(alpha: 0.18),
+                color: c.shadow,
                 offset: const Offset(0, 1),
                 blurRadius: 10,
               ),
@@ -333,15 +356,15 @@ class _SettingsViewState extends State<SettingsView> {
         Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: on.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.14),
+              color: on.withValues(alpha: 0.14),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
+                color: on.withValues(alpha: 0.12),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
@@ -354,7 +377,7 @@ class _SettingsViewState extends State<SettingsView> {
                   Divider(
                     height: 1,
                     thickness: 1,
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: on.withValues(alpha: 0.08),
                   ),
                 visibleItems[index],
               ],
@@ -365,7 +388,8 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget? _buildSettingsItem({
+  Widget? _buildSettingsItem(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
@@ -376,7 +400,7 @@ class _SettingsViewState extends State<SettingsView> {
         !subtitle.toLowerCase().contains(_searchQuery)) {
       return null;
     }
-
+    final Color on = Theme.of(context).colorScheme.onSurface;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -389,20 +413,20 @@ class _SettingsViewState extends State<SettingsView> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.white.withValues(alpha: 0.16),
-                    Colors.white.withValues(alpha: 0.06),
+                    on.withValues(alpha: 0.16),
+                    on.withValues(alpha: 0.06),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
+                  color: on.withValues(alpha: 0.12),
                 ),
               ),
               child: Icon(
                 icon,
-                color: Colors.white,
+                color: on,
                 size: 21,
               ),
             ),
@@ -413,8 +437,8 @@ class _SettingsViewState extends State<SettingsView> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: on,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       height: 1.15,
@@ -426,7 +450,7 @@ class _SettingsViewState extends State<SettingsView> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.66),
+                      color: on.withValues(alpha: 0.66),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       height: 1.2,
@@ -438,7 +462,7 @@ class _SettingsViewState extends State<SettingsView> {
             const SizedBox(width: 10),
             Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white.withValues(alpha: 0.5),
+              color: on.withValues(alpha: 0.5),
               size: 15,
             ),
           ],

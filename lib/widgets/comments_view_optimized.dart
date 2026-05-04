@@ -22,15 +22,13 @@ class CommentsViewOptimized extends ConsumerStatefulWidget {
       _CommentsViewOptimizedState();
 }
 
-class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
-    with WidgetsBindingObserver {
+class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   final List<Comment> _comments = <Comment>[];
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   String? _errorMessage;
-  bool _isKeyboardVisible = false;
 
   // Simplified emoji reactions
   static const List<String> _emojiReactions = <String>[
@@ -47,59 +45,15 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
   @override
   void initState() {
     super.initState();
-    debugPrint('🔄 CommentsView: initState() - Starting initialization');
-    WidgetsBinding.instance.addObserver(this);
     _loadComments();
-
-    // Initialize focus node normally
-    debugPrint('🔄 CommentsView: Focus node initialized normally');
-
-    debugPrint('🔄 CommentsView: initState() - Initialization complete');
   }
 
   @override
   void dispose() {
-    debugPrint('🔄 CommentsView: dispose() - Cleaning up resources');
-    WidgetsBinding.instance.removeObserver(this);
-    // Focus listener removed to prevent bouncing
     _textController.dispose();
     _inputFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeMetrics() {
-    super.didChangeMetrics();
-    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final bool wasKeyboardVisible = _isKeyboardVisible;
-    final bool isKeyboardVisible = keyboardHeight > 0;
-    final bool hasFocus = _inputFocusNode.hasFocus;
-    final bool canRequestFocus = _inputFocusNode.canRequestFocus;
-
-    debugPrint(
-      '📱 CommentsView: didChangeMetrics() - keyboardHeight: $keyboardHeight, wasVisible: $wasKeyboardVisible, isVisible: $isKeyboardVisible, hasFocus: $hasFocus, canRequestFocus: $canRequestFocus',
-    );
-
-    if (wasKeyboardVisible != isKeyboardVisible) {
-      debugPrint(
-        '📱 CommentsView: Keyboard state changed - updating _isKeyboardVisible from $wasKeyboardVisible to $isKeyboardVisible',
-      );
-
-      setState(() {
-        _isKeyboardVisible = isKeyboardVisible;
-      });
-
-      if (isKeyboardVisible) {
-        debugPrint('📱 CommentsView: Keyboard appeared');
-      } else {
-        debugPrint('📱 CommentsView: Keyboard disappeared');
-      }
-    } else {
-      debugPrint(
-        '📱 CommentsView: Keyboard state unchanged - still $isKeyboardVisible',
-      );
-    }
   }
 
   Future<void> _loadComments() async {
@@ -283,33 +237,33 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
 
   @override
   Widget build(BuildContext context) {
-    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    
-    // 🔒 CRITICAL: Calculate FULL physical screen height (never changes)
-    final double screenHeight = MediaQuery.of(context).size.height + keyboardHeight;
-    
-    // 🔒 FIXED HEIGHT: Never changes to prevent bounce
-    final double containerHeight = screenHeight * 0.75;
-
-    debugPrint(
-      '🎨 CommentsView: build() - containerHeight: $containerHeight (FIXED), keyboard: $keyboardHeight',
-    );
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final bool isLight = theme.brightness == Brightness.light;
+    final List<Color> sheetGradient = isLight
+        ? <Color>[
+            scheme.surface,
+            scheme.surfaceContainerLow,
+          ]
+        : <Color>[
+            scheme.primary.withValues(alpha: 0.92),
+            scheme.surfaceContainerHighest,
+          ];
+    final Color dragColor = isLight ? scheme.outlineVariant : Colors.grey[600]!;
+    final double containerHeight = MediaQuery.sizeOf(context).height * 0.75;
 
     return Material(
       color: Colors.transparent,
       child: Container(
         // FIXED HEIGHT: Never changes to prevent bounce
         height: containerHeight,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF6633CC), // Purple (matches ProfileView)
-              Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-            ],
+            colors: sheetGradient,
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
@@ -319,7 +273,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
               height: 4,
               margin: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.grey[600],
+                color: dragColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -330,11 +284,19 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
             // Comments List
             Expanded(child: _buildCommentList()),
 
-            // Reactions Row (Above Input) - Only show when keyboard is not visible
-            if (keyboardHeight == 0) _buildEmojiRow(),
-
-            // Input Bar
-            _buildInputBar(),
+            Builder(
+              builder: (BuildContext footerContext) {
+                final double keyboardInset =
+                    MediaQuery.viewInsetsOf(footerContext).bottom;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (keyboardInset == 0) _buildEmojiRow(),
+                    _buildInputBar(keyboardInset),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -342,15 +304,16 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
   }
 
   Widget _buildHeader() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         children: [
           // Centered "Comments" title
-          const Text(
+          Text(
             'Comments',
             style: TextStyle(
-              color: Colors.white,
+              color: scheme.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -360,7 +323,10 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
           // Comment count
           Text(
             '${_comments.length} comments',
-            style: TextStyle(color: Colors.grey[400], fontSize: 14),
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.65),
+              fontSize: 14,
+            ),
           ),
         ],
       ),
@@ -368,19 +334,23 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
   }
 
   Widget _buildCommentList() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     if (_isLoading && _comments.isEmpty) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+          valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
         ),
       );
     }
 
     if (_comments.isEmpty && !_isLoading && _errorMessage == null) {
-      return const Center(
+      return Center(
         child: Text(
           'No comments yet',
-          style: TextStyle(color: Colors.white70, fontSize: 16),
+          style: TextStyle(
+            color: scheme.onSurface.withValues(alpha: 0.72),
+            fontSize: 16,
+          ),
         ),
       );
     }
@@ -396,7 +366,10 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
               const SizedBox(height: 16),
               Text(
                 _errorMessage!,
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.72),
+                  fontSize: 14,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
@@ -429,11 +402,6 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
   }
 
   Widget _buildEmojiRow() {
-    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    debugPrint(
-      '😀 CommentsView: _buildEmojiRow() - Building emoji row - keyboardHeight: $keyboardHeight, _isKeyboardVisible: $_isKeyboardVisible',
-    );
-
     return Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -445,22 +413,10 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
           final String emoji = _emojiReactions[index];
           return GestureDetector(
             onTap: () {
-              final bool hasFocus = _inputFocusNode.hasFocus;
-              final bool canRequestFocus = _inputFocusNode.canRequestFocus;
-              debugPrint(
-                '😀 CommentsView: Emoji tapped - $emoji, hasFocus: $hasFocus, canRequestFocus: $canRequestFocus',
-              );
-
               final String currentText = _textController.text;
               _textController.text = currentText + emoji;
-
-              // Move cursor to end of text
               _textController.selection = TextSelection.fromPosition(
                 TextPosition(offset: _textController.text.length),
-              );
-
-              debugPrint(
-                '😀 CommentsView: Text updated - "${_textController.text}"',
               );
             },
             child: SizedBox(
@@ -476,38 +432,47 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
     );
   }
 
-  Widget _buildInputBar() {
-    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final double bottomPadding = MediaQuery.of(context).padding.bottom;
-
-    debugPrint(
-      '📝 CommentsView: _buildInputBar() - keyboardHeight: $keyboardHeight, bottomPadding: $bottomPadding',
-    );
+  Widget _buildInputBar(double keyboardInset) {
+    final double bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final bool isLight = theme.brightness == Brightness.light;
+    final List<Color> barGradient = isLight
+        ? <Color>[
+            scheme.surfaceContainerLow,
+            scheme.surface,
+          ]
+        : <Color>[
+            scheme.primary.withValues(alpha: 0.88),
+            scheme.surfaceContainerHighest,
+          ];
 
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
         8,
         16,
-        keyboardHeight > 0 ? 8 : bottomPadding + 8,
+        keyboardInset > 0 ? 8 : bottomPadding + 8,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Color(0xFF6633CC), // Purple (matches ProfileView)
-            Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-          ],
+          colors: barGradient,
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
-        border: Border(top: BorderSide(color: Colors.white24, width: 1)),
+        border: Border(
+          top: BorderSide(
+            color: scheme.outline.withValues(alpha: 0.35),
+            width: 1,
+          ),
+        ),
       ),
       child: Row(
         children: [
           // User avatar
           CircleAvatar(
             radius: 16,
-            backgroundColor: const Color(0xFF9248D2),
+            backgroundColor: scheme.primary,
             backgroundImage: _currentUserOrSample().avatarURL != null
                 ? NetworkImage(_currentUserOrSample().avatarURL!)
                 : null,
@@ -516,7 +481,10 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
                     _currentUserOrSample().username.isNotEmpty
                         ? _currentUserOrSample().username[0].toUpperCase()
                         : 'U',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    style: TextStyle(
+                      color: scheme.onPrimary,
+                      fontSize: 12,
+                    ),
                   )
                 : null,
           ),
@@ -526,20 +494,22 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: scheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: scheme.outline.withValues(alpha: 0.35),
                   width: 1,
                 ),
               ),
               child: TextField(
                 controller: _textController,
                 focusNode: _inputFocusNode,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: scheme.onSurface),
                 decoration: InputDecoration(
                   hintText: 'What do you think of this?',
-                  hintStyle: const TextStyle(color: Colors.white54),
+                  hintStyle: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.55),
+                  ),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -549,26 +519,8 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
                 textInputAction: TextInputAction.send,
                 keyboardType: TextInputType.text,
                 enableInteractiveSelection: true,
-                onSubmitted: (_) {
-                  debugPrint(
-                    '📝 CommentsView: Text submitted - "${_textController.text}"',
-                  );
-                  _addComment();
-                },
-                onTap: () {
-                  debugPrint(
-                    '📝 CommentsView: TextField tapped - current focus: ${_inputFocusNode.hasFocus}',
-                  );
-                },
-                onChanged: (String value) {
-                  debugPrint('📝 CommentsView: Text changed - "$value"');
-                },
-                onTapOutside: (event) {
-                  debugPrint(
-                    '📝 CommentsView: TextField tapped outside - unfocusing',
-                  );
-                  _inputFocusNode.unfocus();
-                },
+                onSubmitted: (_) => _addComment(),
+                onTapOutside: (_) => _inputFocusNode.unfocus(),
               ),
             ),
           ),
@@ -577,22 +529,22 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
 
           // Send button
           GestureDetector(
-            onTap: () {
-              debugPrint('📝 CommentsView: Send button tapped');
-              _addComment();
-            },
+            onTap: _addComment,
             child: Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+                gradient: LinearGradient(
+                  colors: <Color>[
+                    scheme.primary,
+                    scheme.secondary,
+                  ],
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 ),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.send, color: Colors.white, size: 20),
+              child: Icon(Icons.send, color: scheme.onPrimary, size: 20),
             ),
           ),
         ],
@@ -610,19 +562,24 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
       enableDrag: true,
       builder: (BuildContext context) {
         final TextEditingController replyController = TextEditingController();
+        final ThemeData theme = Theme.of(context);
+        final ColorScheme scheme = theme.colorScheme;
+        final bool isLight = theme.brightness == Brightness.light;
         return Material(
           color: Colors.transparent,
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  Color(0xFF6633CC), // Purple (matches ProfileView)
-                  Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-                ],
+                colors: isLight
+                    ? <Color>[scheme.surface, scheme.surfaceContainerLow]
+                    : <Color>[
+                        scheme.primary.withValues(alpha: 0.92),
+                        scheme.surfaceContainerHighest,
+                      ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
-              borderRadius: BorderRadius.vertical(
+              borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(20),
               ),
             ),
@@ -642,8 +599,8 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
                       Expanded(
                         child: Text(
                           'Reply to @${parent.user.username}',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: scheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -651,9 +608,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.close,
-                          color: Colors.white,
+                          color: scheme.onSurface,
                         ),
                       ),
                     ],
@@ -663,13 +620,13 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.grey[800],
+                      color: scheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       parent.text,
-                      style: const TextStyle(
-                        color: Colors.white70,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.72),
                         fontSize: 12,
                       ),
                     ),
@@ -679,10 +636,12 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
                     controller: replyController,
                     maxLines: 5,
                     minLines: 3,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: scheme.onSurface),
+                    decoration: InputDecoration(
                       hintText: 'Write your reply...',
-                      hintStyle: TextStyle(color: Colors.white54),
+                      hintStyle: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.55),
+                      ),
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -728,17 +687,22 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
+        final ThemeData theme = Theme.of(context);
+        final ColorScheme scheme = theme.colorScheme;
+        final bool isLight = theme.brightness == Brightness.light;
         return Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                Color(0xFF6633CC), // Purple (matches ProfileView)
-                Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-              ],
+              colors: isLight
+                  ? <Color>[scheme.surface, scheme.surfaceContainerLow]
+                  : <Color>[
+                      scheme.primary.withValues(alpha: 0.92),
+                      scheme.surfaceContainerHighest,
+                    ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -746,30 +710,32 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Delete Comment',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: scheme.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Are you sure you want to delete this comment?',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.72),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey[800],
+                    color: scheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     c.text,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: scheme.onSurface),
                   ),
                 ),
                 const SizedBox(height: 12),

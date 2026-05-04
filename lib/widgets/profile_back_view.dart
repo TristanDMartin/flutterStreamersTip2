@@ -81,6 +81,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     // Use live data if available (from Firestore listener), otherwise use widget data
     return _liveUserData ?? widget.user;
   }
+  Color get _onSurface => Theme.of(context).colorScheme.onSurface;
+  Color get _onPrimary => Theme.of(context).colorScheme.onPrimary;
 
   /// Safely parse date from various formats
   DateTime _parseDate(dynamic dateValue) {
@@ -178,23 +180,23 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: AppColors.profileViewBackground,
+      color: Theme.of(context).colorScheme.surface,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline,
-                color: Colors.white,
+                color: _onSurface,
                 size: 64,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Error Loading Profile',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
@@ -203,7 +205,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               Text(
                 'Please try again later',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: _onSurface.withValues(alpha: 0.7),
                   fontSize: 16,
                 ),
               ),
@@ -222,7 +224,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget _buildContent(
       List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
     return Container(
-      color: AppColors.profileViewBackground,
+      color: Theme.of(context).colorScheme.surface,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
@@ -273,10 +275,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: _onSurface.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: _onSurface.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
@@ -285,7 +287,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
             Text(
               'Profile Details',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
+                color: _onSurface.withValues(alpha: 0.92),
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
@@ -293,7 +295,11 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
             const Spacer(),
             IconButton(
               onPressed: widget.onFlip,
-              icon: const Icon(Icons.flip, color: Colors.white, size: 22),
+              icon: Icon(
+                Icons.flip,
+                color: _onSurface,
+                size: 22,
+              ),
               tooltip: 'Flip',
             ),
           ],
@@ -316,8 +322,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               children: [
                 Text(
                   _currentUserData['displayName'] ?? 'Techniques',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: _onSurface,
                     fontSize: 30,
                     fontWeight: FontWeight.w800,
                   ),
@@ -326,7 +332,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 Text(
                   '@${_currentUserData['username'] ?? 'techniques'}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.75),
+                    color: _onSurface.withValues(alpha: 0.75),
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
@@ -390,12 +396,12 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         end: Alignment.centerRight,
                       )
                     : null,
-                color: isSelected ? null : Colors.white.withValues(alpha: 0.10),
+                color: isSelected ? null : _onSurface.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                     color: isSelected
-                        ? Colors.white.withValues(alpha: 0.3)
-                        : Colors.white.withValues(alpha: 0.15),
+                        ? _onSurface.withValues(alpha: 0.3)
+                        : _onSurface.withValues(alpha: 0.15),
                     width: 1),
                 boxShadow: isSelected
                     ? [
@@ -411,8 +417,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               alignment: Alignment.center,
               child: Text(
                 '#$tag',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: isSelected ? _onPrimary : _onSurface,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -435,10 +441,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: _onSurface.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: _onSurface.withValues(alpha: 0.12),
               width: 1,
             ),
           ),
@@ -446,8 +452,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: _onSurface,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                 ),
@@ -457,7 +463,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 expanded
                     ? Icons.keyboard_arrow_down
                     : Icons.keyboard_arrow_right,
-                color: Colors.white.withValues(alpha: 0.9)),
+                color: _onSurface.withValues(alpha: 0.9)),
             ],
           ),
         ),
@@ -521,7 +527,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       child: Text(
         bio,
         style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.75),
+            color: _onSurface.withValues(alpha: 0.75),
             fontSize: 16,
             fontWeight: FontWeight.w600),
       ),
@@ -535,17 +541,17 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: _onSurface.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: _onSurface.withValues(alpha: 0.10),
               width: 1,
             ),
           ),
           child: Text(
             'No platforms added yet.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
+              color: _onSurface.withValues(alpha: 0.68),
               fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
@@ -648,19 +654,23 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               ),
             ],
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
+              color: _onSurface.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
-          child: const Row(
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.add_circle, color: Colors.white, size: 28),
-              SizedBox(width: 12),
+              Icon(
+                Icons.add_circle,
+                color: _onPrimary,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
               Text(
                 'Add to Calendar',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _onPrimary,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
@@ -692,16 +702,19 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               child: Container(
                 decoration: BoxDecoration(
                   color:
-                      AppColors.profileViewBackground.withValues(alpha: 0.96),
+                      Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
                   borderRadius:
                       const BorderRadius.vertical(top: Radius.circular(28)),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.14),
+                    color: _onSurface.withValues(alpha: 0.14),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.24),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .shadow
+                          .withValues(alpha: 0.35),
                       blurRadius: 28,
                       offset: const Offset(0, -10),
                     ),
@@ -717,7 +730,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.24),
+                          color: _onSurface.withValues(alpha: 0.24),
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -728,10 +741,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Add Event',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: _onSurface,
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -740,7 +753,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                             Text(
                               'Share your next stream, drop, or meetup.',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.65),
+                                color: _onSurface.withValues(alpha: 0.65),
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -754,16 +767,16 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                             width: 36,
                             height: 36,
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.08),
+                              color: _onSurface.withValues(alpha: 0.08),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.12),
+                                color: _onSurface.withValues(alpha: 0.12),
                                 width: 1,
                               ),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.close,
-                              color: Colors.white,
+                              color: _onSurface,
                               size: 20,
                             ),
                           ),
@@ -776,10 +789,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: _onSurface.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.10),
+                          color: _onSurface.withValues(alpha: 0.10),
                           width: 1,
                         ),
                       ),
@@ -794,20 +807,23 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                             },
                             decoration: InputDecoration(
                               labelText: 'Title *',
-                              labelStyle:
-                                  const TextStyle(color: Colors.white70),
+                              labelStyle: TextStyle(
+                                color: _onSurface.withValues(alpha: 0.7),
+                              ),
                               hintText: 'Event title',
                               hintStyle: TextStyle(
                                   color:
-                                      Colors.white.withValues(alpha: 0.45)),
-                              enabledBorder: const UnderlineInputBorder(
-                                  borderSide:
-                                      BorderSide(color: Colors.white24)),
-                              focusedBorder: const UnderlineInputBorder(
-                                  borderSide:
-                                      BorderSide(color: Colors.white70)),
+                                      _onSurface.withValues(alpha: 0.45)),
+                              enabledBorder: UnderlineInputBorder(
+                                  borderSide: BorderSide(
+                                color: _onSurface.withValues(alpha: 0.24),
+                              ),),
+                              focusedBorder: UnderlineInputBorder(
+                                  borderSide: BorderSide(
+                                color: _onSurface.withValues(alpha: 0.7),
+                              ),),
                             ),
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: _onSurface),
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -815,20 +831,23 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                             maxLines: 3,
                             decoration: InputDecoration(
                               labelText: 'Description',
-                              labelStyle:
-                                  const TextStyle(color: Colors.white70),
+                              labelStyle: TextStyle(
+                                color: _onSurface.withValues(alpha: 0.7),
+                              ),
                               hintText: 'Event description (optional)',
                               hintStyle: TextStyle(
                                   color:
-                                      Colors.white.withValues(alpha: 0.45)),
-                              enabledBorder: const UnderlineInputBorder(
-                                  borderSide:
-                                      BorderSide(color: Colors.white24)),
-                              focusedBorder: const UnderlineInputBorder(
-                                  borderSide:
-                                      BorderSide(color: Colors.white70)),
+                                      _onSurface.withValues(alpha: 0.45)),
+                              enabledBorder: UnderlineInputBorder(
+                                  borderSide: BorderSide(
+                                color: _onSurface.withValues(alpha: 0.24),
+                              ),),
+                              focusedBorder: UnderlineInputBorder(
+                                  borderSide: BorderSide(
+                                color: _onSurface.withValues(alpha: 0.7),
+                              ),),
                             ),
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: _onSurface),
                           ),
                         ],
                       ),
@@ -839,10 +858,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: _onSurface.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.10),
+                          color: _onSurface.withValues(alpha: 0.10),
                           width: 1,
                         ),
                       ),
@@ -857,36 +876,39 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                             ),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.calendar_today_rounded,
-                            color: Colors.white,
+                            color: _onPrimary,
                             size: 18,
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Date & Time',
-                            style:
-                                TextStyle(color: Colors.white70, fontSize: 15),
+                            style: TextStyle(
+                              color: _onSurface.withValues(alpha: 0.7),
+                              fontSize: 15,
+                            ),
                           ),
                         ),
                         TextButton(
                           onPressed: () async {
-                            final currentContext = context;
                             final DateTime? picked = await showDatePicker(
-                              context: currentContext,
+                              context: context,
                               initialDate: when,
                               firstDate: DateTime.now(),
                               lastDate: DateTime(2100),
                             );
                             if (picked != null) {
-                              if (!mounted) return;
+                              if (!context.mounted) {
+                                return;
+                              }
                               final TimeOfDay? tod = await showTimePicker(
-                                context: currentContext,
+                                context: context,
                                 initialTime: TimeOfDay.fromDateTime(when),
                               );
-                              if (tod != null && mounted) {
+                              if (tod != null && context.mounted) {
                                 setModalState(() {
                                   when = DateTime(
                                     picked.year,
@@ -901,8 +923,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                           },
                           child: Text(
                             _formatDate(when),
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: _onSurface,
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
@@ -921,7 +943,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                           backgroundColor: isValid
                               ? AppColors.supportAccent
                               : Colors.grey.withValues(alpha: 0.3),
-                          foregroundColor: Colors.white,
+                          foregroundColor:
+                              isValid ? _onPrimary : _onSurface,
                           elevation: isValid ? 6 : 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(24),
@@ -1184,6 +1207,7 @@ class _SmallAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color onSurface = Theme.of(context).colorScheme.onSurface;
     return Container(
       width: 64,
       height: 64,
@@ -1204,12 +1228,16 @@ class _SmallAvatar extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.black.withValues(alpha: 0.2),
+            color: onSurface.withValues(alpha: 0.2),
           ),
           child: ClipOval(
             child: imageUrl != null && imageUrl!.isNotEmpty
                 ? Image.network(imageUrl!, fit: BoxFit.cover)
-                : const Icon(Icons.person, color: Colors.white, size: 28),
+                : Icon(
+                    Icons.person,
+                    color: onSurface,
+                    size: 28,
+                  ),
           ),
         ),
       ),
@@ -1228,9 +1256,9 @@ class _ClickablePlatformRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color onSurface = Theme.of(context).colorScheme.onSurface;
     final platformType = platform['type'] as String? ?? '';
     final username = platform['username'] as String? ?? '';
-
     return GestureDetector(
       onTap: () {
         onTap();
@@ -1238,10 +1266,10 @@ class _ClickablePlatformRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: onSurface.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: onSurface.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
@@ -1251,7 +1279,7 @@ class _ClickablePlatformRow extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: onSurface.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Center(
@@ -1268,8 +1296,8 @@ class _ClickablePlatformRow extends StatelessWidget {
                 children: [
                   Text(
                     _getPlatformDisplayName(platformType),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1278,7 +1306,7 @@ class _ClickablePlatformRow extends StatelessWidget {
                     Text(
                       '@$username',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: onSurface.withValues(alpha: 0.7),
                         fontSize: 14,
                       ),
                     ),
@@ -1289,12 +1317,12 @@ class _ClickablePlatformRow extends StatelessWidget {
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
+                color: onSurface.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.arrow_forward_ios,
-                color: Colors.white70,
+                color: onSurface.withValues(alpha: 0.7),
                 size: 14,
               ),
             ),
@@ -1345,41 +1373,54 @@ class _CalendarCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color onSurface = Theme.of(context).colorScheme.onSurface;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: onSurface.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
         border:
-            Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+            Border.all(color: onSurface.withValues(alpha: 0.12), width: 1),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.calendar_today_outlined,
-              color: Colors.white, size: 22),
+          Icon(
+            Icons.calendar_today_outlined,
+            color: onSurface,
+            size: 22,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: onSurface,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(subtitle,
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.65),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.65),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(meta,
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: 14)),
+                Text(
+                  meta,
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.7),
+                    fontSize: 14,
+                  ),
+                ),
               ],
             ),
           ),

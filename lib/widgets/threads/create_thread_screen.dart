@@ -4,6 +4,7 @@ import '../../services/forum_service.dart';
 import '../../models/forum_author.dart';
 import '../../models/forum_category.dart';
 import '../../constants/app_colors.dart';
+import '../../core/theme/support_shell_style.dart';
 
 /// Screen for creating a new thread
 class CreateThreadScreen extends StatefulWidget {
@@ -101,8 +102,9 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       body: SafeArea(
         child: Column(
           children: [
@@ -266,18 +268,20 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
                         controller: _contentController,
                         style: const TextStyle(color: Colors.white),
                         maxLines: 10,
-                        decoration: _buildInputDecoration('What do you want to talk about?'),
+                        decoration: _buildInputDecoration(
+                            'What do you want to talk about?'),
                       ),
                     ),
                     const SizedBox(height: 16),
                     _buildInputCard(
                       label: 'Category',
-                      helper: 'This helps your thread reach the right audience.',
+                      helper:
+                          'This helps your thread reach the right audience.',
                       child: DropdownButtonFormField<String>(
                         initialValue: _selectedCategory,
                         decoration: _buildInputDecoration('Select category'),
-                        dropdownColor: AppColors.supportTopSurface,
-                        style: const TextStyle(color: Colors.white),
+                        dropdownColor: shell.panelSurface,
+                        style: TextStyle(color: shell.onChrome),
                         items: _categories.map((category) {
                           return DropdownMenuItem(
                             value: category.id,

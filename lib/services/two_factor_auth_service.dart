@@ -166,7 +166,7 @@ class TwoFactorAuthService {
   }
 
   String _hashCode(String code) {
-    return code.substring(0, 3) + '***';
+    return '${code.substring(0, 3)}***';
   }
 
   /// Get current TOTP code for testing

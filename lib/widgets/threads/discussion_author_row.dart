@@ -1,7 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../services/discussion_author_service.dart';
-import '../../services/unified_avatar_service.dart';
+import '../../utils/avatar_url_resolver.dart';
+import '../status_aware_avatar.dart';
 
 class DiscussionAuthorRow extends StatelessWidget {
   final String displayName;
@@ -27,6 +29,8 @@ class DiscussionAuthorRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (userId == null || userId!.isEmpty) {
       return _buildRow(
+        context: context,
+        avatarUserId: null,
         resolvedDisplayName: displayName,
         resolvedUsername: username,
         resolvedAvatarUrl: avatarUrl,
@@ -35,9 +39,11 @@ class DiscussionAuthorRow extends StatelessWidget {
 
     return StreamBuilder(
       stream: DiscussionAuthorService().watchForumAuthor(userId!),
-      builder: (context, snapshot) {
+      builder: (BuildContext context, snapshot) {
         final liveAuthor = snapshot.data;
         return _buildRow(
+          context: context,
+          avatarUserId: userId,
           resolvedDisplayName: liveAuthor?.displayName ?? displayName,
           resolvedUsername: liveAuthor?.username ?? username,
           resolvedAvatarUrl: liveAuthor?.avatarUrl ?? avatarUrl,
@@ -47,16 +53,19 @@ class DiscussionAuthorRow extends StatelessWidget {
   }
 
   Widget _buildRow({
+    required BuildContext context,
+    required String? avatarUserId,
     required String resolvedDisplayName,
     required String resolvedUsername,
     required String? resolvedAvatarUrl,
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
           onTap: onTap,
-          child: _buildAuthorAvatar(resolvedAvatarUrl, avatarRadius),
+          child: _buildLeadingAvatar(avatarUserId, resolvedAvatarUrl),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -69,8 +78,8 @@ class DiscussionAuthorRow extends StatelessWidget {
                   resolvedDisplayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: scheme.onSurface,
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                   ),
@@ -86,8 +95,8 @@ class DiscussionAuthorRow extends StatelessWidget {
                     onTap: onTap,
                     child: Text(
                       '@$resolvedUsername',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.55),
                         fontSize: 12,
                       ),
                     ),
@@ -95,8 +104,8 @@ class DiscussionAuthorRow extends StatelessWidget {
                   if (trailingText != null && trailingText!.isNotEmpty)
                     Text(
                       trailingText!,
-                      style: const TextStyle(
-                        color: AppColors.textTertiary,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.45),
                         fontSize: 12,
                       ),
                     ),
@@ -109,29 +118,31 @@ class DiscussionAuthorRow extends StatelessWidget {
     );
   }
 
-  Widget _buildAuthorAvatar(String? currentAvatarUrl, double radius) {
-    return Container(
-      width: radius * 2,
-      height: radius * 2,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.5),
-          width: 1.5,
+  Widget _buildLeadingAvatar(String? uid, String? resolvedAvatarUrl) {
+    if (uid != null && uid.isNotEmpty) {
+      return StatusAwareAvatar(
+        userId: uid,
+        avatarURL: resolvedAvatarUrl,
+        radius: avatarRadius,
+        showOnlineIndicator: true,
+      );
+    }
+    final String? url = normalizeAvatarPhotoUrl(resolvedAvatarUrl);
+    if (url != null && url.isNotEmpty) {
+      final double d = avatarRadius * 2;
+      return ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          width: d,
+          height: d,
+          fit: BoxFit.cover,
+          errorWidget:
+              (BuildContext c, String u, Object e) =>
+                  _buildPlaceholderAvatar(avatarRadius),
         ),
-      ),
-      child: currentAvatarUrl != null && currentAvatarUrl.isNotEmpty
-          ? ClipOval(
-              child: UnifiedAvatarService().getAvatar(
-                imageUrl: currentAvatarUrl,
-                radius: radius,
-                useProfileViewStyling: false,
-                showLoadingIndicator: false,
-                errorWidget: _buildPlaceholderAvatar(radius),
-              ),
-            )
-          : _buildPlaceholderAvatar(radius),
-    );
+      );
+    }
+    return _buildPlaceholderAvatar(avatarRadius);
   }
 
   Widget _buildPlaceholderAvatar(double radius) {

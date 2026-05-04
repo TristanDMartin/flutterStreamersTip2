@@ -9,6 +9,8 @@ class MemoryPressureService {
   // OPTIMIZED: Increased memory limits for better performance
   static int _maxImageCount = 10; // Increased from 3 to 10 for faster loading
   static int _maxAvatarCount = 15; // Increased from 5 to 15 for better UX
+  static const int _imageOverflowBuffer = 2;
+  static const int _avatarOverflowBuffer = 3;
   static int _currentImageCount = 0;
   static int _currentAvatarCount = 0;
   static bool _isMemoryPressureHigh = false;
@@ -25,8 +27,8 @@ class MemoryPressureService {
   static void registerImageLoad() {
     _currentImageCount++;
     debugPrint('📊 Image count: $_currentImageCount/$_maxImageCount');
-    
-    if (_currentImageCount >= _maxImageCount) {
+    final int imageOverflowThreshold = _maxImageCount + _imageOverflowBuffer;
+    if (_currentImageCount > imageOverflowThreshold) {
       _isMemoryPressureHigh = true;
       debugPrint('⚠️ Image memory pressure high - pausing image loading');
       _forceMemoryCleanup();
@@ -36,8 +38,8 @@ class MemoryPressureService {
   static void registerAvatarLoad() {
     _currentAvatarCount++;
     debugPrint('📊 Avatar count: $_currentAvatarCount/$_maxAvatarCount');
-    
-    if (_currentAvatarCount >= _maxAvatarCount) {
+    final int avatarOverflowThreshold = _maxAvatarCount + _avatarOverflowBuffer;
+    if (_currentAvatarCount > avatarOverflowThreshold) {
       _isAvatarPressureHigh = true;
       debugPrint('⚠️ Avatar memory pressure high - pausing avatar loading');
       _forceMemoryCleanup();

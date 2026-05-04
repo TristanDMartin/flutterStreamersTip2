@@ -5,6 +5,7 @@ import '../../models/forum_post.dart';
 import '../../services/forum_service.dart';
 import '../../models/forum_category.dart';
 import '../../constants/app_colors.dart';
+import '../../core/theme/support_shell_style.dart';
 import 'thread_detail_screen.dart';
 import 'create_thread_screen.dart';
 import 'forum_post_card.dart';
@@ -97,15 +98,17 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     // Calculate header height: SafeArea top + FeedSelector height (50) + margins (8*2)
     final mediaQuery = MediaQuery.of(context);
     final safeAreaTop = mediaQuery.padding.top;
     final headerHeight = safeAreaTop + 50 + 16; // SafeArea + FeedSelector height + margins
 
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       body: Container(
-        color: AppColors.supportBackground,
+        color: shell.scaffold,
         child: SafeArea(
           top: false, // Don't add SafeArea padding since header is positioned absolutely
           child: Column(
@@ -113,12 +116,14 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
               // Top padding to account for persistent header (FeedSelectorWidget)
               SizedBox(height: headerHeight),
               // Search and Filters
-              _buildFilters(),
+              _buildFilters(shell, scheme),
               
               // Threads Grid/List
               Expanded(
                 child: _isLoading
                     ? _buildThreadsStatusCard(
+                        shell,
+                        scheme,
                         icon: Icons.forum_outlined,
                         title: 'Loading Threads',
                         message:
@@ -127,6 +132,8 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                       )
                     : _errorMessage != null
                         ? _buildThreadsStatusCard(
+                            shell,
+                            scheme,
                             icon: Icons.cloud_off_outlined,
                             title: 'Threads Are Taking A Beat',
                             message: _errorMessage!,
@@ -135,11 +142,11 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                             onAction: _loadThreads,
                           )
                         : _threads.isEmpty
-                            ? _buildEmptyState()
+                            ? _buildEmptyState(shell, scheme)
                             : RefreshIndicator(
                                 onRefresh: _loadThreads,
-                                color: AppColors.primary,
-                                backgroundColor: AppColors.surface,
+                                color: shell.refreshColor,
+                                backgroundColor: shell.refreshBackground,
                                 child: GridView.builder(
                                   padding: const EdgeInsets.all(12),
                                   gridDelegate:
@@ -167,16 +174,16 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
           gradient: LinearGradient(
-            colors: [
-              AppColors.primary,
-              AppColors.secondary,
+            colors: <Color>[
+              scheme.primary,
+              scheme.secondary,
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          boxShadow: [
+          boxShadow: <BoxShadow>[
             BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.4),
+              color: scheme.primary.withValues(alpha: 0.38),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -186,30 +193,36 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
           onPressed: () => _navigateToCreateThread(),
           backgroundColor: Colors.transparent,
           elevation: 0,
-          child: const Icon(Icons.add, color: Colors.white, size: 28),
+          child: Icon(
+            Icons.add,
+            color: scheme.onPrimary,
+            size: 28,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildFilters() {
+  Widget _buildFilters(StSupportShellStyle shell, ColorScheme scheme) {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: AppColors.supportSurfaceGradient,
+          colors: shell.heroGradient,
         ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
+          color: shell.heroBorder,
           width: 1,
         ),
-        boxShadow: [
+        boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
+            color: shell.isLight
+                ? scheme.shadow.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.18),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -226,25 +239,25 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.10),
+                  color: shell.surfaceCard,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.10),
+                    color: shell.surfaceCardBorder,
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: [
+                  children: <Widget>[
                     Icon(
                       Icons.forum_outlined,
                       size: 14,
-                      color: Colors.white,
+                      color: shell.onChrome,
                     ),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Text(
                       'Threads',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: shell.onChrome,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -256,7 +269,7 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
               Text(
                 '${_threads.length} live',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.72),
+                  color: shell.muted,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -268,25 +281,25 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: Colors.white.withValues(alpha: 0.08),
+              color: shell.surfaceCard,
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.10),
+                color: shell.surfaceCardBorder,
               ),
             ),
             child: TextField(
-              style: const TextStyle(
-                color: AppColors.textPrimary,
+              style: TextStyle(
+                color: scheme.onSurface,
                 fontSize: 15,
               ),
               decoration: InputDecoration(
                 hintText: 'Search threads...',
                 hintStyle: TextStyle(
-                  color: AppColors.textTertiary,
+                  color: scheme.onSurface.withValues(alpha: 0.45),
                   fontSize: 15,
                 ),
                 prefixIcon: Icon(
                   Icons.search,
-                  color: AppColors.supportAccent,
+                  color: scheme.primary,
                   size: 22,
                 ),
                 filled: true,
@@ -320,20 +333,20 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                         _getSortLabel(sort),
                         style: TextStyle(
                           color: isSelected
-                              ? Colors.white
-                              : AppColors.textSecondary,
+                              ? scheme.onPrimary
+                              : scheme.onSurface.withValues(alpha: 0.65),
                           fontSize: 13,
                           fontWeight: isSelected
                               ? FontWeight.w600
                               : FontWeight.normal,
                         ),
                       ),
-                      selectedColor: AppColors.primary,
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      selectedColor: scheme.primary,
+                      backgroundColor: shell.surfaceCard,
                       side: BorderSide(
                         color: isSelected
-                            ? AppColors.primary
-                            : Colors.white.withValues(alpha: 0.10),
+                            ? scheme.primary
+                            : shell.surfaceCardBorder,
                         width: 1,
                       ),
                       onSelected: (selected) {
@@ -359,22 +372,22 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                               orElse: () => _categories.first,
                             )
                             .name,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: scheme.onPrimary,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      selectedColor: AppColors.secondary,
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
-                      side: const BorderSide(
-                        color: AppColors.secondary,
+                      selectedColor: scheme.secondary,
+                      backgroundColor: shell.surfaceCard,
+                      side: BorderSide(
+                        color: scheme.secondary,
                         width: 1,
                       ),
-                      deleteIcon: const Icon(
+                      deleteIcon: Icon(
                         Icons.close,
                         size: 16,
-                        color: Colors.white,
+                        color: scheme.onPrimary,
                       ),
                       onSelected: (selected) {
                         if (!selected) {
@@ -393,33 +406,33 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: shell.surfaceCard,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.10),
+                          color: shell.surfaceCardBorder,
                           width: 1,
                         ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: [
+                        children: <Widget>[
                           Icon(
                             Icons.category,
                             size: 16,
-                            color: AppColors.textSecondary,
+                            color: scheme.onSurface.withValues(alpha: 0.55),
                           ),
                           const SizedBox(width: 6),
                           Text(
                             'Category',
                             style: TextStyle(
-                              color: AppColors.textSecondary,
+                              color: scheme.onSurface.withValues(alpha: 0.55),
                               fontSize: 13,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    color: AppColors.supportTopSurface,
+                    color: shell.isLight ? scheme.surface : AppColors.supportTopSurface,
                     itemBuilder: (context) => [
                       PopupMenuItem(
                         value: null,
@@ -427,8 +440,8 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                           'All Categories',
                           style: TextStyle(
                             color: _selectedCategory == null
-                                ? AppColors.primary
-                                : AppColors.textPrimary,
+                                ? scheme.primary
+                                : scheme.onSurface,
                             fontWeight: _selectedCategory == null
                                 ? FontWeight.w600
                                 : FontWeight.normal,
@@ -443,8 +456,8 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                             category.name,
                             style: TextStyle(
                               color: _selectedCategory == category.id
-                                  ? AppColors.primary
-                                  : AppColors.textPrimary,
+                                  ? scheme.primary
+                                  : scheme.onSurface,
                               fontWeight: _selectedCategory == category.id
                                   ? FontWeight.w600
                                   : FontWeight.normal,
@@ -466,7 +479,9 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
     );
   }
 
-  Widget _buildThreadsStatusCard({
+  Widget _buildThreadsStatusCard(
+    StSupportShellStyle shell,
+    ColorScheme scheme, {
     required IconData icon,
     required String title,
     required String message,
@@ -480,14 +495,14 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: shell.surfaceCardBorder,
             ),
-            boxShadow: [
+            boxShadow: <BoxShadow>[
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
+                color: shell.shadowSoft,
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
@@ -514,21 +529,22 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                   ),
                 ),
                 child: showProgress
-                    ? const Padding(
-                        padding: EdgeInsets.all(18),
+                    ? Padding(
+                        padding: const EdgeInsets.all(18),
                         child: CircularProgressIndicator(
                           strokeWidth: 2.4,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            scheme.onPrimary,
+                          ),
                         ),
                       )
-                    : Icon(icon, color: Colors.white, size: 34),
+                    : Icon(icon, color: scheme.onPrimary, size: 34),
               ),
               const SizedBox(height: 18),
               Text(
                 title,
                 style: TextStyle(
-                  color: AppColors.textPrimary,
+                  color: scheme.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                 ),
@@ -539,7 +555,7 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                 message,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppColors.textSecondary,
+                  color: scheme.onSurface.withValues(alpha: 0.62),
                   fontSize: 14,
                   height: 1.35,
                 ),
@@ -551,8 +567,8 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                   icon: const Icon(Icons.refresh, size: 18),
                   label: Text(actionLabel),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
                       vertical: 14,
@@ -571,17 +587,17 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(StSupportShellStyle shell, ColorScheme scheme) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: shell.surfaceCardBorder,
             ),
           ),
           child: Column(
@@ -599,9 +615,9 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                     ],
                   ),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.forum_outlined,
-                  color: Colors.white,
+                  color: scheme.onPrimary,
                   size: 34,
                 ),
               ),
@@ -609,7 +625,7 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
               Text(
                 'Start The Conversation',
                 style: TextStyle(
-                  color: AppColors.textPrimary,
+                  color: scheme.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                 ),
@@ -622,7 +638,7 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                     : 'There are no threads here yet. Be the first to post something worth talking about.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppColors.textSecondary,
+                  color: scheme.onSurface.withValues(alpha: 0.62),
                   fontSize: 14,
                   height: 1.35,
                 ),
@@ -633,8 +649,8 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                 icon: const Icon(Icons.edit_outlined, size: 18),
                 label: const Text('Create Thread'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 22,
                     vertical: 14,

@@ -22,6 +22,7 @@ enum OverallPublishState {
 }
 
 class PublishNowRequest {
+  final String? videoId;
   final File videoFile;
   final String caption;
   final List<String> hashtags;
@@ -32,6 +33,7 @@ class PublishNowRequest {
   final void Function(double progress)? onProgress;
 
   const PublishNowRequest({
+    this.videoId,
     required this.videoFile,
     required this.caption,
     required this.hashtags,
@@ -165,6 +167,7 @@ class PublishProvider extends ChangeNotifier {
         privacy: request.privacy,
         allowComments: request.allowComments,
         crossPostRequests: request.crossPostRequests,
+        videoId: request.videoId,
         additionalMetadata: request.additionalMetadata,
         onProgress: request.onProgress,
       );
@@ -296,7 +299,9 @@ class PublishProvider extends ChangeNotifier {
       await _scheduledPostService.updatePlatformStatuses(
         _scheduledPostId!,
         status: PlatformStatus.publishing,
-        platformKeys: requests.map((request) => request.platformName.toLowerCase()).toList(),
+        platformKeys: requests
+            .map((request) => request.platformName.toLowerCase())
+            .toList(),
         clearErrors: true,
       );
     }
@@ -319,7 +324,8 @@ class PublishProvider extends ChangeNotifier {
     );
     _applyCrossPostResults(results);
     if (_scheduledPostId != null) {
-      await _scheduledPostService.applyCrossPostResults(_scheduledPostId!, results);
+      await _scheduledPostService.applyCrossPostResults(
+          _scheduledPostId!, results);
     }
     notifyListeners();
     return results;
@@ -353,7 +359,8 @@ class PublishProvider extends ChangeNotifier {
     if (_crossPostResults.isEmpty) {
       return false;
     }
-    return _crossPostResults.values.any((state) => state == CrossPostState.failed);
+    return _crossPostResults.values
+        .any((state) => state == CrossPostState.failed);
   }
 
   List<PlatformConfig> _buildPlatformConfigs(

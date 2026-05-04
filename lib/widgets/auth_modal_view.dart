@@ -3,12 +3,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/theme/st_theme_tokens.dart';
 import '../services/robust_auth_service.dart';
 import '../services/pending_auth_redirect_service.dart';
+import '../views/terms_and_privacy_view.dart';
 import 'email_login_view.dart';
+import 'privacy_policy_view.dart';
 import 'signup_view.dart';
-// import '../views/terms_of_service_view.dart'; // Removed - unused
-// import '../views/privacy_policy_view.dart'; // Removed - unused
 
 class AuthModalView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
@@ -30,7 +31,6 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   @override
   void initState() {
     super.initState();
-    _setSystemUIOverlayStyle();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {
@@ -40,13 +40,25 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     });
   }
 
-  void _setSystemUIOverlayStyle() {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applySystemUiForTheme();
+  }
+
+  void _applySystemUiForTheme() {
+    final ThemeData theme = Theme.of(context);
+    final Brightness brightness = theme.brightness;
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFF1C135D),
-        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarIconBrightness: brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
+        systemNavigationBarColor: theme.colorScheme.surface,
+        systemNavigationBarIconBrightness: brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
       ),
     );
   }
@@ -70,6 +82,9 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final bool isDark = theme.brightness == Brightness.dark;
     final authService = ref.watch(robustAuthServiceProvider);
 
     // Listen to auth state changes to navigate when user signs in
@@ -88,11 +103,21 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
       color: Colors.transparent,
       child: Scaffold(
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF6D43F3), Color(0xFF2A1A77), Color(0xFF150E46)],
+              colors: isDark
+                  ? <Color>[
+                      StThemeColors.darkBackground,
+                      scheme.surfaceContainerLow,
+                      scheme.surface,
+                    ]
+                  : <Color>[
+                      scheme.primary.withValues(alpha: 0.45),
+                      scheme.surfaceContainerLow,
+                      scheme.surface,
+                    ],
             ),
           ),
           child: Stack(
@@ -145,20 +170,21 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
               // Loading Overlay
               if (authService.shouldShowLoading)
                 Container(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  child: const Center(
+                  color: scheme.scrim.withValues(alpha: 0.35),
+                  child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CircularProgressIndicator(
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            scheme.primary,
+                          ),
                         ),
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         Text(
                           "Signing in...",
                           style: TextStyle(
-                            color: Colors.white,
+                            color: scheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
                           ),
@@ -181,24 +207,31 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
                     child: AlertDialog(
-                      backgroundColor: const Color(0xFF1C1C1E),
+                      backgroundColor: scheme.surfaceContainerHigh,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      title: const Text(
+                      title: Text(
                         "Notice",
                         style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w700),
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       content: Text(
                         _alertMessage.isEmpty
                             ? "Something happened."
                             : _alertMessage,
-                        style:
-                            const TextStyle(color: Colors.white70, height: 1.3),
+                        style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: 0.75),
+                          height: 1.3,
+                        ),
                       ),
                       actions: [
                         TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: scheme.primary,
+                          ),
                           onPressed: () => setState(() => _showAlert = false),
                           child: const Text("OK"),
                         ),
@@ -216,68 +249,42 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildHeader() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final TextStyle titleStyle = TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+      color: scheme.onSurface,
+    );
+    final Widget title = Text("Sign In", style: titleStyle);
+    if (widget.dismiss == null) {
+      return SizedBox(height: 48, child: Center(child: title));
+    }
     return Row(
       children: [
         TextButton(
           onPressed: widget.dismiss,
-          child: const Text(
+          child: Text(
             "Cancel",
             style: TextStyle(
-              color: Color(0xFFC6D4FF),
+              color: scheme.primary,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
         const Spacer(),
-        const Text(
-          "Sign In",
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
+        title,
         const Spacer(),
-        // Invisible spacer to balance the layout
-        const Text(
-          "Cancel",
-          style: TextStyle(color: Colors.transparent),
-        ),
+        const SizedBox(width: 72),
       ],
     );
   }
 
   Widget _buildAppLogoSection() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return _buildGlassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
       child: Column(
         children: [
-          Container(
-            width: 120,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.bolt_rounded, color: Color(0xFFFFD76A), size: 16),
-                SizedBox(width: 6),
-                Text(
-                  "Welcome Back",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
           Image.asset(
             'assets/logo.png',
             width: 120,
@@ -308,24 +315,14 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             },
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             "StreamersTip",
             style: TextStyle(
               fontSize: 34,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.4,
-              color: Colors.white,
+              color: scheme.onSurface,
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            "Connect with your favorite streamers, communities, and live moments in one place.",
-            style: TextStyle(
-              fontSize: 16,
-              color: Color(0xFFE1E6FF),
-              height: 1.45,
-            ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -333,24 +330,25 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildAuthButtons(RobustAuthenticationService authService) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return _buildGlassPanel(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             "Choose a sign-in method",
             style: TextStyle(
-              color: Colors.white,
+              color: scheme.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             "Pick email for account access or Google for the fastest setup.",
             style: TextStyle(
-              color: Color(0xCCDFE5FF),
+              color: scheme.onSurfaceVariant,
               fontSize: 13,
               height: 1.4,
             ),
@@ -459,6 +457,9 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildBackgroundDecor() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final Color primarySoft = scheme.primary.withValues(alpha: 0.14);
+    final Color secondarySoft = scheme.secondary.withValues(alpha: 0.1);
     return IgnorePointer(
       child: Stack(
         children: [
@@ -467,7 +468,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             right: -30,
             child: _buildGlowOrb(
               size: 220,
-              colors: const [Color(0x55B27BFF), Color(0x00B27BFF)],
+              colors: [primarySoft, primarySoft.withValues(alpha: 0)],
             ),
           ),
           Positioned(
@@ -475,7 +476,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             left: -70,
             child: _buildGlowOrb(
               size: 180,
-              colors: const [Color(0x4447C4FF), Color(0x0047C4FF)],
+              colors: [secondarySoft, secondarySoft.withValues(alpha: 0)],
             ),
           ),
           Positioned(
@@ -483,7 +484,10 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             right: -10,
             child: _buildGlowOrb(
               size: 180,
-              colors: const [Color(0x33FF6DB2), Color(0x00FF6DB2)],
+              colors: [
+                scheme.primary.withValues(alpha: 0.08),
+                Colors.transparent,
+              ],
             ),
           ),
         ],
@@ -509,6 +513,12 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     required Widget child,
     EdgeInsetsGeometry padding = const EdgeInsets.all(16),
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color panelFill = isDark
+        ? scheme.surface.withValues(alpha: 0.42)
+        : scheme.surface.withValues(alpha: 0.72);
+    final Color panelBorder = scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
@@ -518,13 +528,13 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           padding: padding,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
-            color: Colors.white.withValues(alpha: 0.08),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-            boxShadow: const [
+            color: panelFill,
+            border: Border.all(color: panelBorder),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x26000000),
+                color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
                 blurRadius: 32,
-                offset: Offset(0, 18),
+                offset: const Offset(0, 18),
               ),
             ],
           ),
@@ -535,48 +545,37 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildTermsAndPrivacy() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final TextStyle muted = TextStyle(
+      fontSize: 12,
+      color: scheme.onSurfaceVariant,
+    );
     return Column(
       children: [
-        const Text(
-          "By continuing, you agree to our",
-          style: TextStyle(
-            fontSize: 12,
-            color: Color(0xBFD6DBFF),
-          ),
-        ),
+        Text("By continuing, you agree to our", style: muted),
         const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TextButton(
-              onPressed: () {
-                _showTermsDialog();
-              },
-              child: const Text(
+              onPressed: _openTermsOfService,
+              child: Text(
                 "Terms of Service",
                 style: TextStyle(
                   fontSize: 12,
-                  color: Color(0xFF6137EB),
+                  color: scheme.primary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            const Text(
-              "and",
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xBFD6DBFF),
-              ),
-            ),
+            Text("and", style: muted),
             TextButton(
-              onPressed: () {
-                _showPrivacyDialog();
-              },
-              child: const Text(
+              onPressed: _openPrivacyPolicy,
+              child: Text(
                 "Privacy Policy",
                 style: TextStyle(
                   fontSize: 12,
-                  color: Color(0xFF6137EB),
+                  color: scheme.primary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -588,18 +587,19 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildSignUpSection() {
-    return const Row(
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           "Don't have an account?",
           style: TextStyle(
             fontSize: 14,
-            color: Color(0xFFDDE3FF),
+            color: scheme.onSurfaceVariant,
           ),
         ),
-        SizedBox(width: 4),
-        _SignupLink(),
+        const SizedBox(width: 4),
+        _SignupLink(scheme: scheme),
       ],
     );
   }
@@ -643,25 +643,19 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     }
   }
 
-  void _showTermsDialog() {
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => const TermsOfServiceView(),
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Terms of service coming soon!')),
+  void _openTermsOfService() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => const TermsAndPrivacyView(),
+      ),
     );
   }
 
-  void _showPrivacyDialog() {
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => const PrivacyPolicyView(),
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Privacy policy coming soon!')),
+  void _openPrivacyPolicy() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => const PrivacyPolicyView(),
+      ),
     );
   }
 }
@@ -709,7 +703,9 @@ class _PressableAuthButtonState extends State<_PressableAuthButton> {
 }
 
 class _SignupLink extends StatelessWidget {
-  const _SignupLink();
+  const _SignupLink({required this.scheme});
+
+  final ColorScheme scheme;
 
   @override
   Widget build(BuildContext context) {
@@ -719,11 +715,11 @@ class _SignupLink extends StatelessWidget {
           MaterialPageRoute(builder: (context) => const SignupView()),
         );
       },
-      child: const Text(
+      child: Text(
         "Sign up",
         style: TextStyle(
           fontSize: 14,
-          color: Color(0xFFFF6AA2),
+          color: scheme.secondary,
           fontWeight: FontWeight.w700,
         ),
       ),

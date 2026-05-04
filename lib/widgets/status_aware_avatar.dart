@@ -1,7 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/status_provider.dart';
+
 import '../models/user_status.dart';
+import '../providers/status_provider.dart';
+import '../utils/avatar_url_resolver.dart';
 
 /// StatusAwareAvatar - Displays user avatar with real-time online status indicator
 ///
@@ -31,8 +34,15 @@ class StatusAwareAvatar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch user's online status
     final statusAsync = ref.watch(userStatusProvider(userId));
+    final String? resolvedUrl = normalizeAvatarPhotoUrl(avatarURL);
+    final int cachePx = (radius * 2 * 2).round().clamp(48, 256);
+    final Widget fallback = placeholder ??
+        Icon(
+          Icons.person,
+          color: Colors.white.withValues(alpha: 0.7),
+          size: radius * 0.8,
+        );
 
     return SizedBox(
       width: radius * 2,
@@ -40,22 +50,31 @@ class StatusAwareAvatar extends ConsumerWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Avatar
-          CircleAvatar(
-            radius: radius,
-            backgroundColor:
-                backgroundColor ?? Colors.white.withValues(alpha: 0.2),
-            backgroundImage: avatarURL != null && avatarURL!.isNotEmpty
-                ? NetworkImage(avatarURL!)
-                : null,
-            child: avatarURL == null || avatarURL!.isEmpty
-                ? (placeholder ??
-                    Icon(
-                      Icons.person,
-                      color: Colors.white.withValues(alpha: 0.7),
-                      size: radius * 0.8,
-                    ))
-                : null,
+          Container(
+            width: radius * 2,
+            height: radius * 2,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: backgroundColor ?? Colors.white.withValues(alpha: 0.2),
+            ),
+            child: ClipOval(
+              child: resolvedUrl != null && resolvedUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: resolvedUrl,
+                      fit: BoxFit.cover,
+                      width: radius * 2,
+                      height: radius * 2,
+                      memCacheWidth: cachePx,
+                      memCacheHeight: cachePx,
+                      fadeInDuration: const Duration(milliseconds: 120),
+                      placeholder: (BuildContext context, String url) =>
+                          Center(child: fallback),
+                      errorWidget:
+                          (BuildContext context, String url, Object error) =>
+                              Center(child: fallback),
+                    )
+                  : Center(child: fallback),
+            ),
           ),
 
           // Online Status Indicator

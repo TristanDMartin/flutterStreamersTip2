@@ -16,8 +16,10 @@ import '../models/user_status.dart';
 import '../providers/status_provider.dart';
 import '../providers/support_tickets_provider.dart';
 import '../views/settings_view.dart';
-import 'admin_monitoring_panel.dart';
+import '../features/admin/widgets/admin_shield_button.dart';
+import '../features/admin/views/admin_control_center_view.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/st_theme_tokens.dart';
 
 class EditProfileView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -44,29 +46,96 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   bool _canChangeName = true;
   ProfileUpdateService? _profileUpdateService;
   bool _isAdmin = false;
+  bool _rulesAlignedAdmin = false;
 
   @override
   void initState() {
     super.initState();
     _user = Map.from(widget.user);
     _profileUpdateService = ProfileUpdateService();
+    _profileUpdateService!.addProfileViewListener(
+      _onProfileUpdateServiceChanged,
+    );
     _checkNameChangeEligibility();
+    _isAdmin = AdminService.userMapIndicatesAdmin(_user);
+    _checkAdminStatus();
+  }
+
+  void _onProfileUpdateServiceChanged() {
+    final Map<String, dynamic>? d = _profileUpdateService?.userData;
+    if (d == null || !mounted) {
+      return;
+    }
+    for (final String k in const <String>[
+      'role',
+      'isAdmin',
+      'admin',
+      'username',
+    ]) {
+      if (d.containsKey(k)) {
+        _user[k] = d[k];
+      }
+    }
     _checkAdminStatus();
   }
 
   Future<void> _checkAdminStatus() async {
-    final isAdmin = await AdminService.instance.isCurrentUserAdmin();
+    final bool uiAdmin =
+        await AdminService.instance.hasAdminUiAccess(cachedUserMap: _user);
+    final bool rulesAdmin =
+        await AdminService.instance.hasFirestoreRulesAdminAccess();
     if (mounted) {
       setState(() {
-        _isAdmin = isAdmin;
+        _isAdmin = uiAdmin;
+        _rulesAlignedAdmin = rulesAdmin;
       });
     }
   }
 
+  Future<bool> _refreshAdminAccess() async {
+    try {
+      await AdminService.instance.refreshIdTokenForAdminSession();
+      final bool rulesAdmin =
+          await AdminService.instance.hasFirestoreRulesAdminAccess();
+      if (mounted) {
+        setState(() {
+          _rulesAlignedAdmin = rulesAdmin;
+        });
+      }
+      return rulesAdmin;
+    } catch (e) {
+      debugPrint('⚠️ EditProfileView: admin access refresh failed: $e');
+      return false;
+    }
+  }
+
+  void _showAdminAccessPendingMessage() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Admin access is still syncing. Try again in a moment.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _openAdminControlCenter() {
+    if (!mounted) return;
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const AdminControlCenterView(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
-    // ✅ FIX #1: Clean up ProfileUpdateService to prevent memory leak
-    _profileUpdateService?.dispose();
+    _profileUpdateService?.removeProfileViewListener(
+      _onProfileUpdateServiceChanged,
+    );
     _profileUpdateService = null;
     super.dispose();
   }
@@ -269,6 +338,12 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       debugPrint('🔄 EditProfileView: Starting avatar upload process');
     }
 
+    final ProviderContainer container = ProviderScope.containerOf(context);
+    final AuthenticationService authService =
+        container.read(authServiceProvider);
+    final ScaffoldMessengerState scaffoldMessenger =
+        ScaffoldMessenger.of(context);
+
     setState(() {
       _isUploadingAvatar = true;
       _uploadError = null;
@@ -282,16 +357,13 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
       if (kDebugMode) {
         // ✅ FIX #2: Wrap in kDebugMode
-        final fileSize = await imageFile.length();
+        final int fileSize = await imageFile.length();
         debugPrint('📁 EditProfileView: File size: $fileSize bytes');
       }
 
-      // ✅ FIX #4: Capture context BEFORE async operations
-      final authService =
-          ProviderScope.containerOf(context).read(authServiceProvider);
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       if (kDebugMode) {
         // ✅ FIX #2: Wrap in kDebugMode
@@ -394,7 +466,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           errorMessage = e.toString().replaceAll('Exception: ', '');
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(errorMessage),
             backgroundColor: Colors.red,
@@ -515,42 +587,56 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Name Change Cooldown'), // cspell:ignore cooldown
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'You can only change your display name once every 7 days.',
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Last changed: ${_formatDate(_lastNameChangeDate!)}',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Next change available: ${_formatDate(nextChangeDate)}',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-            if (daysRemaining > 0) ...[
+      builder: (BuildContext dialogContext) {
+        final ColorScheme cs = Theme.of(dialogContext).colorScheme;
+        final Color on = cs.onSurface;
+        return AlertDialog(
+          title: const Text('Name Change Cooldown'), // cspell:ignore cooldown
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You can only change your display name once every 7 days.',
+                style: TextStyle(fontSize: 16, color: on),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Last changed: ${_formatDate(_lastNameChangeDate!)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: on.withValues(alpha: 0.55),
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
-                'Days remaining: $daysRemaining',
-                style: const TextStyle(fontSize: 14, color: Colors.orange),
+                'Next change available: ${_formatDate(nextChangeDate)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: on,
+                ),
               ),
+              if (daysRemaining > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Days remaining: $daysRemaining',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: StThemeColors.warningAmber,
+                  ),
+                ),
+              ],
             ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -604,13 +690,17 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 }
               },
             ),
-            loading: () => const Center(
-              child: CircularProgressIndicator(color: Colors.white),
+            loading: () => Center(
+              child: CircularProgressIndicator(
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
-            error: (error, stack) => const Center(
+            error: (Object error, StackTrace stack) => Center(
               child: Text(
                 'Error loading status',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           );
@@ -696,7 +786,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: AppColors.profileViewBackground,
+        color: Theme.of(context).colorScheme.surface,
         child: SafeArea(
           child: Column(
             children: [
@@ -723,15 +813,17 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildAppBar() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: on.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: cs.outline.withValues(alpha: 0.35),
             width: 1,
           ),
         ),
@@ -739,72 +831,54 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           children: [
             IconButton(
               onPressed: widget.onBack ?? () => Navigator.pop(context),
-              icon: const Icon(
+              icon: Icon(
                 Icons.arrow_back,
-                color: Colors.white,
+                color: on,
                 size: 22,
               ),
             ),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Edit profile',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: on,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
-          if (_isAdmin)
-            Consumer(
-              builder: (context, ref, child) {
-                final supportTickets = ref.watch(supportTicketsProvider);
-                final hasPendingTickets = supportTickets.pendingTickets > 0;
-
-                return IconButton(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AdminMonitoringPanel(),
-                      ),
-                    );
-                  },
-                  icon: Stack(
-                    children: [
-                      const Icon(
-                        Icons.admin_panel_settings,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                      if (hasPendingTickets)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.red,
-                                  blurRadius: 4,
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
+            if (_isAdmin) ...[
+              Consumer(
+                builder: (context, ref, child) {
+                  final SupportTicketsState supportTickets = _rulesAlignedAdmin
+                      ? ref.watch(supportTicketsProvider)
+                      : const SupportTicketsState();
+                  final bool hasPendingTickets =
+                      supportTickets.pendingTickets > 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: AdminShieldButton(
+                      showTicketBadge: hasPendingTickets,
+                      onPressed: () async {
+                        if (!_rulesAlignedAdmin) {
+                          final bool refreshed = await _refreshAdminAccess();
+                          if (refreshed) {
+                            _openAdminControlCenter();
+                            return;
+                          }
+                          _showAdminAccessPendingMessage();
+                          return;
+                        }
+                        _openAdminControlCenter();
+                      },
+                    ),
+                  );
+                },
+              ),
+            ],
             IconButton(
+              tooltip: 'Privacy & settings',
               onPressed: () {
                 HapticFeedback.lightImpact();
                 Navigator.push(
@@ -816,9 +890,9 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                   ),
                 );
               },
-              icon: const Icon(
-                Icons.shield,
-                color: Colors.white,
+              icon: Icon(
+                Icons.privacy_tip_outlined,
+                color: on,
                 size: 22,
               ),
             ),
@@ -829,14 +903,16 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildAvatarSection() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 10, 16, 6),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: on.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: cs.outline.withValues(alpha: 0.35),
           width: 1,
         ),
       ),
@@ -880,7 +956,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                         color: AppColors.supportAccent,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.24),
+                          color: on.withValues(alpha: 0.28),
                           width: 1,
                         ),
                         boxShadow: [
@@ -909,7 +985,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                   ? 'We are updating your profile image now.'
                   : 'Choose a photo or avatar that represents your profile.',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.66),
+                color: on.withValues(alpha: 0.66),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.35,
@@ -921,7 +997,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
               Text(
                 'Upload failed. Tap to try again.',
                 style: TextStyle(
-                  color: Colors.red[300],
+                  color: cs.error,
                   fontSize: 14,
                 ),
                 textAlign: TextAlign.center,
@@ -934,27 +1010,27 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildAvatarContent() {
-    // Show loading spinner during upload
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color fill = cs.surfaceContainerHighest;
     if (_isUploadingAvatar) {
       return Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF18122E),
+        decoration: BoxDecoration(
+          color: fill,
           shape: BoxShape.circle,
         ),
-        child: const Center(
+        child: Center(
           child: CircularProgressIndicator(
-            color: Colors.white,
+            color: cs.primary,
             strokeWidth: 3,
           ),
         ),
       );
     }
 
-    // Show selected image preview
     if (_selectedImage != null) {
       return Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF18122E),
+        decoration: BoxDecoration(
+          color: fill,
           shape: BoxShape.circle,
         ),
         child: ClipOval(
@@ -968,12 +1044,11 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       );
     }
 
-    // Show current avatar from URL
     if (_user['avatarURL'] != null &&
         _user['avatarURL'].toString().isNotEmpty) {
       return Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF18122E),
+        decoration: BoxDecoration(
+          color: fill,
           shape: BoxShape.circle,
         ),
         child: ClipOval(
@@ -982,16 +1057,21 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             width: 120,
             height: 120,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => const Icon(
+            errorBuilder:
+                (BuildContext context, Object error, StackTrace? stackTrace) =>
+                    Icon(
               Icons.person,
               size: 40,
-              color: Colors.grey,
+              color: cs.onSurface.withValues(alpha: 0.45),
             ),
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return const Center(
+            loadingBuilder:
+                (BuildContext context, Widget? child, ImageChunkEvent? p) {
+              if (p == null) {
+                return child!;
+              }
+              return Center(
                 child: CircularProgressIndicator(
-                  color: Colors.white,
+                  color: cs.primary,
                   strokeWidth: 2,
                 ),
               );
@@ -1001,28 +1081,29 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       );
     }
 
-    // Show default person icon
-    return const DecoratedBox(
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: Color(0xFF18122E),
+        color: fill,
         shape: BoxShape.circle,
       ),
       child: Center(
         child: Icon(
           Icons.person,
           size: 40,
-          color: Colors.grey,
+          color: cs.onSurface.withValues(alpha: 0.45),
         ),
       ),
     );
   }
 
   Widget _buildAvatarText() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     if (_isUploadingAvatar) {
-      return const Text(
+      return Text(
         'Uploading...',
         style: TextStyle(
-          color: Colors.white,
+          color: on,
           fontSize: 16,
           fontWeight: FontWeight.w500,
         ),
@@ -1030,20 +1111,20 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     }
 
     if (_uploadError != null) {
-      return const Text(
+      return Text(
         'Upload failed',
         style: TextStyle(
-          color: Colors.red,
+          color: cs.error,
           fontSize: 16,
           fontWeight: FontWeight.w500,
         ),
       );
     }
 
-    return const Text(
+    return Text(
       'Edit photo or avatar',
       style: TextStyle(
-        color: Colors.white,
+        color: on,
         fontSize: 16,
         fontWeight: FontWeight.w700,
       ),
@@ -1051,6 +1132,8 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildAboutYouSection() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Column(
@@ -1058,22 +1141,21 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
-            child: const Text(
+            child: Text(
               'About',
               style: TextStyle(
-                color: Colors.white,
+                color: on,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
-
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: on.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: cs.outline.withValues(alpha: 0.35),
                 width: 1,
               ),
             ),
@@ -1100,6 +1182,9 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildEditProfileRow(EditableField field, String value) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
+    final Color muted = on.withValues(alpha: 0.45);
     final isNameField = field == EditableField.name;
     final isLocked = isNameField && !_canChangeName;
 
@@ -1109,15 +1194,15 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           color: isLocked
-              ? Colors.white.withValues(alpha: 0.04)
-              : Colors.white.withValues(alpha: 0.02),
+              ? on.withValues(alpha: 0.06)
+              : on.withValues(alpha: 0.03),
         ),
         child: Row(
           children: [
             Text(
               field.title,
               style: TextStyle(
-                color: isLocked ? Colors.white54 : Colors.white,
+                color: isLocked ? muted : on,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -1128,9 +1213,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 child: Text(
                   value,
                   style: TextStyle(
-                    color: isLocked
-                        ? Colors.white54
-                        : Colors.white.withValues(alpha: 0.64),
+                    color: isLocked ? muted : on.withValues(alpha: 0.72),
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1140,16 +1223,16 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 ),
               ),
             if (isLocked) ...[
-              const Icon(
+              Icon(
                 Icons.lock,
-                color: Colors.grey,
+                color: muted,
                 size: 16,
               ),
               const SizedBox(width: 8),
             ],
             Icon(
               isLocked ? Icons.info_outline : Icons.chevron_right,
-              color: Colors.grey,
+              color: muted,
               size: 16,
             ),
           ],
@@ -1159,17 +1242,20 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildUsernameRow() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
+    final Color muted = on.withValues(alpha: 0.45);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
+        color: on.withValues(alpha: 0.03),
       ),
       child: Row(
         children: [
-          const Text(
+          Text(
             'Username',
             style: TextStyle(
-              color: Colors.white,
+              color: on,
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
@@ -1178,15 +1264,15 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           Text(
             '@${_user['username'] ?? ''}',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.64),
+              color: on.withValues(alpha: 0.72),
               fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(width: 8),
-          const Icon(
+          Icon(
             Icons.lock,
-            color: Colors.grey,
+            color: muted,
             size: 16,
           ),
         ],
@@ -1198,19 +1284,22 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     final platforms = _user['platforms'] as List<dynamic>? ?? [];
     final platformCount = platforms.length;
 
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
+    final Color muted = on.withValues(alpha: 0.45);
     return GestureDetector(
       onTap: _showLinksEditor,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.02),
+          color: on.withValues(alpha: 0.03),
         ),
         child: Row(
           children: [
-            const Text(
+            Text(
               'Platforms',
               style: TextStyle(
-                color: Colors.white,
+                color: on,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -1220,15 +1309,15 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
               Text(
                 '$platformCount platform${platformCount == 1 ? '' : 's'}',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.64),
+                  color: on.withValues(alpha: 0.72),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             const SizedBox(width: 8),
-            const Icon(
+            Icon(
               Icons.chevron_right,
-              color: Colors.grey,
+              color: muted,
               size: 16,
             ),
           ],
@@ -1248,19 +1337,22 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       hashtags = hashtagsData.split(',').map((e) => e.trim()).toList();
     }
 
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
+    final Color muted = on.withValues(alpha: 0.45);
     return GestureDetector(
       onTap: () => _showEditField(EditableField.hashtags),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.02),
+          color: on.withValues(alpha: 0.03),
         ),
         child: Row(
           children: [
-            const Text(
+            Text(
               'Hashtags',
               style: TextStyle(
-                color: Colors.white,
+                color: on,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -1270,8 +1362,8 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
               Expanded(
                 child: Text(
                   hashtags.join(', '),
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  style: TextStyle(
+                    color: on.withValues(alpha: 0.72),
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1280,9 +1372,9 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-            const Icon(
+            Icon(
               Icons.chevron_right,
-              color: Colors.grey,
+              color: muted,
               size: 16,
             ),
           ],
@@ -1292,21 +1384,24 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildDivider() {
+    final Color on = Theme.of(context).colorScheme.onSurface;
     return Container(
       margin: const EdgeInsets.only(left: 18),
       height: 1,
-      color: Colors.white.withValues(alpha: 0.08),
+      color: on.withValues(alpha: 0.1),
     );
   }
 
   Widget _buildFavoritesVisibilityRow() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
     final privacy = _user['privacy'] as Map<String, dynamic>? ?? {};
     final showFavoritesOnCard = privacy['showFavoritesOnCard'] ?? false;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
+        color: on.withValues(alpha: 0.03),
       ),
       child: Row(
         children: [
@@ -1314,10 +1409,10 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Show Favorites on your Streamer Card',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: on,
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1326,7 +1421,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 Text(
                   'Toggles visibility on your public Streamer Card only. Your Profile still shows Favorites to you.',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: on.withValues(alpha: 0.68),
                     fontSize: 12,
                     height: 1.35,
                   ),
@@ -1336,11 +1431,13 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           ),
           Switch(
             value: showFavoritesOnCard,
-            onChanged: (value) async {
+            onChanged: (bool value) async {
               await _updateFavoritesVisibility(value);
             },
-            activeColor: const Color(0xFF9248D2),
-            inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+            activeThumbColor: cs.primary,
+            activeTrackColor: cs.primary.withValues(alpha: 0.45),
+            inactiveTrackColor: on.withValues(alpha: 0.2),
+            inactiveThumbColor: on.withValues(alpha: 0.65),
           ),
         ],
       ),
@@ -1374,7 +1471,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                   ? 'Favorites are now visible on your Streamer Card'
                   : 'Favorites are now hidden on your Streamer Card',
             ),
-            backgroundColor: const Color(0xFF9248D2),
+            backgroundColor: Theme.of(context).colorScheme.primary,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -1392,7 +1489,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to update setting: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
@@ -1400,17 +1497,20 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildPreferencesSection() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color on = cs.onSurface;
+    final Color muted = on.withValues(alpha: 0.45);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
             child: Text(
               'Preferences',
               style: TextStyle(
-                color: Colors.white,
+                color: on,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
@@ -1418,10 +1518,10 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           ),
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: on.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: cs.outline.withValues(alpha: 0.35),
                 width: 1,
               ),
             ),
@@ -1431,111 +1531,111 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.02),
+                  color: on.withValues(alpha: 0.03),
                 ),
-              child: Consumer(
-                builder: (context, ref, child) {
-                  final statusAsync = ref.watch(statusNotifierProvider);
+                child: Consumer(
+                  builder:
+                      (BuildContext context, WidgetRef ref, Widget? child) {
+                    final statusAsync = ref.watch(statusNotifierProvider);
 
-                  return statusAsync.when(
-                    data: (presence) => Row(
-                      children: [
-                        const Text(
-                          'Online Status',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: _getStatusColor(presence.status),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: _getStatusColor(presence.status)
-                                    .withValues(alpha: 0.35),
-                                blurRadius: 6,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          presence.status.displayName,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.64),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(
-                          Icons.chevron_right,
-                          color: Colors.grey,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                    loading: () => const Row(
+                    return statusAsync.when(
+                      data: (presence) => Row(
                         children: [
                           Text(
                             'Online Status',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: on,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(presence.status),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _getStatusColor(presence.status)
+                                      .withValues(alpha: 0.35),
+                                  blurRadius: 6,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            presence.status.displayName,
+                            style: TextStyle(
+                              color: on.withValues(alpha: 0.72),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.chevron_right,
+                            color: muted,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                      loading: () => Row(
+                        children: [
+                          Text(
+                            'Online Status',
+                            style: TextStyle(
+                              color: on,
                               fontSize: 16,
                             ),
                           ),
-                          Spacer(),
+                          const Spacer(),
                           SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.grey),
+                              color: cs.primary,
                             ),
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Icon(
                             Icons.chevron_right,
-                            color: Colors.grey,
+                            color: muted,
                             size: 16,
                           ),
                         ],
                       ),
-                      error: (error, stack) => const Row(
+                      error: (Object error, StackTrace stack) => Row(
                         children: [
                           Text(
                             'Online Status',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: on,
                               fontSize: 16,
                             ),
                           ),
-                          Spacer(),
+                          const Spacer(),
                           Icon(
                             Icons.error_outline,
-                            color: Colors.red,
+                            color: cs.error,
                             size: 16,
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Text(
                             'Error',
                             style: TextStyle(
-                              color: Colors.red,
+                              color: cs.error,
                               fontSize: 16,
                             ),
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Icon(
                             Icons.chevron_right,
-                            color: Colors.grey,
+                            color: muted,
                             size: 16,
                           ),
                         ],

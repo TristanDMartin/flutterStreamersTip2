@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../constants/app_colors.dart';
 import '../../views/menu_view.dart';
 import 'profile_view_header_section.dart';
 import 'profile_view_tabbed_section.dart';
@@ -37,8 +36,9 @@ class ProfileViewFrontShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
+    final Color onSurface = Theme.of(context).colorScheme.onSurface;
     return ColoredBox(
-      color: AppColors.profileViewBackground,
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
@@ -51,18 +51,22 @@ class ProfileViewFrontShell extends StatelessWidget {
             backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              icon: Icon(Icons.arrow_back, color: onSurface),
               onPressed: onBack,
             ),
             actions: <Widget>[
               IconButton(
-                icon: const Icon(Icons.flip, color: Colors.white, size: 24),
+                icon: Icon(
+                  Icons.flip,
+                  color: onSurface,
+                  size: 24,
+                ),
                 onPressed: onFlip,
               ),
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.card_membership,
-                  color: Colors.white,
+                  color: onSurface,
                   size: 24,
                 ),
                 onPressed: onStreamerCard,
@@ -70,7 +74,7 @@ class ProfileViewFrontShell extends StatelessWidget {
               IconButton(
                 icon: Icon(
                   Icons.more_horiz,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: onSurface.withValues(alpha: 0.7),
                   size: 24,
                 ),
                 onPressed: () {

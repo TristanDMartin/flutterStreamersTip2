@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 import 'contact_support_view.dart';
 import 'terms_and_privacy_view.dart';
 
@@ -12,15 +13,17 @@ class AboutView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       appBar: AppBar(
-        backgroundColor: AppColors.supportTopSurface,
-        title: const Text(
+        backgroundColor: shell.panelSurface,
+        title: Text(
           'About',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: shell.onChrome),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: shell.onChrome),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -38,10 +41,10 @@ class AboutView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'StreamersTip',
               style: TextStyle(
-                color: Colors.white,
+                color: shell.onChrome,
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
@@ -50,7 +53,7 @@ class AboutView extends StatelessWidget {
             Text(
               'Version $version ($buildNumber)',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
+                color: shell.mutedStrong,
                 fontSize: 14,
               ),
             ),
@@ -58,26 +61,33 @@ class AboutView extends StatelessWidget {
             Text(
               'Connect • Create • Share',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8),
+                color: shell.muted,
                 fontSize: 16,
               ),
             ),
             const SizedBox(height: 32),
-            _buildExternalLink('Website', 'https://www.streamerstip.com'),
+            _buildExternalLink(
+              'Website',
+              'https://www.streamerstip.com',
+              scheme.primary,
+            ),
             _buildRouteLink(
               context,
               'Support',
               const ContactSupportView(),
+              scheme.primary,
             ),
             _buildRouteLink(
               context,
               'Privacy Policy',
               const TermsAndPrivacyView(),
+              scheme.primary,
             ),
             _buildRouteLink(
               context,
               'Terms of Service',
               const TermsAndPrivacyView(),
+              scheme.primary,
             ),
           ],
         ),
@@ -85,7 +95,7 @@ class AboutView extends StatelessWidget {
     );
   }
 
-  Widget _buildExternalLink(String label, String url) {
+  Widget _buildExternalLink(String label, String url, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: InkWell(
@@ -95,8 +105,8 @@ class AboutView extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(
-                color: AppColors.supportAccent,
+              style: TextStyle(
+                color: color,
                 fontSize: 16,
                 decoration: TextDecoration.underline,
               ),
@@ -111,6 +121,7 @@ class AboutView extends StatelessWidget {
     BuildContext context,
     String label,
     Widget page,
+    Color color,
   ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -125,8 +136,8 @@ class AboutView extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(
-                color: AppColors.supportAccent,
+              style: TextStyle(
+                color: color,
                 fontSize: 16,
                 decoration: TextDecoration.underline,
               ),

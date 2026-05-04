@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
 import '../widgets/optimized_image.dart';
@@ -121,6 +122,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     // Get actual user management from Riverpod
     final auth = ref.watch(authServiceProvider);
     final currentUserId = auth.currentUser?.id;
@@ -166,17 +168,17 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 decoration: BoxDecoration(
                   color: _isPressed
                       ? AppColors.primary.withValues(alpha: 0.12)
-                      : Colors.white.withValues(alpha: 0.05),
+                      : shell.surfaceCard,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: _isPressed
                         ? AppColors.primary.withValues(alpha: 0.35)
-                        : Colors.white.withValues(alpha: 0.10),
+                        : shell.surfaceCardBorder,
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
+                      color: shell.shadowSoft,
                       blurRadius: 16,
                       offset: const Offset(0, 8),
                     ),
@@ -187,20 +189,25 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                     Row(
                       children: [
                         // Avatar with ring
-                        _buildAvatarWithRing(),
+                        _buildAvatarWithRing(context, shell),
 
                         const SizedBox(width: 16),
 
                         // Notification text
                         Expanded(
-                          child: _buildNotificationText(),
+                          child: _buildNotificationText(shell),
                         ),
 
                         const SizedBox(width: 16),
 
                         // Action item
                         _buildActionItem(
-                            isFollowing, isMutualFollow, currentUserId),
+                          context,
+                          shell,
+                          isFollowing,
+                          isMutualFollow,
+                          currentUserId,
+                        ),
                       ],
                     ),
 
@@ -232,13 +239,14 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                               color: Colors.black.withValues(alpha: 0.7),
                               shape: BoxShape.circle,
                             ),
-                            child: const SizedBox(
+                            child: SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  shell.onChrome,
+                                ),
                               ),
                             ),
                           ),
@@ -254,9 +262,13 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     );
   }
 
-  Widget _buildAvatarWithRing() {
+  Widget _buildAvatarWithRing(
+    BuildContext context,
+    StSupportShellStyle shell,
+  ) {
     final user = widget.notification.user;
     final avatarURL = user.avatarURL ?? '';
+    final Color ringOuter = Theme.of(context).colorScheme.surface;
 
     return GestureDetector(
       onTap: _handleActorTap,
@@ -269,7 +281,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.22),
+                color: shell.surfaceCardBorder.withValues(alpha: 0.8),
                 width: 2,
               ),
             ),
@@ -284,15 +296,15 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                       placeholder: (_, __) => Container(
                         width: 40,
                         height: 40,
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: shell.skeletonFill,
                       ),
                       errorWidget: (_, __, ___) => Container(
                         width: 40,
                         height: 40,
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: shell.skeletonLineDim,
                         child: Icon(
                           Icons.person_rounded,
-                          color: Colors.white.withValues(alpha: 0.45),
+                          color: shell.iconDim,
                           size: 22,
                         ),
                       ),
@@ -301,12 +313,12 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: shell.skeletonLineDim,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         Icons.person_rounded,
-                        color: Colors.white.withValues(alpha: 0.45),
+                        color: shell.iconDim,
                         size: 22,
                       ),
                     ),
@@ -338,7 +350,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                   color: Colors.green,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white,
+                    color: ringOuter,
                     width: 2,
                   ),
                 ),
@@ -349,7 +361,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     );
   }
 
-  Widget _buildNotificationText() {
+  Widget _buildNotificationText(StSupportShellStyle shell) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -357,7 +369,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           text: TextSpan(
             style: TextStyle(
               fontSize: 15,
-              color: Colors.white.withValues(alpha: 0.96),
+              color: shell.onChrome.withValues(alpha: 0.96),
               height: 1.32,
             ),
             children: [
@@ -369,8 +381,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                   onTap: _handleActorTap,
                   child: Text(
                     widget.notification.user.displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: shell.onChrome,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       height: 1.32,
@@ -381,7 +393,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               TextSpan(
                 text: ' ${_getNotificationMessage()}',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.82),
+                  color: shell.muted,
                   fontWeight: FontWeight.w400,
                 ),
               ),
@@ -399,7 +411,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               child: Text(
                 '@${widget.notification.user.username}',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
+                  color: shell.mutedStrong,
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
@@ -410,7 +422,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               width: 4,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.4),
+                color: shell.iconDim,
                 shape: BoxShape.circle,
               ),
             ),
@@ -418,7 +430,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             Text(
               _getTimestampString(),
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
+                color: shell.mutedStrong,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
@@ -430,7 +442,12 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   }
 
   Widget _buildActionItem(
-      bool isFollowing, bool isMutualFollow, String? currentUserId) {
+    BuildContext context,
+    StSupportShellStyle shell,
+    bool isFollowing,
+    bool isMutualFollow,
+    String? currentUserId,
+  ) {
     if (widget.notification.postThumbnailUrl != null &&
         widget.notification.postThumbnailUrl!.isNotEmpty) {
       return GestureDetector(
@@ -444,12 +461,12 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.3),
+              color: shell.surfaceCardBorder,
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
+                color: shell.shadowSoft,
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
@@ -463,38 +480,38 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               height: 50,
               fit: BoxFit.cover,
               placeholder: Container(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: shell.skeletonFill,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.play_circle_outline,
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: shell.muted,
                       size: 20,
                     ),
                     const SizedBox(height: 2),
                     Icon(
                       Icons.photo,
-                      color: Colors.white.withValues(alpha: 0.4),
+                      color: shell.iconDim,
                       size: 12,
                     ),
                   ],
                 ),
               ),
               errorWidget: Container(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: shell.skeletonFill,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.play_circle_outline,
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: shell.muted,
                       size: 20,
                     ),
                     const SizedBox(height: 2),
                     Icon(
                       Icons.photo,
-                      color: Colors.white.withValues(alpha: 0.4),
+                      color: shell.iconDim,
                       size: 12,
                     ),
                   ],
@@ -532,13 +549,15 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 ),
               ],
             ),
-            child: _isLoadingFollowStatus
-                ? const SizedBox(
+                    child: _isLoadingFollowStatus
+                ? SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.onPrimary,
+                      ),
                     ),
                   )
                 : Text(
@@ -546,8 +565,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                       isFollowing: isFollowing,
                       isMutualFollow: isMutualFollow,
                     ),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimary,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),

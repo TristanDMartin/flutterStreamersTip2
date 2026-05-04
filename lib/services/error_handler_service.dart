@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'network_error_handler.dart';
@@ -8,6 +9,12 @@ class ErrorHandlerService {
       _instance ??= ErrorHandlerService._();
 
   ErrorHandlerService._();
+
+  static bool _isIgnorableFirestorePermissionDenied(Object error) {
+    return error is FirebaseException &&
+        error.plugin == 'cloud_firestore' &&
+        error.code == 'permission-denied';
+  }
 
   // Initialize error handling
   void initialize() {
@@ -29,6 +36,13 @@ class ErrorHandlerService {
   void _handleFlutterError(FlutterErrorDetails details) {
     debugPrint('🚨 Flutter Error: ${details.exception}');
     debugPrint('📍 Stack trace: ${details.stack}');
+    if (_isIgnorableFirestorePermissionDenied(details.exception)) {
+      debugPrint(
+        'ℹ️ Firestore permission-denied (no global snackbar): '
+        '${details.exception}',
+      );
+      return;
+    }
 
     // Check if it's a network-related error
     String userMessage;
@@ -55,6 +69,10 @@ class ErrorHandlerService {
   void _handlePlatformError(Object error, StackTrace stack) {
     debugPrint('🚨 Platform Error: $error');
     debugPrint('📍 Stack trace: $stack');
+    if (_isIgnorableFirestorePermissionDenied(error)) {
+      debugPrint('ℹ️ Firestore permission-denied (no global snackbar): $error');
+      return;
+    }
 
     // Check if it's a network-related error
     String userMessage;

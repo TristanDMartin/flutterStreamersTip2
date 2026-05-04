@@ -20,6 +20,8 @@ class UpgradeView extends StatefulWidget {
 }
 
 class _UpgradeViewState extends State<UpgradeView> {
+  Color get _on => Theme.of(context).colorScheme.onSurface;
+  Color get _onP => Theme.of(context).colorScheme.onPrimary;
   static const Set<String> _bypassStudioUids = {
     'bU0RxyZ2L4ULAv1Co5L4f825yV73',
     'jsmbQMLQjoUyC5cUFvkrRbi9mkp1',
@@ -198,7 +200,7 @@ class _UpgradeViewState extends State<UpgradeView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -306,7 +308,7 @@ class _UpgradeViewState extends State<UpgradeView> {
                 'checkout links here unless you use an approved external '
                 'purchase flow for your region.',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.62),
+                  color: _on.withValues(alpha: 0.62),
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
@@ -323,10 +325,10 @@ class _UpgradeViewState extends State<UpgradeView> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: _on.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: _on.withValues(alpha: 0.1),
         ),
       ),
       child: Column(
@@ -335,7 +337,7 @@ class _UpgradeViewState extends State<UpgradeView> {
           Text(
             'Apple & Google subscriptions',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.72),
+              color: _on.withValues(alpha: 0.72),
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
@@ -395,7 +397,7 @@ class _UpgradeViewState extends State<UpgradeView> {
             Text(
               _iap.lastRecoverableHint!,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75),
+                color: _on.withValues(alpha: 0.75),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -419,10 +421,10 @@ class _UpgradeViewState extends State<UpgradeView> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: _on.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: _on.withValues(alpha: 0.12),
         ),
       ),
       child: Row(
@@ -431,20 +433,20 @@ class _UpgradeViewState extends State<UpgradeView> {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: _on.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
             child: _isLoadingTier
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: _on,
                     ),
                   )
-                : const Icon(
+                : Icon(
                     Icons.verified_rounded,
-                    color: Colors.white,
+                    color: _on,
                     size: 24,
                   ),
           ),
@@ -456,7 +458,7 @@ class _UpgradeViewState extends State<UpgradeView> {
                 Text(
                   'Current plan',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.64),
+                    color: _on.withValues(alpha: 0.64),
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
@@ -466,8 +468,8 @@ class _UpgradeViewState extends State<UpgradeView> {
                   _isLoadingTier
                       ? 'Checking your subscription...'
                       : '${_tierLabel(_resolvedTier)} · ${_statusLabel(_subscriptionStatus)}',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: _on,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
@@ -484,27 +486,27 @@ class _UpgradeViewState extends State<UpgradeView> {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: _on.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.14),
+          color: _on.withValues(alpha: 0.14),
         ),
       ),
       child: Row(
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: _on.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: _on.withValues(alpha: 0.12),
               ),
             ),
             child: IconButton(
               onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(
+              icon: Icon(
                 Icons.arrow_back,
-                color: Colors.white,
+                color: _on,
                 size: 22,
               ),
             ),
@@ -513,10 +515,10 @@ class _UpgradeViewState extends State<UpgradeView> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Upgrade',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _on,
                   fontSize: 26,
                   fontWeight: FontWeight.w900,
                   height: 1.0,
@@ -526,7 +528,7 @@ class _UpgradeViewState extends State<UpgradeView> {
               Text(
                 'Choose the tier that fits your creator journey',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.68),
+                  color: _on.withValues(alpha: 0.68),
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -550,11 +552,11 @@ class _UpgradeViewState extends State<UpgradeView> {
         ),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.18),
+          color: _on.withValues(alpha: 0.18),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
+            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.2),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -567,20 +569,20 @@ class _UpgradeViewState extends State<UpgradeView> {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
+              color: _onP.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.workspace_premium_rounded,
-              color: Colors.white,
+              color: _onP,
               size: 28,
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             'Pick the same tier model used across the website, backend, and creator tools.',
             style: TextStyle(
-              color: Colors.white,
+              color: _onP,
               fontSize: 24,
               fontWeight: FontWeight.w900,
               height: 1.15,
@@ -590,7 +592,7 @@ class _UpgradeViewState extends State<UpgradeView> {
           Text(
             'Starter keeps things lightweight, Pro unlocks serious publishing power, and Studio adds advanced analytics, automation, and team features.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.86),
+              color: _onP.withValues(alpha: 0.9),
               fontSize: 14,
               fontWeight: FontWeight.w500,
               height: 1.35,
@@ -619,14 +621,14 @@ class _UpgradeViewState extends State<UpgradeView> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(
+        color: _on.withValues(
           alpha: isCurrentTier
               ? 0.12
               : (isFeatured ? 0.1 : 0.07),
         ),
         borderRadius: BorderRadius.circular(26),
         border: Border.all(
-          color: Colors.white.withValues(
+          color: _on.withValues(
             alpha: isCurrentTier
                 ? 0.26
                 : (isFeatured ? 0.18 : 0.1),
@@ -651,16 +653,16 @@ class _UpgradeViewState extends State<UpgradeView> {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
+                          color: _on.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.14),
+                            color: _on.withValues(alpha: 0.14),
                           ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Current Plan',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: _on,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                           ),
@@ -679,10 +681,10 @@ class _UpgradeViewState extends State<UpgradeView> {
                           ),
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Most Popular',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: _onP,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                           ),
@@ -690,8 +692,8 @@ class _UpgradeViewState extends State<UpgradeView> {
                       ),
                     Text(
                       name,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: _on,
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
                         height: 1.0,
@@ -703,8 +705,8 @@ class _UpgradeViewState extends State<UpgradeView> {
                         children: [
                           TextSpan(
                             text: price,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: _on,
                               fontSize: 30,
                               fontWeight: FontWeight.w900,
                             ),
@@ -712,7 +714,7 @@ class _UpgradeViewState extends State<UpgradeView> {
                           TextSpan(
                             text: cadence,
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.68),
+                              color: _on.withValues(alpha: 0.68),
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
@@ -725,7 +727,7 @@ class _UpgradeViewState extends State<UpgradeView> {
                       Text(
                         secondaryPrice,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.66),
+                          color: _on.withValues(alpha: 0.66),
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
@@ -735,7 +737,7 @@ class _UpgradeViewState extends State<UpgradeView> {
                     Text(
                       description,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.74),
+                        color: _on.withValues(alpha: 0.74),
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                         height: 1.35,
@@ -748,12 +750,12 @@ class _UpgradeViewState extends State<UpgradeView> {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: _on.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.auto_awesome_rounded,
-                  color: Colors.white,
+                  color: _on,
                   size: 24,
                 ),
               ),
@@ -771,12 +773,12 @@ class _UpgradeViewState extends State<UpgradeView> {
                     width: 18,
                     height: 18,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
+                      color: _on.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.check,
-                      color: Colors.white,
+                      color: _on,
                       size: 12,
                     ),
                   ),
@@ -785,7 +787,7 @@ class _UpgradeViewState extends State<UpgradeView> {
                     child: Text(
                       feature,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.82),
+                        color: _on.withValues(alpha: 0.82),
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                         height: 1.3,
@@ -820,14 +822,14 @@ class _UpgradeViewState extends State<UpgradeView> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: isFeatured
                     ? AppColors.supportAccent
-                    : Colors.white.withValues(alpha: 0.1),
-                foregroundColor: Colors.white,
+                    : _on.withValues(alpha: 0.1),
+                foregroundColor: isFeatured ? _onP : _on,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                   side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: _on.withValues(alpha: 0.12),
                   ),
                 ),
               ),

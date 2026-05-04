@@ -278,7 +278,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final Color on = colorScheme.onSurface;
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody:
           true, // This allows content to extend behind the bottom navigation
       body: PageView(
@@ -290,8 +293,8 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
           _syncPlaybackForCurrentTab();
         },
-        // Disable horizontal swipe gestures when on HomeView (index 0) to allow left/right swipes for StreamerCardView
-        // Disable swipe gestures when on NetworkView (index 1)
+        // Disable horizontal swipe on Home / Network so nested horizontal
+        // gestures (e.g. StreamerCardView) are not stolen.
         physics: _currentIndex == 0 || _currentIndex == 1
             ? const NeverScrollableScrollPhysics()
             : const ClampingScrollPhysics(),
@@ -301,28 +304,42 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.add_circle, size: 80, color: Colors.grey),
-                SizedBox(height: 16),
+              children: [
+                Icon(
+                  Icons.add_circle,
+                  size: 80,
+                  color: on.withValues(alpha: 0.45),
+                ),
+                const SizedBox(height: 16),
                 Text(
                   'Create Content',
-                  style: TextStyle(fontSize: 24, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 24,
+                    color: on.withValues(alpha: 0.6),
+                  ),
                 ),
                 Text(
                   'Tap the + button',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: on.withValues(alpha: 0.5),
+                  ),
                 ),
               ],
             ),
           ),
-          const Center(
-            child: Icon(Icons.mail_outline, size: 80, color: Colors.grey),
+          Center(
+            child: Icon(
+              Icons.mail_outline,
+              size: 80,
+              color: on.withValues(alpha: 0.45),
+            ),
           ),
-          const Center(
+          Center(
             child: Icon(
               Icons.account_circle_outlined,
               size: 80,
-              color: Colors.grey,
+              color: on.withValues(alpha: 0.45),
             ),
           ),
         ],

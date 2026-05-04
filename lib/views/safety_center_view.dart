@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 import 'community_guidelines_view.dart';
 import 'contact_support_view.dart';
 
@@ -8,15 +8,16 @@ class SafetyCenterView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       appBar: AppBar(
-        backgroundColor: AppColors.supportTopSurface,
-        title: const Text(
+        backgroundColor: shell.panelSurface,
+        title: Text(
           'Safety Center',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: shell.onChrome),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: shell.onChrome),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -24,9 +25,10 @@ class SafetyCenterView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSection(
+              context,
               'Your Safety Matters',
               'StreamersTip is committed to keeping our community safe. '
-              'Learn about our safety features and how to protect yourself.',
+                  'Learn about our safety features and how to protect yourself.',
             ),
             const SizedBox(height: 24),
             _buildFeature(
@@ -49,6 +51,7 @@ class SafetyCenterView extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             _buildSection(
+              context,
               'Need Help?',
               'If you or someone you know needs support, reach out to our team.',
             ),
@@ -77,14 +80,15 @@ class SafetyCenterView extends StatelessWidget {
     );
   }
 
-  Widget _buildSection(String title, String body) {
+  Widget _buildSection(BuildContext context, String title, String body) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: shell.onChrome,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
@@ -93,7 +97,7 @@ class SafetyCenterView extends StatelessWidget {
         Text(
           body,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.8),
+            color: shell.muted,
             fontSize: 16,
             height: 1.5,
           ),
@@ -108,12 +112,14 @@ class SafetyCenterView extends StatelessWidget {
     String title,
     String subtitle,
   ) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.supportAccent, size: 28),
+          Icon(icon, color: scheme.primary, size: 28),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -121,8 +127,8 @@ class SafetyCenterView extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: shell.onChrome,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -131,7 +137,7 @@ class SafetyCenterView extends StatelessWidget {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: shell.muted,
                     fontSize: 14,
                     height: 1.4,
                   ),
@@ -149,14 +155,15 @@ class SafetyCenterView extends StatelessWidget {
     String label, {
     required VoidCallback onTap,
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: onTap,
         child: Text(
           label,
-          style: const TextStyle(
-            color: AppColors.supportAccent,
+          style: TextStyle(
+            color: scheme.primary,
             fontSize: 16,
             decoration: TextDecoration.underline,
           ),

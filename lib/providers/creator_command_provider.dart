@@ -11,20 +11,10 @@ import 'current_user_provider.dart';
 final Provider<FirebaseFirestore> creatorCommandFirestoreProvider =
     Provider<FirebaseFirestore>((Ref ref) => FirebaseFirestore.instance);
 
-final StreamProvider<Map<String, dynamic>?> creatorCommandIdentityProvider =
-    StreamProvider<Map<String, dynamic>?>((Ref ref) {
-  return ref.watch(currentUserStreamProvider.stream);
-});
-
-final StreamProvider<UserProgressBundle> creatorCommandProgressProvider =
-    StreamProvider<UserProgressBundle>((Ref ref) {
-  return ref.watch(userProgressBundleProvider.stream);
-});
-
 final StreamProvider<List<Map<String, dynamic>>> creatorCommandScheduledPostsProvider =
     StreamProvider<List<Map<String, dynamic>>>((Ref ref) {
   final AsyncValue<Map<String, dynamic>?> identity =
-      ref.watch(creatorCommandIdentityProvider);
+      ref.watch(currentUserStreamProvider);
   final String? userId = identity.valueOrNull?['id'] as String?;
   if (userId == null || userId.isEmpty) {
     return Stream<List<Map<String, dynamic>>>.value(const <Map<String, dynamic>>[]);
@@ -45,7 +35,7 @@ final StreamProvider<List<Map<String, dynamic>>> creatorCommandScheduledPostsPro
 final StreamProvider<int> creatorCommandDraftCountProvider =
     StreamProvider<int>((Ref ref) {
   final AsyncValue<Map<String, dynamic>?> identity =
-      ref.watch(creatorCommandIdentityProvider);
+      ref.watch(currentUserStreamProvider);
   final String? userId = identity.valueOrNull?['id'] as String?;
   if (userId == null || userId.isEmpty) {
     return Stream<int>.value(0);
@@ -63,7 +53,7 @@ final StreamProvider<int> creatorCommandDraftCountProvider =
 final StreamProvider<Map<String, dynamic>?> creatorCommandMetricsProvider =
     StreamProvider<Map<String, dynamic>?>((Ref ref) {
   final AsyncValue<Map<String, dynamic>?> identity =
-      ref.watch(creatorCommandIdentityProvider);
+      ref.watch(currentUserStreamProvider);
   final String? userId = identity.valueOrNull?['id'] as String?;
   if (userId == null || userId.isEmpty) {
     return Stream<Map<String, dynamic>?>.value(null);
@@ -78,7 +68,7 @@ final StreamProvider<Map<String, dynamic>?> creatorCommandMetricsProvider =
 final StreamProvider<List<Map<String, dynamic>>> creatorCommandRecentVideosProvider =
     StreamProvider<List<Map<String, dynamic>>>((Ref ref) {
   final AsyncValue<Map<String, dynamic>?> identity =
-      ref.watch(creatorCommandIdentityProvider);
+      ref.watch(currentUserStreamProvider);
   final String? userId = identity.valueOrNull?['id'] as String?;
   if (userId == null || userId.isEmpty) {
     return Stream<List<Map<String, dynamic>>>.value(const <Map<String, dynamic>>[]);
@@ -111,9 +101,9 @@ final StreamProvider<List<Map<String, dynamic>>> creatorCommandRecentVideosProvi
 final Provider<AsyncValue<CreatorCommandSnapshot?>> creatorCommandSnapshotProvider =
     Provider<AsyncValue<CreatorCommandSnapshot?>>((Ref ref) {
   final AsyncValue<Map<String, dynamic>?> identity =
-      ref.watch(creatorCommandIdentityProvider);
+      ref.watch(currentUserStreamProvider);
   final AsyncValue<UserProgressBundle> progress =
-      ref.watch(creatorCommandProgressProvider);
+      ref.watch(userProgressBundleProvider);
   final AsyncValue<List<Map<String, dynamic>>> scheduledPosts =
       ref.watch(creatorCommandScheduledPostsProvider);
   final AsyncValue<int> draftCount = ref.watch(creatorCommandDraftCountProvider);
@@ -180,29 +170,34 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
   });
 
   final DateTime now = DateTime.now();
-  final List<Map<String, dynamic>> actionablePosts = creatorPosts
+  final List<Map<String, dynamic>> plannerPosts = creatorPosts
       .where((Map<String, dynamic> post) {
     final String status = (post['status'] as String? ?? '').toLowerCase();
-    return status == 'scheduled' || status == 'publishing' || status == 'published';
+    return status == 'scheduled' ||
+        status == 'publishing' ||
+        status == 'draft';
   }).toList(growable: false);
-  final List<Map<String, dynamic>> duePosts = actionablePosts
+  final List<Map<String, dynamic>> queuePosts = creatorPosts
       .where((Map<String, dynamic> post) {
-    final DateTime? dueAt = _readScheduledAt(post);
-    return dueAt != null;
-  })
+    final String status = (post['status'] as String? ?? '').toLowerCase();
+    return status == 'scheduled' || status == 'publishing';
+  }).toList(growable: false);
+  final int scheduledQueueCount = queuePosts.length;
+  final List<Map<String, dynamic>> duePosts = queuePosts
+      .where((Map<String, dynamic> post) => _readScheduledAt(post) != null)
       .toList(growable: false);
-
   duePosts.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
     final DateTime aTime = _readScheduledAt(a)!;
     final DateTime bTime = _readScheduledAt(b)!;
     return aTime.compareTo(bTime);
   });
-
-  final Map<String, dynamic>? nextPost = duePosts.isEmpty ? null : duePosts.first;
-  final DateTime? nextPostDueAt = nextPost == null ? null : _readScheduledAt(nextPost);
-  final bool nextPostOverdue = nextPostDueAt != null && nextPostDueAt.isBefore(now);
-
-  final int alertCount = actionablePosts.where((Map<String, dynamic> post) {
+  final Map<String, dynamic>? nextPost =
+      duePosts.isEmpty ? null : duePosts.first;
+  final DateTime? nextPostDueAt =
+      nextPost == null ? null : _readScheduledAt(nextPost);
+  final bool nextPostOverdue =
+      nextPostDueAt != null && nextPostDueAt.isBefore(now);
+  final int alertCount = plannerPosts.where((Map<String, dynamic> post) {
     final bool requiresAttention =
         post['metadata']?['requiresCreatorAttention'] as bool? ??
             post['requiresCreatorAttention'] as bool? ??
@@ -237,6 +232,7 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
     alertCount: alertCount,
     requiresAttentionCount: alertCount,
     pendingWorkCount: draftCount,
+    scheduledQueueCount: scheduledQueueCount,
     growthPercent: growthVelocity == null ? null : growthVelocity * 100,
     nextPostDueAt: nextPostDueAt,
     nextPostOverdue: nextPostOverdue,
@@ -251,20 +247,45 @@ DateTime? _readVideoCreatedAt(Map<String, dynamic> video) {
   return null;
 }
 
+DateTime? _coerceToDateTime(Object? raw) {
+  if (raw is Timestamp) return raw.toDate();
+  if (raw is DateTime) return raw;
+  if (raw is String) return DateTime.tryParse(raw);
+  return null;
+}
+
 DateTime? _readScheduledAt(Map<String, dynamic>? post) {
   if (post == null) return null;
+  final List<DateTime> candidates = <DateTime>[];
   final Object? schedule = post['schedule'];
   if (schedule is Map<String, dynamic>) {
-    final Object? raw = schedule['scheduledAtUtc'];
-    if (raw is Timestamp) return raw.toDate();
-    if (raw is DateTime) return raw;
-    if (raw is String) return DateTime.tryParse(raw);
+    final DateTime? root = _coerceToDateTime(schedule['scheduledAtUtc']);
+    if (root != null) candidates.add(root);
+    final Object? perRaw = schedule['perPlatform'];
+    if (perRaw is Map<String, dynamic>) {
+      for (final Object? value in perRaw.values) {
+        if (value is Map<String, dynamic>) {
+          final DateTime? t = _coerceToDateTime(value['scheduledAtUtc']);
+          if (t != null) candidates.add(t);
+        }
+      }
+    }
   }
-  final Object? root = post['scheduledAtUtc'];
-  if (root is Timestamp) return root.toDate();
-  if (root is DateTime) return root;
-  if (root is String) return DateTime.tryParse(root);
-  return null;
+  final DateTime? docRoot = _coerceToDateTime(post['scheduledAtUtc']);
+  if (docRoot != null) candidates.add(docRoot);
+  final List<dynamic>? platforms = post['platforms'] as List<dynamic>?;
+  if (platforms != null) {
+    for (final Object? rawPlatform in platforms) {
+      if (rawPlatform is! Map<String, dynamic>) continue;
+      final bool enabled = rawPlatform['enabled'] as bool? ?? true;
+      if (!enabled) continue;
+      final DateTime? t = _coerceToDateTime(rawPlatform['scheduledAtUtc']);
+      if (t != null) candidates.add(t);
+    }
+  }
+  if (candidates.isEmpty) return null;
+  candidates.sort((DateTime a, DateTime b) => a.compareTo(b));
+  return candidates.first;
 }
 
 double? _readDouble(Map<String, dynamic>? source, List<String> keys) {

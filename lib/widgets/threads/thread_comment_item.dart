@@ -4,6 +4,7 @@ import '../../models/forum_comment.dart';
 import '../../services/forum_service.dart';
 import '../../services/report_service.dart';
 import '../../constants/app_colors.dart';
+import '../../core/theme/support_shell_style.dart';
 import '../../routing/app_navigator.dart';
 import 'discussion_author_row.dart';
 
@@ -104,6 +105,8 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final isLiked = user != null && widget.comment.likedBy.contains(user!.uid);
     final isDisliked =
         user != null && widget.comment.dislikedBy.contains(user!.uid);
@@ -114,10 +117,10 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.5),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppColors.borderPrimary.withValues(alpha: 0.3),
+          color: shell.surfaceCardBorder,
           width: 1,
         ),
       ),
@@ -149,8 +152,8 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                           : widget.comment.content,
                       style: TextStyle(
                         color: widget.comment.deleted
-                            ? AppColors.textTertiary
-                            : AppColors.textPrimary,
+                            ? shell.muted
+                            : shell.onChrome,
                         fontSize: 14,
                         fontStyle: widget.comment.deleted
                             ? FontStyle.italic
@@ -172,29 +175,33 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _buildActionButton(
+                context,
                 icon: Icons.favorite_outline,
                 filledIcon: Icons.favorite,
                 label: '${widget.comment.likes}',
                 isActive: isLiked,
                 onTap: widget.onLike,
-                activeColor: AppColors.primary,
+                activeColor: scheme.primary,
               ),
               _buildActionButton(
+                context,
                 icon: Icons.thumb_down_outlined,
                 filledIcon: Icons.thumb_down,
                 label: '${widget.comment.dislikes}',
                 isActive: isDisliked,
                 onTap: widget.onDislike,
-                activeColor: Colors.red,
+                activeColor: scheme.error,
               ),
               if (user != null && !widget.comment.deleted)
                 _buildActionButton(
+                  context,
                   icon: Icons.reply_outlined,
                   label: 'Reply',
                   onTap: () => widget.onReply(widget.comment),
                 ),
               if (hasReplies)
                 _buildActionButton(
+                  context,
                   icon:
                       widget.isExpanded ? Icons.expand_less : Icons.expand_more,
                   label: widget.isExpanded
@@ -206,14 +213,16 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                   user!.uid != widget.comment.author.uid &&
                   !widget.comment.deleted)
                 _buildTextAction(
+                  context,
                   label: 'Report',
-                  color: AppColors.textSecondary,
+                  color: shell.muted,
                   onTap: _reportComment,
                 ),
               if (isAuthor && !widget.comment.deleted)
                 _buildTextAction(
+                  context,
                   label: 'Delete',
-                  color: Colors.red,
+                  color: scheme.error,
                   onTap: widget.onDelete,
                 ),
             ],
@@ -232,7 +241,8 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildActionButton(
+    BuildContext context, {
     required IconData icon,
     IconData? filledIcon,
     String? label,
@@ -240,16 +250,19 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
     required VoidCallback onTap,
     Color? activeColor,
   }) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final Color resolvedActive = activeColor ?? scheme.primary;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.04),
+          color: shell.chipUnselectedBg,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: shell.surfaceCardBorder,
           ),
         ),
         child: Row(
@@ -258,18 +271,14 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
             Icon(
               isActive && filledIcon != null ? filledIcon : icon,
               size: 16,
-              color: isActive
-                  ? (activeColor ?? AppColors.primary)
-                  : AppColors.textSecondary,
+              color: isActive ? resolvedActive : shell.muted,
             ),
             if (label != null) ...[
               const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(
-                  color: isActive
-                      ? (activeColor ?? AppColors.primary)
-                      : AppColors.textSecondary,
+                  color: isActive ? resolvedActive : shell.muted,
                   fontSize: 12,
                 ),
               ),
@@ -280,19 +289,22 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
     );
   }
 
-  Widget _buildTextAction({
+  Widget _buildTextAction(
+    BuildContext context, {
     required String label,
     required Color color,
     required VoidCallback onTap,
   }) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
+          color: shell.chipUnselectedBg,
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: shell.surfaceCardBorder),
         ),
         child: Text(
           label,
@@ -312,11 +324,15 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
         widget.postId,
         widget.comment.id,
       ),
-      builder: (context, snapshot) {
+      builder: (BuildContext context, snapshot) {
+        final StSupportShellStyle shell = StSupportShellStyle.of(context);
+        final ColorScheme scheme = Theme.of(context).colorScheme;
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: CircularProgressIndicator(color: scheme.primary),
+            ),
           );
         }
 
@@ -325,7 +341,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
             padding: const EdgeInsets.all(16),
             child: Text(
               'Error loading replies: ${snapshot.error}',
-              style: const TextStyle(color: Colors.red, fontSize: 12),
+              style: TextStyle(color: scheme.error, fontSize: 12),
             ),
           );
         }
@@ -338,7 +354,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
             child: Text(
               'No replies yet',
               style: TextStyle(
-                color: AppColors.textTertiary,
+                color: shell.muted,
                 fontSize: 12,
               ),
             ),
@@ -351,14 +367,14 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
           decoration: BoxDecoration(
             border: Border(
               left: BorderSide(
-                color: AppColors.borderPrimary.withValues(alpha: 0.5),
+                color: shell.surfaceCardBorder,
                 width: 2,
               ),
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: replies.map((reply) {
+            children: replies.map((ForumComment reply) {
               final isReplyLiked =
                   user != null && reply.likedBy.contains(user!.uid);
               final isReplyDisliked =
@@ -370,8 +386,9 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.card.withValues(alpha: 0.3),
+                  color: shell.chipUnselectedBg,
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: shell.surfaceCardBorder),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,8 +411,8 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                             reply.deleted ? '[deleted]' : reply.content,
                             style: TextStyle(
                               color: reply.deleted
-                                  ? AppColors.textTertiary
-                                  : AppColors.textPrimary,
+                                  ? shell.muted
+                                  : shell.onChrome,
                               fontSize: 13,
                               fontStyle: reply.deleted
                                   ? FontStyle.italic
@@ -406,6 +423,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                           Row(
                             children: [
                               _buildActionButton(
+                                context,
                                 icon: Icons.favorite_outline,
                                 filledIcon: Icons.favorite,
                                 label: '${reply.likes}',
@@ -415,10 +433,11 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                                   reply.id,
                                   user!.uid,
                                 ),
-                                activeColor: AppColors.primary,
+                                activeColor: scheme.primary,
                               ),
                               const SizedBox(width: 12),
                               _buildActionButton(
+                                context,
                                 icon: Icons.thumb_down_outlined,
                                 filledIcon: Icons.thumb_down,
                                 label: '${reply.dislikes}',
@@ -428,7 +447,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                                   reply.id,
                                   user!.uid,
                                 ),
-                                activeColor: Colors.red,
+                                activeColor: scheme.error,
                               ),
                               const Spacer(),
                               if (isReplyAuthor && !reply.deleted)
@@ -438,9 +457,10 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                                     reply.id,
                                   ),
                                   style: TextButton.styleFrom(
-                                    foregroundColor: Colors.red,
+                                    foregroundColor: scheme.error,
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 8),
+                                      horizontal: 8,
+                                    ),
                                     minimumSize: Size.zero,
                                     tapTargetSize:
                                         MaterialTapTargetSize.shrinkWrap,

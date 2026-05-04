@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 
 class ContactSupportView extends StatefulWidget {
   const ContactSupportView({super.key});
@@ -123,10 +124,11 @@ class _ContactSupportViewState extends State<ContactSupportView> {
   }
 
   Widget _buildLabel(String text) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Text(
       text,
       style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.9),
+        color: shell.onChrome.withValues(alpha: 0.9),
         fontSize: 14,
         fontWeight: FontWeight.w800,
       ),
@@ -137,25 +139,26 @@ class _ContactSupportViewState extends State<ContactSupportView> {
     required String hintText,
     IconData? icon,
   }) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+      borderSide: BorderSide(color: shell.surfaceCardBorder),
     );
     return InputDecoration(
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.09),
+      fillColor: shell.surfaceCard,
       hintText: hintText,
-      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.45)),
-      prefixIcon: icon == null
-          ? null
-          : Icon(icon, color: Colors.white.withValues(alpha: 0.55), size: 20),
+      hintStyle: TextStyle(color: shell.mutedStrong),
+      prefixIcon:
+          icon == null ? null : Icon(icon, color: shell.muted, size: 20),
       border: border,
       enabledBorder: border,
       errorBorder: border.copyWith(
         borderSide: const BorderSide(color: AppColors.error),
       ),
       focusedBorder: border.copyWith(
-        borderSide: const BorderSide(color: AppColors.supportAccent, width: 2),
+        borderSide: BorderSide(color: scheme.primary, width: 2),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     );
@@ -225,19 +228,20 @@ class _ContactSupportViewState extends State<ContactSupportView> {
   }
 
   Widget _buildInfoCard() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.verified_user_outlined,
-            color: Colors.white.withValues(alpha: 0.78),
+            color: shell.muted,
             size: 22,
           ),
           const SizedBox(width: 12),
@@ -245,7 +249,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
             child: Text(
               'Support tickets are linked to your signed-in account. Typical response time is 24-48 hours.',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.76),
+                color: shell.muted,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.35,
@@ -259,18 +263,20 @@ class _ContactSupportViewState extends State<ContactSupportView> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       appBar: AppBar(
-        backgroundColor: AppColors.supportTopSurface,
+        backgroundColor: shell.panelSurface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: shell.onChrome),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Contact Support',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: shell.onChrome),
         ),
       ),
       body: GestureDetector(
@@ -301,8 +307,8 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                         hintText: 'Choose a support topic',
                         icon: Icons.topic_outlined,
                       ),
-                      style: const TextStyle(color: Colors.white),
-                      dropdownColor: AppColors.supportTopSurface,
+                      style: TextStyle(color: shell.onChrome),
+                      dropdownColor: shell.panelSurface,
                       items: _categories.map((String category) {
                         return DropdownMenuItem<String>(
                           value: category,
@@ -326,7 +332,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                         hintText: 'Brief description of your issue',
                         icon: Icons.short_text,
                       ),
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: shell.onChrome),
                       textInputAction: TextInputAction.next,
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
@@ -349,7 +355,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                         hintText:
                             'What happened? What did you expect? Any error messages?',
                       ),
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: shell.onChrome),
                       textInputAction: TextInputAction.newline,
                       validator: (value) {
                         final trimmed = value?.trim() ?? '';
@@ -395,6 +401,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                           backgroundColor: AppColors.supportAccent,
                           disabledBackgroundColor:
                               AppColors.supportAccent.withValues(alpha: 0.45),
+                          foregroundColor: scheme.onPrimary,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),

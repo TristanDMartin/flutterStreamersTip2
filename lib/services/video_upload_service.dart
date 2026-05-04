@@ -7,7 +7,6 @@ import 'video_moderation_service.dart';
 import 'enhanced_error_handling_service.dart';
 import 'video_processing_service.dart';
 import 'tag_mention_service.dart';
-import 'post_counter_service.dart';
 import 'mux_upload_service.dart';
 import 'cross_post_service.dart';
 import '../features/gamification/emit_gamification_event.dart';
@@ -68,10 +67,12 @@ class VideoUploadService {
     required List<String> hashtags,
     required String privacy,
     required bool allowComments,
+    String? videoId,
     Map<String, dynamic>? additionalMetadata,
     bool isDraft = false,
     void Function(double)? onProgress,
   }) async {
+    String? activeVideoId = videoId;
     try {
       debugPrint('🚀 Starting video upload process...');
 
@@ -155,18 +156,19 @@ class VideoUploadService {
       }
 
       // 3. Generate unique video ID
-      final videoId = _generateVideoId();
+      activeVideoId = activeVideoId?.trim().isNotEmpty == true
+          ? activeVideoId!.trim()
+          : _generateVideoId();
       final userId = user.uid;
-      debugPrint('🎬 Generated video ID: $videoId');
+      debugPrint('🎬 Using video ID: $activeVideoId');
 
       // 4. Upload video via Mux (Worker creates doc, returns upload URL)
       String? videoUrl;
       String? thumbnailUrl;
       String? muxUploadId;
       try {
-        final muxResult =
-            await MuxUploadService.instance.createDirectUpload(
-          videoId: videoId,
+        final muxResult = await MuxUploadService.instance.createDirectUpload(
+          videoId: activeVideoId,
           userId: userId,
           idToken: idToken,
           isDraft: isDraft,
@@ -193,14 +195,19 @@ class VideoUploadService {
             errorDetail = msg;
           }
         }
+        await _markVideoUploadFailed(
+          videoId: activeVideoId,
+          userId: userId,
+          errorMessage: errorDetail,
+        );
         return VideoUploadResult(
           success: false,
           error: 'Upload failed: $errorDetail',
+          metadata: {'videoId': activeVideoId},
         );
       }
 
-      final canonicalThumbnailUrl =
-          _withSizingParams(thumbnailUrl, width: 720, height: 1280);
+      final canonicalThumbnailUrl = _withSizingParams(thumbnailUrl, width: 720);
       final thumbnails = {
         'urls': {
           '360': canonicalThumbnailUrl,
@@ -247,66 +254,41 @@ class VideoUploadService {
       try {
         debugPrint(
             '🔥 VideoUploadService: Attempting to save video document to Firestore...');
-        debugPrint('🔥 VideoUploadService: Video ID: $videoId');
+        debugPrint('🔥 VideoUploadService: Video ID: $activeVideoId');
         debugPrint(
             '🔥 VideoUploadService: Update keys: ${updateData.keys.toList()}');
 
-        await _upsertVideoDocument(videoId: videoId, updateData: updateData);
+        await _upsertVideoDocument(
+          videoId: activeVideoId,
+          updateData: updateData,
+        );
         debugPrint(
             '✅ VideoUploadService: Video document saved to Firestore successfully');
       } catch (e) {
         debugPrint('❌ VideoUploadService: Failed to save video document: $e');
         debugPrint('❌ VideoUploadService: Error type: ${e.runtimeType}');
         debugPrint('❌ VideoUploadService: Error details: ${e.toString()}');
+        await _markVideoUploadFailed(
+          videoId: activeVideoId,
+          userId: userId,
+          errorMessage: 'Failed to save video metadata: ${e.toString()}',
+        );
         return VideoUploadResult(
           success: false,
           error: 'Failed to save video metadata: ${e.toString()}',
+          metadata: {'videoId': activeVideoId},
         );
       }
 
-      // 7. Update user's video count
-      try {
-        await _updateUserVideoCount(userId);
-        debugPrint('✅ User video count updated');
-      } catch (e) {
-        debugPrint('⚠️ Failed to update user video count: $e');
-        // Continue anyway, this is not critical
-      }
-
-      // 7.5. Update PostCounterService for accurate post count
-      try {
-        final postCounterService = PostCounterService();
-        await postCounterService.incrementPostCount(userId, postId: videoId);
-        debugPrint('✅ PostCounterService updated for published video');
-      } catch (e) {
-        debugPrint('⚠️ Failed to update PostCounterService: $e');
-        // Continue anyway, this is not critical
-      }
-
-      // 8. Add to user's profile videos
-      try {
-        await _addToUserProfile(userId, videoId);
-        debugPrint('✅ Video added to user profile');
-      } catch (e) {
-        debugPrint('⚠️ Failed to add video to user profile: $e');
-        // Continue anyway, this is not critical
-      }
-
-      // 9. Add to appropriate feeds based on privacy and category
-      try {
-        final category = additionalMetadata?['category'] as String?;
-        await _addToFeeds(videoId, privacy, userId, category: category);
-        debugPrint('✅ Video added to feeds');
-      } catch (e) {
-        debugPrint('⚠️ Failed to add video to feeds: $e');
-        // Continue anyway, this is not critical
-      }
+      // Do not increment counts or insert into public/profile feeds while Mux
+      // is still processing. The backend webhook is the source of truth for
+      // ready/published visibility.
 
       // 10. Process tags and mentions from caption
       try {
         debugPrint('🏷️ Processing tags and mentions from caption...');
         await _tagMentionService.processVideoTagsAndMentions(
-          videoId: videoId,
+          videoId: activeVideoId,
           videoOwnerId: userId,
           caption: caption,
           postThumbnailUrl: canonicalThumbnailUrl,
@@ -323,7 +305,7 @@ class VideoUploadService {
         videoUrl: videoUrl,
         thumbnailUrl: canonicalThumbnailUrl,
         metadata: {
-          'videoId': videoId,
+          'videoId': activeVideoId,
           'moderation_result': {
             'approved': true,
             'confidence': moderationResult.confidence,
@@ -334,6 +316,14 @@ class VideoUploadService {
     } catch (e) {
       debugPrint('❌ Video upload failed with exception: $e');
       debugPrint('❌ Stack trace: ${StackTrace.current}');
+      final userId = _auth.currentUser?.uid;
+      if (activeVideoId != null && userId != null) {
+        await _markVideoUploadFailed(
+          videoId: activeVideoId,
+          userId: userId,
+          errorMessage: e.toString(),
+        );
+      }
 
       await _errorHandler.handleUploadError(
         operation: 'video_upload',
@@ -361,7 +351,48 @@ class VideoUploadService {
       return VideoUploadResult(
         success: false,
         error: errorMessage,
+        metadata: activeVideoId == null ? null : {'videoId': activeVideoId},
       );
+    }
+  }
+
+  Future<void> _markVideoUploadFailed({
+    required String videoId,
+    required String userId,
+    required String errorMessage,
+  }) async {
+    try {
+      final failedData = <String, dynamic>{
+        'userId': userId,
+        'creatorId': userId,
+        'creator_id': userId,
+        'status': 'failed',
+        'visible': false,
+        'isReadyForFeed': false,
+        'uploadError': errorMessage,
+        'errorMessage': errorMessage,
+        'muxStatus': 'failed',
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      await _firestore
+          .collection('videos')
+          .doc(videoId)
+          .set(failedData, SetOptions(merge: true));
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('videos')
+          .doc(videoId)
+          .set({
+        'status': 'failed',
+        'visible': false,
+        'uploadError': errorMessage,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('✅ VideoUploadService: Marked failed upload hidden: $videoId');
+    } catch (markError) {
+      debugPrint(
+          '⚠️ VideoUploadService: Failed to mark upload failed for $videoId: $markError');
     }
   }
 
@@ -400,6 +431,7 @@ class VideoUploadService {
     required String privacy,
     required bool allowComments,
     required List<CrossPostRequest> crossPostRequests,
+    String? videoId,
     Map<String, dynamic>? additionalMetadata,
     DateTime? scheduleAt,
     void Function(double)? onProgress,
@@ -413,6 +445,7 @@ class VideoUploadService {
           hashtags: hashtags,
           privacy: privacy,
           allowComments: allowComments,
+          videoId: videoId,
           additionalMetadata: additionalMetadata,
           onProgress: onProgress,
         ),
@@ -434,14 +467,14 @@ class VideoUploadService {
     );
   }
 
-  String _withSizingParams(String url, {int width = 720, int height = 1280}) {
+  String _withSizingParams(String url, {int width = 720}) {
     try {
       final uri = Uri.parse(url);
       final params = Map<String, String>.from(uri.queryParameters);
       params['w'] = '$width';
-      params['h'] = '$height';
-      params['fit'] = 'crop';
-      params['crop'] = 'faces,center';
+      params.remove('h');
+      params.remove('fit');
+      params.remove('crop');
       return uri.replace(queryParameters: params).toString();
     } catch (_) {
       return url;
@@ -501,8 +534,8 @@ class VideoUploadService {
     final data = <String, dynamic>{
       'caption': caption,
       'hashtags': hashtags,
-      'privacy': privacy,         // legacy field — keep for backward compat
-      'visibility': visibility,   // spec §2 canonical field
+      'privacy': privacy, // legacy field — keep for backward compat
+      'visibility': visibility, // spec §2 canonical field
       'allowComments': allowComments,
       ...categoryFields,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -510,10 +543,13 @@ class VideoUploadService {
       'thumbnails': thumbnails,
       'videoUrl': videoUrl,
       'status': status,
-      'sourcePlatform': 'app',    // spec §2 — internal tracking
+      'visible': false,
+      'isReadyForFeed': false,
+      'sourcePlatform': 'app', // spec §2 — internal tracking
       'isMux': isMux,
       'muxStatus': muxStatus,
-      if (muxUploadId != null && muxUploadId.isNotEmpty) 'muxUploadId': muxUploadId,
+      if (muxUploadId != null && muxUploadId.isNotEmpty)
+        'muxUploadId': muxUploadId,
       'views': 0,
       'likes': 0,
       'comments': 0,
@@ -551,36 +587,6 @@ class VideoUploadService {
     }
     return data;
   }
-
-  /// Update user's video count
-  Future<void> _updateUserVideoCount(String userId) async {
-    try {
-      await _firestore.collection('users').doc(userId).update({
-        'videoCount': FieldValue.increment(1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      // print('Error updating user video count: $e');
-    }
-  }
-
-  /// Add video to user's profile
-  Future<void> _addToUserProfile(String userId, String videoId) async {
-    try {
-      await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('videos')
-          .doc(videoId)
-          .set({
-        'videoId': videoId,
-        'addedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      // print('Error adding to user profile: $e');
-    }
-  }
-
 
   /// Add video to appropriate feeds based on privacy setting
   Future<void> _addToFeeds(String videoId, String privacy, String userId,
@@ -710,43 +716,117 @@ class VideoUploadService {
     final content = '$caption ${hashtags.join(' ')}'.toLowerCase();
     const keywords = {
       'Gaming': [
-        'game', 'gaming', 'gamer', 'play', 'stream', 'twitch', 'esports',
-        'fortnite', 'minecraft', 'valorant', 'apex', 'cod', 'fifa', 'nba2k',
+        'game',
+        'gaming',
+        'gamer',
+        'play',
+        'stream',
+        'twitch',
+        'esports',
+        'fortnite',
+        'minecraft',
+        'valorant',
+        'apex',
+        'cod',
+        'fifa',
+        'nba2k',
       ],
       'Art': [
-        'art', 'drawing', 'paint', 'sketch', 'artist', 'artwork',
-        'digital art', 'illustration', 'design',
+        'art',
+        'drawing',
+        'paint',
+        'sketch',
+        'artist',
+        'artwork',
+        'digital art',
+        'illustration',
+        'design',
       ],
       'Music': [
-        'music', 'song', 'sing', 'rap', 'beat', 'producer', 'dj', 'audio',
+        'music',
+        'song',
+        'sing',
+        'rap',
+        'beat',
+        'producer',
+        'dj',
+        'audio',
       ],
       'Tech': [
-        'tech', 'coding', 'programming', 'software', 'app', 'computer',
-        'review', 'unboxing',
+        'tech',
+        'coding',
+        'programming',
+        'software',
+        'app',
+        'computer',
+        'review',
+        'unboxing',
       ],
       'Sports': [
-        'sport', 'football', 'basketball', 'soccer', 'workout', 'athlete',
+        'sport',
+        'football',
+        'basketball',
+        'soccer',
+        'workout',
+        'athlete',
       ],
       'Food': [
-        'food', 'cooking', 'recipe', 'eat', 'restaurant', 'chef', 'meal',
+        'food',
+        'cooking',
+        'recipe',
+        'eat',
+        'restaurant',
+        'chef',
+        'meal',
       ],
       'Travel': [
-        'travel', 'trip', 'vacation', 'journey', 'adventure', 'explore',
+        'travel',
+        'trip',
+        'vacation',
+        'journey',
+        'adventure',
+        'explore',
       ],
       'Fashion': [
-        'fashion', 'style', 'outfit', 'clothing', 'wear', 'dress',
+        'fashion',
+        'style',
+        'outfit',
+        'clothing',
+        'wear',
+        'dress',
       ],
       'Comedy': [
-        'funny', 'comedy', 'joke', 'laugh', 'humor', 'meme', 'prank',
+        'funny',
+        'comedy',
+        'joke',
+        'laugh',
+        'humor',
+        'meme',
+        'prank',
       ],
       'Education': [
-        'learn', 'education', 'tutorial', 'teach', 'study', 'how to',
+        'learn',
+        'education',
+        'tutorial',
+        'teach',
+        'study',
+        'how to',
       ],
       'Fitness': [
-        'fitness', 'gym', 'workout', 'exercise', 'health', 'yoga',
+        'fitness',
+        'gym',
+        'workout',
+        'exercise',
+        'health',
+        'yoga',
       ],
       'Lifestyle': [
-        'lifestyle', 'daily', 'vlog', 'routine', 'morning', 'life',
+        'lifestyle',
+        'daily',
+        'vlog',
+        'routine',
+        'morning',
+        'life',
       ],
     };
     for (final entry in keywords.entries) {

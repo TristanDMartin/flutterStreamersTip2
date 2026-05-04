@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/support_shell_style.dart';
 import '../../models/forum_post.dart';
 import '../../constants/app_colors.dart';
 import '../../services/discussion_author_service.dart';
-import '../../services/unified_avatar_service.dart';
+import '../status_aware_avatar.dart';
 
 /// Card widget for displaying a forum post in the grid
 class ForumPostCard extends StatelessWidget {
@@ -17,26 +18,33 @@ class ForumPostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.10),
-              Colors.white.withValues(alpha: 0.04),
-            ],
-          ),
+          gradient: shell.isLight
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    Colors.white.withValues(alpha: 0.10),
+                    Colors.white.withValues(alpha: 0.04),
+                  ],
+                ),
+          color: shell.isLight ? shell.surfaceCard : null,
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.10),
+            color: shell.surfaceCardBorder,
             width: 1,
           ),
-          boxShadow: [
+          boxShadow: <BoxShadow>[
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
+              color: shell.isLight
+                  ? scheme.shadow.withValues(alpha: 0.06)
+                  : Colors.black.withValues(alpha: 0.18),
               blurRadius: 18,
               offset: const Offset(0, 10),
             ),
@@ -84,7 +92,7 @@ class ForumPostCard extends StatelessWidget {
                         child: Text(
                           post.categoryDisplayName!,
                           style: TextStyle(
-                            color: AppColors.textPrimary,
+                            color: scheme.primary,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                           ),
@@ -95,8 +103,8 @@ class ForumPostCard extends StatelessWidget {
                     // Title
                     Text(
                       post.title,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
+                      style: TextStyle(
+                        color: scheme.onSurface,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         height: 1.3,
@@ -111,7 +119,7 @@ class ForumPostCard extends StatelessWidget {
                       child: Text(
                         post.content,
                         style: TextStyle(
-                          color: AppColors.textSecondary,
+                          color: scheme.onSurface.withValues(alpha: 0.62),
                           fontSize: 13,
                           height: 1.45,
                         ),
@@ -131,7 +139,9 @@ class ForumPostCard extends StatelessWidget {
                 vertical: 12,
               ),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.16),
+                color: shell.isLight
+                    ? scheme.surfaceContainerHighest.withValues(alpha: 0.65)
+                    : Colors.black.withValues(alpha: 0.16),
                 borderRadius: const BorderRadius.vertical(
                   bottom: Radius.circular(20),
                 ),
@@ -149,12 +159,13 @@ class ForumPostCard extends StatelessWidget {
                     child: StreamBuilder(
                       stream: DiscussionAuthorService()
                           .watchForumAuthor(post.author.uid),
-                      builder: (context, snapshot) {
+                      builder: (BuildContext ctx, snapshot) {
+                        final ColorScheme c = Theme.of(ctx).colorScheme;
                         final liveAuthor = snapshot.data;
                         return Text(
                           liveAuthor?.displayName ?? post.author.displayName,
                           style: TextStyle(
-                            color: AppColors.textSecondary,
+                            color: c.onSurface.withValues(alpha: 0.65),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -188,57 +199,15 @@ class _ThreadPostAvatar extends StatelessWidget {
     return StreamBuilder(
       stream: DiscussionAuthorService().watchForumAuthor(userId),
       builder: (context, snapshot) {
-        final liveAvatarUrl = snapshot.data?.avatarUrl ?? fallbackAvatarUrl;
-        return _buildAvatar(liveAvatarUrl);
+        final String? liveAvatarUrl =
+            snapshot.data?.avatarUrl ?? fallbackAvatarUrl;
+        return StatusAwareAvatar(
+          userId: userId,
+          avatarURL: liveAvatarUrl,
+          radius: 14,
+          showOnlineIndicator: true,
+        );
       },
-    );
-  }
-
-  Widget _buildAvatar(String? avatarUrl) {
-    const double avatarSize = 28.0;
-
-    return Container(
-      width: avatarSize,
-      height: avatarSize,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.5),
-          width: 1.5,
-        ),
-      ),
-      child: avatarUrl != null && avatarUrl.isNotEmpty
-          ? ClipOval(
-              child: UnifiedAvatarService().getAvatar(
-                imageUrl: avatarUrl,
-                radius: avatarSize / 2,
-                useProfileViewStyling: false,
-                showLoadingIndicator: false,
-                errorWidget: _buildPlaceholderAvatar(avatarSize),
-              ),
-            )
-          : _buildPlaceholderAvatar(avatarSize),
-    );
-  }
-
-  Widget _buildPlaceholderAvatar(double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary.withValues(alpha: 0.3),
-            AppColors.secondary.withValues(alpha: 0.2),
-          ],
-        ),
-      ),
-      child: Icon(
-        Icons.person,
-        size: size * 0.6,
-        color: AppColors.primary,
-      ),
     );
   }
 }

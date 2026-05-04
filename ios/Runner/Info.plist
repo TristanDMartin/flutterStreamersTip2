@@ -24,6 +24,8 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -41,6 +43,10 @@
 	<string>StreamersTip uses the camera to record videos and capture profile media.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>StreamersTip uses the microphone when you record videos in the app.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>StreamersTip uses your location only when needed to support location-aware creator discovery and safety features.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>StreamersTip uses your location only while you use the app to support location-aware creator discovery and safety features.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>StreamersTip saves exported media to your photo library when you choose to save it.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

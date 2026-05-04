@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../core/theme/support_shell_style.dart';
 import '../services/user_blocking_service.dart';
 import '../utils/avatar_url_resolver.dart';
 
@@ -140,27 +140,28 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       appBar: AppBar(
-        backgroundColor: AppColors.supportTopSurface,
-        title: const Text(
+        backgroundColor: shell.panelSurface,
+        title: Text(
           'Blocked Accounts',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: shell.onChrome),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: shell.onChrome),
         actions: [
           if (_blockedUsers.isNotEmpty)
             IconButton(
               onPressed: _loadBlockedUsers,
-              icon: const Icon(Icons.refresh, color: Colors.white),
+              icon: Icon(Icons.refresh, color: shell.onChrome),
             ),
         ],
       ),
       body: _isLoading
-          ? const Center(
+          ? Center(
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                valueColor: AlwaysStoppedAnimation<Color>(shell.refreshColor),
               ),
             )
           : _blockedUsers.isEmpty
@@ -170,20 +171,21 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
   }
 
   Widget _buildEmptyState() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.block_outlined,
-            color: Colors.white.withValues(alpha: 0.5),
+            color: shell.iconDim,
             size: 80,
           ),
           const SizedBox(height: 24),
           Text(
             'No Blocked Accounts',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
+              color: shell.onChrome,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -193,7 +195,7 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
             'Users you block will appear here.\nYou can unblock them at any time.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: shell.muted,
               fontSize: 16,
             ),
           ),
@@ -203,9 +205,11 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
   }
 
   Widget _buildBlockedUsersList() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return RefreshIndicator(
       onRefresh: _loadBlockedUsers,
-      color: Colors.white,
+      color: shell.refreshColor,
+      backgroundColor: shell.refreshBackground,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _blockedUsers.length,
@@ -218,14 +222,15 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
   }
 
   Widget _buildBlockedUserCard(BlockedUserInfo user) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: shell.surfaceCardBorder,
           width: 1,
         ),
       ),
@@ -244,8 +249,8 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
                     user.displayName.isNotEmpty
                         ? user.displayName[0].toUpperCase()
                         : '?',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: shell.onChrome,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -261,8 +266,8 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
               children: [
                 Text(
                   user.displayName,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: shell.onChrome,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -271,7 +276,7 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
                 Text(
                   '@${user.username}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: shell.muted,
                     fontSize: 14,
                   ),
                 ),

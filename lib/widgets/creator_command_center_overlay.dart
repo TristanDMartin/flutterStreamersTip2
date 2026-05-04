@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 
@@ -11,9 +10,6 @@ import '../models/creator_command_snapshot.dart';
 import '../providers/creator_command_provider.dart';
 import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
-import '../services/local_draft_service.dart';
-import 'drafts_sheet_view.dart';
-import 'video_publishing_screen.dart';
 
 Future<void> _executeTippyFromCommandCenter(
   BuildContext context, {
@@ -34,13 +30,29 @@ String _tippyHeroSubtitle(CreatorCommandSnapshot snapshot) {
   if (snapshot.nextPostOverdue) {
     return 'Get back on schedule';
   }
-  if (snapshot.pendingWorkCount > 0) {
+  if (snapshot.scheduledQueueCount > 0) {
     return 'Help with your queue';
   }
   if (snapshot.alertCount > 0) {
     return 'Prioritize what matters';
   }
   return 'What to post next';
+}
+
+String _primaryRecommendation(CreatorCommandSnapshot s) {
+  if (!s.tippyAiEnabled) {
+    return 'Unlock Tippy to generate plans, hooks, and captions from this workspace.';
+  }
+  if (s.nextPostOverdue) {
+    return 'Ask Tippy to rebuild today and move the overdue item back into motion.';
+  }
+  if (s.scheduledQueueCount == 0) {
+    return 'Create a 7 or 14 day plan so the web planner and app schedule stay aligned.';
+  }
+  if (s.draftCount > 0) {
+    return 'Turn one draft into a scheduled post before adding more ideas.';
+  }
+  return 'Use Tippy for the next caption, then review the schedule queue.';
 }
 
 String _nextMoveLine(
@@ -59,9 +71,11 @@ String _nextMoveLine(
     );
     return 'Next: $date · $time';
   }
-  if (s.pendingWorkCount > 0) {
-    return '${s.pendingWorkCount} draft'
-        '${s.pendingWorkCount == 1 ? '' : 's'} in review';
+  if (s.scheduledQueueCount > 0) {
+    return '${s.scheduledQueueCount} scheduled in your queue';
+  }
+  if (s.draftCount > 0) {
+    return '${s.draftCount} draft${s.draftCount == 1 ? '' : 's'} in review';
   }
   if (s.alertCount > 0) {
     return '${s.alertCount} active alert'
@@ -85,7 +99,8 @@ class StreamersTipCommandCenterTrigger extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final BoxShadow glow = BoxShadow(
-      color: const Color(0xFF9248D2).withValues(alpha: showAlertPulse ? 0.38 : 0.24),
+      color: const Color(0xFF9248D2)
+          .withValues(alpha: showAlertPulse ? 0.38 : 0.24),
       blurRadius: showAlertPulse ? 20 : 14,
       offset: const Offset(0, 6),
     );
@@ -428,25 +443,6 @@ class _CollapsedSummaryBar extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.5),
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.35,
-      ),
-    );
-  }
-}
-
 class _ExpandedHeader extends StatelessWidget {
   const _ExpandedHeader({
     required this.snapshot,
@@ -512,7 +508,9 @@ class _TippyHeroSection extends StatelessWidget {
             color: const Color(0xFF0F172A).withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: const Color(0xFF4897D2).withValues(alpha: 0.3),
+              color: unlocked
+                  ? const Color(0xFF4897D2).withValues(alpha: 0.34)
+                  : Colors.white.withValues(alpha: 0.12),
             ),
           ),
           child: Row(
@@ -563,9 +561,165 @@ class _TippyHeroSection extends StatelessWidget {
                 ),
               ),
               Icon(
-                Icons.chevron_right_rounded,
+                unlocked
+                    ? Icons.arrow_forward_rounded
+                    : Icons.chevron_right_rounded,
                 color: Colors.white.withValues(alpha: 0.45),
                 size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NextMoveCard extends StatelessWidget {
+  const _NextMoveCard({required this.snapshot});
+
+  final CreatorCommandSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool urgent = snapshot.nextPostOverdue || snapshot.alertCount > 0;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withValues(alpha: 0.56),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: urgent
+              ? const Color(0xFFF97373).withValues(alpha: 0.34)
+              : const Color(0xFF4897D2).withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            urgent ? Icons.priority_high_rounded : Icons.route_rounded,
+            color: urgent ? const Color(0xFFFCA5A5) : const Color(0xFF93C5FD),
+            size: 19,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  _nextMoveLine(snapshot, context),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    height: 1.24,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _primaryRecommendation(snapshot),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.28,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickCommandRow extends StatelessWidget {
+  const _QuickCommandRow({required this.snapshot});
+
+  final CreatorCommandSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: _CommandButton(
+            icon: Icons.calendar_month_rounded,
+            label: 'Planner',
+            onTap: () {
+              HapticFeedback.selectionClick();
+              AppNavigator.openManagePostsWithArgs(
+                context,
+                initialTab: ManagePostsInitialTab.scheduled,
+                launchSource: ManagePostsLaunchSource.commandCenter,
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _CommandButton(
+            icon: Icons.auto_awesome_rounded,
+            label: snapshot.tippyAiEnabled ? 'Tippy' : 'Upgrade',
+            onTap: () => _executeTippyFromCommandCenter(
+              context,
+              tippyEnabled: snapshot.tippyAiEnabled,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CommandButton extends StatelessWidget {
+  const _CommandButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.055),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, color: Colors.white.withValues(alpha: 0.82), size: 16),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ],
           ),
@@ -583,9 +737,8 @@ class _HudStatLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String streak = snapshot.streakDays > 0
-        ? '🔥 ${snapshot.streakDays}d'
-        : 'Streak: —';
+    final String streak =
+        snapshot.streakDays > 0 ? '🔥 ${snapshot.streakDays}d' : 'Streak: —';
     final String? growth = snapshot.growthPercent != null
         ? '↑${snapshot.growthPercent!.abs().toStringAsFixed(0)}%'
         : null;
@@ -619,16 +772,10 @@ class _ExpandedCommandCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool hasQueue =
-        snapshot.draftCount > 0 || snapshot.pendingWorkCount > 0;
-    final int reviewBadge = snapshot.pendingWorkCount > 0
-        ? snapshot.pendingWorkCount
-        : snapshot.draftCount;
-
     return _GlassShell(
-      width: 300,
+      width: 336,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -637,21 +784,13 @@ class _ExpandedCommandCard extends StatelessWidget {
               snapshot: snapshot,
               onDismiss: onDismiss,
             ),
-            const SizedBox(height: 6),
-            Text(
-              _nextMoveLine(snapshot, context),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75),
-                fontSize: 12.5,
-                fontWeight: FontWeight.w500,
-                height: 1.3,
-              ),
-            ),
             const SizedBox(height: 10),
+            _NextMoveCard(snapshot: snapshot),
+            const SizedBox(height: 8),
             _TippyHeroSection(snapshot: snapshot),
             const SizedBox(height: 8),
+            _QuickCommandRow(snapshot: snapshot),
+            const SizedBox(height: 10),
             _HudStatLine(snapshot: snapshot, streakPulse: streakPulse),
             const SizedBox(height: 8),
             Text(
@@ -676,81 +815,9 @@ class _ExpandedCommandCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _ActionStatusBlock(snapshot: snapshot),
-            const SizedBox(height: 10),
-            const _SectionTitle(title: 'Shortcuts'),
-            const SizedBox(height: 8),
-            _QuickActionRows(
-              rowOne: <_QuickActionConfig>[
-                _QuickActionConfig.review(
-                  hasQueue,
-                  badgeCount: reviewBadge,
-                ),
-                const _QuickActionConfig.publish(),
-                _QuickActionConfig.drafts(
-                  snapshot.draftCount > 0,
-                  badgeCount: snapshot.draftCount,
-                ),
-              ],
-              rowTwo: const <_QuickActionConfig>[
-                _QuickActionConfig.discover(),
-                _QuickActionConfig.analytics(),
-                _QuickActionConfig.schedule(),
-              ],
-            ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _QuickActionRows extends StatelessWidget {
-  const _QuickActionRows({
-    required this.rowOne,
-    required this.rowTwo,
-  });
-
-  final List<_QuickActionConfig> rowOne;
-  final List<_QuickActionConfig> rowTwo;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            for (int i = 0; i < rowOne.length; i++)
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: i < rowOne.length - 1 ? 8 : 0,
-                  ),
-                  child: _QuickActionChip(
-                    action: rowOne[i],
-                    stretchHorizontally: true,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: <Widget>[
-            for (int i = 0; i < rowTwo.length; i++)
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: i < rowTwo.length - 1 ? 8 : 0,
-                  ),
-                  child: _QuickActionChip(
-                    action: rowTwo[i],
-                    stretchHorizontally: true,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
     );
   }
 }
@@ -766,7 +833,8 @@ class _ActionStatusBlock extends StatelessWidget {
     if (snapshot.nextPostDueAt == null) {
       dueLabel = '—';
     } else {
-      final TimeOfDay time = TimeOfDay.fromDateTime(snapshot.nextPostDueAt!.toLocal());
+      final TimeOfDay time =
+          TimeOfDay.fromDateTime(snapshot.nextPostDueAt!.toLocal());
       final MaterialLocalizations l10n = MaterialLocalizations.of(context);
       dueLabel =
           '${l10n.formatFullDate(snapshot.nextPostDueAt!.toLocal())} ${l10n.formatTimeOfDay(time)}';
@@ -793,17 +861,14 @@ class _ActionStatusBlock extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _StatusRow(
-            label: 'Alerts',
-            value: snapshot.alertCount > 0
-                ? '${snapshot.alertCount}'
-                : '0',
+            label: 'Due alerts',
+            value: snapshot.alertCount > 0 ? '${snapshot.alertCount}' : '0',
           ),
           const SizedBox(height: 6),
           _StatusRow(
             label: 'Queue',
-            value: snapshot.pendingWorkCount > 0
-                ? '${snapshot.pendingWorkCount} draft'
-                    '${snapshot.pendingWorkCount == 1 ? '' : 's'}'
+            value: snapshot.scheduledQueueCount > 0
+                ? '${snapshot.scheduledQueueCount} scheduled'
                 : '—',
           ),
         ],
@@ -830,7 +895,7 @@ class _StatusRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         SizedBox(
-          width: 48,
+          width: 72,
           child: Text(
             label,
             style: TextStyle(
@@ -852,205 +917,6 @@ class _StatusRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _QuickActionChip extends ConsumerWidget {
-  const _QuickActionChip({
-    required this.action,
-    this.stretchHorizontally = false,
-  });
-
-  final _QuickActionConfig action;
-  final bool stretchHorizontally;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final Color foreground = action.enabled
-        ? Colors.white
-        : Colors.white.withValues(alpha: 0.46);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: action.enabled
-            ? () => _handleActionTap(context, ref, action)
-            : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Ink(
-          width: stretchHorizontally ? double.infinity : 86,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          decoration: BoxDecoration(
-            color: action.enabled
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.white.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: action.enabled
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.white.withValues(alpha: 0.05),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Stack(
-                clipBehavior: Clip.none,
-                children: <Widget>[
-                  Icon(action.icon, color: foreground, size: 20),
-                  if (action.badgeCount != null && action.badgeCount! > 0)
-                    Positioned(
-                      right: -8,
-                      top: -6,
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF97316),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '${action.badgeCount}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                action.label,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handleActionTap(
-    BuildContext context,
-    WidgetRef ref,
-    _QuickActionConfig action,
-  ) async {
-    HapticFeedback.lightImpact();
-    switch (action.kind) {
-      case _QuickActionKind.publish:
-        Navigator.of(context).pushNamed(AppRoutes.camera);
-        return;
-      case _QuickActionKind.discover:
-        await AppNavigator.openDiscover(context);
-        return;
-      case _QuickActionKind.analytics:
-        await AppNavigator.openManagePostsWithArgs(
-          context,
-          initialTab: ManagePostsInitialTab.published,
-          launchSource: ManagePostsLaunchSource.commandCenter,
-        );
-        return;
-      case _QuickActionKind.schedule:
-        await AppNavigator.openManagePostsWithArgs(
-          context,
-          initialTab: ManagePostsInitialTab.scheduled,
-          launchSource: ManagePostsLaunchSource.commandCenter,
-        );
-        return;
-      case _QuickActionKind.review:
-      case _QuickActionKind.drafts:
-        await _openDrafts(context);
-        return;
-    }
-  }
-
-  Future<void> _openDrafts(BuildContext context) async {
-    final List<Map<String, dynamic>> drafts = await LocalDraftService().getAllDrafts();
-    if (!context.mounted) return;
-    if (drafts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No drafts are available right now.'),
-          backgroundColor: Color(0xFF1E293B),
-        ),
-      );
-      return;
-    }
-
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => DraftsSheetView(
-          drafts: drafts,
-          onDraftTap: (Map<String, dynamic> selectedDraft) {
-            _openDraftEditor(context, selectedDraft);
-          },
-          onDelete: (Map<String, dynamic> draftToDelete) async {
-            return LocalDraftService().deleteDraft(draftToDelete['id'] as String);
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openDraftEditor(
-    BuildContext context,
-    Map<String, dynamic> draft,
-  ) async {
-    final String? draftId = draft['id'] as String?;
-    if (draftId == null || draftId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Draft is missing its ID.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final File? videoFile = await LocalDraftService().ensureLocalVideoFile(draftId);
-    if (!context.mounted) return;
-    if (videoFile == null || !videoFile.existsSync()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Draft video is not available on this device yet.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final List<String> hashtags = (draft['hashtags'] as List<dynamic>?)
-            ?.map((dynamic item) => item.toString())
-            .toList(growable: false) ??
-        const <String>[];
-
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => VideoPublishingScreen(
-          videoFile: videoFile,
-          caption: draft['caption'] as String? ?? '',
-          hashtags: hashtags,
-          onPublish: () {
-            LocalDraftService().deleteDraft(draftId);
-            Navigator.of(context).pop();
-          },
-          onCancel: () {
-            Navigator.of(context).pop();
-          },
-          draftId: draftId,
-          draftData: draft,
-        ),
-      ),
     );
   }
 }
@@ -1127,77 +993,4 @@ class _GlassShell extends StatelessWidget {
       ),
     );
   }
-}
-
-enum _QuickActionKind {
-  review,
-  publish,
-  drafts,
-  discover,
-  analytics,
-  schedule,
-}
-
-class _QuickActionConfig {
-  const _QuickActionConfig({
-    required this.kind,
-    required this.label,
-    required this.icon,
-    required this.enabled,
-    this.badgeCount,
-  });
-
-  const _QuickActionConfig.publish()
-      : kind = _QuickActionKind.publish,
-        label = 'Publish',
-        icon = Icons.publish_rounded,
-        enabled = true,
-        badgeCount = null;
-
-  const _QuickActionConfig.discover()
-      : kind = _QuickActionKind.discover,
-        label = 'Discover',
-        icon = Icons.explore_rounded,
-        enabled = true,
-        badgeCount = null;
-
-  const _QuickActionConfig.analytics()
-      : kind = _QuickActionKind.analytics,
-        label = 'Analytics',
-        icon = Icons.insights_rounded,
-        enabled = true,
-        badgeCount = null;
-
-  const _QuickActionConfig.schedule()
-      : kind = _QuickActionKind.schedule,
-        label = 'Schedule',
-        icon = Icons.schedule_rounded,
-        enabled = true,
-        badgeCount = null;
-
-  factory _QuickActionConfig.review(bool enabled, {int badgeCount = 0}) {
-    return _QuickActionConfig(
-      kind: _QuickActionKind.review,
-      label: 'Review Clips',
-      icon: Icons.content_cut_rounded,
-      enabled: enabled,
-      badgeCount: enabled && badgeCount > 0 ? badgeCount : null,
-    );
-  }
-
-  factory _QuickActionConfig.drafts(bool enabled, {int badgeCount = 0}) {
-    return _QuickActionConfig(
-      kind: _QuickActionKind.drafts,
-      label: 'Drafts',
-      icon: Icons.drafts_rounded,
-      enabled: enabled,
-      badgeCount: enabled && badgeCount > 0 ? badgeCount : null,
-    );
-  }
-
-  final _QuickActionKind kind;
-  final String label;
-  final IconData icon;
-  final bool enabled;
-  final int? badgeCount;
 }

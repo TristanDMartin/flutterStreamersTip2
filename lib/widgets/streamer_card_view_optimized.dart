@@ -9,6 +9,7 @@ import '../models/chat.dart' as app_chat;
 import 'online_status_indicator.dart';
 import 'brand_icons.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 
 class StreamerCardViewOptimized extends StatefulWidget {
   final StreamerCard displayStreamer;
@@ -60,7 +61,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   bool _isFollowing = false;
   final bool _isFollowedByStreamer = false;
   bool _isConnected = false;
-  bool _isCheckingConnection = false;
+  final bool _isCheckingConnection = false;
 
   // Content tabs
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
@@ -222,8 +223,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildBackView() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
-      color: AppColors.supportBackground,
+      color: shell.scaffold,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(

@@ -48,7 +48,9 @@ class User {
       onlineStatus: data['onlineStatus'] ?? 'online',
       hashtags: parseStringList(data['hashtags']),
       aiSelf: data['aiSelf'] ?? '',
-      postCount: parseInteger(data['postCount']),
+      postCount: parseInteger(
+        data['postCount'] ?? (data['stats'] as Map?)?['postCount'],
+      ),
       followerCount: UserCountFields.readFollowersCount(data),
       followingCount: UserCountFields.readFollowingCount(data),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)

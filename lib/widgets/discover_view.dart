@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
@@ -18,8 +17,9 @@ import '../services/caching_service.dart';
 import '../services/accessibility_service.dart';
 import '../services/global_playback_manager.dart';
 import '../utils/avatar_url_resolver.dart';
+import 'status_aware_avatar.dart';
 import '../constants/playback_owners.dart';
-import '../constants/app_colors.dart';
+import '../core/theme/st_theme_tokens.dart';
 import 'instant_response_button.dart';
 import 'video_player_view_optimized.dart';
 import '../models/home_video.dart';
@@ -72,8 +72,102 @@ class FieldMapper {
   }
 }
 
+class _DiscoverPageStyle {
+  _DiscoverPageStyle({
+    required this.isLight,
+    required this.scaffold,
+    required this.appBar,
+    required this.onAppBar,
+    required this.refreshColor,
+    required this.refreshBackground,
+    required this.heroGradient,
+    required this.heroBorder,
+    required this.searchFill,
+    required this.searchBorder,
+    required this.searchPlaceholder,
+    required this.searchChevron,
+    required this.cardFill,
+    required this.cardBorder,
+    required this.onCard,
+    required this.muted,
+  });
+
+  final bool isLight;
+  final Color scaffold;
+  final Color appBar;
+  final Color onAppBar;
+  final Color refreshColor;
+  final Color refreshBackground;
+  final List<Color> heroGradient;
+  final Color heroBorder;
+  final Color searchFill;
+  final Color searchBorder;
+  final Color searchPlaceholder;
+  final Color searchChevron;
+  final Color cardFill;
+  final Color cardBorder;
+  final Color onCard;
+  final Color muted;
+
+  static _DiscoverPageStyle of(BuildContext context) {
+    final ThemeData t = Theme.of(context);
+    final ColorScheme c = t.colorScheme;
+    if (t.brightness == Brightness.light) {
+      return _DiscoverPageStyle(
+        isLight: true,
+        scaffold: t.scaffoldBackgroundColor,
+        appBar: t.scaffoldBackgroundColor,
+        onAppBar: c.onSurface,
+        refreshColor: c.primary,
+        refreshBackground: t.scaffoldBackgroundColor,
+        heroGradient: <Color>[
+          c.primary.withValues(alpha: 0.10),
+          c.primary.withValues(alpha: 0.18),
+        ],
+        heroBorder: c.outline.withValues(alpha: 0.45),
+        searchFill: c.surfaceContainerLow,
+        searchBorder: c.outline.withValues(alpha: 0.4),
+        searchPlaceholder: c.onSurface.withValues(alpha: 0.5),
+        searchChevron: c.onSurface.withValues(alpha: 0.35),
+        cardFill: c.surface,
+        cardBorder: c.outline.withValues(alpha: 0.45),
+        onCard: c.onSurface,
+        muted: c.onSurface.withValues(alpha: 0.62),
+      );
+    }
+    return _DiscoverPageStyle(
+      isLight: false,
+      scaffold: t.scaffoldBackgroundColor,
+      appBar: t.scaffoldBackgroundColor,
+      onAppBar: c.onSurface,
+      refreshColor: c.primary,
+      refreshBackground: t.scaffoldBackgroundColor,
+      heroGradient: <Color>[
+        StThemeColors.darkBackground,
+        c.surfaceContainerLow,
+        c.surface,
+      ],
+      heroBorder: c.outline.withValues(alpha: 0.35),
+      searchFill: c.surfaceContainerLow,
+      searchBorder: c.outline.withValues(alpha: 0.4),
+      searchPlaceholder: c.onSurfaceVariant,
+      searchChevron: c.onSurface.withValues(alpha: 0.4),
+      cardFill: c.surface.withValues(alpha: 0.42),
+      cardBorder: c.outline.withValues(alpha: 0.35),
+      onCard: c.onSurface,
+      muted: c.onSurfaceVariant,
+    );
+  }
+}
+
 class DiscoverView extends ConsumerStatefulWidget {
-  const DiscoverView({super.key});
+  const DiscoverView({
+    super.key,
+    this.showAppBarBackButton = true,
+  });
+
+  /// When false (e.g. main tab shell), hide the app bar back action.
+  final bool showAppBarBackButton;
 
   @override
   ConsumerState<DiscoverView> createState() => _DiscoverViewState();
@@ -87,7 +181,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     'active',
   ];
   String? _selectedCategory;
-  int _currentCategoryPage = 0;
   final Map<String, Future<List<Map<String, dynamic>>>> _categoryFeedFutures =
       {};
 
@@ -524,7 +617,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         semanticHint: 'Tap to view profile',
         onTap: () => _onCreatorTapped(creator),
         hapticFeedbackType: AccessibilityHapticFeedbackType.light,
-        child: _buildTrendingCreatorItem(creator),
+        child: _buildTrendingCreatorItem(context, creator),
       ),
     );
   }
@@ -586,19 +679,24 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  Widget _buildTrendingCreatorItem(TrendingCreator creator) {
+  Widget _buildTrendingCreatorItem(
+    BuildContext context,
+    TrendingCreator creator,
+  ) {
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return SizedBox(
       width: double.infinity,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildLiveAvatar(creator.id, creator.avatarURL, creator.username),
+          _buildLiveAvatar(
+              context, creator.id, creator.avatarURL, creator.username),
           const SizedBox(height: 8),
           Flexible(
             child: Text(
               creator.displayName ?? creator.username,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: s.onCard,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -607,71 +705,44 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          _buildLiveFollowerCount(creator.id, creator.followerCount),
+          _buildLiveFollowerCount(context, creator.id, creator.followerCount),
         ],
       ),
     );
   }
 
   Widget _buildLiveAvatar(
-      String userId, String? initialAvatarURL, String username) {
-    final avatarURL = initialAvatarURL;
-    if (avatarURL == null || avatarURL.isEmpty) {
-      return CircleAvatar(
-        radius: 30,
-        backgroundColor: Colors.grey.withValues(alpha: 0.3),
-        child: Text(
-          username[0].toUpperCase(),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      );
-    }
-    return ClipOval(
-      child: CachedNetworkImage(
-        imageUrl: avatarURL,
-        width: 60,
-        height: 60,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => CircleAvatar(
-          radius: 30,
-          backgroundColor: Colors.grey.withValues(alpha: 0.3),
-          child: Text(
+    BuildContext context,
+    String userId,
+    String? initialAvatarURL,
+    String username,
+  ) {
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
+    final TextStyle placeholdStyle = TextStyle(
+      color: s.onCard,
+      fontSize: 20,
+      fontWeight: FontWeight.bold,
+    );
+    final Widget? placeholder = username.isNotEmpty
+        ? Text(
             username[0].toUpperCase(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        errorWidget: (context, url, error) {
-          debugPrint('❌ Avatar load error for $username: $error');
-          return CircleAvatar(
-            radius: 30,
-            backgroundColor: Colors.grey.withValues(alpha: 0.3),
-            child: Text(
-              username[0].toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          );
-        },
-        memCacheWidth: 120,
-        memCacheHeight: 120,
-        maxWidthDiskCache: 200,
-        maxHeightDiskCache: 200,
-      ),
+            style: placeholdStyle,
+          )
+        : null;
+    return StatusAwareAvatar(
+      userId: userId,
+      avatarURL: initialAvatarURL,
+      radius: 30,
+      showOnlineIndicator: true,
+      placeholder: placeholder,
     );
   }
 
-  Widget _buildLiveFollowerCount(String userId, int initialCount) {
+  Widget _buildLiveFollowerCount(
+    BuildContext context,
+    String userId,
+    int initialCount,
+  ) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('users')
@@ -682,9 +753,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         final liveCount = FieldMapper.safeInt(
           data?['followerCount'] ?? data?['followersCount'] ?? initialCount,
         );
+        final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
         return Text(
           _formatFollowerCount(liveCount),
-          style: const TextStyle(color: Colors.white70, fontSize: 10),
+          style: TextStyle(
+            color: s.muted,
+            fontSize: 10,
+          ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         );
@@ -739,7 +814,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
       setState(() {
         _selectedCategory = categoryId;
-        _currentCategoryPage = 0; // Reset pagination
       });
       if (categoryId != null) {
         _primeCategoryFeed(categoryId);
@@ -893,6 +967,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       }
     });
 
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return GestureDetector(
       onTap: () {
         LoggingService.instance.debug(
@@ -905,10 +980,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(8),
         child: Stack(
-          children: [
-            const Icon(
+          children: <Widget>[
+            Icon(
               Icons.notifications_outlined,
-              color: Colors.white,
+              color: s.onAppBar,
               size: 24,
             ),
             // Notification badge
@@ -943,34 +1018,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  Widget _buildHeroChip(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: AppColors.supportAccent, size: 16),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(followRefreshProvider, (previous, next) {
@@ -979,20 +1026,33 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     });
 
     final discoverState = ref.watch(discoverProvider);
-    final selectedCategory = _selectedCategory == null
-        ? null
-        : discoverState.categories.firstWhere(
-            (cat) => cat.id == _selectedCategory,
-            orElse: () => discoverState.categories.first,
-          );
-
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(color: AppColors.supportBackground),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? <Color>[
+                    StThemeColors.darkBackground,
+                    scheme.surfaceContainerLow,
+                    scheme.surface,
+                  ]
+                : <Color>[
+                    scheme.primary.withValues(alpha: 0.12),
+                    scheme.surfaceContainerLow,
+                    scheme.surface,
+                  ],
+          ),
+        ),
         child: RefreshIndicator(
-          color: AppColors.supportAccent,
-          backgroundColor: AppColors.supportBackground,
+          color: s.refreshColor,
+          backgroundColor: s.refreshBackground,
           onRefresh: _refreshDiscoverView,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
@@ -1001,17 +1061,23 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             slivers: [
               // App Bar
               SliverAppBar(
-                backgroundColor: AppColors.supportBackground,
+                backgroundColor: s.appBar,
                 elevation: 0,
-                leading: InstantIconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                  hapticType: HapticFeedbackType.lightImpact,
-                ),
-                title: const Text(
+                automaticallyImplyLeading: widget.showAppBarBackButton,
+                leading: widget.showAppBarBackButton
+                    ? InstantIconButton(
+                        icon: Icon(
+                          Icons.arrow_back,
+                          color: s.onAppBar,
+                        ),
+                        onPressed: () => Navigator.of(context).pop(),
+                        hapticType: HapticFeedbackType.lightImpact,
+                      )
+                    : const SizedBox(width: 8),
+                title: Text(
                   'Discover',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: s.onAppBar,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
@@ -1026,75 +1092,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                   child: Column(
                     children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: AppColors.supportSurfaceGradient,
-                          ),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 24,
-                              offset: const Offset(0, 14),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              selectedCategory == null
-                                  ? 'Find your next rabbit hole'
-                                  : 'Locked into ${selectedCategory.name}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              selectedCategory == null
-                                  ? 'Creators, categories, and short-form inspiration in one place.'
-                                  : 'Swipe into a deeper feed when something grabs you, or pull to refresh for a fresh set.',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.74),
-                                fontSize: 14,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _buildHeroChip(
-                                  Icons.whatshot_rounded,
-                                  '${discoverState.trendingCreators.length} trending',
-                                ),
-                                _buildHeroChip(
-                                  Icons.grid_view_rounded,
-                                  '${discoverState.categories.length} categories',
-                                ),
-                                _buildHeroChip(
-                                  Icons.explore_rounded,
-                                  selectedCategory?.name ?? 'Browse all',
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 14),
                       GestureDetector(
                         onTap: () {
                           AppNavigator.openSearch(context);
@@ -1102,26 +1099,40 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         child: Container(
                           height: 52,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
+                            color: s.searchFill,
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.12),
+                              color: s.searchBorder,
                               width: 1,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.16),
-                                blurRadius: 18,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
+                            boxShadow: s.isLight
+                                ? <BoxShadow>[
+                                    BoxShadow(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.shadow.withValues(
+                                            alpha: 0.08,
+                                          ),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ]
+                                : <BoxShadow>[
+                                    BoxShadow(
+                                      color: scheme.shadow.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ],
                           ),
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Row(
-                            children: [
+                            children: <Widget>[
                               Icon(
                                 Icons.search,
-                                color: AppColors.supportAccent,
+                                color: scheme.primary,
                                 size: 20,
                               ),
                               const SizedBox(width: 10),
@@ -1129,7 +1140,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                                 child: Text(
                                   'Search creators, videos, hashtags…',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.65),
+                                    color: s.searchPlaceholder,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -1140,7 +1151,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                               const SizedBox(width: 8),
                               Icon(
                                 Icons.arrow_forward_ios,
-                                color: Colors.white.withValues(alpha: 0.4),
+                                color: s.searchChevron,
                                 size: 14,
                               ),
                             ],
@@ -1164,25 +1175,39 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
+                      color: s.cardFill,
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: s.cardBorder,
                       ),
+                      boxShadow: s.isLight
+                          ? <BoxShadow>[
+                              BoxShadow(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.shadow.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : null,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildSectionHeading(
+                          context,
                           'Trending Creators',
                           'People gaining momentum right now',
                         ),
                         const SizedBox(height: 16),
                         if (discoverState.isLoadingTrendingCreators &&
                             discoverState.trendingCreators.isEmpty)
-                          _buildLoadingState()
+                          _buildLoadingState(context)
                         else if (discoverState.trendingCreators.isEmpty)
-                          _buildEmptyTrendingCreatorsState()
+                          _buildEmptyTrendingCreatorsState(context)
                         else
                           Padding(
                             padding: const EdgeInsets.only(bottom: 4),
@@ -1216,163 +1241,103 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(
+                  padding: EdgeInsets.only(
                     left: 20,
                     right: 20,
                     top: 0,
-                    bottom: 16,
+                    bottom: 16 + MediaQuery.paddingOf(context).bottom,
                   ),
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
+                      color: s.cardFill,
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: s.cardBorder,
                       ),
+                      boxShadow: s.isLight
+                          ? <BoxShadow>[
+                              BoxShadow(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.shadow.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : null,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildSectionHeading(
+                          context,
                           'Categories',
                           'Jump into the corner of the app that fits your mood',
                         ),
-
-                        // PageView height + aspect ratio derived from cell width so
-                        // CategoryCard (80px icon + label) never overflows the cell.
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            const int crossAxisCount = 3;
-                            const double gridSpacing = 8;
-                            final TextScaler scaler =
-                                MediaQuery.textScalerOf(context);
-                            final double cellMainExtent = scaler
-                                .scale(126)
-                                .clamp(118.0, 156.0)
-                                .toDouble();
-                            final int categoryCount =
-                                discoverState.categories.length;
-                            final int pageCount =
-                                (categoryCount / 6).ceil().clamp(1, 999);
-                            int maxRowCount = 1;
-                            for (int p = 0; p < pageCount; p++) {
-                              final int n = categoryCount - p * 6;
-                              if (n <= 0) break;
-                              final int onPage = n >= 6 ? 6 : n;
-                              final int rows = (onPage + crossAxisCount - 1) ~/
-                                  crossAxisCount;
-                              if (rows > maxRowCount) maxRowCount = rows;
-                            }
-                            final double gridHeight =
-                                maxRowCount * cellMainExtent +
-                                    (maxRowCount > 1
-                                        ? (maxRowCount - 1) * gridSpacing
-                                        : 0);
-                            final double pageViewHeight = gridHeight + 12;
-                            return SizedBox(
-                              height: pageViewHeight,
-                              child: PageView.builder(
-                                onPageChanged: (page) {
-                                  setState(() {
-                                    _currentCategoryPage = page;
-                                  });
-                                },
-                                itemCount: pageCount,
-                                itemBuilder: (context, pageIndex) {
-                                  final int startIndex = pageIndex * 6;
-                                  final int endIndex = (startIndex + 6).clamp(
-                                    0,
-                                    categoryCount,
-                                  );
-                                  final pageCategories = discoverState
-                                      .categories
-                                      .sublist(startIndex, endIndex);
-
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: GridView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      gridDelegate:
-                                          SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: crossAxisCount,
-                                        crossAxisSpacing: gridSpacing,
-                                        mainAxisSpacing: gridSpacing,
-                                        mainAxisExtent: cellMainExtent,
-                                      ),
-                                      itemCount: pageCategories.length,
-                                      itemBuilder: (context, index) {
-                                        final category = pageCategories[index];
-                                        return _accessibilityService
-                                            .createAccessibleButton(
-                                          semanticLabel:
-                                              'Category ${category.name}',
-                                          semanticHint: _selectedCategory ==
-                                                  category.id
-                                              ? 'Currently selected category. Tap to deselect.'
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          height: 132,
+                          width: double.infinity,
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              const double sep = 10;
+                              const int visibleSlots = 6;
+                              final double maxW = constraints.maxWidth;
+                              final double raw =
+                                  (maxW - sep * (visibleSlots - 1)) /
+                                      visibleSlots;
+                              final double cardW =
+                                  raw < 48 ? 48.0 : raw;
+                              return ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                padding: const EdgeInsets.only(bottom: 4),
+                                itemCount: discoverState.categories.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: sep),
+                                itemBuilder: (context, index) {
+                                  final category =
+                                      discoverState.categories[index];
+                                  return SizedBox(
+                                    width: cardW,
+                                    child: _accessibilityService
+                                        .createAccessibleButton(
+                                      semanticLabel:
+                                          'Category ${category.name}',
+                                      semanticHint:
+                                          _selectedCategory == category.id
+                                              ? 'Currently selected category. '
+                                                  'Tap to deselect.'
                                               : 'Tap to select this category',
-                                          onPressed: () => _onCategorySelected(
-                                            _selectedCategory == category.id
-                                                ? null
-                                                : category.id,
-                                          ),
-                                          hapticFeedbackType:
-                                              AccessibilityHapticFeedbackType
-                                                  .light,
-                                          child: CategoryCard(
-                                            key: ValueKey(category.id),
-                                            category: category,
-                                            isSelected: _selectedCategory ==
-                                                category.id,
-                                            hasCategorySelected:
-                                                _selectedCategory != null,
-                                            onTap: () => _onCategorySelected(
-                                              _selectedCategory == category.id
-                                                  ? null
-                                                  : category.id,
-                                            ),
-                                          ),
-                                        );
-                                      },
+                                      onPressed: () => _onCategorySelected(
+                                        _selectedCategory == category.id
+                                            ? null
+                                            : category.id,
+                                      ),
+                                      hapticFeedbackType:
+                                          AccessibilityHapticFeedbackType
+                                              .light,
+                                      child: CategoryCard(
+                                        key: ValueKey(category.id),
+                                        category: category,
+                                        isSelected: _selectedCategory ==
+                                            category.id,
+                                        hasCategorySelected:
+                                            _selectedCategory != null,
+                                        onTap: () => _onCategorySelected(
+                                          _selectedCategory == category.id
+                                              ? null
+                                              : category.id,
+                                        ),
+                                      ),
                                     ),
                                   );
                                 },
-                              ),
-                            );
-                          },
-                        ),
-
-                        // Reduced spacing between categories and dots
-                        SizedBox(
-                          height: 8,
-                        ),
-
-                        // Page indicator with proper safe area handling
-                        Center(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: List.generate(
-                                (discoverState.categories.length / 6).ceil(),
-                                (index) => Container(
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 4),
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: index == _currentCategoryPage
-                                        ? const Color(0xFF40DCD1)
-                                        : const Color(
-                                            0xFF6B5AE0,
-                                          ).withValues(alpha: 0.4),
-                                  ),
-                                ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -1390,16 +1355,30 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: s.cardFill,
                         borderRadius: BorderRadius.circular(28),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.10),
+                          color: s.cardBorder,
                         ),
+                        boxShadow: s.isLight
+                            ? <BoxShadow>[
+                                BoxShadow(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.shadow.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildSectionHeading(
+                            context,
                             'Resources',
                             'Helpful picks, tools, and ideas to explore next',
                           ),
@@ -1425,7 +1404,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
               ] else ...[
                 // Category selected - show 3-column video grid with tap to open swipeable feed
-                _buildCategoryVideoGridSliver(discoverState),
+                _buildCategoryVideoGridSliver(context, s, discoverState),
               ],
 
               // Bottom padding for tab bar
@@ -1437,14 +1416,19 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  Widget _buildSectionHeading(String title, String subtitle) {
+  Widget _buildSectionHeading(
+    BuildContext context,
+    String title,
+    String subtitle,
+  ) {
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+      children: <Widget>[
         Text(
           title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: s.onCard,
             fontSize: 18,
             fontWeight: FontWeight.w700,
           ),
@@ -1453,7 +1437,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         Text(
           subtitle,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.68),
+            color: s.muted,
             fontSize: 13,
             height: 1.3,
           ),
@@ -1463,6 +1447,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Widget _buildCategoryVideoGridSliver(
+    BuildContext context,
+    _DiscoverPageStyle s,
     DiscoverState discoverState,
   ) {
     if (_selectedCategory == null) {
@@ -1481,16 +1467,30 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: s.cardFill,
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: s.cardBorder,
             ),
+            boxShadow: s.isLight
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.shadow.withValues(
+                            alpha: 0.08,
+                          ),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: <Widget>[
               _buildSectionHeading(
+                context,
                 selectedCategory.name,
                 'Swipe into a focused feed from this category',
               ),
@@ -1515,9 +1515,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
+          return Center(
             child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).colorScheme.primary,
+              ),
             ),
           );
         }
@@ -1537,8 +1539,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            crossAxisSpacing: 1,
-            mainAxisSpacing: 1,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
             childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
           ),
           itemCount: categoryVideos.length,
@@ -1559,117 +1561,124 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     List<Map<String, dynamic>> allVideos,
     int currentIndex,
   ) {
-    return GestureDetector(
-      onTap: () {
-        LoggingService.instance.debug(
-          'Tapped video: ${video['title']}',
-          tag: 'DiscoverView',
-        );
-        _openSwipeableVideoFeed(allVideos, currentIndex);
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: Colors.grey[800],
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Video thumbnail
-            Builder(
-              builder: (context) {
-                final thumbnailUrl = video['thumbnailUrl'] ??
-                    video['thumbnailURL'] ??
-                    video['thumbnail'] ??
-                    '';
-
-                if (thumbnailUrl.isNotEmpty) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      thumbnailUrl,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          color: Colors.grey[800],
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.grey[800],
-                          child: const Center(
-                            child: Icon(
-                              Icons.video_library_outlined,
-                              color: Colors.white54,
-                              size: 32,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                } else {
-                  return Container(
-                    color: Colors.grey[800],
-                    child: const Center(
-                      child: Icon(
-                        Icons.video_library_outlined,
-                        color: Colors.white54,
-                        size: 32,
-                      ),
-                    ),
-                  );
-                }
-              },
+    return Builder(
+      builder: (BuildContext context) {
+        final ColorScheme cs = Theme.of(context).colorScheme;
+        final Color tileBg = cs.surfaceContainerHighest;
+        final Color iconMuted = cs.onSurfaceVariant;
+        return GestureDetector(
+          onTap: () {
+            LoggingService.instance.debug(
+              'Tapped video: ${video['title']}',
+              tag: 'DiscoverView',
+            );
+            _openSwipeableVideoFeed(allVideos, currentIndex);
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: tileBg,
             ),
-            // Duration badge (if available)
-            Builder(
-              builder: (context) {
-                // Check both direct duration field and metadata.duration field
-                dynamic duration = video['duration'];
-                if (duration == null) {
-                  final metadata = video['metadata'] as Map<String, dynamic>?;
-                  duration = metadata?['duration'];
-                }
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Builder(
+                  builder: (BuildContext innerContext) {
+                    final thumbnailUrl = video['thumbnailUrl'] ??
+                        video['thumbnailURL'] ??
+                        video['thumbnail'] ??
+                        '';
 
-                if (duration != null) {
-                  return Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        _formatDuration(duration),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                    if (thumbnailUrl.isNotEmpty) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          thumbnailUrl,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) {
+                              return child;
+                            }
+                            return Container(
+                              color: tileBg,
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    cs.primary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: tileBg,
+                              child: Center(
+                                child: Icon(
+                                  Icons.video_library_outlined,
+                                  color: iconMuted,
+                                  size: 32,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    }
+                    return Container(
+                      color: tileBg,
+                      child: Center(
+                        child: Icon(
+                          Icons.video_library_outlined,
+                          color: iconMuted,
+                          size: 32,
                         ),
                       ),
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
+                    );
+                  },
+                ),
+                // Duration badge (if available)
+                Builder(
+                  builder: (context) {
+                    dynamic duration = video['duration'];
+                    if (duration == null) {
+                      final metadata =
+                          video['metadata'] as Map<String, dynamic>?;
+                      duration = metadata?['duration'];
+                    }
+
+                    if (duration != null) {
+                      return Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _formatDuration(duration),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -1910,20 +1919,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
   }
 
-  Widget _buildLoadingState() {
-    return const SizedBox(
+  Widget _buildLoadingState(BuildContext context) {
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
+    return SizedBox(
       height: 120,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+          children: <Widget>[
             CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              valueColor: AlwaysStoppedAnimation<Color>(s.refreshColor),
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             Text(
               'Loading trending creators...',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: s.muted, fontSize: 14),
             ),
           ],
         ),
@@ -1931,18 +1941,23 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  Widget _buildEmptyTrendingCreatorsState() {
+  Widget _buildEmptyTrendingCreatorsState(BuildContext context) {
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return SizedBox(
       height: 120,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.people, size: 32, color: Colors.white70),
+          children: <Widget>[
+            Icon(
+              Icons.people,
+              size: 32,
+              color: s.muted,
+            ),
             const SizedBox(height: 12),
             Text(
               'No trending creators yet',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              style: TextStyle(color: s.muted, fontSize: 14),
             ),
           ],
         ),
@@ -1951,34 +1966,42 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Widget _buildEmptyCategoryState() {
-    return SizedBox(
-      height: 200,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.video_library_outlined,
-              size: 48,
-              color: Colors.white70,
+    return Builder(
+      builder: (BuildContext context) {
+        final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
+        return SizedBox(
+          height: 200,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(
+                  Icons.video_library_outlined,
+                  size: 48,
+                  color: s.muted,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No videos found for this category',
+                  style: TextStyle(
+                    color: s.muted,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Be the first to upload a video!',
+                  style: TextStyle(
+                    color: s.muted,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'No videos found for this category',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Be the first to upload a video!',
-              style: TextStyle(color: Colors.white54, fontSize: 14),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

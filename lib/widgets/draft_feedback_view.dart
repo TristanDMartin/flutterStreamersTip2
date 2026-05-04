@@ -8,10 +8,12 @@ import '../models/message.dart' as app_message;
 import '../services/draft_sharing_service.dart';
 import '../providers/chat_provider.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/video_preview_letterbox.dart';
 
 /// Draft Feedback View - Chat-like interface for viewing draft feedback
-/// 
+///
 /// Features:
 /// - Display draft video at the top
 /// - Show feedback messages below
@@ -110,7 +112,8 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
 
       final videoPath = widget.sharedDraft['videoPath'] as String?;
       if (videoPath == null || videoPath.isEmpty) {
-        final originalDraftId = widget.sharedDraft['originalDraftId'] as String?;
+        final originalDraftId =
+            widget.sharedDraft['originalDraftId'] as String?;
         if (originalDraftId != null && originalDraftId.isNotEmpty) {
           final drafts = [
             ...await _draftSharingService.getSharedDraftsWithMe(),
@@ -282,34 +285,35 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     // Validate chat before building
     if (widget.chat.id == null || widget.chat.id!.isEmpty) {
       return Scaffold(
-        backgroundColor: AppColors.supportBackground,
+        backgroundColor: shell.scaffold,
         body: Center(
           child: Container(
             margin: const EdgeInsets.all(24),
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
+              color: shell.surfaceCard,
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.10),
+                color: shell.surfaceCardBorder,
               ),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
+                Icon(
                   Icons.error_outline,
-                  color: Colors.white,
+                  color: shell.onChrome,
                   size: 48,
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Invalid chat',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: shell.onChrome,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                   ),
@@ -327,7 +331,7 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       resizeToAvoidBottomInset: true,
       body: GestureDetector(
         onTap: () {
@@ -533,16 +537,16 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
     final caption = widget.sharedDraft['caption'] ?? '';
     final hashtags = widget.sharedDraft['hashtags'] as List<dynamic>? ?? [];
     final thumbnailPath = widget.sharedDraft['thumbnailPath'] as String?;
-    final thumbnailUrl = (widget.sharedDraft['thumbnailUrl'] as String?)?.isNotEmpty == true
-        ? widget.sharedDraft['thumbnailUrl'] as String
-        : widget.sharedDraft['draftThumbnailUrl'] as String?;
+    final thumbnailUrl =
+        (widget.sharedDraft['thumbnailUrl'] as String?)?.isNotEmpty == true
+            ? widget.sharedDraft['thumbnailUrl'] as String
+            : widget.sharedDraft['draftThumbnailUrl'] as String?;
     final durationMs = _videoDuration.inMilliseconds;
     final positionMs = _videoPosition.inMilliseconds.clamp(
       0,
       durationMs > 0 ? durationMs : 0,
     );
-    final progressValue =
-        durationMs > 0 ? positionMs / durationMs : 0.0;
+    final progressValue = durationMs > 0 ? positionMs / durationMs : 0.0;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -568,13 +572,21 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                 else if (_isVideoInitialized && _videoController != null)
                   GestureDetector(
                     onTap: _toggleVideoPlayback,
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      clipBehavior: Clip.hardEdge,
-                      child: SizedBox(
-                        width: _videoController!.value.size.width,
-                        height: _videoController!.value.size.height,
-                        child: VideoPlayer(_videoController!),
+                    child: ColoredBox(
+                      color: Colors.black,
+                      child: FittedBox(
+                        fit: shouldLetterboxNonVerticalAspectRatio(
+                              _videoController!.value.aspectRatio,
+                            )
+                            ? BoxFit.contain
+                            : BoxFit.cover,
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: _videoController!.value.size.width,
+                          height: _videoController!.value.size.height,
+                          child: VideoPlayer(_videoController!),
+                        ),
                       ),
                     ),
                   )
@@ -660,7 +672,9 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                       ),
                       padding: const EdgeInsets.all(18),
                       child: Icon(
-                        _isVideoPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        _isVideoPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
                         color: Colors.white,
                         size: 34,
                       ),
@@ -726,8 +740,7 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                                 Colors.white.withValues(alpha: 0.14),
                             activeTrackColor: Colors.white,
                             thumbColor: Colors.white,
-                            overlayColor:
-                                Colors.white.withValues(alpha: 0.14),
+                            overlayColor: Colors.white.withValues(alpha: 0.14),
                           ),
                           child: Slider(
                             value: progressValue.clamp(0.0, 1.0),
@@ -811,9 +824,8 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: isFromCurrentUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isFromCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isFromCurrentUser) ...[
@@ -887,8 +899,7 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
@@ -1233,8 +1244,9 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
     final videoSourceDurationMs =
         (widget.sharedDraft['durationMs'] as num?)?.toInt() ??
             (widget.sharedDraft['duration'] as num?)?.toInt();
-    final effectiveDurationMs =
-        _videoDuration.inMilliseconds > 0 ? _videoDuration.inMilliseconds : videoSourceDurationMs;
+    final effectiveDurationMs = _videoDuration.inMilliseconds > 0
+        ? _videoDuration.inMilliseconds
+        : videoSourceDurationMs;
 
     final prompts = <({IconData icon, String label, String prompt})>[];
 
@@ -1292,7 +1304,10 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
     prompts.addAll(_defaultFeedbackPrompts);
 
     final seenLabels = <String>{};
-    return prompts.where((prompt) => seenLabels.add(prompt.label)).take(5).toList();
+    return prompts
+        .where((prompt) => seenLabels.add(prompt.label))
+        .take(5)
+        .toList();
   }
 
   Widget _buildPreviewLoadingState() {

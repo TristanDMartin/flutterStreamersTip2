@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'brand_icons.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 
 class LinksEditView extends StatefulWidget {
   final List<Map<String, dynamic>> platforms;
@@ -21,11 +22,20 @@ class LinksEditView extends StatefulWidget {
 class _LinksEditViewState extends State<LinksEditView> {
   late List<PlatformLink> _platformLinks;
   final Set<String> _expandedPlatformTypes = <String>{};
-  
+
   // Allowed platform types matching your design system
   static const List<String> _allowedPlatforms = [
-    'twitch', 'youtube', 'kick', 'tiktok', 'instagram', 
-    'twitter', 'discord', 'bluesky', 'reddit', 'facebook', 'other'
+    'twitch',
+    'youtube',
+    'kick',
+    'tiktok',
+    'instagram',
+    'twitter',
+    'discord',
+    'bluesky',
+    'reddit',
+    'facebook',
+    'other'
   ];
 
   @override
@@ -55,21 +65,19 @@ class _LinksEditViewState extends State<LinksEditView> {
     _expandedPlatformTypes
       ..clear()
       ..addAll(
-        _platformLinks
-            .where((link) => !link.isLinked)
-            .map((link) => link.type),
+        _platformLinks.where((link) => !link.isLinked).map((link) => link.type),
       );
   }
 
   void _saveLinks() {
     final updatedPlatforms = <Map<String, dynamic>>[];
-    
+
     for (final link in _platformLinks) {
       if (link.username.isNotEmpty || link.url.isNotEmpty) {
         // Ensure URL has proper protocol
         String urlString = link.url.trim();
-        if (urlString.isNotEmpty && 
-            !urlString.startsWith('http://') && 
+        if (urlString.isNotEmpty &&
+            !urlString.startsWith('http://') &&
             !urlString.startsWith('https://')) {
           urlString = 'https://$urlString';
         }
@@ -90,8 +98,9 @@ class _LinksEditViewState extends State<LinksEditView> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       body: SafeArea(
         child: Column(
           children: [
@@ -103,12 +112,12 @@ class _LinksEditViewState extends State<LinksEditView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
                       child: Text(
                         'Connect your platforms',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.68),
+                          color: shell.muted,
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -130,15 +139,16 @@ class _LinksEditViewState extends State<LinksEditView> {
   }
 
   Widget _buildHeader() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: shell.surfaceCardBorder,
             width: 1,
           ),
         ),
@@ -146,14 +156,14 @@ class _LinksEditViewState extends State<LinksEditView> {
           children: [
             IconButton(
               onPressed: widget.onBack ?? () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+              icon: Icon(Icons.arrow_back, color: shell.onChrome, size: 22),
             ),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Edit links',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: shell.onChrome,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
@@ -164,7 +174,6 @@ class _LinksEditViewState extends State<LinksEditView> {
               child: const Text(
                 'Save',
                 style: TextStyle(
-                  color: Colors.white,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
@@ -177,16 +186,17 @@ class _LinksEditViewState extends State<LinksEditView> {
   }
 
   Widget _buildPlatformLinkRow(PlatformLink link, int index) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final isExpanded =
         !link.isLinked || _expandedPlatformTypes.contains(link.type);
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: shell.surfaceCardBorder,
           width: 1,
         ),
       ),
@@ -211,7 +221,7 @@ class _LinksEditViewState extends State<LinksEditView> {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: shell.skeletonFill,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Center(
@@ -252,8 +262,8 @@ class _LinksEditViewState extends State<LinksEditView> {
                 if (link.isLinked) ...[
                   const SizedBox(width: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: AppColors.supportAccentGradient,
@@ -414,7 +424,6 @@ class _LinksEditViewState extends State<LinksEditView> {
       size: 24.0,
     );
   }
-
 
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {

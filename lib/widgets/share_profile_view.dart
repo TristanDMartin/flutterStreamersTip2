@@ -116,20 +116,21 @@ class _ShareProfileViewState extends State<ShareProfileView> {
       showModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
-        builder: (context) {
+        builder: (BuildContext sheetContext) {
+          final ColorScheme cs = Theme.of(sheetContext).colorScheme;
           return Container(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
             decoration: BoxDecoration(
-              color: AppColors.profileViewBackground.withValues(alpha: 0.98),
+              color: cs.surface.withValues(alpha: 0.98),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(28)),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: cs.outline.withValues(alpha: 0.45),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.24),
+                  color: cs.shadow.withValues(alpha: 0.22),
                   blurRadius: 28,
                   offset: const Offset(0, -10),
                 ),
@@ -142,17 +143,17 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                   width: 42,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.24),
+                    color: cs.onSurface.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
                 const SizedBox(height: 18),
                 Column(
                   children: [
-                    const Text(
+                    Text(
                       'Share Profile',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: cs.onSurface,
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
                       ),
@@ -161,7 +162,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                     Text(
                       'Choose how you want to send this profile.',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.68),
+                        color: cs.onSurface.withValues(alpha: 0.68),
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                       ),
@@ -170,21 +171,23 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 ),
                 const SizedBox(height: 22),
                 _buildShareOptionTile(
+                  sheetContext,
                   icon: Icons.link_rounded,
                   title: 'Copy Link',
                   subtitle: 'Grab the profile URL for messages or posts',
                   onTap: () {
                     _copyProfileLink();
-                    Navigator.of(context).pop();
+                    Navigator.of(sheetContext).pop();
                   },
                 ),
                 const SizedBox(height: 12),
                 _buildShareOptionTile(
+                  sheetContext,
                   icon: Icons.share_rounded,
                   title: 'Share Link',
                   subtitle: 'Open the native share sheet',
                   onTap: () {
-                    Navigator.of(context).pop();
+                    Navigator.of(sheetContext).pop();
                     _shareProfile();
                   },
                 ),
@@ -196,21 +199,23 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     }
   }
 
-  Widget _buildShareOptionTile({
+  Widget _buildShareOptionTile(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: cs.onSurface.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: cs.outline.withValues(alpha: 0.35),
             width: 1,
           ),
         ),
@@ -236,8 +241,8 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
@@ -246,7 +251,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.66),
+                      color: cs.onSurface.withValues(alpha: 0.66),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
@@ -257,7 +262,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
             const SizedBox(width: 8),
             Icon(
               Icons.arrow_forward_ios_rounded,
-              color: Colors.white.withValues(alpha: 0.72),
+              color: cs.onSurface.withValues(alpha: 0.5),
               size: 15,
             ),
           ],
@@ -270,12 +275,12 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: AppColors.profileViewBackground,
+        color: Theme.of(context).colorScheme.surface,
         child: SafeArea(
           child: Column(
             children: [
               // Top navigation bar
-              _buildTopNavigation(),
+              _buildTopNavigation(context),
 
               // Main content
               Expanded(
@@ -286,22 +291,22 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                       const SizedBox(height: 20),
 
                       // Profile section
-                      _buildProfileSection(),
+                      _buildProfileSection(context),
 
                       const SizedBox(height: 30),
 
                       // QR Code section
-                      _buildQRCodeSection(),
+                      _buildQRCodeSection(context),
 
                       const SizedBox(height: 30),
 
                       // Action buttons
-                      _buildActionButtonsSection(),
+                      _buildActionButtonsSection(context),
 
                       const SizedBox(height: 40),
 
                       // Bottom text
-                      _buildBottomText(),
+                      _buildBottomText(context),
                     ],
                   ),
                 ),
@@ -313,16 +318,17 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     );
   }
 
-  Widget _buildTopNavigation() {
+  Widget _buildTopNavigation(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
         children: [
           IconButton(
             onPressed: widget.dismiss,
-            icon: const Icon(
+            icon: Icon(
               Icons.arrow_back,
-              color: Colors.white,
+              color: cs.onSurface,
               size: 24,
             ),
           ),
@@ -337,9 +343,9 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 ),
               );
             },
-            icon: const Icon(
+            icon: Icon(
               Icons.qr_code_scanner,
-              color: Colors.white,
+              color: cs.onSurface,
               size: 24,
             ),
           ),
@@ -348,7 +354,8 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     );
   }
 
-  Widget _buildProfileSection() {
+  Widget _buildProfileSection(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         // Avatar with gradient border
@@ -370,9 +377,9 @@ class _ShareProfileViewState extends State<ShareProfileView> {
           ),
           child: Container(
             margin: const EdgeInsets.all(3),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.black,
+              color: cs.surfaceContainerHighest,
             ),
             child: widget.user['avatarURL'] != null
                 ? ClipOval(
@@ -381,16 +388,16 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                       width: 110,
                       height: 110,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
+                      errorBuilder: (context, error, stackTrace) => Icon(
                         Icons.person,
-                        color: Colors.grey,
+                        color: cs.onSurface.withValues(alpha: 0.45),
                         size: 48,
                       ),
                     ),
                   )
-                : const Icon(
+                : Icon(
                     Icons.person,
-                    color: Colors.grey,
+                    color: cs.onSurface.withValues(alpha: 0.45),
                     size: 48,
                   ),
           ),
@@ -402,8 +409,8 @@ class _ShareProfileViewState extends State<ShareProfileView> {
           children: [
             Text(
               widget.user['displayName'] ?? '',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -412,7 +419,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
             Text(
               '@${widget.user['username'] ?? ''}',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8),
+                color: cs.onSurface.withValues(alpha: 0.72),
                 fontSize: 14,
               ),
             ),
@@ -422,7 +429,8 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     );
   }
 
-  Widget _buildQRCodeSection() {
+  Widget _buildQRCodeSection(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         if (_isLoadingQR)
@@ -430,15 +438,15 @@ class _ShareProfileViewState extends State<ShareProfileView> {
             width: 320,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: cs.onSurface.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: cs.outline.withValues(alpha: 0.35),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
+                  color: cs.shadow.withValues(alpha: 0.14),
                   blurRadius: 18,
                   offset: const Offset(0, 10),
                 ),
@@ -454,19 +462,19 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(22),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CircularProgressIndicator(
-                          color: Colors.grey,
+                          color: cs.primary,
                           strokeWidth: 3,
                         ),
-                        SizedBox(height: 8),
+                        const SizedBox(height: 8),
                         Text(
                           'Loading QR Code...',
                           style: TextStyle(
-                            color: Colors.grey,
+                            color: cs.onSurface.withValues(alpha: 0.55),
                             fontSize: 12,
                           ),
                         ),
@@ -482,15 +490,15 @@ class _ShareProfileViewState extends State<ShareProfileView> {
             width: 320,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: cs.onSurface.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: cs.outline.withValues(alpha: 0.35),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
+                  color: cs.shadow.withValues(alpha: 0.14),
                   blurRadius: 18,
                   offset: const Offset(0, 10),
                 ),
@@ -522,7 +530,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 Text(
                   'Scan to open this profile',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: cs.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
@@ -531,7 +539,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 Text(
                   'Share it in person or drop the link below.',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.68),
+                    color: cs.onSurface.withValues(alpha: 0.68),
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),
@@ -544,17 +552,17 @@ class _ShareProfileViewState extends State<ShareProfileView> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: cs.onSurface.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: cs.outline.withValues(alpha: 0.35),
               width: 1,
             ),
           ),
           child: Text(
             'Share this QR code with others to connect',
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.76),
+                color: cs.onSurface.withValues(alpha: 0.72),
                 fontSize: 15,
                 fontWeight: FontWeight.w600),
             textAlign: TextAlign.center,
@@ -564,7 +572,8 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     );
   }
 
-  Widget _buildActionButtonsSection() {
+  Widget _buildActionButtonsSection(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         Expanded(
@@ -573,23 +582,26 @@ class _ShareProfileViewState extends State<ShareProfileView> {
             child: Container(
               height: 52,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: cs.onSurface.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
+                  color: cs.outline.withValues(alpha: 0.35),
                   width: 1,
                 ),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.link_rounded, color: Colors.white, size: 20),
-                  SizedBox(width: 8),
-                  Text('Copy link',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700)),
+                  Icon(Icons.link_rounded, color: cs.onSurface, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Copy link',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -609,7 +621,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                   end: Alignment.centerRight,
                 ),
                 border: Border.all(
-                  color: Colors.white24,
+                  color: Colors.white.withValues(alpha: 0.35),
                   width: 1,
                 ),
                 boxShadow: [
@@ -625,11 +637,14 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 children: [
                   Icon(Icons.share_rounded, color: Colors.white, size: 20),
                   SizedBox(width: 8),
-                  Text('Share link',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700)),
+                  Text(
+                    'Share link',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -639,13 +654,14 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     );
   }
 
-  Widget _buildBottomText() {
+  Widget _buildBottomText(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.only(bottom: 40),
       child: Text(
         'Connect with like minded friends on StreamersTip',
         style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.8),
+          color: cs.onSurface.withValues(alpha: 0.72),
           fontSize: 12,
         ),
         textAlign: TextAlign.center,

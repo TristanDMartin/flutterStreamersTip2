@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/theme/st_theme_tokens.dart';
 import '../services/pending_auth_redirect_service.dart';
 import '../services/robust_auth_service.dart';
 import 'signup_view.dart';
@@ -43,7 +44,6 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   @override
   void initState() {
     super.initState();
-    _setSystemUIOverlayStyle();
     _emailController.addListener(_handleInputChanged);
     _passwordController.addListener(_handleInputChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -55,13 +55,25 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     });
   }
 
-  void _setSystemUIOverlayStyle() {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applySystemUiForTheme();
+  }
+
+  void _applySystemUiForTheme() {
+    final ThemeData theme = Theme.of(context);
+    final Brightness brightness = theme.brightness;
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFF1C135D),
-        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarIconBrightness: brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
+        systemNavigationBarColor: theme.colorScheme.surface,
+        systemNavigationBarIconBrightness: brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
       ),
     );
   }
@@ -79,18 +91,14 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   void _resetSystemUIOverlayStyle() {
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.black,
-        systemNavigationBarIconBrightness: Brightness.light,
-      ),
-    );
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
   }
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final bool isDark = theme.brightness == Brightness.dark;
     final authService = ref.watch(robustAuthServiceProvider);
     ref.listen(robustAuthServiceProvider, (previous, next) {
       if (next.isLoggedIn && mounted) {
@@ -106,11 +114,21 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       color: Colors.transparent,
       child: Scaffold(
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF6D43F3), Color(0xFF2A1A77), Color(0xFF150E46)],
+              colors: isDark
+                  ? <Color>[
+                      StThemeColors.darkBackground,
+                      scheme.surfaceContainerLow,
+                      scheme.surface,
+                    ]
+                  : <Color>[
+                      scheme.primary.withValues(alpha: 0.45),
+                      scheme.surfaceContainerLow,
+                      scheme.surface,
+                    ],
             ),
           ),
           child: Stack(
@@ -145,8 +163,6 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                           ),
                           child: Column(
                             children: [
-                              _buildHeader(),
-                              const SizedBox(height: 28),
                               _buildAnimatedSection(
                                 delay: 0,
                                 child: _buildLoginForm(),
@@ -167,21 +183,21 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
               ),
               if (authService.shouldShowLoading)
                 Container(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  child: const Center(
+                  color: scheme.scrim.withValues(alpha: 0.35),
+                  child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
+                            scheme.primary,
                           ),
                         ),
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         Text(
                           "Signing in...",
                           style: TextStyle(
-                            color: Colors.white,
+                            color: scheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
                           ),
@@ -194,21 +210,23 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 Positioned.fill(
                   child: GestureDetector(
                     onTap: () => setState(() => _showAlert = false),
-                    child: Container(color: Colors.black54),
+                    child: Container(
+                      color: scheme.scrim.withValues(alpha: 0.45),
+                    ),
                   ),
                 ),
                 Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
                     child: AlertDialog(
-                      backgroundColor: const Color(0xFF1C1C1E),
+                      backgroundColor: scheme.surfaceContainerHigh,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      title: const Text(
+                      title: Text(
                         "Error",
                         style: TextStyle(
-                          color: Colors.white,
+                          color: scheme.onSurface,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -216,13 +234,16 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                         _alertMessage.isEmpty
                             ? "Something went wrong."
                             : _alertMessage,
-                        style: const TextStyle(
-                          color: Colors.white70,
+                        style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: 0.75),
                           height: 1.3,
                         ),
                       ),
                       actions: [
                         TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: scheme.primary,
+                          ),
                           onPressed: () => setState(() => _showAlert = false),
                           child: const Text("OK"),
                         ),
@@ -238,37 +259,9 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: widget.dismiss ?? () => Navigator.of(context).pop(),
-            icon: const Icon(
-              Icons.arrow_back,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-          const Expanded(
-            child: Text(
-              "Sign In",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 48), // Balance the back button
-        ],
-      ),
-    );
-  }
-
   Widget _buildLoginForm() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return _buildGlassPanel(
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
       child: Form(
@@ -278,27 +271,63 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             : AutovalidateMode.disabled,
         child: Column(
           children: [
-            Container(
-              width: 116,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+            SizedBox(
+              height: 44,
+              width: double.infinity,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  Icon(Icons.lock_open_rounded,
-                      color: Color(0xFF9BD1FF), size: 16),
-                  SizedBox(width: 6),
-                  Text(
-                    "Secure Login",
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.25,
-                      color: Colors.white,
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      style: IconButton.styleFrom(
+                        foregroundColor: scheme.onSurface,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(44, 44),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: widget.dismiss ??
+                          () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back, size: 24),
+                    ),
+                  ),
+                  Center(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: scheme.surface.withValues(
+                          alpha: isDark ? 0.38 : 0.72,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: scheme.outline.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.lock_open_rounded,
+                              color: scheme.primary,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              "Secure Login",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.25,
+                                color: scheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -335,21 +364,22 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
               },
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               "Sign In",
               style: TextStyle(
                 fontSize: 34,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.4,
-                color: Colors.white,
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              "Enter your email or username to jump back into your stream community.",
+            Text(
+              "Enter your email or username to jump back into your "
+              "stream community.",
               style: TextStyle(
                 fontSize: 16,
-                color: Color(0xFFE1E6FF),
+                color: scheme.onSurfaceVariant,
                 height: 1.45,
               ),
               textAlign: TextAlign.center,
@@ -395,14 +425,15 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   Widget _buildFieldLabel(String text) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Align(
       alignment: Alignment.centerLeft,
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: Color(0xFFDDE3FF),
+          color: scheme.onSurfaceVariant,
           letterSpacing: 0.2,
         ),
       ),
@@ -422,19 +453,23 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     VoidCallback? onEditingComplete,
     void Function(String)? onSubmitted,
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color fill = scheme.surfaceContainerHighest.withValues(
+      alpha: isDark ? 0.55 : 0.75,
+    );
+    final Color border = scheme.outline.withValues(alpha: 0.4);
+    final Color iconFg = scheme.onSurface.withValues(alpha: 0.65);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: fill,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.18),
-          width: 1,
-        ),
-        boxShadow: const [
+        border: Border.all(color: border, width: 1),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x1F000000),
+            color: scheme.shadow.withValues(alpha: isDark ? 0.35 : 0.08),
             blurRadius: 24,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -448,18 +483,18 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         validator: validator,
         onEditingComplete: onEditingComplete,
         onFieldSubmitted: onSubmitted,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: scheme.onSurface),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.85),
           ),
-          prefixIcon: Icon(icon, color: Colors.white.withValues(alpha: 0.7)),
+          prefixIcon: Icon(icon, color: iconFg),
           suffixIcon: isPassword
               ? IconButton(
                   icon: Icon(
                     _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: iconFg,
                   ),
                   onPressed: () {
                     setState(() {
@@ -499,7 +534,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: isEnabled
-                    ? const [Color(0xFFAB6CFF), Color(0xFF41A5FF)]
+                    ? const [Color(0xFF955CFF), Color(0xFF3D99F7)]
                     : const [Color(0xFF7158A6), Color(0xFF4D6690)],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
@@ -661,6 +696,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   Widget _buildForgotPasswordSection() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return TextButton(
       onPressed: () {
         Navigator.of(context).push(
@@ -669,11 +705,11 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
           ),
         );
       },
-      child: const Text(
+      child: Text(
         "Forgot Password?",
         style: TextStyle(
           fontSize: 14,
-          color: Color(0xFF9BD1FF),
+          color: scheme.primary,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -681,14 +717,15 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   Widget _buildSignUpSection() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text(
+        Text(
           "Don't have an account?",
           style: TextStyle(
             fontSize: 14,
-            color: Color(0xFFDDE3FF),
+            color: scheme.onSurfaceVariant,
           ),
         ),
         TextButton(
@@ -697,11 +734,11 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
               MaterialPageRoute(builder: (context) => const SignupView()),
             );
           },
-          child: const Text(
+          child: Text(
             "Sign up",
             style: TextStyle(
               fontSize: 14,
-              color: Color(0xFFFF6AA2),
+              color: scheme.secondary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -711,6 +748,9 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   Widget _buildBackgroundDecor() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final Color primarySoft = scheme.primary.withValues(alpha: 0.14);
+    final Color secondarySoft = scheme.secondary.withValues(alpha: 0.1);
     return IgnorePointer(
       child: Stack(
         children: [
@@ -719,7 +759,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             right: -20,
             child: _buildGlowOrb(
               size: 220,
-              colors: const [Color(0x55B27BFF), Color(0x00B27BFF)],
+              colors: [primarySoft, primarySoft.withValues(alpha: 0)],
             ),
           ),
           Positioned(
@@ -727,7 +767,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             left: -70,
             child: _buildGlowOrb(
               size: 180,
-              colors: const [Color(0x4447C4FF), Color(0x0047C4FF)],
+              colors: [secondarySoft, secondarySoft.withValues(alpha: 0)],
             ),
           ),
           Positioned(
@@ -735,7 +775,10 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             right: -10,
             child: _buildGlowOrb(
               size: 170,
-              colors: const [Color(0x33FF6DB2), Color(0x00FF6DB2)],
+              colors: [
+                scheme.primary.withValues(alpha: 0.08),
+                Colors.transparent,
+              ],
             ),
           ),
         ],
@@ -761,22 +804,29 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     required Widget child,
     EdgeInsetsGeometry padding = const EdgeInsets.all(16),
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color panelFill = isDark
+        ? scheme.surface.withValues(alpha: 0.42)
+        : scheme.surface.withValues(alpha: 0.72);
+    final Color panelBorder =
+        scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(30),
+      borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
           width: double.infinity,
           padding: padding,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(30),
-            color: Colors.white.withValues(alpha: 0.08),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-            boxShadow: const [
+            borderRadius: BorderRadius.circular(28),
+            color: panelFill,
+            border: Border.all(color: panelBorder),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x26000000),
+                color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
                 blurRadius: 32,
-                offset: Offset(0, 18),
+                offset: const Offset(0, 18),
               ),
             ],
           ),

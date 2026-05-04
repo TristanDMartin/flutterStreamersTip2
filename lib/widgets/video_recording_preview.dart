@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 
+import '../utils/video_preview_letterbox.dart';
+
 enum VideoRecordingPreviewAction {
   retake,
   useVideo,
@@ -200,12 +202,20 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
           // Video Player - Fullscreen
           if (_isInitialized && _isReady)
             Positioned.fill(
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: _controller.value.size.width,
-                  height: _controller.value.size.height,
-                  child: VideoPlayer(_controller),
+              child: ColoredBox(
+                color: Colors.black,
+                child: FittedBox(
+                  fit: shouldLetterboxNonVerticalAspectRatio(
+                        _controller.value.aspectRatio,
+                      )
+                      ? BoxFit.contain
+                      : BoxFit.cover,
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: _controller.value.size.width,
+                    height: _controller.value.size.height,
+                    child: VideoPlayer(_controller),
+                  ),
                 ),
               ),
             )

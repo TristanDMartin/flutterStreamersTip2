@@ -16,6 +16,7 @@ import 'streamer_share_sheet.dart';
 import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
+import '../services/profile_link_service.dart';
 import '../providers/follows_provider.dart';
 import '../providers/follow_refresh_provider.dart';
 import '../utils/avatar_url_resolver.dart';
@@ -26,9 +27,49 @@ import '../services/user_blocking_service.dart';
 import '../services/global_playback_manager.dart';
 import '../routing/app_navigator.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
+import '../models/user.dart' as app_models;
 import 'streamer_card_profile_controller.dart';
 import 'streamer_card_relationship_controller.dart';
 import 'streamer_card_sections.dart';
+
+enum _StreamerSnackKind {
+  success,
+  error,
+  warning,
+}
+
+SnackBar _streamerSnackBar(
+  BuildContext context,
+  String message, {
+  _StreamerSnackKind kind = _StreamerSnackKind.success,
+  Duration duration = const Duration(seconds: 2),
+  String? actionLabel,
+  VoidCallback? onAction,
+}) {
+  final ColorScheme scheme = Theme.of(context).colorScheme;
+  final (Color background, Color foreground) = switch (kind) {
+    _StreamerSnackKind.error => (scheme.error, scheme.onError),
+    _StreamerSnackKind.warning => (
+        scheme.surfaceContainerHighest,
+        scheme.onSurface,
+      ),
+    _StreamerSnackKind.success => (scheme.primary, scheme.onPrimary),
+  };
+  return SnackBar(
+    content: Text(message, style: TextStyle(color: foreground)),
+    backgroundColor: background,
+    duration: duration,
+    behavior: SnackBarBehavior.floating,
+    action: actionLabel != null && onAction != null
+        ? SnackBarAction(
+            label: actionLabel,
+            textColor: foreground,
+            onPressed: onAction,
+          )
+        : null,
+  );
+}
 
 class StreamerCardView extends ConsumerStatefulWidget {
   final String userId; // Changed from StreamerCard to userId for live data
@@ -350,10 +391,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please log in to bookmark events'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Please log in to bookmark events',
+            kind: _StreamerSnackKind.error,
           ),
         );
       }
@@ -408,12 +449,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
 
       if (mounted) {
-        // Show message
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: success ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            message,
+            kind: success
+                ? _StreamerSnackKind.success
+                : _StreamerSnackKind.error,
           ),
         );
       }
@@ -437,10 +479,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Error: ${e.toString()}',
+            kind: _StreamerSnackKind.error,
           ),
         );
       }
@@ -448,36 +490,37 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   void _deleteEvent(String eventId) {
-    showDialog(
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF0E1220),
-        title: const Text(
+      builder: (BuildContext dialogContext) => AlertDialog(
+        backgroundColor: scheme.surface,
+        title: Text(
           'Delete Event',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: scheme.onSurface),
         ),
-        content: const Text(
+        content: Text(
           'Are you sure you want to delete this event?',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text('Cancel', style: TextStyle(color: scheme.primary)),
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
-              // Event deletion functionality - placeholder for future implementation
+              Navigator.pop(dialogContext);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Event deleted'),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 1),
+                _streamerSnackBar(
+                  context,
+                  'Event deleted',
+                  kind: _StreamerSnackKind.success,
+                  duration: const Duration(seconds: 1),
                 ),
               );
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: scheme.error),
             child: const Text('Delete'),
           ),
         ],
@@ -497,23 +540,26 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return _buildLoadingState();
+      return _buildLoadingState(context);
     }
 
     if (_error != null) {
-      return _buildErrorState();
+      return _buildErrorState(context);
     }
 
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
+      value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.supportBackground,
-        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarIconBrightness:
+            shell.isLight ? Brightness.dark : Brightness.light,
+        statusBarBrightness: shell.isLight ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: shell.scaffold,
+        systemNavigationBarIconBrightness:
+            shell.isLight ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
-        backgroundColor: AppColors.supportBackground,
+        backgroundColor: shell.scaffold,
         extendBody: true,
         extendBodyBehindAppBar:
             false, // SAFE AREA FIX: Don't extend behind system UI
@@ -547,51 +593,53 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-  Widget _buildLoadingState() {
-    return const Scaffold(
-      backgroundColor: AppColors.supportBackground,
+  Widget _buildLoadingState(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Scaffold(
+      backgroundColor: shell.scaffold,
       body: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: AppColors.supportSurfaceGradient,
+            colors: shell.pageGradient,
           ),
         ),
         child: Center(
           child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            valueColor: AlwaysStoppedAnimation<Color>(shell.refreshColor),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildErrorState() {
+  Widget _buildErrorState(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: AppColors.supportSurfaceGradient,
+            colors: shell.pageGradient,
           ),
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline,
-                color: Colors.white,
+                color: shell.onChrome,
                 size: 64,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Error Loading Profile',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: shell.onChrome,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
@@ -599,14 +647,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               const SizedBox(height: 8),
               Text(
                 _error ?? 'Unknown error',
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: shell.muted,
                   fontSize: 16,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              ElevatedButton(
+              FilledButton(
                 onPressed: () {
                   setState(() {
                     _isLoading = true;
@@ -627,8 +675,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Widget _buildChatView() {
     if (_selectedChat == null) return const SizedBox.shrink();
 
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
-      color: AppColors.supportBackground,
+      color: shell.scaffold,
       child: SafeArea(
         child: Column(
           children: [
@@ -636,10 +685,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF0E1220),
+                color: shell.panelSurface,
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: shell.panelBorder,
                     width: 1,
                   ),
                 ),
@@ -653,7 +702,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         _selectedChat = null;
                       });
                     },
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    icon: Icon(Icons.arrow_back, color: shell.onChrome),
                   ),
                   const SizedBox(width: 12),
                   UnifiedAvatarService().getAvatar(
@@ -667,8 +716,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       children: [
                         Text(
                           displayName,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: shell.onChrome,
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
@@ -676,7 +725,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         Text(
                           '@$username',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: shell.muted,
                             fontSize: 14,
                           ),
                         ),
@@ -689,21 +738,21 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             // Chat Content Placeholder
             Expanded(
               child: Container(
-                color: const Color(0xFF0E1220),
+                color: shell.panelSurface,
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.chat_bubble_outline,
-                        color: Colors.white.withValues(alpha: 0.3),
+                        color: shell.iconDim,
                         size: 64,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'Chat with $displayName',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: shell.muted,
                           fontSize: 18,
                         ),
                       ),
@@ -711,7 +760,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       Text(
                         'Chat ID: ${_selectedChat!['id']}',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
+                          color: shell.mutedStrong,
                           fontSize: 12,
                         ),
                       ),
@@ -719,7 +768,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       Text(
                         'Chat functionality will be implemented here',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
+                          color: shell.mutedStrong,
                           fontSize: 14,
                         ),
                       ),
@@ -749,7 +798,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     return StreamerCardFrontSection(
       onDismiss: _handleDismiss,
       onFlip: _flipCard,
-      onMore: () => _showShareSheet(context),
+      onMore: _showStreamerCardMoreMenu,
       profileSection: _buildProfileSection(),
       userId: _effectiveUserId,
       postsCountOverride: postsCountOverride,
@@ -881,14 +930,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       // User moved from Connections → Followers (if they still follow you)
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isFollowedByStreamer
-                  ? 'Removed from Connections. They\'re now in Followers.'
-                  : 'Unfollowed successfully.',
-            ),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            _isFollowedByStreamer
+                ? 'Removed from Connections. They\'re now in Followers.'
+                : 'Unfollowed successfully.',
+            kind: _StreamerSnackKind.warning,
           ),
         );
       }
@@ -898,201 +945,277 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _handleUnfollow();
   }
 
-  /// Show options menu for connected users (Message, Manage Connection, Report)
-  /// NOTE: Currently not used for single-tap behavior (immediate unfollow)
-  /// Keeping for potential future use (long-press, menu button, etc.)
-  // ignore: unused_element
-  void _showConnectedUserOptions() {
+  bool get _isViewingOwnStreamerCard =>
+      widget.currentUserId != null && widget.currentUserId == widget.userId;
+
+  void _showStreamerCardMoreMenu() {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
+      builder: (BuildContext sheetContext) {
+        final StSupportShellStyle shell = StSupportShellStyle.of(sheetContext);
+        final ColorScheme scheme = Theme.of(sheetContext).colorScheme;
+        final bool isSelf = _isViewingOwnStreamerCard;
+        return Container(
+          decoration: BoxDecoration(
+            color: shell.panelSurface,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+            border: Border.all(color: shell.panelBorder),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: shell.muted.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-
-              // User info header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    // Avatar
-                    SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: _buildAvatarWithOnlineIndicator(),
-                    ),
-                    const SizedBox(width: 12),
-                    // Username
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _userData?['username'] ?? 'Unknown',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: <Widget>[
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: ClipOval(
+                          child: buildCachedAvatarCircle(
+                            context: sheetContext,
+                            url: avatarURL,
+                            size: 48,
+                            iconSize: 24,
                           ),
-                          Text(
-                            _getConnectionStatusText(), // Shows NetworkView-style status
-                            style: const TextStyle(
-                              color: Color(0xFF9248D2),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              _userData?['displayName'] as String? ??
+                                  _userData?['username'] as String? ??
+                                  'Unknown',
+                              style: TextStyle(
+                                color: shell.onChrome,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              '@${_userData?['username'] ?? 'unknown'}',
+                              style: TextStyle(
+                                color: shell.muted,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (!isSelf)
+                              Text(
+                                _getConnectionStatusText(),
+                                style: TextStyle(
+                                  color: scheme.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              const Divider(color: Colors.grey, height: 1),
-
-              // Option 1: Message
-              _buildOptionTile(
-                icon: Icons.chat_bubble_outline,
-                title: 'Message',
-                subtitle: 'Send a direct message',
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleMessage();
-                },
-              ),
-
-              // Option 2: Manage Connection (Dynamic based on relationship)
-              // Shows: "Unfollow" if following/connected, "Follow" if not following
-              _buildOptionTile(
-                icon: _isFollowing
-                    ? Icons.person_remove_outlined
-                    : Icons.person_add_outlined,
-                title: _isFollowing ? 'Unfollow' : 'Follow',
-                subtitle: _isConnected
-                    ? 'Remove from Connections (both will be unfollowed)'
-                    : (_isFollowing
-                        ? 'Stop following this user'
-                        : 'Follow this user'),
-                onTap: () {
-                  Navigator.pop(context);
-                  if (_isFollowing) {
-                    _confirmUnfollowWithConnectionWarning();
-                  } else {
-                    _handleFollow();
-                  }
-                },
-                isDestructive: _isFollowing,
-              ),
-
-              // Option 3: Report
-              _buildOptionTile(
-                icon: Icons.flag_outlined,
-                title: 'Report',
-                subtitle: 'Report this user',
-                onTap: () {
-                  Navigator.pop(context);
-                  _showReportOptions();
-                },
-                isDestructive: true,
-              ),
-
-              const SizedBox(height: 12),
-              const Divider(color: Colors.grey, height: 1),
-
-              // Option 4: Block
-              _buildOptionTile(
-                icon: Icons.block,
-                title: 'Block',
-                subtitle: 'Block this user',
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleBlockUser();
-                },
-                isDestructive: true,
-              ),
-
-              const SizedBox(height: 12),
-
-              // Cancel button
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.grey[800],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 16),
+                Divider(color: shell.surfaceCardBorder, height: 1),
+                _buildOptionTile(
+                  sheetContext,
+                  icon: Icons.person_outline_rounded,
+                  title: 'View profile',
+                  subtitle: 'Open this streamer profile',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _openStreamerProfile();
+                      }
+                    });
+                  },
+                ),
+                _buildOptionTile(
+                  sheetContext,
+                  icon: Icons.ios_share_rounded,
+                  title: 'Share',
+                  subtitle: 'Share this streamer profile',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _showShareSheet(context);
+                      }
+                    });
+                  },
+                ),
+                if (!isSelf) ...<Widget>[
+                  _buildOptionTile(
+                    sheetContext,
+                    icon: Icons.chat_bubble_outline,
+                    title: 'Message',
+                    subtitle: 'Send a direct message',
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _handleMessage();
+                        }
+                      });
+                    },
+                  ),
+                  _buildOptionTile(
+                    sheetContext,
+                    icon: _isFollowing
+                        ? Icons.person_remove_outlined
+                        : Icons.person_add_outlined,
+                    title: _isFollowing ? 'Unfollow' : 'Follow',
+                    subtitle: _isConnected
+                        ? 'Remove from Connections (both will be unfollowed)'
+                        : (_isFollowing
+                            ? 'Stop following this user'
+                            : 'Follow this user'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) {
+                          return;
+                        }
+                        if (_isFollowing) {
+                          _confirmUnfollowWithConnectionWarning();
+                        } else {
+                          _handleFollow();
+                        }
+                      });
+                    },
+                    isDestructive: _isFollowing,
+                  ),
+                  const SizedBox(height: 8),
+                  Divider(color: shell.surfaceCardBorder, height: 1),
+                  _buildOptionTile(
+                    sheetContext,
+                    icon: Icons.flag_outlined,
+                    title: 'Report',
+                    subtitle: 'Report this user',
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _showReportOptions();
+                        }
+                      });
+                    },
+                    isDestructive: true,
+                  ),
+                  _buildOptionTile(
+                    sheetContext,
+                    icon: Icons.block,
+                    title: 'Block',
+                    subtitle: 'Block this user',
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _handleBlockUser();
+                        }
+                      });
+                    },
+                    isDestructive: true,
+                  ),
+                ],
+                _buildOptionTile(
+                  sheetContext,
+                  icon: Icons.link_rounded,
+                  title: 'Copy link',
+                  subtitle: 'Copy profile URL',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _copyStreamerProfileLink();
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        foregroundColor: shell.onChrome,
+                        side: BorderSide(color: shell.surfaceCardBorder),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  /// Build option tile for bottom sheet
-  Widget _buildOptionTile({
+  Widget _buildOptionTile(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
     bool isDestructive = false,
   }) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final Color titleColor = isDestructive ? Colors.red : shell.onChrome;
+    final Color iconColor = isDestructive ? Colors.red : shell.onChrome;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
-          children: [
+          children: <Widget>[
             Icon(
               icon,
-              color: isDestructive ? Colors.red : Colors.white,
+              color: iconColor,
               size: 24,
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                children: <Widget>[
                   Text(
                     title,
                     style: TextStyle(
-                      color: isDestructive ? Colors.red : Colors.white,
+                      color: titleColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1101,7 +1224,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.grey[400],
+                      color: scheme.onSurfaceVariant,
                       fontSize: 13,
                     ),
                   ),
@@ -1110,11 +1233,40 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.grey[600],
+              color: shell.muted,
               size: 20,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _openStreamerProfile() {
+    final Map<String, dynamic> data = <String, dynamic>{
+      ...?_userData,
+      'id': widget.userId,
+      'uid': widget.userId,
+      'avatarURL': avatarURL,
+    };
+    AppNavigator.openProfile(
+      context,
+      user: app_models.User.fromMap(data),
+      isCurrentUser: _isViewingOwnStreamerCard,
+    );
+  }
+
+  Future<void> _copyStreamerProfileLink() async {
+    final String profileUrl = ProfileLinkService.webProfileUrlById(
+      widget.userId,
+    );
+    await Clipboard.setData(ClipboardData(text: profileUrl));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      _streamerSnackBar(
+        context,
+        'Profile link copied',
+        kind: _StreamerSnackKind.success,
       ),
     );
   }
@@ -1131,51 +1283,54 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             '(if they still follow you).'
         : 'Are you sure you want to unfollow $username?';
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+      builder: (BuildContext dialogContext) {
+        final ColorScheme scheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          backgroundColor: scheme.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-        ),
-        content: Text(
-          message,
-          style: TextStyle(
-            color: Colors.grey[300],
-            fontSize: 14,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.grey[400]),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _handleUnfollow();
-            },
-            child: const Text(
-              'Unfollow',
-              style: TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.w600,
+          content: Text(
+            message,
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.85),
+              fontSize: 14,
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: scheme.onSurfaceVariant),
               ),
             ),
-          ),
-        ],
-      ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _handleUnfollow();
+              },
+              child: const Text(
+                'Unfollow',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1193,46 +1348,47 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Title
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  'Why are you reporting this user?',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+      builder: (BuildContext sheetContext) {
+        final StSupportShellStyle shell = StSupportShellStyle.of(sheetContext);
+        return Container(
+          decoration: BoxDecoration(
+            color: shell.panelSurface,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+            border: Border.all(color: shell.panelBorder),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: shell.muted.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              const Divider(color: Colors.grey, height: 1),
-
-              // Report reasons
-              ...reportReasons.map((reason) => InkWell(
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Why are you reporting this user?',
+                    style: TextStyle(
+                      color: shell.onChrome,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Divider(color: shell.surfaceCardBorder, height: 1),
+                ...reportReasons.map(
+                  (String reason) => InkWell(
                     onTap: () {
-                      Navigator.pop(context);
+                      Navigator.pop(sheetContext);
                       _submitReport(reason);
                     },
                     child: Padding(
@@ -1241,57 +1397,56 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         vertical: 16,
                       ),
                       child: Row(
-                        children: [
+                        children: <Widget>[
                           Expanded(
                             child: Text(
                               reason,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: shell.onChrome,
                                 fontSize: 16,
                               ),
                             ),
                           ),
                           Icon(
                             Icons.chevron_right,
-                            color: Colors.grey[600],
+                            color: shell.muted,
                             size: 20,
                           ),
                         ],
                       ),
                     ),
-                  )),
-
-              const SizedBox(height: 12),
-
-              // Cancel button
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.grey[800],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        foregroundColor: shell.onChrome,
+                        side: BorderSide(color: shell.surfaceCardBorder),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1299,32 +1454,46 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Future<void> _handleBlockUser() async {
     final displayName = _userData?['displayName'] ?? 'this user';
 
-    final confirmed = await showDialog<bool>(
+    final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Block User',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          'Are you sure you want to block $displayName? They will not be able to interact with you and you will not see their content.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
-              'Block',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+      builder: (BuildContext dialogContext) {
+        final ColorScheme scheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          backgroundColor: scheme.surfaceContainerHigh,
+          title: Text(
+            'Block User',
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ],
-      ),
+          content: Text(
+            'Are you sure you want to block $displayName? They will not be able to interact with you and you will not see their content.',
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.75),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text(
+                'Block',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true) {
@@ -1336,10 +1505,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$displayName has been blocked'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
+            _streamerSnackBar(
+              context,
+              '$displayName has been blocked',
+              kind: _StreamerSnackKind.success,
             ),
           );
 
@@ -1352,9 +1521,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to block user: $e'),
-              backgroundColor: Colors.red,
+            _streamerSnackBar(
+              context,
+              'Failed to block user: $e',
+              kind: _StreamerSnackKind.error,
               duration: const Duration(seconds: 3),
             ),
           );
@@ -1376,11 +1546,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Report submitted. Thank you for keeping our community safe.'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+          _streamerSnackBar(
+            context,
+            'Report submitted. Thank you for keeping our community safe.',
+            kind: _StreamerSnackKind.success,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -1390,10 +1560,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to submit report. Please try again.'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Failed to submit report. Please try again.',
+            kind: _StreamerSnackKind.error,
           ),
         );
       }
@@ -1404,10 +1574,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (widget.currentUserId == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please log in to follow users'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Please log in to follow users',
+            kind: _StreamerSnackKind.warning,
           ),
         );
       }
@@ -1429,57 +1599,57 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       case StreamerCardRelationshipActionResult.success:
         _notifyFollowStateChanged();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Successfully followed user!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Successfully followed user!',
+            kind: _StreamerSnackKind.success,
           ),
         );
         _navigateToAppropriateTab();
         break;
       case StreamerCardRelationshipActionResult.authRequired:
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please log in to follow users'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Please log in to follow users',
+            kind: _StreamerSnackKind.warning,
           ),
         );
         break;
       case StreamerCardRelationshipActionResult.notFound:
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('User not found'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'User not found',
+            kind: _StreamerSnackKind.warning,
           ),
         );
         break;
       case StreamerCardRelationshipActionResult.permissionDenied:
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Permission denied'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Permission denied',
+            kind: _StreamerSnackKind.warning,
           ),
         );
         break;
       case StreamerCardRelationshipActionResult.networkError:
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Network error'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Network error',
+            kind: _StreamerSnackKind.warning,
           ),
         );
         break;
       case StreamerCardRelationshipActionResult.busy:
       case StreamerCardRelationshipActionResult.failure:
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to follow user'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Failed to follow user',
+            kind: _StreamerSnackKind.warning,
           ),
         );
         break;
@@ -1504,14 +1674,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Failed to unfollow user'),
-        backgroundColor: Colors.red,
-        action: SnackBarAction(
-          label: 'Retry',
-          textColor: Colors.white,
-          onPressed: () => _handleUnfollow(),
-        ),
+      _streamerSnackBar(
+        context,
+        'Failed to unfollow user',
+        kind: _StreamerSnackKind.error,
+        actionLabel: 'Retry',
+        onAction: _handleUnfollow,
       ),
     );
   }
@@ -1532,10 +1700,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You can only message users you are connected with'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'You can only message users you are connected with',
+            kind: _StreamerSnackKind.warning,
           ),
         );
       }
@@ -1570,10 +1738,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       if (currentUser == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please sign in to send messages'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 2),
+            _streamerSnackBar(
+              context,
+              'Please sign in to send messages',
+              kind: _StreamerSnackKind.error,
             ),
           );
         }
@@ -1582,12 +1750,16 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
       // Show loading indicator
       if (mounted) {
-        showDialog(
+        showDialog<void>(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const Center(
+          barrierColor:
+              Theme.of(context).colorScheme.scrim.withValues(alpha: 0.35),
+          builder: (BuildContext dialogContext) => Center(
             child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(dialogContext).colorScheme.primary,
+              ),
             ),
           ),
         );
@@ -1633,10 +1805,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to start conversation'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 2),
+            _streamerSnackBar(
+              context,
+              'Failed to start conversation',
+              kind: _StreamerSnackKind.error,
             ),
           );
         }
@@ -1654,10 +1826,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error starting conversation: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Error starting conversation: ${e.toString()}',
+            kind: _StreamerSnackKind.error,
           ),
         );
       }
@@ -1790,6 +1962,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildAvatarWithOnlineIndicator() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final Color avatarInner = shell.isLight
+        ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
+        : Colors.black.withValues(alpha: 0.2);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1813,10 +1990,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               height: 104,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.2),
+                color: avatarInner,
               ),
               child: ClipOval(
                 child: buildCachedAvatarCircle(
+                  context: context,
                   url: avatarURL,
                   size: 104,
                   iconSize: 48,
@@ -1842,7 +2020,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       decoration: BoxDecoration(
                         color: _getStatusColor(presence.status),
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(
+                          color: scheme.surface,
+                          width: 2,
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: _getStatusColor(presence.status)
@@ -1866,12 +2047,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildProfileTextInfo() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Column(
       children: [
         Text(
           displayName,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: shell.onChrome,
             fontSize: 34,
             fontWeight: FontWeight.w800,
           ),
@@ -1880,7 +2062,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         Text(
           '@$username',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.75),
+            color: shell.muted,
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
@@ -1907,6 +2089,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildIdentity() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -1920,8 +2103,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               children: [
                 Text(
                   _userData?['displayName'] ?? 'User',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: shell.onChrome,
                     fontSize: 34,
                     fontWeight: FontWeight.w900,
                     height: 1.0,
@@ -1931,7 +2114,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 Text(
                   '@${_userData?['username'] ?? 'username'}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.75),
+                    color: shell.muted,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     height: 1.0,
@@ -1962,14 +2145,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
 
     if (hashtags.isEmpty) return const SizedBox.shrink();
-
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
         children: hashtags.map((hashtag) {
-          final isSelected = _selectedHashtag == hashtag;
+          final bool isSelected = _selectedHashtag == hashtag;
           return GestureDetector(
             onTap: () {
               setState(() {
@@ -1980,17 +2163,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 gradient: isSelected ? _selectedHashtagGradient : null,
-                color: isSelected ? null : Colors.white.withValues(alpha: 0.1),
+                color: isSelected ? null : shell.chipUnselectedBg,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.onPrimary.withValues(
+                            alpha: 0.25,
+                          )
+                      : shell.chipUnselectedBorder,
                   width: 1,
                 ),
               ),
               child: Text(
                 '#$hashtag',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : shell.chipUnselectedFg,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -2003,12 +2192,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildBioBody() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Text(
         _userData?['bio'] ?? 'No bio available',
         style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.75),
+          color: shell.muted,
           fontSize: 16,
           fontWeight: FontWeight.w600,
         ),
@@ -2028,22 +2218,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         debugPrint(
             '🔗 _buildPlatforms: No platforms found, showing empty state');
       }
+      final StSupportShellStyle shell = StSupportShellStyle.of(context);
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: shell.surfaceCardBorder,
               width: 1,
             ),
           ),
           child: Text(
             'No platforms added yet.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
+              color: shell.muted,
               fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
@@ -2070,6 +2261,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildCalendar(List<CalendarEvent> events) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -2090,8 +2282,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 padding: const EdgeInsets.only(left: 8),
                 child: Text(
                   '+${events.length - 5} more…',
-                  style: const TextStyle(
-                    color: Color(0x80FFFFFF),
+                  style: TextStyle(
+                    color: shell.muted,
                     fontSize: 12,
                   ),
                 ),
@@ -2104,22 +2296,24 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildCalendarRow(CalendarEvent event) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: shell.surfaceCardBorder,
           width: 0.5,
         ),
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.calendar_today,
-            color: Colors.white,
+            color: shell.onChrome,
             size: 24,
           ),
           const SizedBox(width: 12),
@@ -2129,8 +2323,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               children: [
                 Text(
                   event.title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: shell.onChrome,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -2139,7 +2333,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 Text(
                   event.description,
                   style: TextStyle(
-                    color: Colors.grey[400],
+                    color: scheme.onSurfaceVariant,
                     fontSize: 14,
                   ),
                 ),
@@ -2147,7 +2341,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 Text(
                   _formatEventTime(event.date),
                   style: TextStyle(
-                    color: Colors.grey[500],
+                    color: shell.mutedStrong,
                     fontSize: 12,
                   ),
                 ),
@@ -2159,9 +2353,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             // Owner sees trash button for deletion
             GestureDetector(
               onTap: () => _deleteEvent(event.id),
-              child: const Icon(
+              child: Icon(
                 Icons.delete,
-                color: Colors.red,
+                color: scheme.error,
                 size: 20,
               ),
             ),
@@ -2173,7 +2367,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 _bookmarkedEventIds.contains(event.id)
                     ? Icons.bookmark
                     : Icons.bookmark_border,
-                color: Colors.white,
+                color: scheme.primary,
                 size: 20,
               ),
             ),
@@ -2421,11 +2615,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       // Show success feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text('Opening ${_getPlatformDisplayName(platformType)}...'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
+          _streamerSnackBar(
+            context,
+            'Opening ${_getPlatformDisplayName(platformType)}...',
+            kind: _StreamerSnackKind.success,
           ),
         );
       }
@@ -2436,9 +2629,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cannot open this link'),
-            backgroundColor: Colors.red,
+          _streamerSnackBar(
+            context,
+            'Cannot open this link',
+            kind: _StreamerSnackKind.error,
           ),
         );
       }
@@ -2500,15 +2694,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _showShareSheet(BuildContext context) {
     HapticFeedback.lightImpact();
 
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.7),
+      barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.55),
       builder: (context) => StreamerShareSheet(
         userId: widget.userId,
         displayName: _userData?['displayName'] as String?,
-        profileImageUrl: _userData?['photoURL'] as String?,
+        profileImageUrl: avatarURL,
         onDismiss: () {
           // Don't call Navigator.pop() here as it's already handled in the X button
           // This prevents double pop which causes black screen
@@ -2519,17 +2713,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 }
 
 Widget buildCachedAvatarCircle({
+  required BuildContext context,
   required String? url,
   required double size,
   required double iconSize,
 }) {
-  final placeholder = Container(
+  final StSupportShellStyle shell = StSupportShellStyle.of(context);
+  final Widget placeholder = Container(
     width: size,
     height: size,
-    color: Colors.grey.shade800,
+    color: shell.skeletonFill,
     child: Icon(
       Icons.person,
-      color: Colors.white,
+      color: shell.iconDim,
       size: iconSize,
     ),
   );
@@ -2589,6 +2785,8 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final Color border = scheme.outline.withValues(alpha: 0.45);
     return Container(
       padding: EdgeInsets.only(
         left: 24,
@@ -2600,10 +2798,10 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Add Calendar Event',
             style: TextStyle(
-              color: Colors.white,
+              color: scheme.onSurface,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -2611,51 +2809,51 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
           const SizedBox(height: 24),
           TextField(
             controller: _titleController,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: scheme.onSurface),
             decoration: InputDecoration(
               labelText: 'Event Title',
-              labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+              labelStyle: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.65),
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                borderSide: BorderSide(color: border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                borderSide: BorderSide(color: border),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF9248D2)),
+                borderSide: BorderSide(color: scheme.primary),
               ),
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.1),
+              fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
             ),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _descriptionController,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: scheme.onSurface),
             decoration: InputDecoration(
               labelText: 'Description (Optional)',
-              labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+              labelStyle: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.65),
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                borderSide: BorderSide(color: border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                borderSide: BorderSide(color: border),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF9248D2)),
+                borderSide: BorderSide(color: scheme.primary),
               ),
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.1),
+              fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
             ),
             maxLines: 3,
           ),
@@ -2668,10 +2866,11 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3)),
+                      border: Border.all(color: border),
                       borderRadius: BorderRadius.circular(8),
-                      color: Colors.white.withValues(alpha: 0.1),
+                      color: scheme.surfaceContainerHighest.withValues(
+                        alpha: 0.45,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2679,14 +2878,14 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                         Text(
                           'Date',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: scheme.onSurface.withValues(alpha: 0.65),
                             fontSize: 12,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: scheme.onSurface),
                         ),
                       ],
                     ),
@@ -2700,10 +2899,11 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3)),
+                      border: Border.all(color: border),
                       borderRadius: BorderRadius.circular(8),
-                      color: Colors.white.withValues(alpha: 0.1),
+                      color: scheme.surfaceContainerHighest.withValues(
+                        alpha: 0.45,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2711,14 +2911,14 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                         Text(
                           'Time',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: scheme.onSurface.withValues(alpha: 0.65),
                             fontSize: 12,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           _selectedTime.format(context),
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: scheme.onSurface),
                         ),
                       ],
                     ),
@@ -2744,7 +2944,8 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                 child: ElevatedButton(
                   onPressed: _saveEvent,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF9248D2),
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -2766,19 +2967,6 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
       initialDate: _selectedDate,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF9248D2),
-              onPrimary: Colors.white,
-              surface: Color(0xFF0E1220),
-              onSurface: Colors.white,
-            ),
-          ),
-          child: child!,
-        );
-      },
     );
     if (date != null) {
       setState(() {
@@ -2791,19 +2979,6 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
     final time = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF9248D2),
-              onPrimary: Colors.white,
-              surface: Color(0xFF0E1220),
-              onSurface: Colors.white,
-            ),
-          ),
-          child: child!,
-        );
-      },
     );
     if (time != null) {
       setState(() {
@@ -2815,9 +2990,10 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
   void _saveEvent() {
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter an event title'),
-          backgroundColor: Colors.red,
+        _streamerSnackBar(
+          context,
+          'Please enter an event title',
+          kind: _StreamerSnackKind.error,
         ),
       );
       return;
@@ -2847,6 +3023,11 @@ class _SmallAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final Color inner = shell.isLight
+        ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
+        : Colors.black.withValues(alpha: 0.2);
     return Container(
       width: 64,
       height: 64,
@@ -2867,10 +3048,11 @@ class _SmallAvatar extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.black.withValues(alpha: 0.2),
+            color: inner,
           ),
           child: ClipOval(
             child: buildCachedAvatarCircle(
+              context: context,
               url: imageUrl,
               size: 56,
               iconSize: 28,
@@ -2893,6 +3075,7 @@ class _ClickablePlatformRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final platformType = platform['type'] as String? ?? '';
     final username = platform['username'] as String? ?? '';
     // final url = platform['url'] as String? ?? '';
@@ -2908,10 +3091,10 @@ class _ClickablePlatformRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: shell.surfaceCardBorder,
             width: 1,
           ),
         ),
@@ -2928,8 +3111,8 @@ class _ClickablePlatformRow extends StatelessWidget {
                 children: [
                   Text(
                     _getPlatformDisplayName(platformType),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: shell.onChrome,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2938,16 +3121,16 @@ class _ClickablePlatformRow extends StatelessWidget {
                     Text(
                       '@$username',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: shell.muted,
                         fontSize: 14,
                       ),
                     ),
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white,
+              color: shell.muted,
               size: 16,
             ),
           ],
@@ -2989,6 +3172,7 @@ class _EmptyStateWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Center(
@@ -2997,10 +3181,10 @@ class _EmptyStateWidget extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 320),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: shell.surfaceCardBorder,
               width: 1,
             ),
           ),
@@ -3019,15 +3203,15 @@ class _EmptyStateWidget extends StatelessWidget {
                 ),
                 child: Icon(
                   icon,
-                  color: Colors.white.withValues(alpha: 0.95),
+                  color: Theme.of(context).colorScheme.onPrimary,
                   size: 30,
                 ),
               ),
               const SizedBox(height: 18),
               Text(
                 message,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: shell.onChrome,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
@@ -3037,7 +3221,7 @@ class _EmptyStateWidget extends StatelessWidget {
               Text(
                 'This section will show up here once there is something to share.',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.68),
+                  color: shell.muted,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   height: 1.35,

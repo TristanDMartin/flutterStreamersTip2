@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/home_video.dart';
 import '../models/share_payload.dart';
+import '../models/share_video_payload.dart';
 import '../services/enhanced_share_service.dart';
 import '../services/report_service.dart';
 import '../constants/app_colors.dart';
@@ -169,14 +170,12 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
                         color: Colors.white.withValues(alpha: 0.12),
                       ),
                     ),
-                    gradient: LinearGradient(
+                    gradient: const LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        const Color(0xFF2C2C2E)
-                            .withValues(alpha: 0.97),
-                        const Color(0xFF121212)
-                            .withValues(alpha: 0.98),
+                      colors: <Color>[
+                        Color(0xFF0f172a),
+                        Color(0xFF1e293b),
                       ],
                     ),
                   ),
@@ -534,7 +533,6 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       videoId: widget.video.id,
       shareToken: _sharePayload?.trackingToken ?? '',
       onSearchTap: _openConnectionsSearch,
-      onConnectionTap: _onConnectionTapped,
     );
   }
 
@@ -635,19 +633,11 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       MaterialPageRoute(
         builder: (context) => ConnectionsSearchOverlay(
           videoId: widget.video.id,
-          shareToken: _sharePayload?.metadata.creatorUsername ?? '',
-          onConnectionSelected: _onConnectionTapped,
+          shareToken: _sharePayload?.trackingToken ?? '',
         ),
         fullscreenDialog: true,
       ),
     );
-  }
-
-  void _onConnectionTapped(String recipientId) {
-    log('📤 EnhancedShareSheet: Sending to connection $recipientId');
-    HapticFeedback.selectionClick();
-    _showSheetToast('Video sent');
-    _closeSheet();
   }
 
   void _showSheetToast(String message, {bool isError = false}) {
@@ -673,14 +663,19 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       if (!mounted) {
         return;
       }
-      if (target == ShareTarget.copyLink ||
-          target == ShareTarget.more) {
-        _showSheetToast(
-          target == ShareTarget.copyLink ? 'Link copied' : 'Share opened',
-        );
+      if (target == ShareTarget.copyLink) {
+        _showSheetToast('Link copied.');
+        await Future<void>.delayed(const Duration(milliseconds: 240));
+      } else if (target == ShareTarget.more) {
+        _showSheetToast('Share opened');
         await Future<void>.delayed(const Duration(milliseconds: 240));
       }
       await _closeSheet();
+    } on ShareUserNoticeException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      _showSheetToast(e.message);
     } catch (e) {
       log('❌ EnhancedShareSheet: Error sharing to ${target.displayName}: $e');
       _showSheetToast(
@@ -710,7 +705,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (BuildContext context) => VideoQRCodeDialog(
         video: widget.video,
-        shareUrl: _sharePayload?.links.webShareUrl,
+        shareUrl: ShareVideoPayload.buildPublicUrl(widget.video.id),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
+import '../../core/theme/support_shell_style.dart';
 import '../../models/user_status.dart' show UserPresence, UserStatus;
 import '../../providers/status_provider.dart';
 import '../../utils/avatar_url_resolver.dart';
@@ -56,7 +57,13 @@ class _ProfileAvatarRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = resolveAvatarUrl(userData);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final String? avatarUrl = resolveAvatarUrl(userData);
+    final Color avatarInnerRing = shell.isLight
+        ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
+        : Colors.black.withValues(alpha: 0.2);
+    final Color placeholderIcon = shell.iconDim;
     return Stack(
       clipBehavior: Clip.none,
       children: <Widget>[
@@ -80,7 +87,7 @@ class _ProfileAvatarRing extends StatelessWidget {
               height: 104,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.2),
+                color: avatarInnerRing,
               ),
               child: ClipOval(
                 child: avatarUrl != null && avatarUrl.isNotEmpty
@@ -90,15 +97,15 @@ class _ProfileAvatarRing extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder:
                             (BuildContext c, Object e, StackTrace? s) =>
-                                const Icon(
+                                Icon(
                           Icons.person,
-                          color: Colors.white,
+                          color: placeholderIcon,
                           size: 48,
                         ),
                       )
-                    : const Icon(
+                    : Icon(
                         Icons.person,
-                        color: Colors.white,
+                        color: placeholderIcon,
                         size: 48,
                       ),
               ),
@@ -127,7 +134,10 @@ class _ProfileAvatarRing extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: c,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.surface,
+                          width: 2,
+                        ),
                         boxShadow: <BoxShadow>[
                           BoxShadow(
                             color: c.withValues(alpha: 0.5),
@@ -155,12 +165,13 @@ class _ProfileNameAndHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Column(
       children: <Widget>[
         Text(
           userData['displayName'] as String? ?? 'Unknown User',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: scheme.onSurface,
             fontSize: 34,
             fontWeight: FontWeight.w900,
             height: 1.0,
@@ -170,7 +181,7 @@ class _ProfileNameAndHandle extends StatelessWidget {
         Text(
           '@${userData['username'] ?? 'unknown'}',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.75),
+            color: scheme.onSurface.withValues(alpha: 0.72),
             fontSize: 18,
             fontWeight: FontWeight.w600,
             height: 1.0,
@@ -194,18 +205,19 @@ class _ProfileStatsSystemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.14),
+          color: scheme.outline.withValues(alpha: 0.35),
         ),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
+            color: scheme.shadow.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -216,14 +228,14 @@ class _ProfileStatsSystemCard extends StatelessWidget {
           UserStatsRow(
             userId: profileUserId,
             spacing: 28,
-            valueTextStyle: const TextStyle(
-              color: Colors.white,
+            valueTextStyle: TextStyle(
+              color: scheme.onSurface,
               fontSize: 22,
               fontWeight: FontWeight.w900,
               height: 1.0,
             ),
             labelTextStyle: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
+              color: scheme.onSurface.withValues(alpha: 0.62),
               fontSize: 13,
               fontWeight: FontWeight.w600,
               height: 1.0,
@@ -233,7 +245,7 @@ class _ProfileStatsSystemCard extends StatelessWidget {
             const SizedBox(height: 18),
             Container(
               height: 1,
-              color: Colors.white.withValues(alpha: 0.08),
+              color: scheme.outline.withValues(alpha: 0.25),
             ),
             const SizedBox(height: 18),
             _ProfilePrimaryButtonsRow(userData: userData),
@@ -311,6 +323,8 @@ class _ProfileHeaderActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final Color fg = isPrimary ? scheme.onPrimary : scheme.onSurface;
     return GestureDetector(
       onTap: onPressed,
       child: Container(
@@ -323,23 +337,23 @@ class _ProfileHeaderActionButton extends StatelessWidget {
                   end: Alignment.centerRight,
                 )
               : null,
-          color: isPrimary ? null : Colors.white.withValues(alpha: 0.06),
+          color: isPrimary ? null : scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: isPrimary
-                ? Colors.white.withValues(alpha: 0.10)
-                : Colors.white.withValues(alpha: 0.14),
+                ? scheme.onPrimary.withValues(alpha: 0.22)
+                : scheme.outline.withValues(alpha: 0.35),
           ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon, color: Colors.white, size: 18),
+            Icon(icon, color: fg, size: 18),
             const SizedBox(width: 8),
             Text(
               text,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fg,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),

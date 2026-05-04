@@ -16,6 +16,15 @@ import Firebase
 
     GeneratedPluginRegistrant.register(with: self)
 
+    DispatchQueue.main.async {
+      _ = GifPasteboardBootstrap.tryRegister(window: self.window)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    _ = GifPasteboardBootstrap.tryRegister(window: window)
   }
 }

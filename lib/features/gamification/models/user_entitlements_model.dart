@@ -18,14 +18,33 @@ class UserEntitlementsModel {
     if (raw == null || raw.isEmpty) {
       return const UserEntitlementsModel();
     }
+    final Map<String, dynamic> m = Map<String, dynamic>.from(raw);
     bool read(String k) {
-      final Object? v = raw[k];
-      if (v is bool) return v;
+      final Object? v = m[k];
+      if (v is bool) {
+        return v;
+      }
       return false;
     }
-
+    bool readTippyEnabled() {
+      final Object? v = m['tippyAi'] ?? m['tippy_ai'];
+      if (v is bool) {
+        return v;
+      }
+      if (v is Map<String, dynamic>) {
+        final Object? en = v['enabled'];
+        if (en is bool) {
+          return en;
+        }
+        final Object? plan = v['plan'] ?? v['tier'];
+        if (plan is String && plan.trim().isNotEmpty) {
+          return true;
+        }
+      }
+      return false;
+    }
     return UserEntitlementsModel(
-      tippyAi: read('tippyAi') || read('tippy_ai'),
+      tippyAi: readTippyEnabled(),
       crossPosting: read('crossPosting') || read('cross_posting'),
       advancedAnalytics: read('advancedAnalytics') || read('advanced_analytics'),
       advancedPlanner: read('advancedPlanner') || read('advanced_planner'),

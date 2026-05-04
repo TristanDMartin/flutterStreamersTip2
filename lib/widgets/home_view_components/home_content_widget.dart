@@ -25,7 +25,7 @@ class HomeContentWidget extends ConsumerStatefulWidget {
   final VoidCallback onDiscoverTap;
   final VoidCallback onNetworkTap;
   final Function(VoidCallback)?
-  onScrollControllerReady; // Pass scroll callback up
+      onScrollControllerReady; // Pass scroll callback up
   final bool showCommandCenterTrigger;
   final VoidCallback? onCommandCenterTap;
 
@@ -191,6 +191,8 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   ) {
     final homeState = ref.read(hp.homeProvider);
     final activeFeed = widget.activeTab;
+    // FeedTab.following is intentionally displayed as "Progression" in the
+    // Home selector. It is a creator progress surface, not a video feed.
     if (activeFeed == FeedTab.following) {
       return const CreatorProgressionPanel();
     }
@@ -202,13 +204,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
 
     if (hasError) {
       if (activeFeed == FeedTab.forYou && videos.isNotEmpty) {
-      return VideoPageViewWidget(
-        videos: videos,
-        currentIndex: widget.currentIndex,
-        tabId: activeFeed.tabId,
-        showCommandCenterTrigger: widget.showCommandCenterTrigger,
-        onCommandCenterTap: widget.onCommandCenterTap,
-        onPageChanged: (index) {
+        return VideoPageViewWidget(
+          videos: videos,
+          currentIndex: widget.currentIndex,
+          tabId: activeFeed.tabId,
+          showCommandCenterTrigger: widget.showCommandCenterTrigger,
+          onCommandCenterTap: widget.onCommandCenterTap,
+          onPageChanged: (index) {
             widget.onPageChanged(index);
             if (mounted) {
               setState(() {

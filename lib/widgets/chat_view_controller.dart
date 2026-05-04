@@ -1,14 +1,20 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
 import '../services/chat_service.dart';
 import '../services/chat_service_optimized.dart';
+import '../services/r2_media_service.dart';
 import '../services/report_service.dart';
 import '../services/user_blocking_service.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/chat_gif_url.dart';
 
 @immutable
 class ChatViewUiState {
@@ -20,6 +26,8 @@ class ChatViewUiState {
     this.isLoading = true,
     this.error,
     this.isSending = false,
+    this.isOtherUserTyping = false,
+    this.optimisticOutgoingGifBytes,
   });
 
   final List<app_message.Message> messages;
@@ -29,6 +37,8 @@ class ChatViewUiState {
   final bool isLoading;
   final String? error;
   final bool isSending;
+  final bool isOtherUserTyping;
+  final Uint8List? optimisticOutgoingGifBytes;
 
   ChatViewUiState copyWith({
     List<app_message.Message>? messages,
@@ -38,6 +48,8 @@ class ChatViewUiState {
     bool? isLoading,
     Object? error = _sentinel,
     bool? isSending,
+    bool? isOtherUserTyping,
+    Object? optimisticOutgoingGifBytes = _sentinel,
   }) {
     return ChatViewUiState(
       messages: messages ?? this.messages,
@@ -52,6 +64,11 @@ class ChatViewUiState {
       isLoading: isLoading ?? this.isLoading,
       error: identical(error, _sentinel) ? this.error : error as String?,
       isSending: isSending ?? this.isSending,
+      isOtherUserTyping: isOtherUserTyping ?? this.isOtherUserTyping,
+      optimisticOutgoingGifBytes:
+          identical(optimisticOutgoingGifBytes, _sentinel)
+              ? this.optimisticOutgoingGifBytes
+              : optimisticOutgoingGifBytes as Uint8List?,
     );
   }
 }
@@ -133,6 +150,11 @@ abstract class ChatViewService {
   Future<bool> markMessagesAsRead(String chatId);
   Future<Map<String, dynamic>?> getUserInfo(String userId);
   Future<bool> sendMessage(String chatId, String text);
+  Future<bool> sendGifMessage(String chatId, String gifUrl);
+  Future<bool> sendPastedImageBytes(String chatId, Uint8List bytes);
+  Future<bool> deleteMessage(String chatId, String messageId);
+  Stream<bool> listenToTypingStatus(String chatId, String userId);
+  Future<void> setTypingStatus(String chatId, bool isTyping);
   Future<void> muteChat(String chatId, String userId);
   Future<void> reportUser({
     required String userId,
@@ -182,6 +204,47 @@ class ChatViewServiceAdapter implements ChatViewService {
   @override
   Future<bool> sendMessage(String chatId, String text) =>
       _chatService.sendMessage(chatId, text);
+
+  @override
+  Future<bool> sendGifMessage(String chatId, String gifUrl) =>
+      _chatService.sendGifMessage(chatId, gifUrl);
+
+  @override
+  Future<bool> sendPastedImageBytes(String chatId, Uint8List bytes) async {
+    if (bytes.isEmpty) {
+      return false;
+    }
+    final Directory dir = await getTemporaryDirectory();
+    final String ext = fileExtensionForImageBytes(bytes);
+    final File file = File(
+      '${dir.path}/chat_clip_${DateTime.now().millisecondsSinceEpoch}$ext',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    try {
+      final String url = await R2MediaService.instance.uploadChatGif(file);
+      return _chatService.sendGifMessage(chatId, url);
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Future<bool> deleteMessage(String chatId, String messageId) =>
+      _chatService.deleteMessage(chatId, messageId);
+
+  @override
+  Stream<bool> listenToTypingStatus(String chatId, String userId) =>
+      _chatService.listenToTypingStatus(chatId, userId);
+
+  @override
+  Future<void> setTypingStatus(String chatId, bool isTyping) =>
+      _chatService.setTypingStatus(chatId, isTyping);
 
   @override
   Future<void> muteChat(String chatId, String userId) =>
@@ -247,6 +310,7 @@ class ChatViewController extends ChangeNotifier {
 
   final ChatViewService _chatService;
   StreamSubscription<List<app_message.Message>>? _messagesSubscription;
+  StreamSubscription<bool>? _typingSubscription;
 
   app_chat.Chat _chat;
   String _otherUserId;
@@ -260,6 +324,7 @@ class ChatViewController extends ChangeNotifier {
 
   Future<void> initialize() async {
     _subscribeToMessages();
+    _subscribeToTyping();
     await _loadParticipantAvatars();
   }
 
@@ -279,12 +344,14 @@ class ChatViewController extends ChangeNotifier {
     _otherUserId = otherUserId;
     _otherUserName = otherUserName;
     _messagesSubscription?.cancel();
+    _typingSubscription?.cancel();
     _updateState(
       _state.copyWith(
         messages: const <app_message.Message>[],
         otherUserAvatarURL: otherUserAvatarURL,
         isLoading: true,
         error: null,
+        optimisticOutgoingGifBytes: null,
       ),
     );
     await initialize();
@@ -296,7 +363,7 @@ class ChatViewController extends ChangeNotifier {
   }
 
   Future<ChatComposerResult> submitComposerText(String text) async {
-    final trimmed = text.trim();
+    final String trimmed = text.trim();
     if (trimmed.isEmpty || _state.isSending) {
       return ChatComposerResult.empty;
     }
@@ -304,11 +371,91 @@ class ChatViewController extends ChangeNotifier {
     _updateState(_state.copyWith(isSending: true));
 
     try {
-      final success = await _chatService.sendMessage(_chat.id ?? '', trimmed);
+      final bool success = shouldSendComposerInputAsRemoteGifUrl(trimmed)
+          ? await _chatService.sendGifMessage(_chat.id ?? '', trimmed)
+          : await _chatService.sendMessage(_chat.id ?? '', trimmed);
+      if (success) {
+        unawaited(_chatService.setTypingStatus(_chat.id ?? '', false));
+      }
       return success ? ChatComposerResult.sent : ChatComposerResult.failed;
     } finally {
       _updateState(_state.copyWith(isSending: false));
     }
+  }
+
+  Future<ChatComposerResult> submitPastedImageBytes(Uint8List bytes) async {
+    if (bytes.isEmpty || _state.isSending) {
+      return ChatComposerResult.empty;
+    }
+    _updateState(
+      _state.copyWith(
+        isSending: true,
+        optimisticOutgoingGifBytes: bytes,
+      ),
+    );
+    try {
+      final bool success =
+          await _chatService.sendPastedImageBytes(_chat.id ?? '', bytes);
+      if (success) {
+        unawaited(_chatService.setTypingStatus(_chat.id ?? '', false));
+      }
+      return success ? ChatComposerResult.sent : ChatComposerResult.failed;
+    } finally {
+      _updateState(
+        _state.copyWith(
+          isSending: false,
+          optimisticOutgoingGifBytes: null,
+        ),
+      );
+    }
+  }
+
+  Future<ChatActionFeedback> deleteOwnMessages(
+    List<app_message.Message> messages,
+  ) async {
+    final String? actorUserId = currentUserId;
+    if (actorUserId == null) {
+      return const ChatActionFeedback(
+        message: 'You need to sign in again to manage messages.',
+        isError: true,
+      );
+    }
+    final List<app_message.Message> ownMessages = messages
+        .where((app_message.Message message) => message.from == actorUserId)
+        .toList();
+    if (ownMessages.isEmpty) {
+      return const ChatActionFeedback(
+        message: 'Select at least one of your own messages.',
+        isError: true,
+      );
+    }
+    int deletedCount = 0;
+    for (final app_message.Message message in ownMessages) {
+      final String? messageId = message.id;
+      if (messageId == null || messageId.isEmpty) {
+        continue;
+      }
+      final bool success = await _chatService.deleteMessage(
+        _chat.id ?? '',
+        messageId,
+      );
+      if (success) {
+        deletedCount++;
+      }
+    }
+    if (deletedCount == ownMessages.length) {
+      return ChatActionFeedback(
+        message: deletedCount == 1
+            ? 'Message deleted.'
+            : '$deletedCount messages deleted.',
+      );
+    }
+    return ChatActionFeedback(
+      message: deletedCount == 0
+          ? 'We couldn’t delete selected messages.'
+          : '$deletedCount of ${ownMessages.length} messages deleted.',
+      isError: deletedCount == 0,
+    );
   }
 
   Future<ChatActionFeedback> handleSettingsAction(
@@ -405,16 +552,49 @@ class ChatViewController extends ChangeNotifier {
     unawaited(_chatService.markMessagesAsRead(_chat.id ?? ''));
   }
 
+  void _subscribeToTyping() {
+    _typingSubscription?.cancel();
+    final String chatId = _chat.id ?? '';
+    if (chatId.isEmpty || _otherUserId.isEmpty) {
+      _updateState(_state.copyWith(isOtherUserTyping: false));
+      return;
+    }
+    _typingSubscription =
+        _chatService.listenToTypingStatus(chatId, _otherUserId).listen(
+      (bool isTyping) {
+        _updateState(_state.copyWith(isOtherUserTyping: isTyping));
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        _updateState(_state.copyWith(isOtherUserTyping: false));
+      },
+    );
+  }
+
+  Future<void> setTypingStatus(bool isTyping) async {
+    final String chatId = _chat.id ?? '';
+    if (chatId.isEmpty) {
+      return;
+    }
+    await _chatService.setTypingStatus(chatId, isTyping);
+  }
+
   Future<void> _loadParticipantAvatars() async {
     final resolvedCurrentUserId = currentUserId;
-
+    firebase_auth.User? authUser;
+    try {
+      authUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      authUser = null;
+    }
     try {
       if (resolvedCurrentUserId != null) {
         final currentUserData =
             await _chatService.getUserInfo(resolvedCurrentUserId);
-        final currentUserAvatar = resolveAvatarUrl(currentUserData);
+        final String? currentUserAvatar =
+            resolveAvatarUrl(currentUserData) ?? authUser?.photoURL;
         final currentUserDisplayName =
             currentUserData?['displayName'] as String? ??
+                authUser?.displayName ??
                 _chatService.currentUserDisplayName ??
                 'You';
 
@@ -430,13 +610,16 @@ class ChatViewController extends ChangeNotifier {
               _state.otherUserAvatarURL!.isEmpty) &&
           _otherUserId.isNotEmpty) {
         final otherUserData = await _chatService.getUserInfo(_otherUserId);
-        final otherUserAvatar = resolveAvatarUrl(otherUserData);
+        final String? otherUserAvatar = resolveAvatarUrl(otherUserData);
+        final String resolvedOtherUserName =
+            otherUserData?['displayName'] as String? ??
+                otherUserData?['username'] as String? ??
+                _otherUserName;
 
-        if (otherUserAvatar != null && otherUserAvatar.isNotEmpty) {
-          _updateState(
-            _state.copyWith(otherUserAvatarURL: otherUserAvatar),
-          );
-        }
+        _otherUserName = resolvedOtherUserName;
+        _updateState(
+          _state.copyWith(otherUserAvatarURL: otherUserAvatar),
+        );
       }
     } catch (_) {
       // Avatar fallback is non-critical.
@@ -451,6 +634,8 @@ class ChatViewController extends ChangeNotifier {
   @override
   void dispose() {
     _messagesSubscription?.cancel();
+    unawaited(_chatService.setTypingStatus(_chat.id ?? '', false));
+    _typingSubscription?.cancel();
     super.dispose();
   }
 }

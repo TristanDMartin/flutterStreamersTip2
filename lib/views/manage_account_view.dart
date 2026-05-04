@@ -127,6 +127,9 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         await accountSwitcher.addCurrentAccount();
         debugPrint('✅ Account added successfully');
 
+        if (!mounted) {
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Account added successfully!'),
@@ -281,7 +284,13 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       ),
     );
 
-    if (firstConfirm != true) return;
+    if (firstConfirm != true) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
 
     // Final confirmation with text input
     final textController = TextEditingController();

@@ -1294,6 +1294,9 @@ class GlobalPlaybackManager {
 
     // Check if controller is safe before returning
     if (!_isControllerSafe(videoId, controller)) {
+      if (_initializingControllers.contains(videoId)) {
+        return null;
+      }
       log('⚠️ PlaybackManager: Controller for $videoId is unsafe, removing from pool');
       _controllerPool.remove(videoId);
       _disposedControllers[videoId] = true;
@@ -1308,6 +1311,29 @@ class GlobalPlaybackManager {
     final controller = _controllerPool[videoId];
     if (controller == null) return false;
     return _isControllerSafe(videoId, controller);
+  }
+
+  Future<VideoPlayerController?> _waitForInitializingController(
+    String videoId, {
+    int attempts = 40,
+    Duration step = const Duration(milliseconds: 50),
+  }) async {
+    for (int i = 0; i < attempts; i++) {
+      final pooled = _controllerPool[videoId];
+      if (pooled != null && _isControllerSafe(videoId, pooled)) {
+        try {
+          if (pooled.value.isInitialized && !pooled.value.hasError) {
+            log('✅ PlaybackManager: Initialization completed while waiting: $videoId');
+            return pooled;
+          }
+        } catch (_) {}
+      }
+      if (!_initializingControllers.contains(videoId)) {
+        break;
+      }
+      await Future.delayed(step);
+    }
+    return null;
   }
 
   /// Idempotent: return existing controller if present and safe; else create, init, register.
@@ -1326,26 +1352,22 @@ class GlobalPlaybackManager {
         }
       } catch (_) {}
     }
+
+    // A controller that is in initialize() is expected to fail _isControllerSafe
+    // because it is not initialized yet. Do not remove or dispose it here; that
+    // can kill the native texture while another async path is still awaiting it.
+    if (_initializingControllers.contains(videoId)) {
+      final pooled = await _waitForInitializingController(videoId);
+      if (pooled != null) {
+        return pooled;
+      }
+    }
+
     if (existing != null && !_isControllerSafe(videoId, existing)) {
       _controllerPool.remove(videoId);
       try {
         await existing.dispose();
       } catch (_) {}
-    }
-    if (_initializingControllers.contains(videoId)) {
-      for (int i = 0; i < 20; i++) {
-        await Future.delayed(const Duration(milliseconds: 50));
-        final pooled = _controllerPool[videoId];
-        if (pooled != null && _isControllerSafe(videoId, pooled)) {
-          try {
-            if (pooled.value.isInitialized && !pooled.value.hasError) {
-              log('✅ PlaybackManager: getOrCreateController adopted after wait: $videoId');
-              return pooled;
-            }
-          } catch (_) {}
-        }
-        if (!_initializingControllers.contains(videoId)) break;
-      }
     }
     if (url.isEmpty) return null;
     Uri uri;
@@ -1589,19 +1611,26 @@ class GlobalPlaybackManager {
       return;
     }
     final String targetVideoId = video.id;
-    clearDesiredFocusForOwner(PlaybackOwners.home, exceptVideoId: targetVideoId);
+    final int requestedIndex = newIndex;
+    clearDesiredFocusForOwner(PlaybackOwners.home,
+        exceptVideoId: targetVideoId);
     await _muteAllExcept(targetVideoId).catchError((_) {});
     setDesiredFocus(targetVideoId, PlaybackOwners.home);
     final healthResult = await VideoHealthGate.instance.resolvePlayableSource(
       targetVideoId,
       fallbackUrl: video.videoURL.isNotEmpty ? video.videoURL : null,
     );
+    if (_currentFeedIndex != requestedIndex ||
+        _indexToVideoId[requestedIndex] != targetVideoId) {
+      log('⏭️ PlaybackManager: Stale visible-index request ignored for $targetVideoId at $requestedIndex (current=$_currentFeedIndex)');
+      return;
+    }
     if (healthResult is Unplayable) {
       log('⚠️ PlaybackManager: Video $targetVideoId unplayable: ${healthResult.reason}');
       return;
     }
     final playableUrl = (healthResult as Playable).url;
-    getOrCreateController(
+    final controller = await getOrCreateController(
       targetVideoId,
       playableUrl,
       owner: PlaybackOwners.home,
@@ -1609,6 +1638,17 @@ class GlobalPlaybackManager {
       log('⚠️ PlaybackManager: getOrCreateController failed for $targetVideoId: $e');
       return null;
     });
+    if (controller == null) return;
+    if (_currentFeedIndex != requestedIndex ||
+        _indexToVideoId[requestedIndex] != targetVideoId) {
+      log('⏭️ PlaybackManager: Controller ready for stale video $targetVideoId; leaving muted');
+      try {
+        await controller.setVolume(0.0);
+        await controller.pause();
+      } catch (_) {}
+      return;
+    }
+    await requestFocus(targetVideoId, PlaybackOwners.home);
   }
 
   /// Called when app lifecycle changes
@@ -1745,8 +1785,7 @@ class GlobalPlaybackManager {
     final centerVideoId = videos[index].id;
     final now = DateTime.now();
     final lastRequestAt = _lastPreloadRequestedAt;
-    final isDuplicateBurst =
-        _lastPreloadCenterIndex == index &&
+    final isDuplicateBurst = _lastPreloadCenterIndex == index &&
         _lastPreloadCenterVideoId == centerVideoId &&
         lastRequestAt != null &&
         now.difference(lastRequestAt) < const Duration(milliseconds: 180);

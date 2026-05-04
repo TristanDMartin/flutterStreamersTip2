@@ -8,13 +8,15 @@ bool videoCountsAsPublicPostForStats(Map<String, dynamic> data) {
   if (data['deleted'] == true || data['isDeleted'] == true) {
     return false;
   }
+  if (data['visible'] == false) {
+    return false;
+  }
   if (data['isDraft'] == true) {
     return false;
   }
   final String? status = data['status'] as String?;
-  final bool isActiveStatus = status == 'active' ||
-      status == 'published' ||
-      status == 'ready';
+  final bool isActiveStatus =
+      status == 'active' || status == 'published' || status == 'ready';
   if (!isActiveStatus) {
     return false;
   }
@@ -28,6 +30,10 @@ bool videoCountsAsPublicPostForStats(Map<String, dynamic> data) {
       privacy == 'Public' ||
       (visibility == null && privacy == null);
   return isPublic;
+}
+
+bool videoIsPublicFeedVisible(Map<String, dynamic> data) {
+  return videoCountsAsPublicPostForStats(data);
 }
 
 /// Owner matches [userId] using the same owner keys as [getOwnerId].

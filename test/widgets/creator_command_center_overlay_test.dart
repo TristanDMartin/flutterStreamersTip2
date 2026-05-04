@@ -21,6 +21,7 @@ void main() {
     alertCount: 2,
     requiresAttentionCount: 2,
     pendingWorkCount: 3,
+    scheduledQueueCount: 2,
     growthPercent: 12,
     nextPostDueAt: DateTime(2026, 4, 23, 18),
   );
@@ -66,8 +67,8 @@ void main() {
     expect(find.text('TechnQs • Level 7'), findsOneWidget);
     expect(find.text('Tippy'), findsOneWidget);
     expect(find.text('Consistency 82%'), findsOneWidget);
-    expect(find.text('Shortcuts'), findsOneWidget);
-    expect(find.text('Drafts'), findsOneWidget);
+    expect(find.text('Due alerts'), findsOneWidget);
+    expect(find.text('2 scheduled'), findsOneWidget);
   });
 
   testWidgets('tapping outside expanded panel dismisses it', (WidgetTester tester) async {

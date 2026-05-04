@@ -14,34 +14,35 @@ class LoadingStateWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.supportBackground,
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final Color on = c.onSurface;
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: Center(
         child: Container(
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: c.surface,
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: c.outline.withValues(alpha: 0.35),
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (showProgress) ...[
-                const CircularProgressIndicator(
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(AppColors.supportAccent),
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(c.primary),
                   strokeWidth: 2,
                 ),
                 const SizedBox(height: 24),
               ],
               Text(
                 message,
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: on.withValues(alpha: 0.85),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
@@ -68,32 +69,34 @@ class ErrorStateWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.supportBackground,
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final Color on = c.onSurface;
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: Center(
         child: Container(
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: c.surface,
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: c.outline.withValues(alpha: 0.35),
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline,
-                color: Colors.red,
+                color: c.error,
                 size: 64,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Something went wrong',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: on,
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -101,8 +104,8 @@ class ErrorStateWidget extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 message,
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: on.withValues(alpha: 0.7),
                   fontSize: 14,
                 ),
                 textAlign: TextAlign.center,
@@ -110,20 +113,24 @@ class ErrorStateWidget extends StatelessWidget {
               if (onRetry != null) ...[
                 const SizedBox(height: 24),
                 DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
                       colors: AppColors.supportAccentGradient,
                     ),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.all(
+                      Radius.circular(16),
+                    ),
                   ),
                   child: ElevatedButton(
                     onPressed: onRetry,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
-                      foregroundColor: Colors.white,
+                      foregroundColor: c.onPrimary,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
                     ),
                     child: const Text('Try Again'),
                   ),

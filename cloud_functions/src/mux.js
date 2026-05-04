@@ -100,6 +100,23 @@ async function handleMuxWebhook(payload) {
 
   const firestore = admin.firestore();
   const videoRef = firestore.collection('videos').doc(videoId);
+  const beforeSnap = await videoRef.get();
+  const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : {};
+  // Client may mark uploads failed (e.g. network after bytes reached Mux) while
+  // Mux still emits video.asset.ready. Without this guard, merge overwrites
+  // status/visible and the item appears in Discover as "active".
+  const hasClientUploadFailure =
+    beforeData.status === 'failed' ||
+    (Boolean(beforeData.uploadError) && beforeData.visible === false);
+  if (hasClientUploadFailure) {
+    console.warn(
+      `Mux webhook: skip activation for ${videoId} (client upload failed)`,
+    );
+    return;
+  }
+  const userId = beforeData.userId || beforeData.creatorId || beforeData.creator_id || data.meta?.creator_id;
+  const privacy = beforeData.privacy || 'Everyone';
+  const category = beforeData.category || beforeData.categoryId || beforeData.metadata?.categoryCanonical || beforeData.metadata?.categoryOriginal;
 
   const thumbnails = {
     urls: { 360: thumbnailUrl, 540: thumbnailUrl, 720: thumbnailUrl },
@@ -119,6 +136,7 @@ async function handleMuxWebhook(payload) {
     thumbnailURL: thumbnailUrl,
     thumbnails,
     status: 'active',
+    visible: true,
     isReadyForFeed: true,
     playbackReady: true,
     transcodingStatus: 'completed',
@@ -136,6 +154,62 @@ async function handleMuxWebhook(payload) {
     await videoRef.update({
       'metadata.duration': duration,
     });
+  }
+
+  if (userId) {
+    const batch = firestore.batch();
+    batch.set(
+      firestore.collection('users').doc(userId).collection('videos').doc(videoId),
+      {
+        videoId,
+        status: 'active',
+        visible: true,
+        addedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+    );
+
+    if (privacy === 'Everyone' || privacy === 'Public' || privacy === 'public') {
+      batch.set(
+        firestore.collection('feeds').doc('for_you').collection('videos').doc(videoId),
+        {
+          videoId,
+          userId,
+          privacy,
+          status: 'active',
+          addedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      );
+      batch.set(
+        firestore.collection('feeds').doc('following').collection('videos').doc(videoId),
+        {
+          videoId,
+          userId,
+          privacy,
+          status: 'active',
+          addedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      );
+      if (category) {
+        batch.set(
+          firestore.collection('feeds').doc('categories').collection(String(category)).doc(videoId),
+          {
+            videoId,
+            userId,
+            category,
+            privacy,
+            status: 'active',
+            addedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true},
+        );
+      }
+    }
+
+    await batch.commit();
   }
 
   console.log(`Mux webhook: updated video ${videoId} with HLS URL`);

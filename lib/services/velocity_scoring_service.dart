@@ -85,7 +85,11 @@ class VelocityScoringService {
       // Velocity = (engagement/hour) * engagement_rate
       final velocity = (engagementPerHour / 10) * engagementRate; // Normalize
 
-      log('⚡ Engagement velocity: $videoId - ${totalEngagement}/$hoursSinceCreation hours = ${velocity.toStringAsFixed(2)}');
+      log(
+        '⚡ Engagement velocity: $videoId - '
+        '$totalEngagement/$hoursSinceCreation hours = '
+        '${velocity.toStringAsFixed(2)}',
+      );
 
       return velocity.clamp(0.0, 1.0);
     } catch (e) {
@@ -148,7 +152,10 @@ class VelocityScoringService {
 
       final avgQuality = totalComments > 0 ? qualityScore / totalComments : 0.0;
 
-      log('💬 Comment quality: $videoId - ${totalComments} comments, avg: ${avgQuality.toStringAsFixed(2)}');
+      log(
+        '💬 Comment quality: $videoId - '
+        '$totalComments comments, avg: ${avgQuality.toStringAsFixed(2)}',
+      );
 
       return avgQuality.clamp(0.0, 1.0);
     } catch (e) {

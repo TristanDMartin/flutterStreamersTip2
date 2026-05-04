@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
+import '../utils/responsive_layout.dart';
 import 'instant_response_button.dart';
 import 'user_stats_row.dart';
-
-const BoxDecoration _streamerCardSurfaceDecoration = BoxDecoration(
-  gradient: LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: AppColors.supportSurfaceGradient,
-  ),
-);
 
 class StreamerCardTabItem {
   const StreamerCardTabItem({
@@ -106,11 +100,18 @@ class _StreamerCardSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Stack(
       children: [
-        const DecoratedBox(
-          decoration: _streamerCardSurfaceDecoration,
-          child: SizedBox.expand(),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: shell.pageGradient,
+            ),
+          ),
+          child: const SizedBox.expand(),
         ),
         child,
       ],
@@ -215,15 +216,16 @@ class _StreamerCardTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: shell.surfaceCardBorder,
             width: 1,
           ),
         ),
@@ -233,16 +235,16 @@ class _StreamerCardTopBar extends StatelessWidget {
             InstantResponseButton(
               onPressed: onDismiss,
               hapticType: HapticFeedbackType.lightImpact,
-              child: const Icon(
+              child: Icon(
                 Icons.arrow_back,
-                color: Colors.white,
+                color: shell.onChrome,
                 size: 22,
               ),
             ),
             Text(
               'Streamer Profile',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
+                color: shell.onChrome.withValues(alpha: 0.92),
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
@@ -252,9 +254,9 @@ class _StreamerCardTopBar extends StatelessWidget {
                 InstantResponseButton(
                   onPressed: onFlip,
                   hapticType: HapticFeedbackType.lightImpact,
-                  child: const Icon(
+                  child: Icon(
                     Icons.flip,
-                    color: Colors.white,
+                    color: shell.onChrome,
                     size: 22,
                   ),
                 ),
@@ -262,9 +264,9 @@ class _StreamerCardTopBar extends StatelessWidget {
                 InstantResponseButton(
                   onPressed: onMore,
                   hapticType: HapticFeedbackType.lightImpact,
-                  child: const Icon(
+                  child: Icon(
                     Icons.more_horiz,
-                    color: Colors.white,
+                    color: shell.onChrome,
                     size: 22,
                   ),
                 ),
@@ -288,21 +290,35 @@ class _StreamerCardStatsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final AppResponsive responsive = context.responsive;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: shell.surfaceCardBorder,
             width: 1,
           ),
         ),
         child: UserStatsRow(
           userId: userId,
           postsCountOverride: postsCountOverride,
+          valueTextStyle: TextStyle(
+            color: shell.onChrome,
+            fontSize: responsive.font(21),
+            fontWeight: FontWeight.w900,
+            height: 1.0,
+          ),
+          labelTextStyle: TextStyle(
+            color: shell.muted,
+            fontSize: responsive.font(12.5),
+            fontWeight: FontWeight.w600,
+            height: 1.0,
+          ),
         ),
       ),
     );
@@ -375,27 +391,32 @@ class _StreamerCardActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool enabled = onPressed != null;
     return GestureDetector(
       onTap: onPressed,
       child: Container(
         height: 46,
         decoration: BoxDecoration(
-          gradient: onPressed != null
+          gradient: enabled
               ? const LinearGradient(
                   colors: AppColors.supportAccentGradient,
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 )
               : null,
-          color: onPressed == null ? Colors.grey.withValues(alpha: 0.3) : null,
+          color: enabled
+              ? null
+              : shell.chipUnselectedBg.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: onPressed != null
-                ? Colors.white.withValues(alpha: 0.16)
-                : Colors.grey.withValues(alpha: 0.5),
+            color: enabled
+                ? scheme.onPrimary.withValues(alpha: 0.35)
+                : shell.surfaceCardBorder,
             width: 1,
           ),
-          boxShadow: onPressed != null
+          boxShadow: enabled
               ? [
                   BoxShadow(
                     color: AppColors.supportAccent.withValues(alpha: 0.16),
@@ -407,12 +428,14 @@ class _StreamerCardActionButton extends StatelessWidget {
         ),
         child: Center(
           child: isLoading
-              ? const SizedBox(
+              ? SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      scheme.onPrimary,
+                    ),
                   ),
                 )
               : Padding(
@@ -424,7 +447,7 @@ class _StreamerCardActionButton extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: onPressed != null ? Colors.white : Colors.grey,
+                        color: enabled ? scheme.onPrimary : shell.muted,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
@@ -450,14 +473,15 @@ class _StreamerCardTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       height: 48,
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: shell.surfaceCardBorder,
           width: 1,
         ),
       ),
@@ -489,6 +513,7 @@ class _StreamerCardTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -508,7 +533,9 @@ class _StreamerCardTab extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isSelected
-                  ? Colors.white.withValues(alpha: 0.18)
+                  ? Theme.of(context).colorScheme.onPrimary.withValues(
+                        alpha: 0.22,
+                      )
                   : Colors.transparent,
               width: 1,
             ),
@@ -518,8 +545,8 @@ class _StreamerCardTab extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
                 color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.72),
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : shell.chipUnselectedFg,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
@@ -539,15 +566,16 @@ class _StreamerCardDetailsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: shell.surfaceCardBorder,
             width: 1,
           ),
         ),
@@ -556,7 +584,7 @@ class _StreamerCardDetailsHeader extends StatelessWidget {
             Text(
               'Streamer Details',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
+                color: shell.onChrome.withValues(alpha: 0.92),
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
@@ -565,9 +593,9 @@ class _StreamerCardDetailsHeader extends StatelessWidget {
             InstantResponseButton(
               onPressed: onFlip,
               hapticType: HapticFeedbackType.lightImpact,
-              child: const Icon(
+              child: Icon(
                 Icons.flip,
-                color: Colors.white,
+                color: shell.onChrome,
                 size: 22,
               ),
             ),
@@ -591,6 +619,7 @@ class _StreamerCardSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
@@ -598,10 +627,10 @@ class _StreamerCardSectionHeader extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: shell.surfaceCardBorder,
               width: 1,
             ),
           ),
@@ -610,8 +639,8 @@ class _StreamerCardSectionHeader extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: shell.onChrome,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                 ),
@@ -620,7 +649,7 @@ class _StreamerCardSectionHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_down
                     : Icons.keyboard_arrow_right,
-                color: Colors.white.withValues(alpha: 0.9),
+                color: shell.muted,
                 size: 24,
               ),
             ],

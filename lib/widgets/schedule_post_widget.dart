@@ -156,7 +156,7 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
               });
               _updateSchedule();
             },
-            activeColor: const Color(0xFF9248D2),
+            activeThumbColor: const Color(0xFF9248D2),
             inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
           ),
         ],
@@ -165,7 +165,8 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
   }
 
   Widget _buildScheduleHero(Duration timeUntilPublish) {
-    final isSoon = timeUntilPublish.inMinutes >= 0 && timeUntilPublish.inHours < 24;
+    final isSoon =
+        timeUntilPublish.inMinutes >= 0 && timeUntilPublish.inHours < 24;
     final summaryText = _formatScheduleSummary();
     final helperText = widget.selectedPlatforms.isEmpty
         ? 'Choose at least one platform to make scheduling actionable.'
@@ -517,58 +518,59 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
           ),
         ),
         child: Row(
-        children: [
-          SizedBox(
-            width: 20,
-            child: Checkbox(
-              value: isOverride,
-              onChanged: (value) {
-                setState(() {
-                  if (value == true) {
-                    _platformOverrides[platform.name] = _selectedDateTime;
-                  } else {
-                    _platformOverrides.remove(platform.name);
-                  }
-                });
-                _updateSchedule();
-              },
-              activeColor: const Color(0xFF9248D2),
-              checkColor: Colors.white,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          children: [
+            SizedBox(
+              width: 20,
+              child: Checkbox(
+                value: isOverride,
+                onChanged: (value) {
+                  setState(() {
+                    if (value == true) {
+                      _platformOverrides[platform.name] = _selectedDateTime;
+                    } else {
+                      _platformOverrides.remove(platform.name);
+                    }
+                  });
+                  _updateSchedule();
+                },
+                activeColor: const Color(0xFF9248D2),
+                checkColor: Colors.white,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            platformName,
-            style: TextStyle(
-              color: isOverride ? Colors.white : Colors.white70,
-              fontSize: 12.5,
-              fontWeight: isOverride ? FontWeight.w600 : FontWeight.w500,
+            const SizedBox(width: 8),
+            Text(
+              platformName,
+              style: TextStyle(
+                color: isOverride ? Colors.white : Colors.white70,
+                fontSize: 12.5,
+                fontWeight: isOverride ? FontWeight.w600 : FontWeight.w500,
+              ),
             ),
-          ),
-          if (isOverride) ...[
-            const Spacer(),
-            GestureDetector(
-              onTap: () => _selectPlatformDateTime(platform),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  _formatDateTime(overrideTime),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+            if (isOverride) ...[
+              const Spacer(),
+              GestureDetector(
+                onTap: () => _selectPlatformDateTime(platform),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    _formatDateTime(overrideTime),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -639,14 +641,10 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
       builder: (context, child) {
+        final ColorScheme scheme = Theme.of(context).colorScheme;
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF9248D2),
-              onPrimary: Colors.white,
-              surface: Color(0xFF1A1A1A),
-              onSurface: Colors.white,
-            ),
+            colorScheme: scheme,
           ),
           child: child!,
         );
@@ -659,14 +657,10 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
         context: context,
         initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
         builder: (context, child) {
+          final ColorScheme scheme = Theme.of(context).colorScheme;
           return Theme(
             data: Theme.of(context).copyWith(
-              colorScheme: const ColorScheme.dark(
-                primary: Color(0xFF9248D2),
-                onPrimary: Colors.white,
-                surface: Color(0xFF1A1A1A),
-                onSurface: Colors.white,
-              ),
+              colorScheme: scheme,
             ),
             child: child!,
           );
@@ -690,9 +684,10 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
   }
 
   Future<void> _selectTimezone() async {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final selected = await showModalBottomSheet<TimezoneInfo>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: scheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -701,10 +696,10 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Select Timezone',
               style: TextStyle(
-                color: Colors.white,
+                color: scheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
@@ -713,14 +708,14 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
             ...TimezoneInfo.commonTimezones.map((tz) => ListTile(
                   title: Text(
                     tz.displayName,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: scheme.onSurface),
                   ),
                   subtitle: Text(
                     tz.name,
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                   trailing: _selectedTimezone.name == tz.name
-                      ? const Icon(Icons.check, color: Color(0xFF9248D2))
+                      ? Icon(Icons.check, color: scheme.primary)
                       : null,
                   onTap: () => Navigator.pop(context, tz),
                 )),
@@ -746,14 +741,10 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) {
+        final ColorScheme scheme = Theme.of(context).colorScheme;
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF9248D2),
-              onPrimary: Colors.white,
-              surface: Color(0xFF1A1A1A),
-              onSurface: Colors.white,
-            ),
+            colorScheme: scheme,
           ),
           child: child!,
         );
@@ -766,14 +757,10 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
         context: context,
         initialTime: TimeOfDay.fromDateTime(currentTime),
         builder: (context, child) {
+          final ColorScheme scheme = Theme.of(context).colorScheme;
           return Theme(
             data: Theme.of(context).copyWith(
-              colorScheme: const ColorScheme.dark(
-                primary: Color(0xFF9248D2),
-                onPrimary: Colors.white,
-                surface: Color(0xFF1A1A1A),
-                onSurface: Colors.white,
-              ),
+              colorScheme: scheme,
             ),
             child: child!,
           );

@@ -42,14 +42,15 @@ extension RecommendedContentExtension on RecommendedContent {
       url: 'https://streamerstip.com/academy',
     ),
     const RecommendedContent(
-      id: 'live-events',
-      title: 'Live Events',
+      id: 'peripherals',
+      title: 'Peripherals',
       creator: 'StreamersTip',
-      description: 'Find upcoming tournaments, community nights, and collabs.',
+      description:
+          'Cameras, mics, lighting, capture cards, and gear to level up your setup.',
       thumbnailURL: null,
       views: 0,
       duration: '',
-      url: 'https://streamerstip.com/live-events',
+      url: 'https://www.streamerstip.com/peripherals',
     ),
   ];
 }

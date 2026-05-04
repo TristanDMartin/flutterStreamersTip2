@@ -119,16 +119,17 @@ class _StatsRowContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppResponsive responsive = context.responsive;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final TextStyle resolvedValueTextStyle = valueTextStyle ??
         TextStyle(
-          color: Colors.white,
+          color: scheme.onSurface,
           fontSize: responsive.font(21),
           fontWeight: FontWeight.w900,
           height: 1.0,
         );
     final TextStyle resolvedLabelTextStyle = labelTextStyle ??
         TextStyle(
-          color: Colors.white.withValues(alpha: 0.7),
+          color: scheme.onSurface.withValues(alpha: 0.62),
           fontSize: responsive.font(12.5),
           fontWeight: FontWeight.w600,
           height: 1.0,

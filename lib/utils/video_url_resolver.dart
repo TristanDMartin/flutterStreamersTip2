@@ -195,7 +195,7 @@ String resolveVideoUrl(Map<String, dynamic> data) {
 /// Canonical owner ID from video doc (single source of truth for filtering).
 /// Use this when building HomeVideo or filtering user videos.
 String? getOwnerId(Map<String, dynamic> data) {
-  const ownerKeys = [
+  const ownerKeys = <String>[
     'ownerId',
     'userId',
     'user_id',
@@ -203,10 +203,45 @@ String? getOwnerId(Map<String, dynamic> data) {
     'uid',
     'creatorId',
     'creator_id',
+    'videoOwnerId',
   ];
-  for (final key in ownerKeys) {
-    final value = data[key];
-    if (value is String && value.trim().isNotEmpty) return value.trim();
+  for (final String key in ownerKeys) {
+    final Object? value = data[key];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+  }
+  final Object? meta = data['meta'];
+  if (meta is Map) {
+    final Map<String, dynamic> metaMap = Map<String, dynamic>.from(meta);
+    for (final String key in <String>['creator_id', 'creatorId', 'userId']) {
+      final Object? v = metaMap[key];
+      if (v is String && v.trim().isNotEmpty) {
+        return v.trim();
+      }
+    }
   }
   return null;
+}
+
+bool looksLikeFirebaseAuthUid(String value) {
+  final String trimmed = value.trim();
+  if (trimmed.length < 20 || trimmed.length > 40) {
+    return false;
+  }
+  final RegExp uidPattern = RegExp(r'^[A-Za-z0-9]+$');
+  return uidPattern.hasMatch(trimmed);
+}
+
+/// When [videoId] is `{uid}_{suffix}`, returns the UID prefix for legacy docs.
+String? inferOwnerIdFromVideoDocumentId(String videoId) {
+  final int underscoreIndex = videoId.indexOf('_');
+  if (underscoreIndex <= 0) {
+    return null;
+  }
+  final String candidate = videoId.substring(0, underscoreIndex).trim();
+  if (!looksLikeFirebaseAuthUid(candidate)) {
+    return null;
+  }
+  return candidate;
 }

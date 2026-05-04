@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
-        <color android:color="#1C135D" />
+        <color android:color="@color/window_background" />
     </item>
     <item
-        android:width="164dp"
-        android:height="164dp"
+        android:width="72dp"
+        android:height="72dp"
         android:gravity="center">
         <bitmap
-            android:gravity="center"
+            android:gravity="fill"
             android:src="@drawable/splash_logo" />
     </item>
 </layer-list>

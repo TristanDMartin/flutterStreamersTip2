@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
+import '../models/home_video.dart';
 import '../models/user_model.dart' as user_model;
 import '../models/network_models.dart' as network_models;
 import '../models/user_count_fields.dart';
@@ -18,6 +19,7 @@ import '../widgets/status_aware_avatar.dart';
 import '../providers/status_provider.dart';
 import '../routing/app_navigator.dart';
 import '../providers/follow_refresh_provider.dart';
+import '../providers/video_service_provider.dart' as video_providers;
 import '../constants/app_colors.dart';
 
 class NetworkView extends ConsumerStatefulWidget {
@@ -31,6 +33,7 @@ class NetworkView extends ConsumerStatefulWidget {
 
 class _NetworkViewState extends ConsumerState<NetworkView>
     with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
+  ColorScheme get _th => Theme.of(context).colorScheme;
   network_models.NetworkTab _selectedTab =
       network_models.NetworkTab.connections;
   final ScrollController _listController = ScrollController();
@@ -120,11 +123,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     );
     _contentSlideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.025), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _contentTransitionController,
-            curve: Curves.easeOutCubic,
-          ),
-        );
+      CurvedAnimation(
+        parent: _contentTransitionController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
     _contentTransitionController.value = 1;
 
     _listController.addListener(_maybeLoadMore);
@@ -200,8 +203,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
       List<ConnectivityResult> results,
     ) {
-      final hasConnection =
-          results.contains(ConnectivityResult.mobile) ||
+      final hasConnection = results.contains(ConnectivityResult.mobile) ||
           results.contains(ConnectivityResult.wifi) ||
           results.contains(ConnectivityResult.ethernet);
 
@@ -242,8 +244,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       }
       if (!mounted) return;
       final bool isPermissionDenied = error.toString().toLowerCase().contains(
-        'permission',
-      );
+            'permission',
+          );
       if (isPermissionDenied) {
         if (_hasShownPermissionError) return;
         _hasShownPermissionError = true;
@@ -290,8 +292,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       final connectivityResults = await Connectivity().checkConnectivity();
       final hasConnection =
           connectivityResults.contains(ConnectivityResult.mobile) ||
-          connectivityResults.contains(ConnectivityResult.wifi) ||
-          connectivityResults.contains(ConnectivityResult.ethernet);
+              connectivityResults.contains(ConnectivityResult.wifi) ||
+              connectivityResults.contains(ConnectivityResult.ethernet);
 
       // Connection status is now handled by the status provider
 
@@ -467,10 +469,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   Future<void> _runMigrationIfNeeded() async {
     try {
       // Check if follows collection has any data
-      final followsSnapshot = await FirebaseFirestore.instance
-          .collection('follows')
-          .limit(1)
-          .get();
+      final followsSnapshot =
+          await FirebaseFirestore.instance.collection('follows').limit(1).get();
 
       if (followsSnapshot.docs.isEmpty) {
         debugPrint(
@@ -529,8 +529,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       final allUsers = _getAllUsersForSearch();
       final results = allUsers.where((user) {
         return user.username.toLowerCase().contains(
-              _searchQuery.toLowerCase(),
-            ) ||
+                  _searchQuery.toLowerCase(),
+                ) ||
             user.displayName.toLowerCase().contains(_searchQuery.toLowerCase());
       }).toList();
 
@@ -675,8 +675,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           );
         }
       },
-      child: Container(
-        color: AppColors.supportBackground,
+      child: ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: SafeArea(
           child: Column(
             children: [
@@ -709,40 +709,41 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   Widget _buildSearchBar() {
+    final Color on = _th.onSurface;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: on.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(25),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: on.withValues(alpha: 0.18),
             width: 1,
           ),
         ),
         child: TextField(
           controller: _searchController,
           onChanged: (_) => _onSearchChanged(),
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: on),
           decoration: InputDecoration(
             hintText: 'Search users...',
             hintStyle: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: on.withValues(alpha: 0.5),
               fontSize: 16,
             ),
             prefixIcon: Icon(
               Icons.search,
-              color: Colors.white.withValues(alpha: 0.6),
+              color: on.withValues(alpha: 0.5),
             ),
             suffixIcon: _isSearching
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
                     child: SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(_th.primary),
                       ),
                     ),
                   )
@@ -759,17 +760,20 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   Widget _buildTopChrome() {
+    final Color on = _th.onSurface;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.09),
+          color: _th.surface,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+          border: Border.all(
+            color: on.withValues(alpha: 0.12),
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
+              color: _th.shadow.withValues(alpha: 0.1),
               blurRadius: 20,
               offset: const Offset(0, 12),
             ),
@@ -783,10 +787,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Your Network',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: on,
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                           height: 1,
@@ -798,7 +802,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                             ? 'Search across your connections, followers, and following.'
                             : 'Keep track of your people and move between lists quickly.',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
+                          color: on.withValues(alpha: 0.66),
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                           height: 1.25,
@@ -917,6 +921,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     required VoidCallback onTap,
     bool isPrimary = false,
   }) {
+    final Color fg = isPrimary ? _th.onPrimary : _th.onSurface;
+    final Color borderC = isPrimary
+        ? _th.onPrimary.withValues(alpha: 0.2)
+        : _th.onSurface.withValues(alpha: 0.12);
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -932,23 +940,25 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                   end: Alignment.centerRight,
                 )
               : null,
-          color: isPrimary ? null : Colors.white.withValues(alpha: 0.06),
+          color: isPrimary
+              ? null
+              : _th.onSurface.withValues(
+                  alpha: 0.06,
+                ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isPrimary
-                ? Colors.white.withValues(alpha: 0.10)
-                : Colors.white.withValues(alpha: 0.12),
+            color: borderC,
           ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.white, size: 18),
+            Icon(icon, color: fg, size: 18),
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fg,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -1011,7 +1021,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     int count,
   ) {
     final isSelected = _selectedTab == tab;
-
+    final Color on = _th.onSurface;
+    final Color onP = _th.onPrimary;
+    final Color fg = isSelected ? onP : on;
     return GestureDetector(
       onTap: () => _selectTab(tab),
       child: Container(
@@ -1025,18 +1037,22 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: isSelected ? null : Colors.white.withValues(alpha: 0.08),
+          color: isSelected
+              ? null
+              : on.withValues(
+                  alpha: 0.08,
+                ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
-                ? Colors.white.withValues(alpha: 0.24)
-                : Colors.white.withValues(alpha: 0.16),
+                ? onP.withValues(alpha: 0.3)
+                : on.withValues(alpha: 0.16),
             width: 1.4,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
+                    color: _th.shadow.withValues(alpha: 0.15),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -1053,27 +1069,31 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(
-                    alpha: isSelected ? 0.20 : 0.08,
+                  color: fg.withValues(
+                    alpha: isSelected ? 0.2 : 0.08,
                   ),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: isSelected ? 0.18 : 0.12,
+                    color: fg.withValues(
+                      alpha: isSelected ? 0.22 : 0.12,
                     ),
                   ),
                 ),
                 child: Icon(
                   icon,
                   size: 22,
-                  color: Colors.white.withValues(alpha: isSelected ? 1 : 0.82),
+                  color: fg.withValues(
+                    alpha: isSelected ? 1 : 0.82,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 title,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: isSelected ? 1 : 0.82),
+                  color: fg.withValues(
+                    alpha: isSelected ? 1 : 0.82,
+                  ),
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                   height: 1.05,
@@ -1086,8 +1106,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                 children: [
                   Text(
                     count.toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: fg,
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                       height: 1,
@@ -1097,7 +1117,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                   Text(
                     'people',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.74),
+                      color: fg.withValues(alpha: 0.72),
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1115,7 +1135,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     if (_isLoadingUsers) {
       return RefreshIndicator(
         onRefresh: _handlePullToRefresh,
-        color: Colors.white,
+        color: _th.primary,
         child: ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           itemCount: 6,
@@ -1131,7 +1151,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     return RefreshIndicator(
       onRefresh: _handlePullToRefresh,
-      color: Colors.white,
+      color: _th.primary,
       child: ListView.builder(
         controller: _listController,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1226,14 +1246,19 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   Widget _buildUserCard(user_model.User user) {
+    final Color on = _th.onSurface;
     final subtitle = user.bio?.trim().isNotEmpty == true
         ? user.bio!.trim()
         : '@${user.username}';
-    final statsLabel = _selectedTab == network_models.NetworkTab.followers
-        ? '${user.followerCount} followers'
-        : _selectedTab == network_models.NetworkTab.following
-        ? '${user.followingCount} following'
-        : '${user.postCount} posts';
+    final TextStyle statsStyle = TextStyle(
+      color: on.withValues(alpha: 0.5),
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+    );
+    final Widget statsLine = _NetworkUserPostsStatLine(
+      user: user,
+      style: statsStyle,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1249,30 +1274,30 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           },
           child: Container(
             width: double.infinity,
-            constraints: const BoxConstraints(minHeight: 88),
+            constraints: const BoxConstraints(minHeight: 76),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.09),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+              color: on.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: on.withValues(alpha: 0.12)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
+                  color: _th.shadow.withValues(alpha: 0.1),
                   blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),
               ],
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               child: Row(
                 children: [
                   StatusAwareAvatar(
                     userId: user.id,
                     avatarURL: user.avatarURL,
-                    radius: 24,
+                    radius: 21,
                     showOnlineIndicator: true,
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1281,49 +1306,40 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                       children: [
                         Text(
                           user.displayName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
+                          style: TextStyle(
+                            color: on,
+                            fontSize: 16,
                             fontWeight: FontWeight.w800,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
                           subtitle,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.70),
-                            fontSize: 12.5,
+                            color: on.withValues(alpha: 0.66),
+                            fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          statsLabel,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.54),
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        const SizedBox(height: 4),
+                        statsLine,
                       ],
                     ),
                   ),
                   Container(
-                    width: 34,
-                    height: 34,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
+                      color: on.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       Icons.chevron_right_rounded,
-                      color: Colors.white.withValues(alpha: 0.72),
+                      color: on.withValues(alpha: 0.5),
                       size: 20,
                     ),
                   ),
@@ -1337,16 +1353,17 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   Widget _buildEmptyState() {
+    final Color on = _th.onSurface;
     final title = _selectedTab == network_models.NetworkTab.followers
         ? 'No followers yet'
         : _selectedTab == network_models.NetworkTab.following
-        ? 'You are not following anyone yet'
-        : 'No connections yet';
+            ? 'You are not following anyone yet'
+            : 'No connections yet';
     final subtitle = _selectedTab == network_models.NetworkTab.followers
         ? 'Share your profile and keep posting to grow your audience.'
         : _selectedTab == network_models.NetworkTab.following
-        ? 'Find creators and friends from Home or Search, then follow them here.'
-        : 'Follow back people who follow you to turn one-way relationships into connections.';
+            ? 'Find creators and friends from Home or Search, then follow them here.'
+            : 'Follow back people who follow you to turn one-way relationships into connections.';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1356,99 +1373,108 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           margin: const EdgeInsets.symmetric(horizontal: 28),
           padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: on.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            border: Border.all(color: on.withValues(alpha: 0.12)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: AppColors.supportAccentGradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Icon(
-                Icons.people_outline_rounded,
-                size: 36,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.70),
-                fontSize: 14,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 14),
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                _refreshDataInstantly();
-              },
-              child: Container(
-                height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+              Container(
+                width: 72,
+                height: 72,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
                     colors: AppColors.supportAccentGradient,
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.all(
+                    Radius.circular(24),
+                  ),
                 ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      'Refresh network',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+                child: Icon(
+                  Icons.people_outline_rounded,
+                  size: 36,
+                  color: _th.onPrimary,
                 ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: TextStyle(
+                  color: on,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: on.withValues(alpha: 0.64),
+                  fontSize: 14,
+                  height: 1.4,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 14),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _refreshDataInstantly();
+                },
+                child: Container(
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: AppColors.supportAccentGradient,
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.all(
+                      Radius.circular(18),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.refresh_rounded,
+                        color: _th.onPrimary,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Refresh network',
+                        style: TextStyle(
+                          color: _th.onPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildSkeletonCard() {
+    final Color b = _th.onSurface;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
         height: 86,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: b.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(22),
         ),
         child: Row(
@@ -1458,7 +1484,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
+                color: b.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
             ),
@@ -1472,7 +1498,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                     height: 12,
                     width: 140,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
+                      color: b.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
@@ -1481,7 +1507,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                     height: 10,
                     width: 90,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
+                      color: b.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
@@ -1490,7 +1516,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                     height: 10,
                     width: 72,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.10),
+                      color: b.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
@@ -1501,7 +1527,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: b.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -1765,5 +1791,38 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       case UserStatus.streaming:
         return Icons.play_circle;
     }
+  }
+}
+
+/// Matches [StreamerCardView] / [UserStatsRow] post count when feed state
+/// already includes this user's videos (all Network tabs).
+class _NetworkUserPostsStatLine extends ConsumerWidget {
+  const _NetworkUserPostsStatLine({
+    required this.user,
+    required this.style,
+  });
+
+  final user_model.User user;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final List<HomeVideo> allVideos =
+        ref.watch(video_providers.videoServiceStateProvider);
+    final bool isVideoServiceLoading =
+        ref.watch(video_providers.videoServiceLoadingProvider);
+    final List<HomeVideo> userVideos =
+        ref.watch(video_providers.userVideosProvider(user.id));
+    final int? postsCountOverride = userVideos.isNotEmpty ||
+            (!isVideoServiceLoading && allVideos.isNotEmpty)
+        ? userVideos.length
+        : null;
+    final int count = postsCountOverride ?? user.postCount;
+    return Text(
+      '$count posts',
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
   }
 }

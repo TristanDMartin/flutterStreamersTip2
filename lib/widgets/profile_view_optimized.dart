@@ -6,7 +6,6 @@ import 'dart:async';
 
 import '../models/user.dart' as app_user;
 import '../providers/follow_refresh_provider.dart';
-import '../constants/app_colors.dart';
 import '../routing/app_navigator.dart';
 import '../services/profile_update_service.dart';
 import '../services/user_blocking_service.dart';
@@ -209,7 +208,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   Widget build(BuildContext context) {
     final Map<String, dynamic> userData = _getCurrentUserData();
     return Scaffold(
-      backgroundColor: AppColors.profileViewBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody: true,
       extendBodyBehindAppBar: true,
       body: AnimatedBuilder(

@@ -8,6 +8,11 @@ import '../../constants/playback_owners.dart';
 import '../../services/feed_telemetry_service.dart';
 import '../../services/global_playback_manager.dart';
 
+int clampHomeVideoIndex(int preferredIndex, int videoCount) {
+  if (videoCount <= 0) return 0;
+  return preferredIndex.clamp(0, videoCount - 1);
+}
+
 /// Video page view widget for HomeView (handles video scrolling)
 class VideoPageViewWidget extends ConsumerStatefulWidget {
   final List<HomeVideo> videos;
@@ -62,7 +67,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (len == 0) {
       return 0;
     }
-    return widget.currentIndex.clamp(0, len - 1);
+    return clampHomeVideoIndex(widget.currentIndex, len);
   }
 
   @override
@@ -70,26 +75,35 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     super.initState();
     // Only create PageController if videos exist
     if (widget.videos.isNotEmpty) {
+      final int safeIndex = clampHomeVideoIndex(
+        widget.currentIndex,
+        widget.videos.length,
+      );
       _pageController = PageController(
-          initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
+        initialPage: safeIndex,
+      );
       _pageController!.addListener(_handlePageScroll);
     }
 
-      // Expose scroll-to-top functionality to parent
-      if (widget.onControllerReady != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          widget.onControllerReady!(_scrollToTop);
-        });
-      }
-      // Log first impression once videos are available.
-      if (widget.videos.isNotEmpty) {
-        _pageEnteredAt = DateTime.now();
-        _lastImpressionIndex = widget.currentIndex;
-        _telemetry.logVideoImpression(
-          videoId: widget.videos[widget.currentIndex].id,
-          feedPosition: widget.currentIndex,
-        );
-      }
+    // Expose scroll-to-top functionality to parent
+    if (widget.onControllerReady != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onControllerReady!(_scrollToTop);
+      });
+    }
+    // Log first impression once videos are available.
+    if (widget.videos.isNotEmpty) {
+      final int safeIndex = clampHomeVideoIndex(
+        widget.currentIndex,
+        widget.videos.length,
+      );
+      _pageEnteredAt = DateTime.now();
+      _lastImpressionIndex = safeIndex;
+      _telemetry.logVideoImpression(
+        videoId: widget.videos[safeIndex].id,
+        feedPosition: safeIndex,
+      );
+    }
   }
 
   /// Scroll to top of the video feed
@@ -162,7 +176,10 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       // Videos were just loaded - create PageController
       _pageController?.removeListener(_handlePageScroll);
       _pageController?.dispose();
-      final safeIndex = widget.currentIndex.clamp(0, widget.videos.length - 1);
+      final safeIndex = clampHomeVideoIndex(
+        widget.currentIndex,
+        widget.videos.length,
+      );
       _pageController = PageController(initialPage: safeIndex);
       _pageController!.addListener(_handlePageScroll);
       _lastObservedPage = safeIndex.toDouble();
@@ -201,8 +218,10 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
 
           // Verify scroll position is ready before using controller
           if (_isScrollPositionReady()) {
-            final safeIndex =
-                widget.currentIndex.clamp(0, widget.videos.length - 1);
+            final safeIndex = clampHomeVideoIndex(
+              widget.currentIndex,
+              widget.videos.length,
+            );
             _pageController!.jumpToPage(safeIndex);
           }
         }
@@ -213,8 +232,10 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
                 oldWidget.tabId != widget.tabId) &&
             _pageController!.hasClients) {
           final bool tabChanged = oldWidget.tabId != widget.tabId;
-          final int safeIndex =
-              widget.currentIndex.clamp(0, widget.videos.length - 1);
+          final int safeIndex = clampHomeVideoIndex(
+            widget.currentIndex,
+            widget.videos.length,
+          );
 
           log('🔄 VideoPageView: Videos or tabId changed, keeping index $safeIndex (tabChanged: $tabChanged)');
 
@@ -273,10 +294,16 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
         if (mounted && widget.videos.isNotEmpty) {
           setState(() {
             _pageController = PageController(
-                initialPage:
-                    widget.currentIndex.clamp(0, widget.videos.length - 1));
+              initialPage: clampHomeVideoIndex(
+                widget.currentIndex,
+                widget.videos.length,
+              ),
+            );
             _pageController!.addListener(_handlePageScroll);
-            _lastObservedPage = widget.currentIndex.toDouble();
+            _lastObservedPage = clampHomeVideoIndex(
+              widget.currentIndex,
+              widget.videos.length,
+            ).toDouble();
           });
         }
       });
@@ -287,6 +314,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     Future<void> refreshCallback() async {
       if (widget.onRefresh != null) await widget.onRefresh!();
     }
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent, // Allow gestures to pass through
       onHorizontalDragStart: (_) {
@@ -315,13 +343,13 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
                   if (index >= 0 && index < widget.videos.length) {
                     // --- Telemetry: skip detection for the previous video ---
                     final now = DateTime.now();
-                    if (_pageEnteredAt != null && _lastImpressionIndex >= 0 &&
+                    if (_pageEnteredAt != null &&
+                        _lastImpressionIndex >= 0 &&
                         _lastImpressionIndex < widget.videos.length) {
-                      final watched = now
-                          .difference(_pageEnteredAt!)
-                          .inMilliseconds / 1000.0;
-                      final prevVideo =
-                          widget.videos[_lastImpressionIndex];
+                      final watched =
+                          now.difference(_pageEnteredAt!).inMilliseconds /
+                              1000.0;
+                      final prevVideo = widget.videos[_lastImpressionIndex];
                       // video_watch_duration for every page-leave
                       final totalSecs = prevVideo.duration ?? 0;
                       final completion = totalSecs > 0
@@ -464,14 +492,14 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (_isHorizontalSwipe && absDx > 300) {
       if (velocity.dx < -300) {
         log('👈 VideoPageView: Left swipe detected');
-        if (widget.currentIndex < widget.videos.length) {
-          final currentVideo = widget.videos[widget.currentIndex];
+        if (widget.videos.isNotEmpty) {
+          final currentVideo = widget.videos[_clampedCurrentIndex];
           widget.onLeftSwipe(currentVideo);
         }
       } else if (velocity.dx > 300) {
         log('👉 VideoPageView: Right swipe detected');
-        if (widget.currentIndex < widget.videos.length) {
-          final currentVideo = widget.videos[widget.currentIndex];
+        if (widget.videos.isNotEmpty) {
+          final currentVideo = widget.videos[_clampedCurrentIndex];
           widget.onRightSwipe(currentVideo);
         }
       }

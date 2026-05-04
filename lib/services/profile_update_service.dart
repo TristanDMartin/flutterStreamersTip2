@@ -100,7 +100,7 @@ class ProfileUpdateService extends ChangeNotifier {
               debugPrint(
                   "🔄 ProfileUpdateService: Avatar updated from Firestore (real-time)");
               debugPrint("   Old: ${currentAvatarURL ?? 'null'}");
-              debugPrint("   New: ${newAvatarURL}");
+              debugPrint("   New: $newAvatarURL");
               notifyAllListeners();
             }
           }

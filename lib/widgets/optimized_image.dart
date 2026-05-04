@@ -127,7 +127,8 @@ class _OptimizedImageState extends State<OptimizedImage> {
           });
         }
 
-        return _buildPlaceholder();
+        debugPrint('⚠️ OptimizedImage: failed loading $url - $error');
+        return widget.errorWidget ?? _buildPlaceholder();
       },
       // OPTIMIZED: Increased cache sizes for better quality while maintaining performance
       memCacheWidth:

@@ -6,6 +6,7 @@ import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
 import '../widgets/auth_modal_view.dart';
 import '../pages/main_tab_view.dart';
+import 'account_status_guard.dart';
 
 /// App startup wrapper that handles authentication flow
 class AppStartupWrapper extends ConsumerStatefulWidget {
@@ -127,7 +128,9 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
       debugPrint('🏠 AppStartupWrapper: Returning MainTabView');
       // Run calendar cleanup in background
       _runCalendarCleanup();
-      return MainTabView(initialTabIndex: widget.initialTabIndex);
+      return AccountStatusGuard(
+        child: MainTabView(initialTabIndex: widget.initialTabIndex),
+      );
     }
 
     // Show auth modal if not logged in

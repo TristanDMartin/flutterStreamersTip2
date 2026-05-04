@@ -83,8 +83,9 @@ class ChatServiceOptimized {
     if (currentUser == null) return false;
 
     try {
-      final messageData = {
+      final messageData = <String, dynamic>{
         'senderId': currentUser.uid,
+        'text': '[GIF]',
         'gifUrl': gifUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'gif',
@@ -142,11 +143,41 @@ class ChatServiceOptimized {
   /// Get user info
   Future<Map<String, dynamic>?> getUserInfo(String userId) async {
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (doc.exists) {
-        return doc.data();
+      final DocumentSnapshot<Map<String, dynamic>> userDoc =
+          await _firestore.collection('users').doc(userId).get();
+      if (userDoc.exists) {
+        return userDoc.data();
       }
-      return null;
+      final DocumentSnapshot<Map<String, dynamic>> publicUserDoc =
+          await _firestore.collection('publicUsers').doc(userId).get();
+      if (publicUserDoc.exists) {
+        return publicUserDoc.data();
+      }
+      final QuerySnapshot<Map<String, dynamic>> usersByUid = await _firestore
+          .collection('users')
+          .where('uid', isEqualTo: userId)
+          .limit(1)
+          .get();
+      if (usersByUid.docs.isNotEmpty) {
+        return usersByUid.docs.first.data();
+      }
+      final QuerySnapshot<Map<String, dynamic>> usersById = await _firestore
+          .collection('users')
+          .where('id', isEqualTo: userId)
+          .limit(1)
+          .get();
+      if (usersById.docs.isNotEmpty) {
+        return usersById.docs.first.data();
+      }
+      final QuerySnapshot<Map<String, dynamic>> publicByUid = await _firestore
+          .collection('publicUsers')
+          .where('uid', isEqualTo: userId)
+          .limit(1)
+          .get();
+      if (publicByUid.docs.isNotEmpty) {
+        return publicByUid.docs.first.data();
+      }
+      return <String, dynamic>{};
     } catch (e) {
     // print('Error getting user info: $e');
       return null;
@@ -184,6 +215,39 @@ class ChatServiceOptimized {
       }
       return null;
     });
+  }
+
+  /// Listen to typing status for a specific user in a chat
+  Stream<bool> listenToTypingStatus(String chatId, String userId) {
+    return _firestore.collection('chats').doc(chatId).snapshots().map((doc) {
+      if (!doc.exists) {
+        return false;
+      }
+      final Map<String, dynamic>? data = doc.data();
+      if (data == null) {
+        return false;
+      }
+      final Object? typingRaw = data['typing'];
+      if (typingRaw is! Map<String, dynamic>) {
+        return false;
+      }
+      return typingRaw[userId] == true;
+    });
+  }
+
+  /// Update current user's typing status in a chat
+  Future<void> setTypingStatus(String chatId, bool isTyping) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || chatId.isEmpty) {
+      return;
+    }
+    await _firestore.collection('chats').doc(chatId).set(
+      <String, dynamic>{
+        'typing.${currentUser.uid}': isTyping,
+        'typingUpdatedAt.${currentUser.uid}': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
   }
 
   /// Delete a message
@@ -242,18 +306,38 @@ class ChatServiceOptimized {
   /// Map Firestore document to Message model
   app_message.Message _mapMessage(String id, Map<String, dynamic> data) {
     final currentUser = _auth.currentUser?.uid ?? '';
-    final senderId = data['senderId'] ?? '';
-    
+    final String senderId =
+        (data['senderId'] as String?)?.trim().isNotEmpty == true
+            ? data['senderId'] as String
+            : (data['from'] as String? ?? '');
+
     return app_message.Message(
       id: id,
       chatId: '', // Will be set by the calling context
-      text: data['text'] ?? '',
+      text: data['text'] ?? (data['previewText'] ?? ''),
       from: senderId,
       to: senderId == currentUser ? 'other_user' : currentUser, // Simplified for now
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isRead: data['isRead'] ?? false,
       gifUrl: data['gifUrl'],
       messageType: data['type'] ?? 'text',
+      videoId: data['videoId'] as String?,
+      videoThumbnailUrl: data['thumbnailUrl'] as String? ??
+          data['videoThumbnailUrl'] as String?,
+      videoTitle: data['title'] as String? ?? data['videoTitle'] as String?,
+      deletedForEveryone: data['deletedForEveryone'] == true,
+      replyToMessageId: (data['replyTo'] as Map<String, dynamic>?)?['messageId']
+          as String?,
+      replyToSenderId: (data['replyTo'] as Map<String, dynamic>?)?['senderId']
+          as String?,
+      replyToSenderName: (data['replyTo'] as Map<String, dynamic>?)?['senderName']
+          as String?,
+      replyToType: (data['replyTo'] as Map<String, dynamic>?)?['type'] as String?,
+      replyPreviewText: (data['replyTo'] as Map<String, dynamic>?)?['previewText']
+          as String?,
+      replyThumbnailUrl: (data['replyTo'] as Map<String, dynamic>?)?['thumbnailUrl']
+          as String?,
+      replyVideoId: (data['replyTo'] as Map<String, dynamic>?)?['videoId'] as String?,
     );
   }
 

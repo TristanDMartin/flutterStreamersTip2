@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+/// Firestore role / `admin.isAdmin` drives **UI** (shield). Custom claim
+/// `admin` drives **rules + Cloud Functions**.
 class AdminService {
   static final AdminService instance = AdminService._internal();
   factory AdminService() => instance;
@@ -10,34 +12,126 @@ class AdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  bool _hasAdminRole(Map<String, dynamic>? userData) {
+  /// UI-only bootstrap when Firestore profile fields are not denormalized
+  /// into the profile map yet (still requires claims/rules for real access).
+  static const Set<String> _shieldBootstrapUsernames = <String>{
+    'technqs',
+    'buzzz',
+  };
+
+  /// Matches [firestore.rules] `isFirestoreAdminSelf()` only (no username
+  /// bootstrap). Use before queries that require `isUserAdmin()` in rules.
+  static bool userDocHasRulesAlignedAdmin(Map<String, dynamic>? userData) {
     if (userData == null) {
       return false;
     }
-
-    final role = userData['role'] as String?;
-    final isAdmin = userData['isAdmin'] as bool? ?? false;
-    return isAdmin || role == 'admin';
+    final String? role = userData['role'] as String?;
+    final bool legacy = userData['isAdmin'] as bool? ?? false;
+    final Object? adminMap = userData['admin'];
+    bool nested = false;
+    if (adminMap is Map) {
+      nested = adminMap['isAdmin'] == true;
+    }
+    return legacy || role == 'admin' || nested;
   }
 
-  /// Check if current user is an admin
+  /// True if [userData] carries admin fields OR known founder usernames.
+  static bool userMapIndicatesAdmin(Map<String, dynamic>? userData) {
+    if (userData == null) {
+      return false;
+    }
+    final String un =
+        (userData['username'] ?? '').toString().toLowerCase().trim();
+    if (un.isNotEmpty && _shieldBootstrapUsernames.contains(un)) {
+      return true;
+    }
+    return userDocHasRulesAlignedAdmin(userData);
+  }
+
+  bool _hasAdminRole(Map<String, dynamic>? userData) =>
+      userMapIndicatesAdmin(userData);
+
+  /// JWT `admin` claim or Firestore admin fields rules use — not username
+  /// bootstrap.
+  Future<bool> hasFirestoreRulesAdminAccess() async {
+    try {
+      if (await hasAdminCustomClaim()) {
+        return true;
+      }
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        return false;
+      }
+      final DocumentSnapshot<Map<String, dynamic>> userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+      if (!userDoc.exists) {
+        return false;
+      }
+      final bool aligned = userDocHasRulesAlignedAdmin(userDoc.data());
+      if (aligned) {
+        debugPrint(
+          '✅ Admin check: rules-aligned admin for ${currentUser.uid}',
+        );
+      }
+      return aligned;
+    } catch (e) {
+      debugPrint('❌ hasFirestoreRulesAdminAccess: $e');
+      return false;
+    }
+  }
+
+  /// Shield visibility: cached profile map, JWT `admin`, or Firestore doc.
+  Future<bool> hasAdminUiAccess({
+    Map<String, dynamic>? cachedUserMap,
+  }) async {
+    if (userMapIndicatesAdmin(cachedUserMap)) {
+      return true;
+    }
+    try {
+      if (await hasAdminCustomClaim()) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Admin claim check failed: $e');
+    }
+    return isCurrentUserAdmin();
+  }
+
+  Future<bool> hasAdminCustomClaim() async {
+    final User? u = _auth.currentUser;
+    if (u == null) {
+      return false;
+    }
+    final IdTokenResult t = await u.getIdTokenResult();
+    return t.claims?['admin'] == true;
+  }
+
+  /// Refresh ID token after Cloud-side claim updates.
+  Future<void> refreshIdTokenForAdminSession() async {
+    final User? u = _auth.currentUser;
+    if (u == null) {
+      return;
+    }
+    await u.getIdToken(true);
+  }
+
   Future<bool> isCurrentUserAdmin() async {
     try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
-
-      // Check by username (backup method)
-      final userDoc =
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        return false;
+      }
+      final DocumentSnapshot<Map<String, dynamic>> userDoc =
           await _firestore.collection('users').doc(currentUser.uid).get();
-      if (!userDoc.exists) return false;
-
+      if (!userDoc.exists) {
+        return false;
+      }
       if (_hasAdminRole(userDoc.data())) {
         debugPrint(
-          '✅ Admin check: User ${currentUser.uid} has Firestore admin access',
+          '✅ Admin check: User ${currentUser.uid} has Firestore admin fields',
         );
         return true;
       }
-
       return false;
     } catch (e) {
       debugPrint('❌ Error checking admin status: $e');
@@ -45,11 +139,13 @@ class AdminService {
     }
   }
 
-  /// Check if a specific user ID is an admin
   Future<bool> isUserAdmin(String userId) async {
     try {
-      final userDoc = await _firestore.collection('users').doc(userId).get();
-      if (!userDoc.exists) return false;
+      final DocumentSnapshot<Map<String, dynamic>> userDoc =
+          await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return false;
+      }
       return _hasAdminRole(userDoc.data());
     } catch (e) {
       debugPrint('❌ Error checking user admin status: $e');
@@ -57,7 +153,6 @@ class AdminService {
     }
   }
 
-  /// Grant admin privileges to a user
   Future<void> grantAdminRole(String userId) async {
     try {
       await _firestore.collection('users').doc(userId).update({
@@ -72,7 +167,6 @@ class AdminService {
     }
   }
 
-  /// Revoke admin privileges from a user
   Future<void> revokeAdminRole(String userId) async {
     try {
       await _firestore.collection('users').doc(userId).update({
@@ -87,18 +181,22 @@ class AdminService {
     }
   }
 
-  /// Log admin action
-  Future<void> logAdminAction(String action,
-      {Map<String, dynamic>? data}) async {
+  Future<void> logAdminAction(
+    String action, {
+    Map<String, dynamic>? data,
+  }) async {
     try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return;
-
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        return;
+      }
       await _firestore.collection('admin_logs').add({
         'adminId': currentUser.uid,
+        'adminUid': currentUser.uid,
         'action': action,
         'data': data,
         'timestamp': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
       });
       debugPrint('📝 Admin action logged: $action');
     } catch (e) {

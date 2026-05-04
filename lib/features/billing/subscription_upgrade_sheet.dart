@@ -11,10 +11,11 @@ Future<void> showSubscriptionUpgradeSheet(
   required VoidCallback onStartProTrial,
   required VoidCallback onViewStudio,
 }) {
+  final ColorScheme scheme = Theme.of(context).colorScheme;
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF0F172A),
+    backgroundColor: scheme.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -35,7 +36,7 @@ Future<void> showSubscriptionUpgradeSheet(
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: scheme.onSurface.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -44,7 +45,7 @@ Future<void> showSubscriptionUpgradeSheet(
             Text(
               'Upgrade',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.55),
+                color: scheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.4,
@@ -53,8 +54,8 @@ Future<void> showSubscriptionUpgradeSheet(
             const SizedBox(height: 6),
             Text(
               'Current plan: $currentPlanLabel',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: scheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -64,7 +65,7 @@ Future<void> showSubscriptionUpgradeSheet(
               'Recommended: $recommendedPlanLabel — cross-post, scheduling, '
               'and more AI credits.',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.72),
+                color: scheme.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 height: 1.35,

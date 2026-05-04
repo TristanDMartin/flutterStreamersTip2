@@ -96,6 +96,8 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     final isStreamerCardRoute = routeName.contains('streamer_card');
     final isNetworkRoute =
         routeName == '/network' || routeName.contains('networkview');
+    final isUpgradeRoute =
+        routeName == '/upgrade' || routeName.contains('upgrade');
     final isCameraRoute = routeName.contains('camera') ||
         routeName.contains('recording') ||
         routeName.contains('preview') ||
@@ -148,7 +150,7 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     }
 
     // Non-playing routes: block + pause
-    if (isNetworkRoute) {
+    if (isNetworkRoute || isUpgradeRoute) {
       _manager.setActiveOwner(PlaybackOwners.network);
       _manager.pauseAll();
       debugPrint(

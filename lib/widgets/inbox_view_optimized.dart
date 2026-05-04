@@ -13,8 +13,8 @@ import '../services/offline_inbox_service.dart';
 import '../services/chat_service.dart';
 import '../services/draft_sharing_service.dart';
 import '../services/local_draft_service.dart';
-import '../services/unified_avatar_service.dart';
 import '../services/user_blocking_service.dart';
+import 'status_aware_avatar.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/responsive_layout.dart';
 import '../providers/unread_messages_provider.dart';
@@ -45,6 +45,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   static const Color _accentColor = Color(0xFF1670DE);
   static const Color _successColor = Color(0xFF4CAF50);
   static const bool _showSharedDraftsTab = false;
+
+  ColorScheme get _th => Theme.of(context).colorScheme;
+  Color get _on => _th.onSurface;
+  Color get _onP => _th.onPrimary;
 
   // Data
   List<app_chat.Chat> _chats = [];
@@ -491,7 +495,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
       body: SafeArea(
         child: Column(
@@ -531,7 +535,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   Widget _buildHeader() {
     final responsive = context.responsive;
-
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final Color on = c.onSurface;
     return Container(
       margin: EdgeInsets.fromLTRB(
         responsive.spacing(20),
@@ -546,18 +551,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         responsive.spacing(18),
       ),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: AppColors.supportSurfaceGradient,
-        ),
+        color: c.surface,
         borderRadius: BorderRadius.circular(responsive.radius(28)),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
+          color: on.withValues(alpha: 0.12),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
+            color: c.shadow.withValues(alpha: 0.1),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -573,8 +574,11 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   HapticFeedback.lightImpact();
                   Navigator.of(context).pop();
                 },
-                icon: const Icon(Icons.arrow_back_ios_new,
-                    color: Colors.white, size: 20),
+                icon: Icon(
+                  Icons.arrow_back_ios_new,
+                  color: on,
+                  size: 20,
+                ),
                 padding: const EdgeInsets.all(8),
               ),
               SizedBox(width: responsive.spacing(16)),
@@ -586,7 +590,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     Text(
                       'Messages',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: on,
                         fontSize: responsive.font(28),
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
@@ -595,7 +599,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     Text(
                       '${_chats.length} conversations',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: on.withValues(alpha: 0.6),
                         fontSize: responsive.font(14),
                         fontWeight: FontWeight.w500,
                       ),
@@ -611,7 +615,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 },
                 icon: Icon(
                   _isSelectionMode ? Icons.close : Icons.checklist_rtl,
-                  color: _isSelectionMode ? _primaryColor : Colors.white,
+                  color: _isSelectionMode ? _primaryColor : on,
                   size: 20,
                 ),
                 padding: const EdgeInsets.all(8),
@@ -703,8 +707,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                                     ),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor:
-                                          Colors.white.withValues(alpha: 0.1),
-                                      foregroundColor: Colors.white,
+                                          _on.withValues(alpha: 0.1),
+                                      foregroundColor: on,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(8),
                                       ),
@@ -784,10 +788,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         responsive.spacing(10),
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: _on.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(responsive.radius(22)),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: _on.withValues(alpha: 0.12),
           width: 1,
         ),
         boxShadow: [
@@ -806,7 +810,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               ? 'Search conversations...'
               : 'Search drafts...',
           hintStyle: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
+            color: _on.withValues(alpha: 0.5),
             fontSize: responsive.font(16),
             fontWeight: FontWeight.w400,
           ),
@@ -816,7 +820,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             padding: const EdgeInsets.all(12),
             child: Icon(
               Icons.search_rounded,
-              color: Colors.white.withValues(alpha: 0.6),
+              color: _on.withValues(alpha: 0.6),
               size: responsive.icon(20),
             ),
           ),
@@ -828,7 +832,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   },
                   icon: Icon(
                     Icons.clear_rounded,
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: _on.withValues(alpha: 0.6),
                     size: 18,
                   ),
                 )
@@ -839,7 +843,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           ),
         ),
         style: TextStyle(
-          color: Colors.white,
+          color: _on,
           fontSize: responsive.font(16),
           fontWeight: FontWeight.w400,
         ),
@@ -858,10 +862,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         responsive.spacing(12),
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: _on.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(responsive.radius(22)),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: _on.withValues(alpha: 0.12),
           width: 1,
         ),
         boxShadow: [
@@ -881,8 +885,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           ),
           borderRadius: BorderRadius.circular(responsive.radius(20)),
         ),
-        labelColor: Colors.white,
-        unselectedLabelColor: Colors.white.withValues(alpha: 0.6),
+        labelColor: _onP,
+        unselectedLabelColor: _on.withValues(alpha: 0.6),
         labelStyle: TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: responsive.font(16),
@@ -924,7 +928,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     return RefreshIndicator(
       onRefresh: _refreshData,
       color: _primaryColor,
-      backgroundColor: Colors.white.withValues(alpha: 0.1),
+      backgroundColor: _on.withValues(alpha: 0.1),
       child: TabBarView(
         controller: _tabController,
         children: [
@@ -1001,10 +1005,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final userProfile = _userProfiles[otherUserId];
     final participantName =
         userProfile?.displayName ?? userProfile?.username ?? 'Loading...';
-    final initials =
-        participantName.isNotEmpty && participantName != 'Loading...'
-            ? participantName[0].toUpperCase()
-            : 'L';
     final unreadCount = _unreadCounts[chat.id ?? ''] ?? 0;
     final bool isOnline = (_onlineStatus[otherUserId] ?? false) ||
         userProfile?.onlineStatus.toLowerCase() == 'online';
@@ -1018,32 +1018,23 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final bool hasUnread = unreadCount > 0;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
-            : hasUnread
-                ? Colors.white.withValues(alpha: 0.07)
-                : Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(22),
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isSelected
-              ? _primaryColor.withValues(alpha: 0.5)
-              : Colors.white.withValues(alpha: 0.10),
+              ? _primaryColor.withValues(alpha: 0.55)
+              : Colors.transparent,
           width: isSelected ? 2 : 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           onTap: _isSelectionMode
               ? () => _toggleSelection(chat.id ?? '')
               : () => _openChat(chat),
@@ -1053,34 +1044,18 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             _toggleSelection(chat.id ?? '');
           },
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               children: [
                 // Avatar with selection indicator and online status
                 Stack(
                   children: [
-                    _InboxAvatar(
-                      imageUrl: userProfile?.avatarURL,
-                      initials: initials,
+                    StatusAwareAvatar(
+                      userId: otherUserId,
+                      avatarURL: userProfile?.avatarURL,
+                      radius: 27,
+                      showOnlineIndicator: true,
                     ),
-                    // Online status indicator
-                    if (isOnline)
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: _successColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
                     // Selection indicator
                     if (isSelected)
                       Positioned(
@@ -1093,9 +1068,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                             color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.check,
-                            color: Colors.white,
+                            color: _onP,
                             size: 10,
                           ),
                         ),
@@ -1103,27 +1078,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     // Unread count badge
                     if (unreadCount > 0)
                       Positioned(
-                        right: -2,
-                        top: -2,
+                        right: 0,
+                        top: 0,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 2),
+                          width: 10,
+                          height: 10,
                           decoration: const BoxDecoration(
                             color: _primaryColor,
                             shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 18,
-                            minHeight: 18,
-                          ),
-                          child: Text(
-                            unreadCount > 99 ? '99+' : unreadCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
                           ),
                         ),
                       ),
@@ -1139,7 +1101,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                             color: Colors.red,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.white,
+                              color: _th.surface,
                               width: 2,
                             ),
                             boxShadow: [
@@ -1150,138 +1112,87 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               ),
                             ],
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.volume_off,
-                            color: Colors.white,
+                            color: _onP,
                             size: 10,
                           ),
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 // Chat content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(
+                        participantName,
+                        style: TextStyle(
+                          color: _on,
+                          fontSize: 19,
+                          fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  participantName,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    fontWeight: hasUnread
-                                        ? FontWeight.w800
-                                        : FontWeight.w700,
-                                    letterSpacing: -0.3,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 3),
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        secondaryLabel,
-                                        style: TextStyle(
-                                          color: isOnline
-                                              ? Colors.white
-                                                  .withValues(alpha: 0.82)
-                                              : Colors.white
-                                                  .withValues(alpha: 0.52),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    if (isMuted) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.08),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                          border: Border.all(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.10),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          'Muted',
-                                          style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.62),
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
+                            child: Text(
+                              (chat.lastMessage ?? secondaryLabel).trim().isEmpty
+                                  ? secondaryLabel
+                                  : (chat.lastMessage ?? secondaryLabel),
+                              style: TextStyle(
+                                color: _on.withValues(alpha: 0.66),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                height: 1.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                _formatTime(chat.lastTimestamp),
-                                style: TextStyle(
-                                  color: hasUnread
-                                      ? Colors.white.withValues(alpha: 0.86)
-                                      : Colors.white.withValues(alpha: 0.5),
-                                  fontSize: 12,
-                                  fontWeight: hasUnread
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              _buildChatMetaIndicator(chat, unreadCount),
-                            ],
+                          const SizedBox(width: 6),
+                          Text(
+                            _formatTime(chat.lastTimestamp),
+                            style: TextStyle(
+                              color: _on.withValues(alpha: 0.58),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                          if (isMuted) ...[
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.volume_off_rounded,
+                              size: 14,
+                              color: _on.withValues(alpha: 0.55),
+                            ),
+                          ],
                         ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        chat.lastMessage ?? 'No messages yet',
-                        style: TextStyle(
-                          color: hasUnread
-                              ? Colors.white.withValues(alpha: 0.92)
-                              : Colors.white.withValues(alpha: 0.72),
-                          fontSize: 13,
-                          fontWeight:
-                              hasUnread ? FontWeight.w500 : FontWeight.w400,
-                          height: 1.3,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
                 // Arrow indicator
                 if (!_isSelectionMode)
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white.withValues(alpha: 0.4),
-                    size: 20,
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: _on.withValues(alpha: 0.06),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      color: _on.withValues(alpha: 0.62),
+                      size: 18,
+                    ),
                   ),
               ],
             ),
@@ -1303,12 +1214,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       decoration: BoxDecoration(
         color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
-            : Colors.white.withValues(alpha: 0.04),
+            : _on.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: isSelected
               ? _primaryColor.withValues(alpha: 0.5)
-              : Colors.white.withValues(alpha: 0.10),
+              : _on.withValues(alpha: 0.10),
           width: isSelected ? 2 : 1,
         ),
         boxShadow: [
@@ -1354,10 +1265,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           ),
                         ],
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Icon(
                           Icons.drafts_rounded,
-                          color: Colors.white,
+                          color: _onP,
                           size: 24,
                         ),
                       ),
@@ -1373,9 +1284,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                             color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.check,
-                            color: Colors.white,
+                            color: _onP,
                             size: 12,
                           ),
                         ),
@@ -1391,10 +1302,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                             color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
-                          child: const Center(
+                          child: Center(
                             child: Icon(
                               Icons.circle,
-                              color: Colors.white,
+                              color: _onP,
                               size: 8,
                             ),
                           ),
@@ -1416,8 +1327,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               children: [
                                 Text(
                                   draft.draftTitle,
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: _on,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: -0.3,
@@ -1429,7 +1340,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                                 Text(
                                   draftSubtitle,
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.52),
+                                    color: _on.withValues(alpha: 0.52),
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -1446,7 +1357,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                             decoration: BoxDecoration(
                               color: isUnread
                                   ? _primaryColor.withValues(alpha: 0.2)
-                                  : Colors.white.withValues(alpha: 0.1),
+                                  : _on.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -1454,7 +1365,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               style: TextStyle(
                                 color: isUnread
                                     ? _primaryColor
-                                    : Colors.white.withValues(alpha: 0.6),
+                                    : _on.withValues(alpha: 0.6),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1466,7 +1377,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       Text(
                         draft.message ?? 'No message',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: _on.withValues(alpha: 0.7),
                           fontSize: 15,
                           fontWeight: FontWeight.w400,
                           height: 1.3,
@@ -1481,7 +1392,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 if (!_isSelectionMode)
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: _on.withValues(alpha: 0.4),
                     size: 20,
                   ),
               ],
@@ -1503,10 +1414,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           constraints: const BoxConstraints(maxWidth: 420),
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: _on.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: _on.withValues(alpha: 0.10),
             ),
             boxShadow: [
               BoxShadow(
@@ -1545,7 +1456,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       child: Icon(
                         icon,
                         size: 40,
-                        color: Colors.white,
+                        color: _onP,
                       ),
                     ),
                   );
@@ -1554,8 +1465,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               const SizedBox(height: 24),
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: _on,
                   fontSize: 26,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.4,
@@ -1566,7 +1477,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.64),
+                  color: _on.withValues(alpha: 0.64),
                   fontSize: 15,
                   fontWeight: FontWeight.w400,
                   height: 1.45,
@@ -1604,14 +1515,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     children: [
                       Icon(
                         actionIcon,
-                        color: Colors.white,
+                        color: _onP,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         buttonText,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: _onP,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.2,
@@ -1636,10 +1547,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         margin: const EdgeInsets.all(24),
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: _on.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.10),
+            color: _on.withValues(alpha: 0.10),
           ),
         ),
         child: Column(
@@ -1656,10 +1567,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     width: 88,
                     height: 88,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
+                      color: _on.withValues(alpha: 0.08),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.14),
+                        color: _on.withValues(alpha: 0.14),
                         width: 1.5,
                       ),
                     ),
@@ -1676,10 +1587,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               },
             ),
             const SizedBox(height: 22),
-            const Text(
+            Text(
               'Loading your inbox',
               style: TextStyle(
-                color: Colors.white,
+                color: _on,
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.4,
@@ -1689,7 +1600,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             Text(
               'We’re gathering your latest conversations and shared drafts.',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.62),
+                color: _on.withValues(alpha: 0.62),
                 fontSize: 14,
                 height: 1.45,
               ),
@@ -1710,10 +1621,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           constraints: const BoxConstraints(maxWidth: 420),
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: _on.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: _on.withValues(alpha: 0.10),
             ),
           ),
           child: Column(
@@ -1737,10 +1648,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 ),
               ),
               const SizedBox(height: 22),
-              const Text(
+              Text(
                 'We couldn’t load your inbox',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _on,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.4,
@@ -1751,7 +1662,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               Text(
                 _error ?? 'Unknown error',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.64),
+                  color: _on.withValues(alpha: 0.64),
                   fontSize: 14,
                   height: 1.45,
                 ),
@@ -1776,10 +1687,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Try Again',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: _onP,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1917,25 +1828,27 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Future<bool> _showDeleteConfirmation() async {
     return await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: AppColors.supportBackground,
+          builder: (BuildContext context) {
+            final ColorScheme c = Theme.of(context).colorScheme;
+            return AlertDialog(
+            backgroundColor: c.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            title: const Text(
+            title: Text(
               'Delete Items',
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(color: c.onSurface),
             ),
             content: Text(
               'Are you sure you want to delete ${_selectedItems.length} selected items? This action cannot be undone.',
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: c.onSurface.withValues(alpha: 0.7)),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text(
+                child: Text(
                   'Cancel',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(color: c.onSurface.withValues(alpha: 0.6)),
                 ),
               ),
               ElevatedButton(
@@ -1949,7 +1862,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 child: const Text('Delete'),
               ),
             ],
-          ),
+            );
+          },
         ) ??
         false;
   }
@@ -2374,38 +2288,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
   }
 
-  Widget _buildChatMetaIndicator(app_chat.Chat chat, int unreadCount) {
-    final currentUser = _inboxService.auth.currentUser;
-    if (currentUser == null) return const SizedBox.shrink();
-    if (unreadCount > 0) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [_primaryColor, _secondaryColor],
-          ),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          unreadCount == 1 ? 'New' : '$unreadCount new',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      );
-    }
-    if (chat.mutedBy.contains(currentUser.uid)) {
-      return Icon(
-        Icons.volume_off_rounded,
-        color: Colors.white.withValues(alpha: 0.40),
-        size: 16,
-      );
-    }
-    return const SizedBox(height: 16);
-  }
-
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
@@ -2451,77 +2333,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
-  }
-}
-
-class _InboxAvatar extends StatelessWidget {
-  static const Color _avatarPrimaryColor = Color(0xFF9248D2);
-  static const Color _avatarSecondaryColor = Color(0xFF7768DF);
-
-  const _InboxAvatar({
-    required this.imageUrl,
-    required this.initials,
-  });
-
-  final String? imageUrl;
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool hasImage = imageUrl != null && imageUrl!.isNotEmpty;
-
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: hasImage
-            ? null
-            : const LinearGradient(
-                colors: [_avatarPrimaryColor, _avatarSecondaryColor],
-              ),
-        boxShadow: [
-          BoxShadow(
-            color: _avatarPrimaryColor.withValues(alpha: 0.24),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: hasImage
-          ? ClipOval(
-              child: UnifiedAvatarService().getAvatar(
-                imageUrl: imageUrl!,
-                radius: 22,
-                useProfileViewStyling: false,
-                showLoadingIndicator: false,
-                errorWidget: _AvatarFallback(initials: initials),
-              ),
-            )
-          : _AvatarFallback(initials: initials),
-    );
-  }
-}
-
-class _AvatarFallback extends StatelessWidget {
-  const _AvatarFallback({
-    required this.initials,
-  });
-
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        initials,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'package:streamers_tip/models/feed_tab.dart';
 import 'package:streamers_tip/models/home_video.dart';
 import 'package:streamers_tip/models/user.dart';
 import 'package:streamers_tip/providers/home_provider.dart';
+import 'package:streamers_tip/widgets/home_view_components/video_page_view_widget.dart';
 
 void main() {
   group('FeedTab contract', () {
@@ -10,6 +11,7 @@ void main() {
       expect(FeedTab.forYou.supportsVideoFeed, isTrue);
       expect(FeedTab.forYou.supportsRefresh, isTrue);
 
+      expect(FeedTab.following.displayName, 'Progression');
       expect(FeedTab.following.supportsVideoFeed, isFalse);
       expect(FeedTab.following.supportsRefresh, isFalse);
 
@@ -120,6 +122,20 @@ void main() {
       expect(cleared.nextCursor, isNull);
       expect(cleared.isLoading, isFalse);
       expect(cleared.requestId, isNull);
+    });
+  });
+
+  group('VideoPageView index safety', () {
+    test('clamps stale feed indexes into the available video range', () {
+      expect(clampHomeVideoIndex(-3, 4), 0);
+      expect(clampHomeVideoIndex(0, 4), 0);
+      expect(clampHomeVideoIndex(2, 4), 2);
+      expect(clampHomeVideoIndex(99, 4), 3);
+    });
+
+    test('returns zero when there are no videos', () {
+      expect(clampHomeVideoIndex(5, 0), 0);
+      expect(clampHomeVideoIndex(5, -1), 0);
     });
   });
 }

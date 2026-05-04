@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' show FlutterView, PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -68,11 +71,18 @@ class AccessibilityService {
   void announce(String message, {bool assertiveness = false}) {
     try {
       if (_isScreenReaderEnabled) {
-        SemanticsService.announce(
-          message,
-          TextDirection.ltr,
-          assertiveness:
-              assertiveness ? Assertiveness.assertive : Assertiveness.polite,
+        final FlutterView? view = PlatformDispatcher.instance.implicitView;
+        if (view == null) {
+          return;
+        }
+        unawaited(
+          SemanticsService.sendAnnouncement(
+            view,
+            message,
+            TextDirection.ltr,
+            assertiveness:
+                assertiveness ? Assertiveness.assertive : Assertiveness.polite,
+          ),
         );
         LoggingService.instance
             .debug('Announced: $message', tag: 'AccessibilityService');

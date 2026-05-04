@@ -14,9 +14,9 @@ class RealtimeTrendingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Trending boost multipliers
-  static const double BURST_BOOST = 3.0; // Sudden viral spike
-  static const double HOURLY_TRENDING_BOOST = 2.0; // Trending last hour
-  static const double PRIME_TIME_BOOST = 1.3; // 7pm-11pm boost
+  static const double burstBoost = 3.0; // Sudden viral spike
+  static const double hourlyTrendingBoost = 2.0; // Trending last hour
+  static const double primeTimeBoost = 1.3; // 7pm-11pm boost
 
   /// Calculate real-time trending boost for a video
   Future<double> calculateTrendingBoost(String videoId) async {
@@ -26,15 +26,15 @@ class RealtimeTrendingService {
       // 1. Detect burst (sudden engagement spike)
       final burstScore = await _detectBurst(videoId);
       if (burstScore > 0.7) {
-        multiplier *= BURST_BOOST;
-        log('💥 Burst detected for $videoId - ${BURST_BOOST}x');
+        multiplier *= burstBoost;
+        log('💥 Burst detected for $videoId - ${burstBoost}x');
       }
 
       // 2. Hourly trending (last 1-6 hours)
       final hourlyScore = await _getHourlyTrendingScore(videoId);
       if (hourlyScore > 0.6) {
-        multiplier *= HOURLY_TRENDING_BOOST;
-        log('🔥 Hourly trending for $videoId - ${HOURLY_TRENDING_BOOST}x');
+        multiplier *= hourlyTrendingBoost;
+        log('🔥 Hourly trending for $videoId - ${hourlyTrendingBoost}x');
       }
 
       // 3. Time-of-day optimization
@@ -169,7 +169,7 @@ class RealtimeTrendingService {
 
     // Prime time (7pm-11pm): 1.3x boost
     if (hour >= 19 && hour <= 23) {
-      return PRIME_TIME_BOOST;
+      return primeTimeBoost;
     }
 
     // Lunch time (12pm-1pm): 1.15x boost

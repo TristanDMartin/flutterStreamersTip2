@@ -29,6 +29,14 @@ _Message _$MessageFromJson(Map<String, dynamic> json) => _Message(
       shareToken: json['shareToken'] as String?,
       videoThumbnailUrl: json['videoThumbnailUrl'] as String?,
       videoTitle: json['videoTitle'] as String?,
+      replyToMessageId: json['replyToMessageId'] as String?,
+      replyToSenderId: json['replyToSenderId'] as String?,
+      replyToSenderName: json['replyToSenderName'] as String?,
+      replyToType: json['replyToType'] as String?,
+      replyPreviewText: json['replyPreviewText'] as String?,
+      replyThumbnailUrl: json['replyThumbnailUrl'] as String?,
+      replyVideoId: json['replyVideoId'] as String?,
+      deletedForEveryone: json['deletedForEveryone'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$MessageToJson(_Message instance) => <String, dynamic>{
@@ -49,6 +57,14 @@ Map<String, dynamic> _$MessageToJson(_Message instance) => <String, dynamic>{
       'shareToken': instance.shareToken,
       'videoThumbnailUrl': instance.videoThumbnailUrl,
       'videoTitle': instance.videoTitle,
+      'replyToMessageId': instance.replyToMessageId,
+      'replyToSenderId': instance.replyToSenderId,
+      'replyToSenderName': instance.replyToSenderName,
+      'replyToType': instance.replyToType,
+      'replyPreviewText': instance.replyPreviewText,
+      'replyThumbnailUrl': instance.replyThumbnailUrl,
+      'replyVideoId': instance.replyVideoId,
+      'deletedForEveryone': instance.deletedForEveryone,
     };
 
 Json? _$JsonConverterToJson<Json, Value>(

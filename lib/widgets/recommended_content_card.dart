@@ -174,8 +174,8 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
         return Icons.build;
       case 'academy':
         return Icons.school;
-      case 'live-events':
-        return Icons.schedule;
+      case 'peripherals':
+        return Icons.devices_other_rounded;
       default:
         return Icons.link;
     }

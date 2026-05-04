@@ -18,6 +18,7 @@ class CreatorCommandSnapshot {
     required this.alertCount,
     required this.requiresAttentionCount,
     required this.pendingWorkCount,
+    required this.scheduledQueueCount,
     this.growthPercent,
     this.nextPostDueAt,
     this.nextPostOverdue = false,
@@ -35,6 +36,7 @@ class CreatorCommandSnapshot {
   final int alertCount;
   final int requiresAttentionCount;
   final int pendingWorkCount;
+  final int scheduledQueueCount;
   final double? growthPercent;
   final DateTime? nextPostDueAt;
   final bool nextPostOverdue;
@@ -50,8 +52,8 @@ class CreatorCommandSnapshot {
     final String momentum = streakDays > 0
         ? '🔥 ${streakDays}d streak'
         : 'Lv$level';
-    final String work = pendingWorkCount > 0
-        ? ' • $pendingWorkCount ${pendingWorkCount == 1 ? 'clip' : 'clips'}'
+    final String work = scheduledQueueCount > 0
+        ? ' • $scheduledQueueCount in queue'
         : (draftCount > 0
             ? ' • $draftCount ${draftCount == 1 ? 'draft' : 'drafts'}'
             : '');

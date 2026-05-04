@@ -382,6 +382,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         debugPrint(
             '🎬 VideoService: Processing video ${doc.id}: status=${data['status']}, privacy=${data['privacy']}, ownerId: ${getOwnerId(data)}');
 
+        if (!videoIsPublicFeedVisible(data)) {
+          final reason = 'not public-visible';
+          _recordSkip(skippedVideoDetails, skipReasons, doc.id, reason);
+          skippedCount++;
+          continue;
+        }
+
         // Status gate — accept spec enum ('active') and legacy values for
         // backward compat with videos written before schema migration.
         final status = data['status'] as String?;

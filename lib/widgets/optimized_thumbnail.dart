@@ -237,6 +237,7 @@ class GridThumbnail extends StatelessWidget {
   final VoidCallback? onTap;
   final bool showDraftBadge;
   final bool showDurationBadge;
+  final double? aspectRatio;
 
   const GridThumbnail({
     super.key,
@@ -244,6 +245,7 @@ class GridThumbnail extends StatelessWidget {
     this.onTap,
     this.showDraftBadge = true,
     this.showDurationBadge = true,
+    this.aspectRatio,
   });
 
   @override
@@ -253,7 +255,9 @@ class GridThumbnail extends StatelessWidget {
       final screenWidth = mediaQuery.size.width;
       final tileWidth =
           (screenWidth - 32 - 32) / 3; // 16px edge padding + 16px gutters
-      final tileHeight = tileWidth * (16 / 9); // 9:16 aspect ratio
+      final resolvedAspectRatio =
+          (aspectRatio != null && aspectRatio! > 0) ? aspectRatio! : (9 / 16);
+      final tileHeight = tileWidth / resolvedAspectRatio;
 
       return ThumbnailTile(
         video: video,

@@ -1,15 +1,26 @@
 import 'dart:developer';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+
 import '../models/home_video.dart';
-import '../models/share_payload.dart';
 import '../models/connection_lite.dart';
-import 'engagement_analytics_service.dart';
+import '../models/share_payload.dart';
+import '../models/share_video_payload.dart';
 import 'connections_service.dart';
+import 'engagement_analytics_service.dart';
 import 'logging_service.dart';
+
+/// Non-fatal hint surfaced by [EnhancedShareSheet] after a share action.
+class ShareUserNoticeException implements Exception {
+  ShareUserNoticeException(this.message);
+  final String message;
+}
 
 class EnhancedShareService {
   static final EnhancedShareService _instance =
@@ -21,6 +32,7 @@ class EnhancedShareService {
 
   // Cache for prefetched share payloads with video previews
   final Map<String, SharePayload> _sharePayloadCache = {};
+  final Map<String, ShareVideoPayload> _shareVideoPayloadCache = {};
   final Map<String, Uint8List> _thumbnailCache = {};
 
   // Platform usage tracking for dynamic ranking
@@ -29,6 +41,10 @@ class EnhancedShareService {
   /// Prefetch share payload immediately; thumbnail generates in background.
   Future<SharePayload> fetchSharePayload(HomeVideo video) async {
     if (_sharePayloadCache.containsKey(video.id)) {
+      if (!_shareVideoPayloadCache.containsKey(video.id)) {
+        _shareVideoPayloadCache[video.id] =
+            ShareVideoPayload.fromHomeVideo(video);
+      }
       return _sharePayloadCache[video.id]!;
     }
 
@@ -66,6 +82,22 @@ class EnhancedShareService {
       );
 
       _sharePayloadCache[video.id] = payload;
+
+      Map<String, dynamic> videoDoc = <String, dynamic>{};
+      try {
+        final DocumentSnapshot<Map<String, dynamic>> snap =
+            await FirebaseFirestore.instance
+                .collection('videos')
+                .doc(video.id)
+                .get();
+        if (snap.exists) {
+          videoDoc = snap.data() ?? <String, dynamic>{};
+        }
+      } catch (e) {
+        log('⚠️ EnhancedShareService: video doc fetch: $e');
+      }
+      _shareVideoPayloadCache[video.id] =
+          ShareVideoPayload.fromHomeVideo(video, videoDoc: videoDoc);
 
       ConnectionsService().getConnectionsPreview().catchError((Object e) {
         log('⚠️ EnhancedShareService: Failed to prefetch connections: $e');
@@ -153,6 +185,7 @@ class EnhancedShareService {
           _sharePayloadCache.keys.take(_sharePayloadCache.length - 10).toList();
       for (final key in keysToRemove) {
         _sharePayloadCache.remove(key);
+        _shareVideoPayloadCache.remove(key);
         _thumbnailCache.remove(key);
       }
     }
@@ -214,20 +247,86 @@ class EnhancedShareService {
         '✅ EnhancedShareService: Successfully shared to ${target.displayName}',
         tag: 'EnhancedShareService',
       );
-    } catch (e) {
+    } on ShareUserNoticeException {
+      rethrow;
+    } catch (e, st) {
       LoggingService.instance.error(
         '❌ EnhancedShareService: Error sharing to ${target.displayName}: $e',
         tag: 'EnhancedShareService',
         error: e,
+        stackTrace: st,
       );
+      rethrow;
+    }
+  }
+
+  ShareVideoPayload? shareVideoPayloadFor(String videoId) =>
+      _shareVideoPayloadCache[videoId];
+
+  Future<XFile?> _shareableVideoXFile(SharePayload payload) async {
+    final ShareVideoPayload? extra = _shareVideoPayloadCache[payload.videoId];
+    final String? url = extra?.watermarkUrl;
+    if (url == null || url.isEmpty) {
+      return null;
+    }
+    final String lower = url.toLowerCase();
+    if (!lower.startsWith('http')) {
+      return null;
+    }
+    if (lower.contains('.m3u8')) {
+      return null;
+    }
+    try {
+      final Uri uri = Uri.parse(url);
+      final http.Response response = await http
+          .get(uri)
+          .timeout(const Duration(seconds: 50));
+      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+        return null;
+      }
+      final Directory dir = await getTemporaryDirectory();
+      final String ext =
+          lower.contains('.mp4') ? 'mp4' : (lower.contains('.mov') ? 'mov' : 'bin');
+      final File file =
+          File('${dir.path}/st_share_${payload.videoId}.$ext');
+      await file.writeAsBytes(response.bodyBytes, flush: true);
+      return XFile(file.path);
+    } catch (e, st) {
+      LoggingService.instance.error(
+        '❌ EnhancedShareService: share file download: $e',
+        tag: 'EnhancedShareService',
+        error: e,
+        stackTrace: st,
+      );
+      return null;
+    }
+  }
+
+  Future<void> _shareWithOptionalVideoFile(SharePayload payload) async {
+    final String message = _buildRichShareText(payload);
+    final XFile? file = await _shareableVideoXFile(payload);
+    final ShareParams shareParams = file != null
+        ? ShareParams(
+            text: message,
+            files: <XFile>[file],
+            subject: 'StreamersTip video',
+          )
+        : ShareParams(
+            text: message,
+            subject: 'Check out this video on StreamersTip!',
+            uri: Uri.tryParse(payload.links.webShareUrl),
+          );
+    final ShareResult result = await SharePlus.instance.share(shareParams);
+    if (result.status == ShareResultStatus.dismissed) {
+      trackShareCancel(payload.videoId);
     }
   }
 
   /// Copy link with rich preview data
   Future<void> _copyLinkWithPreview(SharePayload payload) async {
     try {
-      final richText = _buildRichShareText(payload);
-      await Clipboard.setData(ClipboardData(text: richText));
+      final String url = ShareVideoPayload.buildPublicUrl(payload.videoId);
+      await Clipboard.setData(ClipboardData(text: url));
 
       trackShareEvent('share_copylink', payload.videoId, 'copylink');
       _trackShareSuccess(payload.videoId, 'copylink');
@@ -246,65 +345,76 @@ class EnhancedShareService {
     }
   }
 
-  /// Share to Instagram Direct with video file
+  /// Opens the native share sheet; prefers a watermarked MP4 when available.
   Future<void> _shareToInstagramDirect(SharePayload payload) async {
     try {
-      // Try to share video file directly to Instagram
-      final videoUri = Uri.parse(payload.links.downloadUrl ?? '');
-      if (await canLaunchUrl(videoUri)) {
-        await launchUrl(videoUri, mode: LaunchMode.externalApplication);
-      } else {
-        // Fallback to system share with rich content
-        await _shareToSystemWithPreview(payload);
+      final Uri ig = Uri.parse('instagram://app');
+      final bool hasInstagram = await canLaunchUrl(ig);
+      await _shareWithOptionalVideoFile(payload);
+      if (!hasInstagram) {
+        throw ShareUserNoticeException(
+          'Instagram not detected. Use the share sheet to open Instagram '
+          'or save your clip.',
+        );
       }
     } catch (e) {
+      if (e is ShareUserNoticeException) {
+        rethrow;
+      }
       LoggingService.instance.error(
-        '❌ EnhancedShareService: Error sharing to Instagram Direct: $e',
+        '❌ EnhancedShareService: Error sharing to Instagram: $e',
         tag: 'EnhancedShareService',
         error: e,
       );
-      // Fallback to system share
-      await _shareToSystemWithPreview(payload);
+      await _shareWithOptionalVideoFile(payload);
     }
   }
 
   /// Share via SMS with rich preview
   Future<void> _shareViaSMSWithPreview(SharePayload payload) async {
     try {
-      final message = _buildRichShareText(payload);
-      final uri = Uri.parse('sms:?body=${Uri.encodeComponent(message)}');
-      await launchUrl(uri);
-    } catch (e) {
+      final String message = _buildRichShareText(payload);
+      final Uri uri = Uri.parse('sms:&body=${Uri.encodeComponent(message)}');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+      await _shareWithOptionalVideoFile(payload);
+      throw ShareUserNoticeException(
+        'Messages could not be opened. Use the share sheet instead.',
+      );
+    } on ShareUserNoticeException {
+      rethrow;
+    } catch (e, st) {
       LoggingService.instance.error(
         '❌ EnhancedShareService: Error sharing via SMS: $e',
         tag: 'EnhancedShareService',
         error: e,
+        stackTrace: st,
       );
+      await _shareWithOptionalVideoFile(payload);
     }
   }
 
   /// Share to WhatsApp with rich preview
   Future<void> _shareToWhatsAppWithPreview(SharePayload payload) async {
-    try {
-      final message = _buildRichShareText(payload);
-      final uri =
-          Uri.parse('whatsapp://send?text=${Uri.encodeComponent(message)}');
-
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        // Fallback to web WhatsApp
-        final webUri =
-            Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}');
-        await launchUrl(webUri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      LoggingService.instance.error(
-        '❌ EnhancedShareService: Error sharing to WhatsApp: $e',
-        tag: 'EnhancedShareService',
-        error: e,
-      );
+    final String message = _buildRichShareText(payload);
+    final Uri uri =
+        Uri.parse('whatsapp://send?text=${Uri.encodeComponent(message)}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
     }
+    final Uri webUri =
+        Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}');
+    if (await canLaunchUrl(webUri)) {
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    await _shareWithOptionalVideoFile(payload);
+    throw ShareUserNoticeException(
+      'WhatsApp is not installed. Opened the share sheet with your link.',
+    );
   }
 
   /// Share to Facebook with rich preview
@@ -399,27 +509,16 @@ class EnhancedShareService {
     }
   }
 
-  /// Native share sheet: text + subject + canonical URL (better link cards on iOS/Android).
+  /// Native share sheet: text + subject + optional watermarked file.
   Future<void> _shareToSystemWithPreview(SharePayload payload) async {
     try {
-      final String message = _buildRichShareText(payload);
-      final Uri? linkUri = Uri.tryParse(payload.links.webShareUrl);
-
-      final ShareParams shareParams = ShareParams(
-        text: message,
-        subject: 'Check out this video on StreamersTip!',
-        uri: linkUri,
-      );
-
-      final ShareResult result = await SharePlus.instance.share(shareParams);
-      if (result.status == ShareResultStatus.dismissed) {
-        trackShareCancel(payload.videoId);
-      }
-    } catch (e) {
+      await _shareWithOptionalVideoFile(payload);
+    } catch (e, st) {
       LoggingService.instance.error(
         '❌ EnhancedShareService: Error sharing to system: $e',
         tag: 'EnhancedShareService',
         error: e,
+        stackTrace: st,
       );
     }
   }

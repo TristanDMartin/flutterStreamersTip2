@@ -28,7 +28,8 @@ import 'providers/service_providers.dart';
 import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'constants/app_colors.dart';
+import 'core/theme/app_theme.dart';
+import 'core/theme/app_theme_mode.dart';
 import 'features/billing/iap_billing_coordinator.dart';
 import 'utils/responsive_layout.dart';
 
@@ -338,21 +339,16 @@ class MyApp extends ConsumerWidget {
       // Continue anyway - app will work without EventTriggerService initially
     }
 
+    final AppThemeMode appTheme = ref.watch(appThemeModeProvider);
     return MaterialApp(
       title: 'StreamersTip',
+      theme: StAppTheme.light,
+      darkTheme: StAppTheme.dark,
+      themeMode: appTheme.themeMode,
       navigatorKey: nav.NavigationService.navigatorKey,
       navigatorObservers: [AppNavigationObserver()],
       onGenerateRoute: AppRoutes.onGenerateRoute,
       initialRoute: AppRoutes.root,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-        scaffoldBackgroundColor: AppColors.supportBackground,
-        colorScheme: const ColorScheme.dark(
-          primary: AppColors.supportTopSurface,
-          surface: AppColors.supportBackground,
-        ),
-      ),
       builder: (context, child) {
         return MediaQuery(
           data: AppResponsive.normalizedMediaQuery(MediaQuery.of(context)),

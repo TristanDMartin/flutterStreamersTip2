@@ -15,6 +15,7 @@ import '../widgets/threads/thread_detail_screen.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
 import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 
 class ActivityView extends ConsumerStatefulWidget {
   const ActivityView({super.key});
@@ -94,12 +95,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     final state = ref.watch(activityProvider);
 
     if (auth.isLoading) {
-      return _buildLoadingScaffold();
+      return _buildLoadingScaffold(context);
     }
 
     final userId = auth.currentUser?.id;
     if (userId == null) {
-      return _buildSignInRequiredScaffold();
+      return _buildSignInRequiredScaffold(context);
     }
 
     // Initialize ActivityView if not already initialized
@@ -130,27 +131,37 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           '🔍 ActivityView: ${state.grouped.length} sections, ${filteredGrouped.length} filtered');
     }
 
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return PopScope(
       canPop: true,
       child: Scaffold(
-        backgroundColor: AppColors.supportBackground,
+        backgroundColor: shell.scaffold,
         body: SafeArea(
           child: Column(
             children: [
-              _buildHeader(state),
-              _buildFilterChips(),
+              _buildHeader(context, state, shell),
+              _buildFilterChips(shell),
               if (state.isProcessing)
-                _buildProcessingIndicator(state.processingCount),
+                _buildProcessingIndicator(shell, state.processingCount),
               Expanded(
                 child: FadeTransition(
                   opacity: _fadeController,
                   child: state.isLoading
-                      ? _buildSkeletonLoading()
+                      ? _buildSkeletonLoading(shell)
                       : state.hasError
-                          ? _buildErrorState(state.error ?? 'Unknown error')
+                          ? _buildErrorState(
+                              context,
+                              shell,
+                              state.error ?? 'Unknown error',
+                            )
                           : filteredGrouped.isEmpty
-                              ? _buildEmptyState()
-                              : _buildActivityList(titles, filteredGrouped),
+                              ? _buildEmptyState(shell)
+                              : _buildActivityList(
+                                  context,
+                                  shell,
+                                  titles,
+                                  filteredGrouped,
+                                ),
                 ),
               ),
             ],
@@ -160,20 +171,22 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildLoadingScaffold() {
+  Widget _buildLoadingScaffold(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
-      body: const Center(
+      backgroundColor: shell.scaffold,
+      body: Center(
         child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          valueColor: AlwaysStoppedAnimation<Color>(shell.refreshColor),
         ),
       ),
     );
   }
 
-  Widget _buildSignInRequiredScaffold() {
+  Widget _buildSignInRequiredScaffold(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: shell.scaffold,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -183,13 +196,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               Icon(
                 Icons.notifications_outlined,
                 size: 64,
-                color: Colors.white.withValues(alpha: 0.72),
+                color: shell.muted,
               ),
               const SizedBox(height: 16),
               Text(
                 'Sign in to view your activity',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: AppColors.textPrimary,
+                      color: shell.onChrome,
                       fontWeight: FontWeight.w600,
                     ),
               ),
@@ -198,7 +211,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 'Stay updated with likes, follows, and comments',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: shell.muted,
                     ),
               ),
             ],
@@ -208,24 +221,30 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildHeader(ActivityState state) {
+  Widget _buildHeader(
+    BuildContext context,
+    ActivityState state,
+    StSupportShellStyle shell,
+  ) {
     final int unread = _getTotalNotificationCount(state.grouped);
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: AppColors.supportSurfaceGradient,
+          colors: shell.heroGradient,
         ),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
+          color: shell.heroBorder,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
+            color: shell.isLight
+                ? Theme.of(context).colorScheme.shadow.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.18),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -239,9 +258,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               HapticFeedback.lightImpact();
               Navigator.of(context).pop();
             },
-            icon: const Icon(
+            icon: Icon(
               Icons.arrow_back_ios_new,
-              color: Colors.white,
+              color: shell.onChrome,
               size: 20,
             ),
             padding: const EdgeInsets.all(8),
@@ -252,10 +271,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               children: [
                 Row(
                   children: [
-                    const Text(
+                    Text(
                       'Activity',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: shell.onChrome,
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
@@ -290,8 +309,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                               ),
                               child: Text(
                                 '$unread',
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onPrimary,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -307,13 +326,14 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 if (state.isProcessing)
                   Row(
                     children: [
-                      const SizedBox(
+                      SizedBox(
                         width: 14,
                         height: 14,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            shell.onChrome,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -321,7 +341,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                         child: Text(
                           'Processing ${state.processingCount}…',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.72),
+                            color: shell.muted,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -333,7 +353,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   Text(
                     unread > 0 ? '$unread unread' : 'Likes, follows & replies',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.58),
+                      color: shell.mutedStrong,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -353,12 +373,15 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   ),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.22),
+                    color: shell.isLight
+                        ? Theme.of(context).colorScheme.onPrimary
+                            .withValues(alpha: 0.35)
+                        : Colors.white.withValues(alpha: 0.22),
                   ),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.done_all_rounded,
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onPrimary,
                   size: 18,
                 ),
               ),
@@ -368,12 +391,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             onPressed: _handleRefresh,
             icon: AnimatedBuilder(
               animation: _refreshController,
-              builder: (context, child) {
+              builder: (BuildContext ctx, Widget? child) {
                 return Transform.rotate(
                   angle: _refreshController.value * 2 * 3.14159,
                   child: Icon(
                     Icons.refresh_rounded,
-                    color: Colors.white.withValues(alpha: 0.95),
+                    color: shell.onChrome,
                     size: 24,
                   ),
                 );
@@ -385,7 +408,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildFilterChips() {
+  Widget _buildFilterChips(StSupportShellStyle shell) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       child: SizedBox(
@@ -408,13 +431,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 child: Ink(
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? AppColors.primary.withValues(alpha: 0.22)
-                        : Colors.white.withValues(alpha: 0.06),
+                        ? shell.chipSelectedBg
+                        : shell.chipUnselectedBg,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: isSelected
-                          ? AppColors.accent.withValues(alpha: 0.45)
-                          : Colors.white.withValues(alpha: 0.10),
+                          ? shell.chipSelectedBorder
+                          : shell.chipUnselectedBorder,
                       width: isSelected ? 1.5 : 1,
                     ),
                   ),
@@ -427,8 +450,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       filter,
                       style: TextStyle(
                         color: isSelected
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.58),
+                            ? shell.chipSelectedFg
+                            : shell.chipUnselectedFg,
                         fontSize: 14,
                         fontWeight:
                             isSelected ? FontWeight.w700 : FontWeight.w500,
@@ -445,26 +468,26 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildProcessingIndicator(int count) {
+  Widget _buildProcessingIndicator(StSupportShellStyle shell, int count) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.10),
+            color: shell.surfaceCardBorder,
           ),
         ),
         child: Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                valueColor: AlwaysStoppedAnimation<Color>(shell.refreshColor),
               ),
             ),
             const SizedBox(width: 12),
@@ -472,7 +495,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               child: Text(
                 'Processing $count notifications…',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.88),
+                  color: shell.muted,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -484,7 +507,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildSkeletonLoading() {
+  Widget _buildSkeletonLoading(StSupportShellStyle shell) {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
       itemCount: 6,
@@ -493,10 +516,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: shell.skeletonFill,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: shell.surfaceCardBorder,
             ),
           ),
           child: Row(
@@ -505,7 +528,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.10),
+                  color: shell.skeletonLine,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -518,7 +541,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       height: 14,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: shell.skeletonLine,
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
@@ -527,7 +550,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       height: 11,
                       width: 160,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: shell.skeletonLineDim,
                         borderRadius: BorderRadius.circular(6),
                       ),
                     ),
@@ -541,7 +564,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(StSupportShellStyle shell) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -562,19 +585,19 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: [
-                          AppColors.supportTopSurface.withValues(alpha: 0.35),
-                          Colors.white.withValues(alpha: 0.06),
+                          shell.glassCircleGradientStart,
+                          shell.glassCircleGradientEnd,
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.16),
+                        color: shell.glassCircleBorder,
                         width: 1,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
+                          color: shell.shadowSoft,
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -583,7 +606,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     child: Icon(
                       Icons.notifications_none_outlined,
                       size: 60,
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: shell.muted,
                     ),
                   ),
                 );
@@ -603,7 +626,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     child: Text(
                       'No Activity Yet',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
+                        color: shell.onChrome,
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
@@ -629,7 +652,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       'When people interact with your content,\nyou\'ll see it here',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: shell.muted,
                         fontSize: 16,
                         height: 1.5,
                         letterSpacing: 0.3,
@@ -679,10 +702,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                             ),
                           ],
                         ),
-                        child: const Text(
+                        child: Text(
                           'Explore content',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onPrimary,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.3,
@@ -700,7 +723,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildErrorState(String error) {
+  Widget _buildErrorState(
+    BuildContext context,
+    StSupportShellStyle shell,
+    String error,
+  ) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -716,7 +743,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             Text(
               'Something went wrong',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.9),
+                color: shell.onChrome,
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
@@ -726,7 +753,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               error,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
+                color: shell.muted,
                 fontSize: 16,
                 height: 1.4,
               ),
@@ -765,10 +792,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     ),
                   ],
                 ),
-                child: const Text(
+                child: Text(
                   'Try again',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -782,11 +809,15 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   }
 
   Widget _buildActivityList(
-      List<String> titles, Map<String, List<ActivityNotification>> grouped) {
+    BuildContext context,
+    StSupportShellStyle shell,
+    List<String> titles,
+    Map<String, List<ActivityNotification>> grouped,
+  ) {
     return RefreshIndicator(
       onRefresh: _handleRefresh,
-      color: Colors.white,
-      backgroundColor: AppColors.primary,
+      color: shell.refreshColor,
+      backgroundColor: shell.refreshBackground,
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.only(bottom: 100),
@@ -798,7 +829,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSectionHeader(title),
+              _buildSectionHeader(shell, title),
               for (final ActivityNotification notification in items)
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -820,7 +851,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(StSupportShellStyle shell, String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
       child: Row(
@@ -841,7 +872,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           Text(
             title,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
+              color: shell.onChrome.withValues(alpha: 0.88),
               fontSize: 13,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.4,

@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import '../services/advanced_admin_service.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../services/admin_service.dart';
@@ -1404,7 +1403,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
               style: const TextStyle(color: Colors.white54),
             ),
             value: _maintenanceMode,
-            activeColor: const Color(0xFF9248D2),
+            activeThumbColor: const Color(0xFF9248D2),
             onChanged: (value) => _toggleMaintenanceMode(value),
           ),
           const SizedBox(height: 24),
@@ -1423,7 +1422,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                   style: const TextStyle(color: Colors.white),
                 ),
                 value: entry.value,
-                activeColor: const Color(0xFF9248D2),
+                activeThumbColor: const Color(0xFF9248D2),
                 onChanged: (value) => _toggleFeatureFlag(entry.key, value),
               )),
           const SizedBox(height: 16),
@@ -1749,6 +1748,9 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                             'status': 'in_progress',
                             'updatedAt': FieldValue.serverTimestamp(),
                           });
+                          if (!context.mounted) {
+                            return;
+                          }
                           Navigator.pop(context);
                         },
                       ),
@@ -1761,6 +1763,9 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                             'status': 'resolved',
                             'updatedAt': FieldValue.serverTimestamp(),
                           });
+                          if (!context.mounted) {
+                            return;
+                          }
                           Navigator.pop(context);
                         },
                       ),
@@ -1772,6 +1777,9 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                           'status': 'closed',
                           'updatedAt': FieldValue.serverTimestamp(),
                         });
+                        if (!context.mounted) {
+                          return;
+                        }
                         Navigator.pop(context);
                       },
                     ),

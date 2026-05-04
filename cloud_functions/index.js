@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
 const {onRequest, onCall, HttpsError} = require('firebase-functions/v2/https');
+const {defineSecret} = require('firebase-functions/params');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const {emitTelemetry} = require('./telemetry_emitter');
@@ -625,17 +626,28 @@ async function cancelNotificationTask(taskId) {
 // ============================================================================
 
 // Post counting rules
-const COUNTABLE_STATUSES = ['published', 'public'];
-const EXCLUDED_STATUSES = ['draft', 'scheduled', 'archived', 'deleted', 'hidden', 'moderation', 'private'];
+const COUNTABLE_STATUSES = ['ready', 'published', 'active'];
+const EXCLUDED_STATUSES = ['draft', 'scheduled', 'processing', 'failed', 'archived', 'deleted', 'hidden', 'moderation', 'private'];
 const COUNTABLE_PRIVACY_LEVELS = ['everyone', 'connections', 'public', 'followers'];
 
-function shouldCountPost(status, privacy) {
-  const statusLower = status ? status.toLowerCase() : 'draft';
-  const privacyLower = privacy ? privacy.toLowerCase() : 'private';
+function shouldCountPost(status, privacy, data = {}) {
+  if (data.deleted === true || data.isDeleted === true || data.visible === false) {
+    return false;
+  }
+  const statusLower = status ? String(status).toLowerCase() : 'draft';
+  const privacyLower = privacy ? String(privacy).toLowerCase() : 'private';
   
   return COUNTABLE_STATUSES.includes(statusLower) && 
          !EXCLUDED_STATUSES.includes(statusLower) &&
          COUNTABLE_PRIVACY_LEVELS.includes(privacyLower);
+}
+
+function postCountUpdate(delta) {
+  return {
+    postCount: admin.firestore.FieldValue.increment(delta),
+    'stats.postCount': admin.firestore.FieldValue.increment(delta),
+    lastPostCountUpdate: admin.firestore.FieldValue.serverTimestamp(),
+  };
 }
 
 // Trigger: When a video is created
@@ -650,12 +662,12 @@ exports.onVideoCreate = functions.firestore
     console.log(`📊 Video created: ${context.params.videoId}, User: ${userId}, Status: ${status}, Privacy: ${privacy}`);
     
     // Only increment if the post should be counted
-    if (shouldCountPost(status, privacy)) {
+    if (shouldCountPost(status, privacy, data)) {
       try {
-        await admin.firestore().collection('users').doc(userId).update({
-          postCount: admin.firestore.FieldValue.increment(1),
-          lastPostCountUpdate: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        await admin.firestore().collection('users').doc(userId).set(
+          postCountUpdate(1),
+          {merge: true},
+        );
         console.log(`✅ Post count incremented for user: ${userId}`);
       } catch (error) {
         console.error(`❌ Failed to increment post count for user ${userId}:`, error);
@@ -675,26 +687,28 @@ exports.onVideoUpdate = functions.firestore
     const beforePrivacy = beforeData.privacy || 'private';
     const afterStatus = afterData.status || 'draft';
     const afterPrivacy = afterData.privacy || 'private';
-    if (beforeStatus === afterStatus && beforePrivacy === afterPrivacy) {
+    const beforeVisible = beforeData.visible !== false && beforeData.deleted !== true && beforeData.isDeleted !== true;
+    const afterVisible = afterData.visible !== false && afterData.deleted !== true && afterData.isDeleted !== true;
+    if (beforeStatus === afterStatus && beforePrivacy === afterPrivacy && beforeVisible === afterVisible) {
       return null;
     }
     const userId = afterData.userId;
-    const beforeCounts = shouldCountPost(beforeStatus, beforePrivacy);
-    const afterCounts = shouldCountPost(afterStatus, afterPrivacy);
+    const beforeCounts = shouldCountPost(beforeStatus, beforePrivacy, beforeData);
+    const afterCounts = shouldCountPost(afterStatus, afterPrivacy, afterData);
     try {
       if (beforeCounts && !afterCounts) {
         // Post was countable, now it's not - decrement
-        await admin.firestore().collection('users').doc(userId).update({
-          postCount: admin.firestore.FieldValue.increment(-1),
-          lastPostCountUpdate: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        await admin.firestore().collection('users').doc(userId).set(
+          postCountUpdate(-1),
+          {merge: true},
+        );
         console.log(`✅ Post count decremented for user: ${userId}`);
       } else if (!beforeCounts && afterCounts) {
         // Post wasn't countable, now it is - increment
-        await admin.firestore().collection('users').doc(userId).update({
-          postCount: admin.firestore.FieldValue.increment(1),
-          lastPostCountUpdate: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        await admin.firestore().collection('users').doc(userId).set(
+          postCountUpdate(1),
+          {merge: true},
+        );
         console.log(`✅ Post count incremented for user: ${userId}`);
       }
       
@@ -720,12 +734,12 @@ exports.onVideoDelete = functions.firestore
     console.log(`📊 Video deleted: ${context.params.videoId}, User: ${userId}, Status: ${status}, Privacy: ${privacy}`);
     
     // Only decrement if the post was being counted
-    if (shouldCountPost(status, privacy)) {
+    if (shouldCountPost(status, privacy, data)) {
       try {
-        await admin.firestore().collection('users').doc(userId).update({
-          postCount: admin.firestore.FieldValue.increment(-1),
-          lastPostCountUpdate: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        await admin.firestore().collection('users').doc(userId).set(
+          postCountUpdate(-1),
+          {merge: true},
+        );
         console.log(`✅ Post count decremented for user: ${userId}`);
         
         // Ensure count doesn't go below 0
@@ -747,6 +761,7 @@ async function ensureNonNegativeCount(userId) {
       if (currentCount < 0) {
         await admin.firestore().collection('users').doc(userId).update({
           postCount: 0,
+          'stats.postCount': 0,
           postCountCorrected: admin.firestore.FieldValue.serverTimestamp(),
         });
         console.log(`🔧 Corrected negative post count for user: ${userId}`);
@@ -796,7 +811,7 @@ async function reconcileUserPostCount(userId) {
     const status = data.status || 'draft';
     const privacy = data.privacy || 'private';
     
-    if (shouldCountPost(status, privacy)) {
+    if (shouldCountPost(status, privacy, data)) {
       actualCount++;
     }
   });
@@ -804,6 +819,7 @@ async function reconcileUserPostCount(userId) {
   // Update the counter with the actual count
   await admin.firestore().collection('users').doc(userId).update({
     postCount: actualCount,
+    'stats.postCount': actualCount,
     lastPostCountReconciliation: admin.firestore.FieldValue.serverTimestamp(),
   });
   
@@ -1591,6 +1607,14 @@ const crypto = require('crypto');
 const { createDirectUpload, handleMuxWebhook } = require('./src/mux');
 const {handleGamificationEvents} = require('./src/gamification/gamification_events_http');
 const {handleVerifyMobilePurchase} = require('./src/billing/verify_mobile_purchase');
+const {
+  handleTippyRequest,
+  handleTippyUsageReport,
+} = require('./src/tippy/tippy_http');
+
+/** Bind in prod: `firebase functions:secrets:set ANTHROPIC_API_KEY` */
+const tippyAnthropicSecret = defineSecret('ANTHROPIC_API_KEY');
+const {handleMeEntitlements} = require('./src/me/me_entitlements_http');
 
 /** Optional fallback only — prefer Cloudflare Worker `POST /gamification/events` (same contract). */
 exports.gamificationEvents = onRequest({region, cors: true}, handleGamificationEvents);
@@ -1599,6 +1623,21 @@ exports.gamificationEvents = onRequest({region, cors: true}, handleGamificationE
 exports.verifyMobilePurchase = onRequest(
     {region, cors: true},
     handleVerifyMobilePurchase,
+);
+
+exports.tippyApi = onRequest(
+    {region, cors: true, secrets: [tippyAnthropicSecret]},
+    handleTippyRequest,
+);
+
+exports.meEntitlements = onRequest(
+    {region, cors: true},
+    handleMeEntitlements,
+);
+
+exports.tippyUsageReport = onRequest(
+    {region, cors: true},
+    handleTippyUsageReport,
 );
 
 exports.createMuxDirectUpload = onCall({ region }, async (request) => {
@@ -2169,6 +2208,147 @@ exports.syncVideoAnalyticsToVideos = onSchedule(
   },
 );
 
+async function addPublishedVideoToFeedIndexes({videoId, userId, privacy, category}) {
+  const batch = firestore.batch();
+  batch.set(
+    firestore.collection('users').doc(userId).collection('videos').doc(videoId),
+    {
+      videoId,
+      status: 'published',
+      visible: true,
+      addedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    {merge: true},
+  );
+
+  const isPublic = ['Everyone', 'Public', 'public'].includes(privacy);
+  if (isPublic) {
+    for (const feedId of ['for_you', 'following']) {
+      batch.set(
+        firestore.collection('feeds').doc(feedId).collection('videos').doc(videoId),
+        {
+          videoId,
+          userId,
+          privacy,
+          status: 'published',
+          addedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      );
+    }
+    if (category) {
+      batch.set(
+        firestore.collection('feeds').doc('categories').collection(String(category)).doc(videoId),
+        {
+          videoId,
+          userId,
+          category,
+          privacy,
+          status: 'published',
+          addedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      );
+    }
+  }
+
+  await batch.commit();
+}
+
+exports.publishDueScheduledPosts = onSchedule(
+  {schedule: 'every 1 minutes', region},
+  async () => {
+    const now = admin.firestore.Timestamp.now();
+    const snapshot = await firestore
+      .collection('scheduled_posts')
+      .where('status', '==', 'scheduled')
+      .limit(100)
+      .get();
+
+    const due = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      const at = data.schedule?.scheduledAtUtc || data.scheduledAtUtc || data.scheduledAt;
+      return at && (at.toMillis ? at.toMillis() <= now.toMillis() : at <= now);
+    });
+
+    if (due.length === 0) {
+      console.log('publishDueScheduledPosts: none due');
+      return null;
+    }
+
+    let published = 0;
+    let failed = 0;
+    for (const doc of due) {
+      const data = doc.data();
+      const videoId = data.videoId;
+      const userId = data.authorId || data.userId;
+      if (!videoId || !userId) {
+        failed++;
+        await doc.ref.set({
+          status: 'failed',
+          error: 'Missing videoId or userId for scheduled publish.',
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        continue;
+      }
+
+      try {
+        const videoRef = firestore.collection('videos').doc(videoId);
+        const videoSnap = await videoRef.get();
+        const videoData = videoSnap.exists ? videoSnap.data() || {} : {};
+        const privacy = videoData.privacy || data.privacy || 'Everyone';
+        const category = videoData.category || data.category || videoData.metadata?.categoryCanonical;
+
+        await videoRef.set({
+          status: 'published',
+          visible: true,
+          isReadyForFeed: true,
+          userId,
+          creatorId: userId,
+          creator_id: userId,
+          privacy,
+          visibility: privacy === 'Private' || privacy === 'private'
+            ? 'private'
+            : privacy === 'Followers' || privacy === 'followers_only'
+              ? 'followers_only'
+              : 'public',
+          publishedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          scheduledAt: FieldValue.delete(),
+          scheduledAtUtc: FieldValue.delete(),
+        }, {merge: true});
+
+        await addPublishedVideoToFeedIndexes({videoId, userId, privacy, category});
+
+        await doc.ref.set({
+          status: 'published',
+          publishedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          history: FieldValue.arrayUnion({
+            status: 'published',
+            message: 'Backend published scheduled post.',
+            timestamp: admin.firestore.Timestamp.now(),
+          }),
+        }, {merge: true});
+
+        published++;
+      } catch (error) {
+        failed++;
+        console.error('publishDueScheduledPosts failed for', doc.id, error);
+        await doc.ref.set({
+          status: 'failed',
+          error: error.message || String(error),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+      }
+    }
+
+    console.log('publishDueScheduledPosts:', {published, failed});
+    return null;
+  },
+);
+
 exports.cleanupExpiredCalendarEvents = onSchedule(
   {schedule: 'every 24 hours', region},
   async () => {
@@ -2208,3 +2388,7 @@ exports.manualCleanupCalendarEvents = onCall({region}, async (request) => {
   if (toExpire.length) await batch.commit();
   return { ok: true, expired: toExpire.length };
 });
+
+const {adminExecute, adminDashboardStats} = require('./src/admin/admin_execute');
+exports.adminExecute = adminExecute(region);
+exports.adminDashboardStats = adminDashboardStats(region);
