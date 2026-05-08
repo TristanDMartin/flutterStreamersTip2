@@ -237,14 +237,21 @@ service cloud.firestore {
     match /follows/{followId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null &&
-        request.auth.uid != request.resource.data.targetUserId &&
-        request.auth.uid == request.resource.data.followerUserId &&
+        followFollowerId() is string &&
+        followTargetId() is string &&
+        followFollowerId() != '' &&
+        followTargetId() != '' &&
+        request.auth.uid != followTargetId() &&
+        request.auth.uid == followFollowerId() &&
+        followId == followFollowerId() + '_' + followTargetId() &&
+        request.resource.data.isActive == true &&
         (isUserAdmin() || isWithinFollowLimit(request.auth.uid));
-      allow update: if false;
+      allow update: if request.auth != null &&
+        request.auth.uid == existingFollowFollowerId() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isActive', 'updatedAt']);
       allow delete: if request.auth != null &&
-        request.auth.uid == (resource.data.followerUserId != null
-          ? resource.data.followerUserId
-          : resource.data.followerId);
+        request.auth.uid == existingFollowFollowerId();
       allow list: if request.auth != null;
     }
 
@@ -778,7 +785,7 @@ service cloud.firestore {
 
   function isAdmin() {
     return request.auth != null && (
-      request.auth.token.admin == true ||
+      ('admin' in request.auth.token && request.auth.token.admin == true) ||
       isFirestoreAdminSelf()
     );
   }
@@ -902,5 +909,31 @@ service cloud.firestore {
            (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.follow_time.seconds > 60) ||
            (!('follow_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
            (get(/databases/$(database)/documents/rate_limits/$(userId)).data.follow_count < 30);
+  }
+
+  function followFollowerId() {
+    return 'followerUserId' in request.resource.data
+      ? request.resource.data.followerUserId
+      : ('followerId' in request.resource.data
+        ? request.resource.data.followerId
+        : '');
+  }
+
+  function followTargetId() {
+    return 'targetUserId' in request.resource.data
+      ? request.resource.data.targetUserId
+      : ('followingId' in request.resource.data
+        ? request.resource.data.followingId
+        : ('followedId' in request.resource.data
+          ? request.resource.data.followedId
+          : ''));
+  }
+
+  function existingFollowFollowerId() {
+    return 'followerUserId' in resource.data
+      ? resource.data.followerUserId
+      : ('followerId' in resource.data
+        ? resource.data.followerId
+        : '');
   }
 }
