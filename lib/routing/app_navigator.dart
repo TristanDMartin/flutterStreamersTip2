@@ -99,6 +99,14 @@ class AppNavigator {
     );
   }
 
+  static Future<T?> openContentScheduler<T>(BuildContext context) {
+    return Navigator.of(context).pushNamed<T>(AppRoutes.contentScheduler);
+  }
+
+  static Future<T?> openContentPlanner<T>(BuildContext context) {
+    return Navigator.of(context).pushNamed<T>(AppRoutes.contentPlanner);
+  }
+
   static Future<T?> openTippyChat<T>(BuildContext context) {
     return Navigator.of(context).pushNamed<T>(AppRoutes.tippyChat);
   }

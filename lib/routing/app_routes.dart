@@ -16,6 +16,8 @@ import '../widgets/inbox_view_optimized.dart';
 import '../widgets/player_screen.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/tiktok_camera_view.dart';
+import '../features/content_planning/content_planner_view.dart';
+import '../features/content_scheduler/content_scheduler_view.dart';
 import '../features/tippy/tippy_chat_page.dart';
 
 class AppRoutes {
@@ -27,6 +29,8 @@ class AppRoutes {
   static const String inbox = '/inbox';
   static const String settings = '/settings';
   static const String managePosts = '/manage-posts';
+  static const String contentPlanner = '/content-planner';
+  static const String contentScheduler = '/content-scheduler';
   static const String upgrade = '/upgrade';
   static const String linkedPlatforms = '/linked-platforms';
   static const String discover = '/discover';
@@ -93,6 +97,18 @@ class AppRoutes {
                 ? args.launchSource
                 : ManagePostsLaunchSource.direct,
           ),
+        );
+      case contentPlanner:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const ContentPlannerView(),
+          fullscreenDialog: true,
+        );
+      case contentScheduler:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const ContentSchedulerView(),
+          fullscreenDialog: true,
         );
       case upgrade:
         return _buildRoute(

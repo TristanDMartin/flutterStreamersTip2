@@ -56,6 +56,7 @@ class TippyChatService {
     'AUTH_REQUIRED',
     'TOKEN_EXPIRED',
     'INVALID_TOKEN',
+    'INVALID_ARGUMENT',
     'INSUFFICIENT_CREDITS',
     'UPGRADE_REQUIRED',
     'RATE_LIMITED',
@@ -143,10 +144,29 @@ class TippyChatService {
     );
   }
 
-  Future<TippyPlanResult> createPlan() async {
+  Future<TippyPlanResult> createPlan({
+    required List<TippyChatMessage> messages,
+    String? prompt,
+  }) async {
+    final String cleanPrompt = (prompt ?? '').trim();
+    final List<TippyChatMessage> contextMessages = messages
+        .where((TippyChatMessage message) => message.content.trim().isNotEmpty)
+        .take(20)
+        .toList(growable: false);
+    final Map<String, dynamic> payload = <String, dynamic>{
+      if (cleanPrompt.isNotEmpty) 'prompt': cleanPrompt,
+      'messages': contextMessages
+          .map(
+            (TippyChatMessage m) => <String, String>{
+              'role': m.role,
+              'content': m.content,
+            },
+          )
+          .toList(growable: false),
+    };
     final TippySuccessEnvelope envelope = await _authedPost(
       '/tippy/create-plan',
-      <String, dynamic>{},
+      payload,
     );
     _creditsCache = _creditsCache?.copyWith(
       creditsRemaining: envelope.credits?.remaining,

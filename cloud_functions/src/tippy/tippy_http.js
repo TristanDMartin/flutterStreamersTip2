@@ -151,6 +151,24 @@ function conversationText(body) {
     .toLowerCase();
 }
 
+function hasPlanContext(body) {
+  const prompt = String((body && body.prompt) || '').trim();
+  const latest = latestUserMessage(body);
+  const text = `${prompt}\n${latest}\n${conversationText(body)}`.trim();
+  if (text.length < 24) {
+    return false;
+  }
+  const normalized = text.replace(/\s+/g, ' ').trim().toLowerCase();
+  const genericRequests = new Set([
+    'create a content plan',
+    'make a content plan',
+    'turn this conversation into a content plan',
+    'sync it to my content planner',
+    'add it to my content planner',
+  ]);
+  return !genericRequests.has(normalized);
+}
+
 function wantsContentPlanSync(path, body) {
   if (path === '/tippy/create-plan' || path === '/tippy/create-content-plan') {
     return true;
@@ -197,13 +215,41 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
+function normalizeContentPlanPlatform(raw) {
+  const value = sanitizeText(raw, '').toLowerCase();
+  if (value.includes('youtube')) return 'youtube';
+  if (value.includes('tiktok')) return 'tiktok';
+  if (value.includes('instagram')) return 'instagram';
+  if (value.includes('twitch')) return 'twitch';
+  if (value.includes('kick')) return 'kick';
+  if (value.includes('twitter') || value.includes('x')) return 'twitter';
+  if (value.includes('facebook')) return 'facebook';
+  if (value.includes('streamerstip')) return 'streamerstip';
+  return value.length > 0 ? 'custom' : 'streamerstip';
+}
+
+function normalizeContentPlanType(raw) {
+  const value = sanitizeText(raw, '').toLowerCase();
+  const known = new Set([
+    'stream',
+    'clip',
+    'video',
+    'short',
+    'story',
+    'post',
+    'collab',
+    'other',
+  ]);
+  return known.has(value) ? value : 'post';
+}
+
 function sanitizeGeneratedPlan(raw, uid) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const now = new Date();
   const rawItems = Array.isArray(source.items) ? source.items : [];
   const title = sanitizeText(
     source.title,
-    '30-Day StreamersTip Growth Plan',
+    'Custom Content Plan',
   );
   const description = sanitizeText(
     source.description,
@@ -216,60 +262,107 @@ function sanitizeGeneratedPlan(raw, uid) {
       ? data.platform
       : Array.isArray(data.platforms)
         ? data.platforms
-        : ['TikTok', 'YouTube Shorts', 'Instagram Reels'];
+        : data.platform
+          ? [data.platform]
+          : [];
+    const platformSchedules = rawPlatforms.length > 0
+      ? rawPlatforms
+      : ['streamerstip'];
     return {
-      ownerId: uid,
+      id: firestore.collection('_contentPlanItemIds').doc().id,
       title: sanitizeText(data.title, `Content idea ${index + 1}`),
-      caption: sanitizeText(data.caption, ''),
-      platform: rawPlatforms
-        .map((p) => sanitizeText(p, ''))
-        .filter((p) => p.length > 0)
+      description: sanitizeText(data.description || data.caption, ''),
+      type: normalizeContentPlanType(data.contentType || data.type),
+      platforms: platformSchedules
+        .map((p) => ({
+          platform: normalizeContentPlanPlatform(p),
+          scheduledAt: admin.firestore.Timestamp.fromDate(scheduledAt),
+          status: 'scheduled',
+        }))
         .slice(0, 5),
-      contentType: sanitizeText(data.contentType, 'short'),
-      status: 'draft',
-      scheduledAt: admin.firestore.Timestamp.fromDate(scheduledAt),
+      tags: Array.isArray(data.tags)
+        ? data.tags.map((tag) => sanitizeText(tag, '')).filter(Boolean).slice(0, 10)
+        : [],
+      thumbnailUrl: null,
+      notes: sanitizeText(data.notes || data.hook, ''),
+      videoId: null,
+      caption: sanitizeText(data.caption, ''),
+      status: 'scheduled',
+      profileCalendar: 'public',
       source: 'tippy_ai',
-      showOnProfile: data.showOnProfile !== false,
-      showOnStreamerPage: data.showOnStreamerPage !== false,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
   });
   if (safeItems.length === 0) {
-    for (let i = 0; i < 7; i++) {
-      safeItems.push({
-        ownerId: uid,
-        title: `Post one creator growth short ${i + 1}`,
-        caption: 'Share one practical tip, mistake, or behind-the-scenes moment.',
-        platform: ['TikTok', 'YouTube Shorts', 'Instagram Reels'],
-        contentType: 'short',
-        status: 'draft',
-        scheduledAt: admin.firestore.Timestamp.fromDate(addDays(now, i)),
-        source: 'tippy_ai',
-        showOnProfile: true,
-        showOnStreamerPage: true,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
+    const scheduledAt = addDays(now, 0);
+    safeItems.push({
+      id: firestore.collection('_contentPlanItemIds').doc().id,
+      title: sanitizeText(title, 'Plan step'),
+      description,
+      type: 'post',
+      platforms: [
+        {
+          platform: 'streamerstip',
+          scheduledAt: admin.firestore.Timestamp.fromDate(scheduledAt),
+          status: 'scheduled',
+        },
+      ],
+      tags: [],
+      thumbnailUrl: null,
+      notes: '',
+      videoId: null,
+      caption: '',
+      status: 'scheduled',
+      profileCalendar: 'public',
+      source: 'tippy_ai',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   }
+  const startDate = safeItems[0].platforms[0].scheduledAt;
+  const endDate = safeItems[safeItems.length - 1].platforms[0].scheduledAt;
   return {
     plan: {
-      ownerId: uid,
+      userId: uid,
       title,
       description,
+      startDate,
+      endDate,
+      items: safeItems,
+      consistencyGoal: null,
+      customFrequency: null,
+      isActive: true,
       source: 'tippy_ai',
-      status: 'active',
-      startDate: safeItems[0].scheduledAt,
-      endDate: safeItems[safeItems.length - 1].scheduledAt,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       createdBy: 'tippy_ai',
-      showOnProfile: source.showOnProfile !== false,
-      showOnStreamerPage: source.showOnStreamerPage !== false,
     },
-    items: safeItems,
   };
+}
+
+function serializeContentPlanItemsForClient(items) {
+  return items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    caption: item.caption,
+    type: item.type,
+    status: item.status,
+    notes: item.notes,
+    platforms: (item.platforms || []).map((p) => {
+      const ts = p.scheduledAt;
+      const scheduledAt =
+        ts && typeof ts.toDate === 'function'
+          ? ts.toDate().toISOString()
+          : null;
+      return {
+        platform: p.platform,
+        status: p.status,
+        scheduledAt,
+      };
+    }),
+  }));
 }
 
 async function writeContentPlan(uid, generatedPlan) {
@@ -279,20 +372,13 @@ async function writeContentPlan(uid, generatedPlan) {
     .doc(uid)
     .collection('contentPlans')
     .doc();
-  const batch = firestore.batch();
-  batch.set(planRef, sanitized.plan);
-  sanitized.items.forEach((item) => {
-    const itemRef = planRef.collection('items').doc();
-    batch.set(itemRef, {
-      ...item,
-      planId: planRef.id,
-    });
-  });
-  await batch.commit();
+  await planRef.set(sanitized.plan);
   return {
     planId: planRef.id,
-    itemCount: sanitized.items.length,
+    itemCount: sanitized.plan.items.length,
     title: sanitized.plan.title,
+    description: sanitized.plan.description,
+    items: serializeContentPlanItemsForClient(sanitized.plan.items),
   };
 }
 
@@ -404,15 +490,18 @@ async function executeAiAction({
       return {message: `Mock reply for user ${uid}.`};
     }
     if (path === '/tippy/create-plan' || path === '/tippy/create-content-plan') {
+      const context = latestUserMessage(body) || String(body.prompt || '').trim();
       return {
         plan: {
-          title: '7-Day StreamersTip Growth Plan',
-          description: 'AI-generated content plan created by Tippy.',
+          title: context
+            ? `Content Plan: ${context.slice(0, 48)}`
+            : 'Custom Content Plan',
+          description: 'AI-generated content plan created from the Tippy chat.',
           items: [
             {
-              title: 'Post a creator tip clip',
-              caption: 'Here is one mistake new streamers make and how to fix it.',
-              platform: ['TikTok', 'YouTube Shorts', 'Instagram Reels'],
+              title: context || 'Draft the first content idea',
+              caption: context || 'Add details for this content plan.',
+              platform: [],
               contentType: 'short',
             },
           ],
@@ -527,11 +616,11 @@ function parseJsonBody(req) {
 function validateRequestBody(path, body, requestId) {
   if (body == null) {
     return {
-      status: 500,
+      status: 400,
       payload: buildErrorResponse({
-        code: 'INTERNAL_ERROR',
+        code: 'INVALID_ARGUMENT',
         message: 'Invalid request payload.',
-        status: 500,
+        status: 400,
         retryable: false,
         requestId,
       }),
@@ -540,11 +629,25 @@ function validateRequestBody(path, body, requestId) {
   if (path === '/tippy/chat') {
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
       return {
-        status: 500,
+        status: 400,
         payload: buildErrorResponse({
-          code: 'INTERNAL_ERROR',
+          code: 'INVALID_ARGUMENT',
           message: 'messages is required.',
-          status: 500,
+          status: 400,
+          retryable: false,
+          requestId,
+        }),
+      };
+    }
+  }
+  if (path === '/tippy/create-plan' || path === '/tippy/create-content-plan') {
+    if (!hasPlanContext(body)) {
+      return {
+        status: 400,
+        payload: buildErrorResponse({
+          code: 'INVALID_ARGUMENT',
+          message: 'Content plan context is required.',
+          status: 400,
           retryable: false,
           requestId,
         }),
@@ -554,11 +657,11 @@ function validateRequestBody(path, body, requestId) {
   if (path === '/tippy/ai-caption') {
     if (typeof body.prompt !== 'string' || body.prompt.trim().length === 0) {
       return {
-        status: 500,
+        status: 400,
         payload: buildErrorResponse({
-          code: 'INTERNAL_ERROR',
+          code: 'INVALID_ARGUMENT',
           message: 'prompt is required.',
-          status: 500,
+          status: 400,
           retryable: false,
           requestId,
         }),
@@ -568,11 +671,11 @@ function validateRequestBody(path, body, requestId) {
   if (path === '/tippy/analyze-content') {
     if (typeof body.content !== 'string' || body.content.trim().length === 0) {
       return {
-        status: 500,
+        status: 400,
         payload: buildErrorResponse({
-          code: 'INTERNAL_ERROR',
+          code: 'INVALID_ARGUMENT',
           message: 'content is required.',
-          status: 500,
+          status: 400,
           retryable: false,
           requestId,
         }),
@@ -691,7 +794,7 @@ async function handleAiAction({
     });
     return;
   }
-  const validation = validateRequestBody(path, body, requestId);
+  const validation = validateRequestBody(effectivePath, body, requestId);
   if (validation != null) {
     await writeTelemetrySafe({
       uid,
@@ -848,12 +951,14 @@ async function handleAiAction({
       );
       return;
     }
+    const planDeepLink = `streamerstip://content-plan/${saved.planId}`;
     data = {
       ...aiResult,
       ...saved,
       message:
         `I created "${saved.title}" and added ${saved.itemCount} items ` +
-        'to your content planner.',
+        'to your content planner.\n' +
+        planDeepLink,
     };
     emitRequestLog({
       requestId,

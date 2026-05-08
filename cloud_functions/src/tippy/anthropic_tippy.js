@@ -77,6 +77,31 @@ function sanitizeChatMessages(messages) {
   return {system, messages: out};
 }
 
+function sanitizePlanMessages(body) {
+  const raw = Array.isArray(body && body.messages) ? body.messages : [];
+  const out = [];
+  for (const m of raw) {
+    if (!m || typeof m !== 'object') {
+      continue;
+    }
+    const role = String(m.role || '').toLowerCase();
+    const content = typeof m.content === 'string' ? m.content.trim() : '';
+    if (!content || (role !== 'user' && role !== 'assistant')) {
+      continue;
+    }
+    out.push({role, content});
+  }
+  const prompt = String((body && body.prompt) || '').trim();
+  if (prompt.length > 0) {
+    out.push({role: 'user', content: prompt});
+  }
+  const contextText = out
+    .map((msg) => `${msg.role}: ${msg.content}`)
+    .join('\n')
+    .trim();
+  return {prompt, messages: out.slice(-20), contextText};
+}
+
 async function postAnthropic({
   apiKey,
   model,
@@ -239,18 +264,26 @@ async function runAnthropicTippy({apiKey, path, body, requestId}) {
     return {message: text};
   }
   if (path === '/tippy/create-plan' || path === '/tippy/create-content-plan') {
+    const planContext = sanitizePlanMessages(body);
     const user =
-      'Create a practical 14-day content plan for a gaming / creator streamer. '
+      'Create a content plan only from the supplied user context below. '
+      + 'Do not invent a niche, game, platform, duration, audience, or topic. '
+      + 'If the context is too thin, return JSON with title "Needs more details", '
+      + 'a short description asking for the missing details, and exactly one item '
+      + 'that tells the user what to clarify next (never an empty items array). '
       + 'Reply with JSON only, no markdown fence, shape: '
       + '{"title":"","description":"","items":[{"title":"","caption":"",'
-      + '"platform":["TikTok","YouTube Shorts","Instagram Reels"],'
-      + '"contentType":"short"}]}';
+      + '"platform":[],"contentType":"short"}]}\n\n'
+      + `Latest request: ${planContext.prompt || '(none)'}\n`
+      + `Conversation context:\n${planContext.contextText || '(none)'}`;
     const result = await postAnthropicWithModelFallback({
       apiKey,
       model,
       maxTokens: 4096,
       system:
-        'You output valid JSON only for a content planner. Include 7 to 14 items.',
+        'You output valid JSON only for a content planner. Include 3 to 14 '
+        + 'items only when the user context supports a specific plan. Preserve '
+        + 'the user\'s actual topic and wording. Never default to gaming.',
       messages: [{role: 'user', content: user}],
     });
     if (!result.ok) {
@@ -272,9 +305,19 @@ async function runAnthropicTippy({apiKey, path, body, requestId}) {
     }
     return {
       plan: {
-        title: '7-Day StreamersTip Growth Plan',
-        description: 'AI-generated content plan created by Tippy.',
-        items: [],
+        title: 'Needs more details',
+        description:
+          'Tell Tippy the topic, audience, platforms, or goal for this plan.',
+        items: [
+          {
+            title: 'Reply with your niche, audience, and platforms',
+            caption:
+              'Example: "Valorant clips for TikTok and YouTube Shorts, 3 posts '
+              + 'per week."',
+            platform: [],
+            contentType: 'post',
+          },
+        ],
       },
     };
   }

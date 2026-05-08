@@ -30,6 +30,9 @@ class FakeTippyChatService extends TippyChatService {
   final Duration delay;
   final Completer<void>? blocker;
   int sendCount = 0;
+  int planCount = 0;
+  List<TippyChatMessage> planMessages = const <TippyChatMessage>[];
+  String? planPrompt;
 
   @override
   Future<TippyCreditsInfo> fetchCreditsInfo() async {
@@ -58,6 +61,22 @@ class FakeTippyChatService extends TippyChatService {
     return const TippyChatResult(
       message: 'assistant reply',
       creditsRemaining: 9,
+    );
+  }
+
+  @override
+  Future<TippyPlanResult> createPlan({
+    required List<TippyChatMessage> messages,
+    String? prompt,
+  }) async {
+    planCount++;
+    planMessages = messages;
+    planPrompt = prompt;
+    return const TippyPlanResult(
+      planId: 'plan_123',
+      itemCount: 3,
+      message: 'Created a custom content plan.',
+      creditsRemaining: 8,
     );
   }
 }
@@ -112,7 +131,8 @@ void main() {
     );
   }
 
-  testWidgets('send button disables while request in progress', (WidgetTester tester) async {
+  testWidgets('send button disables while request in progress',
+      (WidgetTester tester) async {
     final Completer<void> blocker = Completer<void>();
     final FakeTippyChatService service = FakeTippyChatService(
       blocker: blocker,
@@ -130,7 +150,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('retry button appears and input preserved on network failure', (WidgetTester tester) async {
+  testWidgets('retry button appears and input preserved on network failure',
+      (WidgetTester tester) async {
     final FakeTippyChatService service = FakeTippyChatService(
       failWith: const TippyNetworkException(),
     );
@@ -144,7 +165,8 @@ void main() {
     expect(field.controller?.text, 'keep me');
   });
 
-  testWidgets('renders success message and avoids duplicate sends', (WidgetTester tester) async {
+  testWidgets('renders success message and avoids duplicate sends',
+      (WidgetTester tester) async {
     final FakeTippyChatService service = FakeTippyChatService(
       delay: const Duration(milliseconds: 1),
     );
@@ -157,5 +179,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(service.sendCount, 1);
     expect(find.text('assistant reply'), findsOneWidget);
+  });
+
+  testWidgets('create plan sends current conversation context',
+      (WidgetTester tester) async {
+    final FakeTippyChatService service = FakeTippyChatService(
+      delay: const Duration(milliseconds: 1),
+    );
+    await tester.pumpWidget(buildApp(service));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextField),
+      'Build a launch week plan for my coffee podcast',
+    );
+    await tester.tap(find.byIcon(Icons.send_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tools'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create + Sync Plan').last);
+    await tester.pumpAndSettle();
+
+    expect(service.planCount, 1);
+    expect(
+      service.planMessages.map((TippyChatMessage message) => message.content),
+      contains('Build a launch week plan for my coffee podcast'),
+    );
+    expect(
+      find.textContaining('Created a custom content plan.'),
+      findsOneWidget,
+    );
+    expect(find.text('Open content plan'), findsOneWidget);
   });
 }

@@ -11,6 +11,10 @@ import '../gamification/models/subscription_plan.dart';
 import '../gamification/models/user_progress_bundle.dart';
 import '../../routing/app_navigator.dart';
 import '../../routing/app_routes.dart';
+import '../content_planning/content_plan_detail_view.dart';
+import '../content_planning/content_planning_models.dart';
+import '../content_planning/content_planning_provider.dart';
+import '../content_planning/content_planning_repository.dart';
 import 'tippy_access.dart';
 import 'tippy_chat_service.dart';
 import 'tippy_message_content.dart';
@@ -31,7 +35,7 @@ class TippyChatPage extends ConsumerStatefulWidget {
 
 class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   static const List<String> _quickPrompts = <String>[
-    'Create a 14-day content plan and sync it to my content planner',
+    'Turn this conversation into a content plan',
     'Give me 10 gaming short-form hooks',
     'What should I post today?',
     'Turn my next idea into a scheduled post',
@@ -92,13 +96,42 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     if (_busy) {
       return;
     }
+    final _PlanContext planContext = _buildPlanContext();
+    if (!planContext.hasUsefulContext) {
+      setState(() {
+        _lines.add(
+          const _ChatLine(
+            user: false,
+            text:
+                'Tell me what this content plan should be about first, then I can add it to your planner.',
+            isError: true,
+          ),
+        );
+      });
+      _scrollToEnd();
+      return;
+    }
     setState(() {
       _busy = true;
     });
     try {
-      final TippyPlanResult result = await _service.createPlan();
+      final TippyPlanResult result = await _service.createPlan(
+        messages: planContext.messages,
+        prompt: planContext.prompt,
+      );
       if (!mounted) {
         return;
+      }
+      final String? planId = result.planId?.trim();
+      String assistantText = result.message ??
+          (planId == null || planId.isEmpty
+              ? 'Created a new content plan and added it to your planner.'
+              : 'Created a new content plan: $planId');
+      if (planId != null &&
+          planId.isNotEmpty &&
+          !assistantText.contains('streamerstip://content-plan/')) {
+        assistantText =
+            '${assistantText.trim()}\nstreamerstip://content-plan/$planId';
       }
       setState(() {
         _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
@@ -106,13 +139,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         _lines.add(
           _ChatLine(
             user: false,
-            text: result.message ??
-                (result.planId == null
-                    ? 'Created a new content plan and added it to your planner.'
-                    : 'Created a new content plan: ${result.planId}'),
+            text: assistantText,
           ),
         );
       });
+      ref.invalidate(contentPlansProvider);
       await _persistConversation();
       await _refreshCreditsSnapshot();
     } on TippyChatException catch (e) {
@@ -126,6 +157,67 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
           _busy = false;
         });
       }
+      _scrollToEnd();
+    }
+  }
+
+  Future<void> _openContentPlanById(String planId) async {
+    final String id = planId.trim();
+    if (id.isEmpty) {
+      return;
+    }
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+    final String? token = await user.getIdToken();
+    if (token == null || !mounted) {
+      return;
+    }
+    final ContentPlanningRepository repo =
+        ref.read(contentPlanningRepositoryProvider);
+    try {
+      final ContentPlan? plan = await repo.getPlanById(
+        idToken: token,
+        userId: user.uid,
+        planId: id,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (plan == null) {
+        setState(() {
+          _lines.add(
+            const _ChatLine(
+              user: false,
+              text:
+                  'That content plan was not found. Open the Content planner '
+                  'and pull to refresh.',
+              isError: true,
+            ),
+          );
+        });
+        _scrollToEnd();
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (BuildContext ctx) => ContentPlanDetailView(plan: plan),
+        ),
+      );
+    } on ContentPlanningException catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _lines.add(
+          const _ChatLine(
+            user: false,
+            text: 'Could not load that content plan. Please try again.',
+            isError: true,
+          ),
+        );
+      });
       _scrollToEnd();
     }
   }
@@ -178,6 +270,26 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       }
       _scrollToEnd();
     }
+  }
+
+  _PlanContext _buildPlanContext() {
+    final String prompt = _input.text.trim();
+    final List<TippyChatMessage> messages = <TippyChatMessage>[
+      ..._lines
+          .where((_ChatLine line) => !line.isError && !line.isThinking)
+          .map(
+            (_ChatLine line) => TippyChatMessage(
+              role: line.user ? 'user' : 'assistant',
+              content: line.text,
+            ),
+          ),
+      if (prompt.isNotEmpty)
+        TippyChatMessage(
+          role: 'user',
+          content: prompt,
+        ),
+    ];
+    return _PlanContext(prompt: prompt, messages: messages);
   }
 
   /// Prefer `/me`; derive remaining from monthly − used when remaining is 0 but usage exists.
@@ -573,96 +685,29 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
               me: me,
             );
           },
-          loading: () {
-            final ColorScheme scheme = Theme.of(context).colorScheme;
-            return Scaffold(
-              backgroundColor: scheme.surface,
-              appBar: AppBar(
-                backgroundColor: scheme.surfaceContainerHighest,
-                foregroundColor: scheme.onSurface,
-                title: const Text('Tippy AI'),
-              ),
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Checking your plan…',
-                      style: TextStyle(
-                        color: scheme.onSurfaceVariant,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+          loading: () => const _TippyLoadingScaffold(
+            message: 'Checking your plan...',
+          ),
           error: (Object e, StackTrace st) {
-            final ColorScheme scheme = Theme.of(context).colorScheme;
-            return Scaffold(
-              backgroundColor: scheme.surface,
-              appBar: AppBar(
-                backgroundColor: scheme.surfaceContainerHighest,
-                foregroundColor: scheme.onSurface,
-                title: const Text('Tippy AI'),
-              ),
-              body: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    SelectableText.rich(
-                      TextSpan(
-                        style: const TextStyle(
-                          color: Colors.redAccent,
-                          height: 1.35,
-                        ),
-                        children: <InlineSpan>[
-                          const TextSpan(
-                            text: 'Could not verify your plan. ',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          TextSpan(text: e.toString()),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: () {
-                        ref.invalidate(meEntitlementsProvider);
-                      },
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
+            return _TippyErrorScaffold(
+              title: 'Could not verify your plan.',
+              details: e.toString(),
+              onRetry: () {
+                ref.invalidate(meEntitlementsProvider);
+              },
             );
           },
         );
       },
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      loading: () => const _TippyLoadingScaffold(
+        message: 'Loading Tippy...',
       ),
-      error: (Object e, StackTrace st) => Scaffold(
-        appBar: AppBar(title: const Text('Tippy AI')),
-        body: Padding(
-          padding: const EdgeInsets.all(20),
-          child: SelectableText.rich(
-            TextSpan(
-              style: const TextStyle(color: Colors.redAccent, height: 1.35),
-              children: <InlineSpan>[
-                const TextSpan(
-                  text: 'Could not load your plan. ',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                TextSpan(text: e.toString()),
-              ],
-            ),
-          ),
-        ),
+      error: (Object e, StackTrace st) => _TippyErrorScaffold(
+        title: 'Could not load your plan.',
+        details: e.toString(),
+        onRetry: () {
+          ref.invalidate(userProgressBundleProvider);
+        },
       ),
     );
   }
@@ -673,223 +718,296 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     required MeEntitlementsData me,
   }) {
     final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
     final int? displayCredits = _displayCreditsRemaining(me);
+    final String creditsLabel = _planSubtitle(bundle, me: me);
     return Scaffold(
-      backgroundColor: scheme.surface,
-      appBar: AppBar(
-        backgroundColor: scheme.surfaceContainerHighest,
-        foregroundColor: scheme.onSurface,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Text('Tippy AI'),
-            Text(
-              _planSubtitle(bundle, me: me),
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+      backgroundColor: const Color(0xFF050816),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF111827),
+              Color(0xFF07111F),
+              Color(0xFF050816),
+            ],
+          ),
         ),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Conversation history',
-            onPressed: _openHistorySheet,
-            icon: const Icon(Icons.menu_rounded),
-          ),
-        ],
-      ),
-      body: Column(
-        children: <Widget>[
-          _TippyStatusStrip(
-            creditsLabel: _planSubtitle(bundle, me: me),
-            busy: _busy,
-          ),
-          Expanded(
-            child: ListView.builder(
-              controller: _scroll,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              itemCount: _lines.isEmpty ? 1 : _lines.length,
-              itemBuilder: (BuildContext context, int index) {
-                if (_lines.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        _TippyWelcomePanel(
-                          greeting: _greeting,
-                          nudge: _nudge,
+        child: SafeArea(
+          child: Column(
+            children: <Widget>[
+              _TippyTopBar(
+                creditsLabel: creditsLabel,
+                busy: _busy,
+                onHistory: _openHistorySheet,
+                onNewChat: _startNewConversation,
+              ),
+              Expanded(
+                child: ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                  itemCount: _lines.isEmpty ? 1 : _lines.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    if (_lines.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(2, 8, 2, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            _TippyWelcomePanel(
+                              greeting: _greeting,
+                              nudge: _nudge,
+                              creditsLabel: creditsLabel,
+                            ),
+                            const SizedBox(height: 14),
+                            _QuickPromptGrid(
+                              prompts: _quickPrompts,
+                              onPrompt: (String prompt) {
+                                _input.text = prompt;
+                                _send();
+                              },
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 14),
-                        Text(
-                          'Start fast',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.72),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                      );
+                    }
+                    final _ChatLine line = _lines[index];
+                    return _ChatBubble(
+                      line: line,
+                      onContentPlanDeepLink:
+                          line.user || line.isThinking
+                              ? null
+                              : _openContentPlanById,
+                    );
+                  },
+                ),
+              ),
+              if (_busy)
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  backgroundColor: Color(0xFF111827),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Color(0xFF60A5FA),
+                  ),
+                ),
+              if (displayCredits != null && displayCredits <= 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7F1D1D).withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.7),
+                      ),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        const Expanded(
+                          child: Text(
+                            'You are out of credits for this cycle.',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _quickPrompts
-                              .map(
-                                (String prompt) => ActionChip(
-                                  avatar: const Icon(
-                                    Icons.bolt_rounded,
-                                    size: 15,
-                                  ),
-                                  label: Text(prompt),
-                                  onPressed: () {
-                                    _input.text = prompt;
-                                    _send();
-                                  },
-                                ),
-                              )
-                              .toList(growable: false),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pushNamed(AppRoutes.upgrade);
+                          },
+                          child: const Text('Upgrade'),
                         ),
                       ],
                     ),
-                  );
-                }
-                final _ChatLine line = _lines[index];
-                return _ChatBubble(line: line);
-              },
-            ),
-          ),
-          if (_busy)
-            const LinearProgressIndicator(
-              minHeight: 2,
-              backgroundColor: Color(0xFF1E293B),
-            ),
-          if (displayCredits != null && displayCredits <= 0)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF7F1D1D).withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.7),
                   ),
                 ),
-                child: Row(
+              _TippyActionDock(
+                busy: _busy,
+                compact: _lines.isNotEmpty,
+                hasRetry: _pendingRetryAction != null,
+                onRetry: _retryLastAction,
+                onCreatePlan: _runCreatePlan,
+                onGenerateCaption: _runGenerateCaption,
+              ),
+              SafeArea(
+                top: false,
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                  padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0B1220).withValues(alpha: 0.96),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.28),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          controller: _input,
+                          minLines: 1,
+                          maxLines: 5,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Message Tippy...',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.44),
+                            ),
+                            filled: true,
+                            fillColor: Colors.white.withValues(alpha: 0.045),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 12,
+                            ),
+                          ),
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _send(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _busy ? null : _send,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                          padding: EdgeInsets.zero,
+                          backgroundColor: theme.colorScheme.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Icon(Icons.send_rounded, size: 20),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TippyTopBar extends StatelessWidget {
+  const _TippyTopBar({
+    required this.creditsLabel,
+    required this.busy,
+    required this.onHistory,
+    required this.onNewChat,
+  });
+
+  final String creditsLabel;
+  final bool busy;
+  final VoidCallback onHistory;
+  final VoidCallback onNewChat;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+      child: Row(
+        children: <Widget>[
+          IconButton(
+            tooltip: 'Back',
+            onPressed: () {
+              Navigator.of(context).maybePop();
+            },
+            icon: const Icon(Icons.arrow_back_rounded),
+            color: Colors.white,
+          ),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: const LinearGradient(
+                colors: <Color>[Color(0xFF9248D2), Color(0xFF38BDF8)],
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Text(
+                  'Tippy AI',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Row(
                   children: <Widget>[
-                    const Expanded(
+                    Icon(
+                      busy ? Icons.sync_rounded : Icons.verified_rounded,
+                      color: busy
+                          ? const Color(0xFF93C5FD)
+                          : const Color(0xFF34D399),
+                      size: 13,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
                       child: Text(
-                        'You are out of credits for this cycle.',
+                        creditsLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.62),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pushNamed(AppRoutes.upgrade);
-                      },
-                      child: const Text('Upgrade'),
-                    ),
                   ],
-                ),
-              ),
-            ),
-          if (_pendingRetryAction != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _busy ? null : _retryLastAction,
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Retry last request'),
-                ),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : _runCreatePlan,
-                    icon:
-                        const Icon(Icons.auto_awesome_motion_rounded, size: 16),
-                    label: const Text('Create + Sync Plan'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : _runGenerateCaption,
-                    icon: const Icon(Icons.text_fields_rounded, size: 16),
-                    label: const Text('AI Caption'),
-                  ),
                 ),
               ],
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Material(
-              color: const Color(0xFF1E293B),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: <Widget>[
-                    Expanded(
-                      child: TextField(
-                        controller: _input,
-                        minLines: 1,
-                        maxLines: 5,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Message Tippy…',
-                          hintStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.45),
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFF0F172A),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                        ),
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _send(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _busy ? null : _send,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        backgroundColor: theme.colorScheme.primary,
-                      ),
-                      child: const Icon(Icons.send_rounded, size: 20),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          IconButton(
+            tooltip: 'New chat',
+            onPressed: onNewChat,
+            icon: const Icon(Icons.add_comment_rounded),
+            color: Colors.white.withValues(alpha: 0.82),
+          ),
+          IconButton(
+            tooltip: 'Conversation history',
+            onPressed: onHistory,
+            icon: const Icon(Icons.history_rounded),
+            color: Colors.white.withValues(alpha: 0.82),
           ),
         ],
       ),
@@ -897,56 +1015,502 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   }
 }
 
-class _TippyStatusStrip extends StatelessWidget {
-  const _TippyStatusStrip({
-    required this.creditsLabel,
-    required this.busy,
-  });
+class _TippyLoadingScaffold extends StatelessWidget {
+  const _TippyLoadingScaffold({required this.message});
 
-  final String creditsLabel;
-  final bool busy;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+    return Scaffold(
+      backgroundColor: const Color(0xFF050816),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF111827),
+              Color(0xFF07111F),
+              Color(0xFF050816),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                child: Row(
+                  children: <Widget>[
+                    IconButton(
+                      tooltip: 'Back',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      color: Colors.white,
+                    ),
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: const LinearGradient(
+                          colors: <Color>[
+                            Color(0xFF9248D2),
+                            Color(0xFF38BDF8),
+                          ],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: Colors.white,
+                        size: 19,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Tippy AI',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Container(
+                    margin: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B1220).withValues(alpha: 0.88),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF4897D2).withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          message,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.72),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      child: Row(
-        children: <Widget>[
-          Icon(
-            busy ? Icons.sync_rounded : Icons.verified_rounded,
-            color: busy ? const Color(0xFF93C5FD) : const Color(0xFF34D399),
-            size: 16,
+    );
+  }
+}
+
+class _TippyErrorScaffold extends StatelessWidget {
+  const _TippyErrorScaffold({
+    required this.title,
+    required this.details,
+    required this.onRetry,
+  });
+
+  final String title;
+  final String details;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF050816),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF111827),
+              Color(0xFF07111F),
+              Color(0xFF050816),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              creditsLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.74),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0B1220).withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.34),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      details,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.68),
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: onRetry,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          Text(
-            busy ? 'Working' : 'Ready',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.58),
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _TippyActionDock extends StatelessWidget {
+  const _TippyActionDock({
+    required this.busy,
+    required this.compact,
+    required this.hasRetry,
+    required this.onRetry,
+    required this.onCreatePlan,
+    required this.onGenerateCaption,
+  });
+
+  final bool busy;
+  final bool compact;
+  final bool hasRetry;
+  final VoidCallback onRetry;
+  final VoidCallback onCreatePlan;
+  final VoidCallback onGenerateCaption;
+
+  Future<void> _openTools(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF0B1220),
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onCreatePlan();
+                        },
+                  leading: const Icon(
+                    Icons.auto_awesome_motion_rounded,
+                    color: Color(0xFF93C5FD),
+                  ),
+                  title: const Text(
+                    'Create + Sync Plan',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Build a content plan and send it to your planner.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.58),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onGenerateCaption();
+                        },
+                  leading: const Icon(
+                    Icons.text_fields_rounded,
+                    color: Color(0xFF93C5FD),
+                  ),
+                  title: const Text(
+                    'AI Caption',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Turn the current prompt or idea into a caption.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.58),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (compact) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+        child: Row(
+          children: <Widget>[
+            if (hasRetry) ...<Widget>[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: busy ? null : onRetry,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Retry last request'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            OutlinedButton.icon(
+              onPressed: () => _openTools(context),
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text('Tools'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+                backgroundColor: Colors.white.withValues(alpha: 0.045),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      child: Column(
+        children: <Widget>[
+          if (hasRetry) ...<Widget>[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: busy ? null : onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Retry last request'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _TippyToolButton(
+                  icon: Icons.auto_awesome_motion_rounded,
+                  label: 'Create + Sync Plan',
+                  onPressed: busy ? null : onCreatePlan,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _TippyToolButton(
+                  icon: Icons.text_fields_rounded,
+                  label: 'AI Caption',
+                  onPressed: busy ? null : onGenerateCaption,
+                ),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _TippyToolButton extends StatelessWidget {
+  const _TippyToolButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+        backgroundColor: Colors.white.withValues(alpha: 0.045),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickPromptGrid extends StatelessWidget {
+  const _QuickPromptGrid({
+    required this.prompts,
+    required this.onPrompt,
+  });
+
+  final List<String> prompts;
+  final ValueChanged<String> onPrompt;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Start fast',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.72),
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: prompts.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisExtent: 82,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+          ),
+          itemBuilder: (BuildContext context, int index) {
+            final String prompt = prompts[index];
+            return _QuickPromptCard(
+              prompt: prompt,
+              icon: switch (index) {
+                0 => Icons.calendar_month_rounded,
+                1 => Icons.sports_esports_rounded,
+                2 => Icons.lightbulb_rounded,
+                _ => Icons.edit_calendar_rounded,
+              },
+              onTap: () => onPrompt(prompt),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickPromptCard extends StatelessWidget {
+  const _QuickPromptCard({
+    required this.prompt,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String prompt;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          padding: const EdgeInsets.all(11),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.055),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(icon, color: const Color(0xFF93C5FD), size: 18),
+              const Spacer(),
+              Text(
+                prompt,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  height: 1.18,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -956,71 +1520,90 @@ class _TippyWelcomePanel extends StatelessWidget {
   const _TippyWelcomePanel({
     required this.greeting,
     required this.nudge,
+    required this.creditsLabel,
   });
 
   final String? greeting;
   final String? nudge;
+  final String creditsLabel;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF0B1220).withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFF4897D2).withValues(alpha: 0.24),
+          color: const Color(0xFF4897D2).withValues(alpha: 0.22),
         ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: const Color(0xFF9248D2).withValues(alpha: 0.24),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
-              ),
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  greeting ?? 'Tippy is ready.',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    height: 1.24,
+          Row(
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9248D2).withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
                   ),
                 ),
-                if (nudge != null && nudge!.trim().isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 6),
-                  Text(
-                    nudge!,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.72),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      height: 1.28,
-                    ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  creditsLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.62),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
                   ),
-                ],
-              ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            greeting ?? 'Tippy is ready.',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              height: 1.08,
             ),
           ),
+          if (nudge != null && nudge!.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              nudge!,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1304,40 +1887,106 @@ class _TippyLockedScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: scheme.surface,
-      appBar: AppBar(
-        backgroundColor: scheme.surfaceContainerHighest,
-        foregroundColor: scheme.onSurface,
-        title: const Text('Tippy AI'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            SelectableText.rich(
-              TextSpan(
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  height: 1.35,
-                  fontSize: 15,
-                ),
-                children: const <InlineSpan>[
-                  TextSpan(
-                    text: 'Tippy is included on Pro and Studio, '
-                        'or when your account has the Tippy entitlement.',
+      backgroundColor: const Color(0xFF050816),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF111827),
+              Color(0xFF07111F),
+              Color(0xFF050816),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    tooltip: 'Back',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    color: Colors.white,
                   ),
-                ],
-              ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0B1220).withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: const Color(0xFF4897D2).withValues(alpha: 0.24),
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.26),
+                        blurRadius: 28,
+                        offset: const Offset(0, 14),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          gradient: const LinearGradient(
+                            colors: <Color>[
+                              Color(0xFF9248D2),
+                              Color(0xFF38BDF8),
+                            ],
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.lock_open_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Unlock Tippy AI',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          height: 1.05,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Tippy is included on Pro and Studio, or when your account has the Tippy entitlement.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          height: 1.35,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton.icon(
+                        onPressed: onUpgrade,
+                        icon: const Icon(Icons.workspace_premium_rounded),
+                        label: const Text('View plans'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(flex: 2),
+              ],
             ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onUpgrade,
-              child: const Text('View plans'),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1359,31 +2008,56 @@ class _ChatLine {
 }
 
 class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.line});
+  const _ChatBubble({
+    required this.line,
+    this.onContentPlanDeepLink,
+  });
 
   final _ChatLine line;
+  final void Function(String planId)? onContentPlanDeepLink;
 
   @override
   Widget build(BuildContext context) {
     final Alignment align =
         line.user ? Alignment.centerRight : Alignment.centerLeft;
     final Color bg = line.isError
-        ? const Color(0xFF7F1D1D).withValues(alpha: 0.85)
+        ? const Color(0xFF7F1D1D).withValues(alpha: 0.9)
         : line.user
-            ? const Color(0xFF9248D2).withValues(alpha: 0.95)
-            : const Color(0xFF1E293B);
+            ? const Color(0xFF2563EB).withValues(alpha: 0.92)
+            : const Color(0xFF111827).withValues(alpha: 0.96);
     final Color fg = line.isError ? Colors.red.shade100 : Colors.white;
     return Align(
       alignment: align,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: EdgeInsets.only(
+          left: line.user ? 44 : 0,
+          right: line.user ? 0 : 44,
+          bottom: 10,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.sizeOf(context).width * 0.86,
         ),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(line.user ? 18 : 6),
+            bottomRight: Radius.circular(line.user ? 6 : 18),
+          ),
+          border: Border.all(
+            color: line.user
+                ? const Color(0xFF60A5FA).withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: TippyMessageContent(
           text: line.text,
@@ -1392,6 +2066,7 @@ class _ChatBubble extends StatelessWidget {
             fontSize: 14,
             height: 1.35,
           ),
+          onContentPlanDeepLink: onContentPlanDeepLink,
         ),
       ),
     );
@@ -1419,4 +2094,35 @@ class _RetryAction {
 
   final _RetryActionType type;
   final String prompt;
+}
+
+class _PlanContext {
+  const _PlanContext({
+    required this.prompt,
+    required this.messages,
+  });
+
+  final String prompt;
+  final List<TippyChatMessage> messages;
+
+  bool get hasUsefulContext {
+    final String combined = messages
+        .where((TippyChatMessage message) => message.role == 'user')
+        .map((TippyChatMessage message) => message.content.trim())
+        .where((String text) => text.isNotEmpty)
+        .join(' ')
+        .toLowerCase();
+    if (combined.length < 24) {
+      return false;
+    }
+    const List<String> genericRequests = <String>[
+      'create a content plan',
+      'make a content plan',
+      'turn this conversation into a content plan',
+      'sync it to my content planner',
+      'add it to my content planner',
+    ];
+    final String normalized = combined.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return !genericRequests.contains(normalized);
+  }
 }
