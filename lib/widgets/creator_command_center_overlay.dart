@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -23,22 +22,6 @@ Future<void> _executeTippyFromCommandCenter(
   await AppNavigator.openTippyChat(context);
 }
 
-String _tippyHeroSubtitle(CreatorCommandSnapshot snapshot) {
-  if (!snapshot.tippyAiEnabled) {
-    return 'Planning & captions on Pro+';
-  }
-  if (snapshot.nextPostOverdue) {
-    return 'Get back on schedule';
-  }
-  if (snapshot.scheduledQueueCount > 0) {
-    return 'Help with your queue';
-  }
-  if (snapshot.alertCount > 0) {
-    return 'Prioritize what matters';
-  }
-  return 'What to post next';
-}
-
 String _primaryRecommendation(CreatorCommandSnapshot s) {
   if (!s.tippyAiEnabled) {
     return 'Unlock Tippy to generate plans, hooks, and captions from this workspace.';
@@ -55,33 +38,76 @@ String _primaryRecommendation(CreatorCommandSnapshot s) {
   return 'Use Tippy for the next caption, then review the schedule queue.';
 }
 
-String _nextMoveLine(
-  CreatorCommandSnapshot s,
-  BuildContext context,
-) {
+String _momentumLabel(CreatorCommandSnapshot s) {
+  if (s.nextPostOverdue || s.alertCount > 0) return 'Needs attention';
+  final double? growth = s.growthPercent;
+  if (growth != null && growth >= 10) return 'Rising';
+  if (s.consistencyScorePercent >= 75) return 'Steady';
+  if (s.scheduledQueueCount > 0) return 'Prepared';
+  return 'Build rhythm';
+}
+
+String _briefLine(CreatorCommandSnapshot s, BuildContext context) {
   if (s.nextPostOverdue) {
-    return 'Overdue: catch up on your next post';
-  }
-  if (s.nextPostDueAt != null) {
-    final DateTime t = s.nextPostDueAt!.toLocal();
-    final MaterialLocalizations l10n = MaterialLocalizations.of(context);
-    final String date = l10n.formatFullDate(t);
-    final String time = l10n.formatTimeOfDay(
-      TimeOfDay.fromDateTime(t),
-    );
-    return 'Next: $date · $time';
-  }
-  if (s.scheduledQueueCount > 0) {
-    return '${s.scheduledQueueCount} scheduled in your queue';
-  }
-  if (s.draftCount > 0) {
-    return '${s.draftCount} draft${s.draftCount == 1 ? '' : 's'} in review';
+    return 'Recover the overdue post before creating more.';
   }
   if (s.alertCount > 0) {
-    return '${s.alertCount} active alert'
-        '${s.alertCount == 1 ? '' : 's'}';
+    return '${s.alertCount} item${s.alertCount == 1 ? '' : 's'} need review.';
   }
-  return 'No scheduled post';
+  if (s.nextPostDueAt != null) {
+    final TimeOfDay time = TimeOfDay.fromDateTime(s.nextPostDueAt!.toLocal());
+    return 'Next post is queued for ${MaterialLocalizations.of(context).formatTimeOfDay(time)}.';
+  }
+  if (s.draftCount > 0) return 'Turn one draft into a scheduled post today.';
+  return 'Create a plan so your next move is ready.';
+}
+
+String _primaryActionLabel(CreatorCommandSnapshot s) {
+  if (s.nextPostOverdue || s.alertCount > 0) return 'Fix Attention Items';
+  if (s.draftCount > 0) return 'Schedule a Draft';
+  if (s.scheduledQueueCount == 0) return 'Build Posting Plan';
+  return s.tippyAiEnabled ? 'Ask Tippy What Is Next' : 'Unlock Tippy';
+}
+
+String _primaryActionHint(CreatorCommandSnapshot s) {
+  if (s.nextPostOverdue || s.alertCount > 0) {
+    return 'Open planner and clear what is blocking momentum.';
+  }
+  if (s.draftCount > 0) {
+    return '${s.draftCount} draft${s.draftCount == 1 ? '' : 's'} ready to move forward.';
+  }
+  if (s.scheduledQueueCount == 0) {
+    return 'Create a 7-day rhythm before the feed goes quiet.';
+  }
+  return _primaryRecommendation(s);
+}
+
+IconData _primaryActionIcon(CreatorCommandSnapshot s) {
+  if (s.nextPostOverdue || s.alertCount > 0) {
+    return Icons.priority_high_rounded;
+  }
+  if (s.draftCount > 0) return Icons.edit_calendar_rounded;
+  if (s.scheduledQueueCount == 0) return Icons.event_repeat_rounded;
+  return s.tippyAiEnabled
+      ? Icons.auto_awesome_rounded
+      : Icons.lock_open_rounded;
+}
+
+void _executePrimaryAction(BuildContext context, CreatorCommandSnapshot s) {
+  HapticFeedback.selectionClick();
+  if (s.nextPostOverdue || s.alertCount > 0 || s.draftCount > 0) {
+    AppNavigator.openManagePostsWithArgs(
+      context,
+      initialTab: ManagePostsInitialTab.scheduled,
+      launchSource: ManagePostsLaunchSource.commandCenter,
+    );
+    return;
+  }
+  if (s.scheduledQueueCount == 0) {
+    _executeTippyFromCommandCenter(context, tippyEnabled: s.tippyAiEnabled);
+    return;
+  }
+  _executeTippyFromCommandCenter(context, tippyEnabled: s.tippyAiEnabled);
 }
 
 class StreamersTipCommandCenterTrigger extends StatelessWidget {
@@ -163,26 +189,6 @@ class CreatorCommandCenterOverlay extends ConsumerStatefulWidget {
 
 class _CreatorCommandCenterOverlayState
     extends ConsumerState<CreatorCommandCenterOverlay> {
-  bool _isOpeningPulseActive = true;
-  Timer? _pulseTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseTimer = Timer(const Duration(milliseconds: 1200), () {
-      if (!mounted) return;
-      setState(() {
-        _isOpeningPulseActive = false;
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _pulseTimer?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.state == CreatorCommandCenterState.closed) {
@@ -305,7 +311,6 @@ class _CreatorCommandCenterOverlayState
                       : _ExpandedCommandCard(
                           key: const ValueKey<String>('expanded'),
                           snapshot: snapshot,
-                          streakPulse: _isOpeningPulseActive,
                           onDismiss: widget.onDismiss,
                         ),
                 );
@@ -485,161 +490,6 @@ class _ExpandedHeader extends StatelessWidget {
   }
 }
 
-class _TippyHeroSection extends StatelessWidget {
-  const _TippyHeroSection({required this.snapshot});
-
-  final CreatorCommandSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool unlocked = snapshot.tippyAiEnabled;
-    final String title = unlocked ? 'Tippy' : 'Tippy (locked)';
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _executeTippyFromCommandCenter(
-          context,
-          tippyEnabled: unlocked,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: unlocked
-                  ? const Color(0xFF4897D2).withValues(alpha: 0.34)
-                  : Colors.white.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Row(
-            children: <Widget>[
-              Container(
-                width: 3,
-                height: 32,
-                decoration: const BoxDecoration(
-                  borderRadius: BorderRadius.all(Radius.circular(2)),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: <Color>[Color(0xFF9248D2), Color(0xFF4897D2)],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Icon(
-                unlocked
-                    ? Icons.auto_awesome_rounded
-                    : Icons.lock_outline_rounded,
-                color: Colors.white.withValues(alpha: 0.92),
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text(
-                      _tippyHeroSubtitle(snapshot),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.58),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                unlocked
-                    ? Icons.arrow_forward_rounded
-                    : Icons.chevron_right_rounded,
-                color: Colors.white.withValues(alpha: 0.45),
-                size: 20,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NextMoveCard extends StatelessWidget {
-  const _NextMoveCard({required this.snapshot});
-
-  final CreatorCommandSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool urgent = snapshot.nextPostOverdue || snapshot.alertCount > 0;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.56),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: urgent
-              ? const Color(0xFFF97373).withValues(alpha: 0.34)
-              : const Color(0xFF4897D2).withValues(alpha: 0.22),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(
-            urgent ? Icons.priority_high_rounded : Icons.route_rounded,
-            color: urgent ? const Color(0xFFFCA5A5) : const Color(0xFF93C5FD),
-            size: 19,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  _nextMoveLine(snapshot, context),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    height: 1.24,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  _primaryRecommendation(snapshot),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.68),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1.28,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _QuickCommandRow extends StatelessWidget {
   const _QuickCommandRow({required this.snapshot});
 
@@ -655,11 +505,7 @@ class _QuickCommandRow extends StatelessWidget {
             label: 'Planner',
             onTap: () {
               HapticFeedback.selectionClick();
-              AppNavigator.openManagePostsWithArgs(
-                context,
-                initialTab: ManagePostsInitialTab.scheduled,
-                launchSource: ManagePostsLaunchSource.commandCenter,
-              );
+              AppNavigator.openContentPlanner(context);
             },
           ),
         ),
@@ -667,7 +513,7 @@ class _QuickCommandRow extends StatelessWidget {
         Expanded(
           child: _CommandButton(
             icon: Icons.auto_awesome_rounded,
-            label: snapshot.tippyAiEnabled ? 'Tippy' : 'Upgrade',
+            label: snapshot.tippyAiEnabled ? 'Tippy' : 'Tippy (locked)',
             onTap: () => _executeTippyFromCommandCenter(
               context,
               tippyEnabled: snapshot.tippyAiEnabled,
@@ -729,30 +575,198 @@ class _CommandButton extends StatelessWidget {
   }
 }
 
-class _HudStatLine extends StatelessWidget {
-  const _HudStatLine({required this.snapshot, required this.streakPulse});
+class _CreatorBriefCard extends StatelessWidget {
+  const _CreatorBriefCard({required this.snapshot});
 
   final CreatorCommandSnapshot snapshot;
-  final bool streakPulse;
 
   @override
   Widget build(BuildContext context) {
-    final String streak =
-        snapshot.streakDays > 0 ? '🔥 ${snapshot.streakDays}d' : 'Streak: —';
-    final String? growth = snapshot.growthPercent != null
-        ? '↑${snapshot.growthPercent!.abs().toStringAsFixed(0)}%'
-        : null;
-    return Text(
-      growth == null ? streak : '$streak  ·  $growth',
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: streakPulse
-            ? Colors.orangeAccent.withValues(alpha: 0.95)
-            : Colors.white.withValues(alpha: 0.7),
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.2,
+    final double progress =
+        (snapshot.consistencyScorePercent / 100).clamp(0.0, 1.0);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1220).withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.radar_rounded,
+                color: const Color(0xFF93C5FD).withValues(alpha: 0.92),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _briefLine(snapshot, context),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    height: 1.22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _SignalChip(label: _momentumLabel(snapshot)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 3,
+                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFF38BDF8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Consistency ${snapshot.consistencyScorePercent}%',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.58),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrimaryActionCard extends StatelessWidget {
+  const _PrimaryActionCard({required this.snapshot});
+
+  final CreatorCommandSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool urgent = snapshot.nextPostOverdue || snapshot.alertCount > 0;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _executePrimaryAction(context, snapshot),
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: urgent
+                ? const Color(0xFF3B1117).withValues(alpha: 0.82)
+                : const Color(0xFF10223A).withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: urgent
+                  ? const Color(0xFFFCA5A5).withValues(alpha: 0.34)
+                  : const Color(0xFF60A5FA).withValues(alpha: 0.28),
+            ),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+                child: Icon(
+                  _primaryActionIcon(snapshot),
+                  color: urgent ? const Color(0xFFFCA5A5) : Colors.white,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      _primaryActionLabel(snapshot),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _primaryActionHint(snapshot),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.68),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_rounded,
+                color: Colors.white.withValues(alpha: 0.5),
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SignalChip extends StatelessWidget {
+  const _SignalChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -762,20 +776,18 @@ class _ExpandedCommandCard extends StatelessWidget {
   const _ExpandedCommandCard({
     super.key,
     required this.snapshot,
-    required this.streakPulse,
     required this.onDismiss,
   });
 
   final CreatorCommandSnapshot snapshot;
-  final bool streakPulse;
   final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
     return _GlassShell(
-      width: 336,
+      width: 320,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
+        padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -784,36 +796,13 @@ class _ExpandedCommandCard extends StatelessWidget {
               snapshot: snapshot,
               onDismiss: onDismiss,
             ),
-            const SizedBox(height: 10),
-            _NextMoveCard(snapshot: snapshot),
             const SizedBox(height: 8),
-            _TippyHeroSection(snapshot: snapshot),
+            _CreatorBriefCard(snapshot: snapshot),
+            const SizedBox(height: 8),
+            _PrimaryActionCard(snapshot: snapshot),
             const SizedBox(height: 8),
             _QuickCommandRow(snapshot: snapshot),
-            const SizedBox(height: 10),
-            _HudStatLine(snapshot: snapshot, streakPulse: streakPulse),
             const SizedBox(height: 8),
-            Text(
-              'Consistency ${snapshot.consistencyScorePercent}%',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 11.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: (snapshot.consistencyScorePercent / 100).clamp(0.0, 1.0),
-                minHeight: 3,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xFF4897D2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
             _ActionStatusBlock(snapshot: snapshot),
           ],
         ),

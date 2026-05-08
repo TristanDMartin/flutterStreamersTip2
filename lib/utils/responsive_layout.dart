@@ -1,18 +1,15 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class AppResponsive {
   AppResponsive._(this.mediaQuery)
       : size = mediaQuery.size,
-        shortestSide = mediaQuery.size.shortestSide,
-        isIOS = defaultTargetPlatform == TargetPlatform.iOS;
+        shortestSide = mediaQuery.size.shortestSide;
 
   final MediaQueryData mediaQuery;
   final Size size;
   final double shortestSide;
-  final bool isIOS;
 
   static AppResponsive of(BuildContext context) {
     return AppResponsive._(MediaQuery.of(context));
@@ -26,9 +23,9 @@ class AppResponsive {
   double get scale {
     if (isTabletLike) return 1.06;
 
-    final base = shortestSide / 390.0;
-    final minScale = isIOS ? 0.88 : 0.90;
-    final maxScale = isIOS ? 1.02 : 1.04;
+    final double base = shortestSide / 390.0;
+    const double minScale = 0.90;
+    const double maxScale = 1.04;
     return base.clamp(minScale, maxScale);
   }
 
@@ -65,8 +62,10 @@ class AppResponsive {
     );
   }
 
+  /// Clamps OS accessibility text scale so A/B across phones stays comparable.
+  /// When comparing iOS vs Android, set similar **Display → Text size** on both.
   static MediaQueryData normalizedMediaQuery(MediaQueryData mediaQuery) {
-    final textScale = mediaQuery.textScaler.scale(1).clamp(0.90, 1.18);
+    final double textScale = mediaQuery.textScaler.scale(1).clamp(0.90, 1.18);
     return mediaQuery.copyWith(textScaler: TextScaler.linear(textScale));
   }
 }

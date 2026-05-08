@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../constants/app_colors.dart';
-
-/// Theme-aware chrome for full-screen flows that used the purple “support”
-/// shell in dark mode only ([AppColors.supportBackground]).
+/// Theme-aware chrome for full-screen flows (Activity, Threads, Progression).
+/// Dark mode follows [ThemeData.colorScheme] — not the legacy purple support shell.
 class StSupportShellStyle {
   const StSupportShellStyle._({
     required this.isLight,
@@ -106,36 +104,43 @@ class StSupportShellStyle {
         iconDim: c.onSurface.withValues(alpha: 0.32),
       );
     }
+    final Color surface = c.surface;
+    final Color surfaceLow = c.surfaceContainerLow;
     return StSupportShellStyle._(
       isLight: false,
-      scaffold: AppColors.supportBackground,
-      pageGradient: AppColors.supportSurfaceGradient,
-      onChrome: Colors.white,
-      muted: Colors.white.withValues(alpha: 0.72),
-      mutedStrong: Colors.white.withValues(alpha: 0.58),
-      heroGradient: AppColors.supportSurfaceGradient,
-      heroBorder: Colors.white.withValues(alpha: 0.10),
-      surfaceCard: Colors.white.withValues(alpha: 0.06),
-      surfaceCardBorder: Colors.white.withValues(alpha: 0.10),
-      skeletonFill: Colors.white.withValues(alpha: 0.05),
-      skeletonLine: Colors.white.withValues(alpha: 0.12),
-      skeletonLineDim: Colors.white.withValues(alpha: 0.08),
-      chipSelectedBg: AppColors.primary.withValues(alpha: 0.22),
-      chipUnselectedBg: Colors.white.withValues(alpha: 0.06),
-      chipSelectedBorder: AppColors.accent.withValues(alpha: 0.45),
-      chipUnselectedBorder: Colors.white.withValues(alpha: 0.10),
-      chipSelectedFg: Colors.white,
-      chipUnselectedFg: Colors.white.withValues(alpha: 0.58),
-      glassCircleGradientStart:
-          AppColors.supportTopSurface.withValues(alpha: 0.35),
-      glassCircleGradientEnd: Colors.white.withValues(alpha: 0.06),
-      glassCircleBorder: Colors.white.withValues(alpha: 0.16),
-      refreshColor: Colors.white,
-      refreshBackground: AppColors.primary,
-      shadowSoft: Colors.black.withValues(alpha: 0.1),
-      panelSurface: const Color(0xFF0E1220),
-      panelBorder: Colors.white.withValues(alpha: 0.1),
-      iconDim: Colors.white.withValues(alpha: 0.3),
+      scaffold: t.scaffoldBackgroundColor,
+      pageGradient: <Color>[
+        t.scaffoldBackgroundColor,
+        surfaceLow,
+      ],
+      onChrome: c.onSurface,
+      muted: c.onSurfaceVariant,
+      mutedStrong: c.onSurfaceVariant.withValues(alpha: 0.88),
+      heroGradient: <Color>[
+        c.primary.withValues(alpha: 0.12),
+        c.primary.withValues(alpha: 0.22),
+      ],
+      heroBorder: c.outline.withValues(alpha: 0.4),
+      surfaceCard: surface,
+      surfaceCardBorder: c.outline.withValues(alpha: 0.35),
+      skeletonFill: c.surfaceContainerHighest.withValues(alpha: 0.55),
+      skeletonLine: c.outline.withValues(alpha: 0.32),
+      skeletonLineDim: c.surfaceContainerHighest.withValues(alpha: 0.4),
+      chipSelectedBg: c.primary.withValues(alpha: 0.2),
+      chipUnselectedBg: surfaceLow,
+      chipSelectedBorder: c.primary.withValues(alpha: 0.45),
+      chipUnselectedBorder: c.outline.withValues(alpha: 0.28),
+      chipSelectedFg: c.primary,
+      chipUnselectedFg: c.onSurface.withValues(alpha: 0.55),
+      glassCircleGradientStart: c.primary.withValues(alpha: 0.24),
+      glassCircleGradientEnd: surfaceLow,
+      glassCircleBorder: c.outline.withValues(alpha: 0.38),
+      refreshColor: c.primary,
+      refreshBackground: surface,
+      shadowSoft: Colors.black.withValues(alpha: 0.22),
+      panelSurface: surface,
+      panelBorder: c.outline.withValues(alpha: 0.35),
+      iconDim: c.onSurface.withValues(alpha: 0.38),
     );
   }
 }

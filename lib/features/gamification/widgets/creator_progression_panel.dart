@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../constants/app_colors.dart';
 import '../../../core/theme/support_shell_style.dart';
 import '../gamification_providers.dart';
 import '../models/gamification_summary_model.dart';
@@ -82,6 +81,7 @@ class _ProgressionBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final GamificationSummaryModel model = bundle.progress;
     final String rankTitle =
         GamificationConstants.rankTitleForLevel(model.level);
@@ -143,7 +143,7 @@ class _ProgressionBody extends StatelessWidget {
               Expanded(
                 child: _MiniStatCard(
                   icon: Icons.auto_awesome_rounded,
-                  iconColor: AppColors.supportAccent.withValues(alpha: 0.95),
+                  iconColor: scheme.primary.withValues(alpha: 0.95),
                   title: 'Creator score',
                   value: model.creatorScore.toStringAsFixed(1),
                   helper: 'Based on your recent activity',
@@ -221,16 +221,15 @@ class _ProgressionBody extends StatelessWidget {
                     ]
                   : current
                       ? <Color>[
-                          AppColors.supportAccent,
-                          scheme.primary.withValues(alpha: 0.45),
+                          scheme.primary,
+                          scheme.secondary.withValues(alpha: 0.55),
                         ]
                       : <Color>[
                           scheme.outline.withValues(alpha: 0.45),
                           scheme.surfaceContainerHighest,
                         ];
-              final Color levelNumColor = completed || current
-                  ? scheme.onPrimary
-                  : scheme.onSurface;
+              final Color levelNumColor =
+                  completed || current ? scheme.onPrimary : scheme.onSurface;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Container(
@@ -525,16 +524,16 @@ class _LevelCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: <Color>[
-                AppColors.primary.withValues(alpha: 0.35),
-                Colors.white.withValues(alpha: 0.06),
+                scheme.primary.withValues(alpha: 0.22),
+                scheme.surfaceContainerHighest.withValues(alpha: 0.75),
               ],
             ),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: scheme.outline.withValues(alpha: 0.38),
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: AppColors.supportAccent.withValues(alpha: 0.08),
+                color: scheme.primary.withValues(alpha: 0.12),
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
@@ -566,28 +565,26 @@ class _LevelCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: <Color>[
-                AppColors.supportAccent.withValues(alpha: 0.28),
-                Colors.white.withValues(alpha: 0.08),
+                scheme.primary.withValues(alpha: 0.32),
+                scheme.surfaceContainerHighest.withValues(alpha: 0.85),
               ],
             ),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: scheme.outline.withValues(alpha: 0.4),
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: AppColors.supportAccent.withValues(alpha: 0.18),
+                color: scheme.primary.withValues(alpha: 0.14),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
             ],
           );
-    final Color levelTextColor =
-        shell.isLight ? scheme.onSurface : Colors.white;
+    final Color levelTextColor = scheme.onSurface;
     final Color trackBg = shell.isLight
         ? scheme.surfaceContainerHighest.withValues(alpha: 0.9)
-        : Colors.black.withValues(alpha: 0.35);
-    final Color trackFg =
-        shell.isLight ? scheme.primary : AppColors.supportAccent;
+        : scheme.surfaceContainerHighest.withValues(alpha: 0.55);
+    final Color trackFg = scheme.primary;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -624,9 +621,7 @@ class _LevelCard extends StatelessWidget {
                         Text(
                           rankTitle,
                           style: TextStyle(
-                            color: shell.isLight
-                                ? shell.onChrome
-                                : Colors.white.withValues(alpha: 0.9),
+                            color: shell.onChrome,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
@@ -832,6 +827,7 @@ class _AchievementsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final GamificationSummaryModel progress = bundle.progress;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final int completedMissions =
         bundle.missions.where((mission) => mission.isCompleted).length;
     final List<_AchievementState> achievements = <_AchievementState>[
@@ -856,7 +852,7 @@ class _AchievementsSection extends StatelessWidget {
             : '${progress.streakDays}/3 days',
         nextStep: 'Stay active on consecutive days to grow your streak.',
         icon: Icons.local_fire_department_rounded,
-        accent: AppColors.supportAccent,
+        accent: scheme.primary,
         unlocked: progress.streakDays >= 3,
       ),
       _AchievementState(
@@ -892,9 +888,8 @@ class _AchievementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final Color accent = achievement.unlocked
-        ? achievement.accent
-        : shell.iconDim;
+    final Color accent =
+        achievement.unlocked ? achievement.accent : shell.iconDim;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.97, end: 1),
       duration: const Duration(milliseconds: 420),

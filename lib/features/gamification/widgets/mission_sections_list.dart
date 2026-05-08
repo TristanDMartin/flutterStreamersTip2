@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../constants/app_colors.dart';
 import '../../../core/theme/support_shell_style.dart';
 import '../services/gamification_event_service.dart';
 import '../missions/mission_engine.dart';
@@ -130,7 +129,7 @@ class _MissionTile extends StatelessWidget {
         ? shell.muted
         : done
             ? Colors.greenAccent.withValues(alpha: 0.9)
-            : AppColors.supportAccent;
+            : scheme.primary;
     final IconData icon = claimed
         ? Icons.check_circle_rounded
         : done
@@ -250,8 +249,7 @@ class _MissionTile extends StatelessWidget {
                                     return LinearProgressIndicator(
                                       value: value,
                                       minHeight: 6,
-                                      backgroundColor: scheme
-                                          .onSurface
+                                      backgroundColor: scheme.onSurface
                                           .withValues(alpha: 0.12),
                                       valueColor:
                                           AlwaysStoppedAnimation<Color>(accent),
@@ -297,7 +295,7 @@ class _MissionTile extends StatelessWidget {
         ? Colors.greenAccent
         : mission.isClaimed
             ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55)
-            : AppColors.supportAccent;
+            : Theme.of(context).colorScheme.primary;
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,

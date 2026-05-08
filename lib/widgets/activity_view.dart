@@ -14,7 +14,6 @@ import '../widgets/activity_row_view.dart';
 import '../widgets/threads/thread_detail_screen.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
-import '../constants/app_colors.dart';
 import '../core/theme/support_shell_style.dart';
 
 class ActivityView extends ConsumerStatefulWidget {
@@ -226,6 +225,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     ActivityState state,
     StSupportShellStyle shell,
   ) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final int unread = _getTotalNotificationCount(state.grouped);
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
@@ -277,7 +277,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                         color: shell.onChrome,
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+                        letterSpacing: 0,
                       ),
                     ),
                     if (unread > 0) ...[
@@ -293,13 +293,16 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: AppColors.supportAccentGradient,
+                                gradient: LinearGradient(
+                                  colors: <Color>[
+                                    scheme.primary,
+                                    scheme.secondary,
+                                  ],
                                 ),
                                 borderRadius: BorderRadius.circular(999),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primary.withValues(
+                                    color: scheme.primary.withValues(
                                       alpha: 0.35,
                                     ),
                                     blurRadius: 10,
@@ -310,7 +313,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                               child: Text(
                                 '$unread',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onPrimary,
+                                  color: scheme.onPrimary,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -368,20 +371,22 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: AppColors.supportAccentGradient,
+                  gradient: LinearGradient(
+                    colors: <Color>[
+                      scheme.primary,
+                      scheme.secondary,
+                    ],
                   ),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: shell.isLight
-                        ? Theme.of(context).colorScheme.onPrimary
-                            .withValues(alpha: 0.35)
-                        : Colors.white.withValues(alpha: 0.22),
+                    color: scheme.outline.withValues(
+                      alpha: shell.isLight ? 0.35 : 0.4,
+                    ),
                   ),
                 ),
                 child: Icon(
                   Icons.done_all_rounded,
-                  color: Theme.of(context).colorScheme.onPrimary,
+                  color: scheme.onPrimary,
                   size: 18,
                 ),
               ),
@@ -685,18 +690,27 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                           vertical: 16,
                         ),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: AppColors.primaryGradient,
+                          gradient: LinearGradient(
+                            colors: <Color>[
+                              Theme.of(context).colorScheme.primary,
+                              Theme.of(context).colorScheme.secondary,
+                            ],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
                           ),
                           borderRadius: BorderRadius.circular(25),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withValues(alpha: 0.35),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.4),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.35),
                               blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
@@ -737,7 +751,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             Icon(
               Icons.error_outline_rounded,
               size: 72,
-              color: AppColors.error.withValues(alpha: 0.85),
+              color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 24),
             Text(
@@ -775,18 +789,27 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   vertical: 16,
                 ),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: AppColors.primaryGradient,
+                  gradient: LinearGradient(
+                    colors: <Color>[
+                      Theme.of(context).colorScheme.primary,
+                      Theme.of(context).colorScheme.secondary,
+                    ],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
                   borderRadius: BorderRadius.circular(25),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.22),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outline
+                        .withValues(alpha: 0.35),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.35),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.32),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -852,6 +875,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   }
 
   Widget _buildSectionHeader(StSupportShellStyle shell, String title) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
       child: Row(
@@ -861,10 +885,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             height: 18,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2),
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: AppColors.supportAccentGradient,
+                colors: <Color>[
+                  scheme.primary,
+                  scheme.secondary,
+                ],
               ),
             ),
           ),
@@ -938,7 +965,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('All notifications marked as read'),
-          backgroundColor: AppColors.primary,
+          backgroundColor: Theme.of(context).colorScheme.primary,
           duration: const Duration(seconds: 2),
         ),
       );

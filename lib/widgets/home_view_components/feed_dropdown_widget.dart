@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../models/feed_tab.dart';
-import '../../constants/app_colors.dart';
 
 /// Feed dropdown widget for HomeView (For You / Progression / Threads)
 class FeedDropdownWidget extends StatelessWidget {
@@ -22,12 +21,10 @@ class FeedDropdownWidget extends StatelessWidget {
     if (!isVisible) return const SizedBox.shrink();
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isLight = Theme.of(context).brightness == Brightness.light;
-    final List<Color> gradColors = isLight
-        ? <Color>[
-            scheme.surface,
-            scheme.surfaceContainerLow,
-          ]
-        : AppColors.supportSurfaceGradient;
+    final List<Color> gradColors = <Color>[
+      scheme.surface,
+      scheme.surfaceContainerLow,
+    ];
     return Stack(
       children: [
         Material(
@@ -37,14 +34,12 @@ class FeedDropdownWidget extends StatelessWidget {
           child: Container(
             width: 200,
             decoration: BoxDecoration(
-              color: isLight
-                  ? scheme.surface.withValues(alpha: 0.98)
-                  : AppColors.supportBackground.withValues(alpha: 0.96),
+              color: scheme.surface.withValues(alpha: 0.98),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: isLight
-                    ? scheme.outline.withValues(alpha: 0.45)
-                    : Colors.white.withValues(alpha: 0.12),
+                color: scheme.outline.withValues(
+                  alpha: isLight ? 0.45 : 0.38,
+                ),
                 width: 1.2,
               ),
               boxShadow: <BoxShadow>[
@@ -89,7 +84,7 @@ class FeedDropdownWidget extends StatelessWidget {
     final bool isSelected = activeTab == tab;
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isLight = Theme.of(context).brightness == Brightness.light;
-    final Color label = isLight ? scheme.onSurface : Colors.white;
+    final Color label = scheme.onSurface;
     return GestureDetector(
       onTap: () {
         onTabSelected(tab);
@@ -100,9 +95,7 @@ class FeedDropdownWidget extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           color: isSelected
-              ? (isLight
-                  ? scheme.primary.withValues(alpha: 0.14)
-                  : AppColors.supportAccent.withValues(alpha: 0.16))
+              ? scheme.primary.withValues(alpha: isLight ? 0.14 : 0.18)
               : Colors.transparent,
         ),
         child: Row(
@@ -123,7 +116,7 @@ class FeedDropdownWidget extends StatelessWidget {
             if (isSelected)
               Icon(
                 Icons.check,
-                color: isLight ? scheme.primary : Colors.white,
+                color: scheme.primary,
                 size: 20,
               ),
           ],
@@ -137,9 +130,7 @@ class FeedDropdownWidget extends StatelessWidget {
     final ColorScheme s = Theme.of(context).colorScheme;
     return Container(
       height: 1,
-      color: isLight
-          ? s.outline.withValues(alpha: 0.3)
-          : Colors.white.withValues(alpha: 0.1),
+      color: s.outline.withValues(alpha: isLight ? 0.3 : 0.28),
       margin: const EdgeInsets.symmetric(horizontal: 16),
     );
   }

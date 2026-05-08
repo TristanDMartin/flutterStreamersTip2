@@ -4,7 +4,6 @@ import 'dart:async';
 import '../../models/forum_post.dart';
 import '../../services/forum_service.dart';
 import '../../models/forum_category.dart';
-import '../../constants/app_colors.dart';
 import '../../core/theme/support_shell_style.dart';
 import 'thread_detail_screen.dart';
 import 'create_thread_screen.dart';
@@ -103,21 +102,23 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
     // Calculate header height: SafeArea top + FeedSelector height (50) + margins (8*2)
     final mediaQuery = MediaQuery.of(context);
     final safeAreaTop = mediaQuery.padding.top;
-    final headerHeight = safeAreaTop + 50 + 16; // SafeArea + FeedSelector height + margins
+    final headerHeight =
+        safeAreaTop + 50 + 16; // SafeArea + FeedSelector height + margins
 
     return Scaffold(
       backgroundColor: shell.scaffold,
       body: Container(
         color: shell.scaffold,
         child: SafeArea(
-          top: false, // Don't add SafeArea padding since header is positioned absolutely
+          top:
+              false, // Don't add SafeArea padding since header is positioned absolutely
           child: Column(
             children: [
               // Top padding to account for persistent header (FeedSelectorWidget)
               SizedBox(height: headerHeight),
               // Search and Filters
               _buildFilters(shell, scheme),
-              
+
               // Threads Grid/List
               Expanded(
                 child: _isLoading
@@ -160,7 +161,8 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                                   itemBuilder: (context, index) {
                                     return ForumPostCard(
                                       post: _threads[index],
-                                      onTap: () => _navigateToThread(_threads[index]),
+                                      onTap: () =>
+                                          _navigateToThread(_threads[index]),
                                     );
                                   },
                                 ),
@@ -336,9 +338,8 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                               ? scheme.onPrimary
                               : scheme.onSurface.withValues(alpha: 0.65),
                           fontSize: 13,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.normal,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                       selectedColor: scheme.primary,
@@ -432,7 +433,7 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                         ],
                       ),
                     ),
-                    color: shell.isLight ? scheme.surface : AppColors.supportTopSurface,
+                    color: scheme.surface,
                     itemBuilder: (context) => [
                       PopupMenuItem(
                         value: null,
@@ -518,13 +519,13 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     colors: showProgress
-                        ? [
-                            AppColors.primary.withValues(alpha: 0.95),
-                            AppColors.secondary.withValues(alpha: 0.95),
+                        ? <Color>[
+                            scheme.primary,
+                            scheme.secondary,
                           ]
-                        : [
-                            AppColors.error.withValues(alpha: 0.92),
-                            AppColors.warning.withValues(alpha: 0.88),
+                        : <Color>[
+                            scheme.error,
+                            scheme.error.withValues(alpha: 0.78),
                           ],
                   ),
                 ),
@@ -609,9 +610,9 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
-                    colors: [
-                      AppColors.tertiary.withValues(alpha: 0.92),
-                      AppColors.primary.withValues(alpha: 0.88),
+                    colors: <Color>[
+                      scheme.secondary,
+                      scheme.primary,
                     ],
                   ),
                 ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/support_shell_style.dart';
 import '../../models/forum_post.dart';
-import '../../constants/app_colors.dart';
 import '../../services/discussion_author_service.dart';
 import '../status_aware_avatar.dart';
 
@@ -31,8 +30,8 @@ class ForumPostCard extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: <Color>[
-                    Colors.white.withValues(alpha: 0.10),
-                    Colors.white.withValues(alpha: 0.04),
+                    scheme.surface,
+                    scheme.surfaceContainerLow,
                   ],
                 ),
           color: shell.isLight ? shell.surfaceCard : null,
@@ -61,9 +60,9 @@ class ForumPostCard extends StatelessWidget {
                   top: Radius.circular(20),
                 ),
                 gradient: LinearGradient(
-                  colors: [
-                    AppColors.primary,
-                    AppColors.secondary,
+                  colors: <Color>[
+                    scheme.primary,
+                    scheme.secondary,
                   ],
                 ),
               ),
@@ -83,10 +82,10 @@ class ForumPostCard extends StatelessWidget {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.14),
+                          color: scheme.primary.withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: AppColors.primary.withValues(alpha: 0.25),
+                            color: scheme.primary.withValues(alpha: 0.28),
                           ),
                         ),
                         child: Text(

@@ -2,59 +2,122 @@ import 'package:flutter/material.dart';
 
 import 'st_theme_tokens.dart';
 
+/// Shared line metrics so SF Pro (iOS) and Roboto (Android) occupy similar vertical space.
 class StAppTheme {
   StAppTheme._();
 
+  static const double _bodyLargeHeight = 1.45;
+  static const double _bodyMediumHeight = 1.43;
+  static const double _bodySmallHeight = 1.4;
+  static const double _titleLargeHeight = 1.25;
+  static const double _titleMediumHeight = 1.35;
+  static const double _titleSmallHeight = 1.33;
+  static const double _labelLargeHeight = 1.25;
+
   static TextTheme _textThemeLight() {
-    return const TextTheme(
+    return TextTheme(
       bodyLarge: TextStyle(
         color: StThemeColors.lightTextPrimary,
         fontSize: 16,
+        height: _bodyLargeHeight,
+        letterSpacing: 0.15,
+        leadingDistribution: TextLeadingDistribution.even,
       ),
       bodyMedium: TextStyle(
         color: StThemeColors.lightTextSecondary,
         fontSize: 14,
+        height: _bodyMediumHeight,
+        letterSpacing: 0.12,
+        leadingDistribution: TextLeadingDistribution.even,
       ),
       bodySmall: TextStyle(
         color: StThemeColors.lightTextSecondary,
         fontSize: 12,
+        height: _bodySmallHeight,
+        letterSpacing: 0.1,
+        leadingDistribution: TextLeadingDistribution.even,
       ),
       titleLarge: TextStyle(
         color: StThemeColors.lightTextPrimary,
         fontSize: 22,
         fontWeight: FontWeight.w700,
+        height: _titleLargeHeight,
+        letterSpacing: 0,
       ),
       titleMedium: TextStyle(
         color: StThemeColors.lightTextPrimary,
         fontSize: 16,
         fontWeight: FontWeight.w600,
+        height: _titleMediumHeight,
+        letterSpacing: 0.05,
+      ),
+      titleSmall: TextStyle(
+        color: StThemeColors.lightTextPrimary,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: _titleSmallHeight,
+        letterSpacing: 0.05,
+      ),
+      labelLarge: TextStyle(
+        color: StThemeColors.lightTextPrimary,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: _labelLargeHeight,
+        letterSpacing: 0.1,
       ),
     );
   }
 
   static TextTheme _textThemeDark() {
-    return const TextTheme(
+    return TextTheme(
       bodyLarge: TextStyle(
         color: StThemeColors.darkTextPrimary,
         fontSize: 16,
+        height: _bodyLargeHeight,
+        letterSpacing: 0.15,
+        leadingDistribution: TextLeadingDistribution.even,
       ),
       bodyMedium: TextStyle(
         color: StThemeColors.darkTextSecondary,
         fontSize: 14,
+        height: _bodyMediumHeight,
+        letterSpacing: 0.12,
+        leadingDistribution: TextLeadingDistribution.even,
       ),
       bodySmall: TextStyle(
         color: StThemeColors.darkTextSecondary,
         fontSize: 12,
+        height: _bodySmallHeight,
+        letterSpacing: 0.1,
+        leadingDistribution: TextLeadingDistribution.even,
       ),
       titleLarge: TextStyle(
         color: StThemeColors.darkTextPrimary,
         fontSize: 22,
         fontWeight: FontWeight.w700,
+        height: _titleLargeHeight,
+        letterSpacing: 0,
       ),
       titleMedium: TextStyle(
         color: StThemeColors.darkTextPrimary,
         fontSize: 16,
         fontWeight: FontWeight.w600,
+        height: _titleMediumHeight,
+        letterSpacing: 0.05,
+      ),
+      titleSmall: TextStyle(
+        color: StThemeColors.darkTextPrimary,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: _titleSmallHeight,
+        letterSpacing: 0.05,
+      ),
+      labelLarge: TextStyle(
+        color: StThemeColors.darkTextPrimary,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: _labelLargeHeight,
+        letterSpacing: 0.1,
       ),
     );
   }
@@ -83,6 +146,9 @@ class StAppTheme {
         surfaceTintColor: Colors.transparent,
       ),
       textTheme: _textThemeLight(),
+      typography: Typography.material2018(
+        platform: TargetPlatform.android,
+      ),
       cardTheme: const CardThemeData(
         color: StThemeColors.lightSurface,
         elevation: 0,
@@ -129,6 +195,9 @@ class StAppTheme {
         surfaceTintColor: Colors.transparent,
       ),
       textTheme: _textThemeDark(),
+      typography: Typography.material2018(
+        platform: TargetPlatform.android,
+      ),
       cardTheme: const CardThemeData(
         color: StThemeColors.darkSurface,
         elevation: 0,

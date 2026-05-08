@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/feed_tab.dart';
-import '../../constants/app_colors.dart';
 import 'feed_dropdown_widget.dart';
 
-/// Feed selector widget for HomeView (single purple pill with dropdown + compass)
+/// Feed selector widget for HomeView (single themed pill with dropdown + compass)
 class FeedSelectorWidget extends StatefulWidget {
   final FeedTab activeTab;
   final ValueChanged<FeedTab> onTabSelected;
@@ -78,9 +77,6 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                 activeTab: widget.activeTab,
                 isVisible: true,
                 onTabSelected: (FeedTab tab) {
-                  debugPrint(
-                    '🔘 FeedSelector: ${tab.displayName} tapped in overlay',
-                  );
                   _closeDropdown();
                   widget.onTabSelected(tab);
                 },
@@ -99,39 +95,26 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isLight = Theme.of(context).brightness == Brightness.light;
-    final Color labelColor = isLight ? scheme.onSurface : Colors.white;
-    final List<Color> glassColors = isLight
-        ? <Color>[
-            scheme.surface.withValues(alpha: 0.95),
-            scheme.surfaceContainerLow.withValues(alpha: 0.9),
-          ]
-        : <Color>[
-            Colors.white.withValues(alpha: 0.14),
-            Colors.white.withValues(alpha: 0.05),
-          ];
-    final Color borderColor = isLight
-        ? scheme.outline.withValues(alpha: 0.4)
-        : AppColors.primary.withValues(alpha: 0.35);
-    final List<BoxShadow> pillShadows = isLight
-        ? <BoxShadow>[
-            BoxShadow(
-              color: scheme.shadow.withValues(alpha: 0.12),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ]
-        : <BoxShadow>[
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.18),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 10),
-            ),
-          ];
+    final Color labelColor = scheme.onSurface;
+    final List<Color> glassColors = <Color>[
+      scheme.surface.withValues(alpha: isLight ? 0.95 : 0.94),
+      scheme.surfaceContainerLow.withValues(alpha: isLight ? 0.9 : 0.88),
+    ];
+    final Color borderColor =
+        scheme.outline.withValues(alpha: isLight ? 0.4 : 0.36);
+    final List<BoxShadow> pillShadows = <BoxShadow>[
+      BoxShadow(
+        color: scheme.shadow.withValues(alpha: isLight ? 0.12 : 0.35),
+        blurRadius: 20,
+        offset: const Offset(0, 8),
+      ),
+      if (!isLight)
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.28),
+          blurRadius: 16,
+          offset: const Offset(0, 10),
+        ),
+    ];
     return SafeArea(
       top: true,
       child: Container(
@@ -140,7 +123,7 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Single purple pill with dropdown
+            // Single themed pill with dropdown
             CompositedTransformTarget(
               link: _dropdownLink,
               child: Semantics(
@@ -149,15 +132,11 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                 label: 'Choose home feed',
                 child: GestureDetector(
                   onTap: () {
-                    debugPrint('🔘 FeedSelector: Main dropdown button tapped');
                     HapticFeedback.lightImpact();
                     final bool shouldOpen = !_isDropdownOpen;
                     setState(() {
                       _isDropdownOpen = shouldOpen;
                     });
-                    debugPrint(
-                      '🔘 FeedSelector: Dropdown state changed to: $_isDropdownOpen',
-                    );
 
                     if (shouldOpen) {
                       _showOverlay();
@@ -200,9 +179,7 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                           _isDropdownOpen
                               ? Icons.keyboard_arrow_up
                               : Icons.keyboard_arrow_down,
-                          color: isLight
-                              ? scheme.primary
-                              : AppColors.supportAccent,
+                          color: scheme.primary,
                           size: 20,
                         ),
                       ],
@@ -226,40 +203,30 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: isLight
-                        ? <Color>[
-                            scheme.surface.withValues(alpha: 0.95),
-                            scheme.surfaceContainerLow.withValues(alpha: 0.88),
-                          ]
-                        : <Color>[
-                            Colors.white.withValues(alpha: 0.12),
-                            Colors.white.withValues(alpha: 0.04),
-                          ],
+                    colors: <Color>[
+                      scheme.surface.withValues(alpha: isLight ? 0.95 : 0.92),
+                      scheme.surfaceContainerLow.withValues(
+                        alpha: isLight ? 0.88 : 0.85,
+                      ),
+                    ],
                   ),
                   border: Border.all(
-                    color: isLight
-                        ? scheme.outline.withValues(alpha: 0.4)
-                        : AppColors.primary.withValues(alpha: 0.28),
+                    color:
+                        scheme.outline.withValues(alpha: isLight ? 0.4 : 0.34),
                   ),
-                  boxShadow: isLight
-                      ? <BoxShadow>[
-                          BoxShadow(
-                            color: scheme.shadow.withValues(alpha: 0.1),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ]
-                      : <BoxShadow>[
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.12),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: scheme.shadow.withValues(
+                        alpha: isLight ? 0.1 : 0.28,
+                      ),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: Icon(
                   Icons.explore_outlined,
-                  color: isLight ? scheme.primary : Colors.white,
+                  color: scheme.primary,
                   size: 22,
                 ),
               ),

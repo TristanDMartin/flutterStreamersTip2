@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:firebase_core/firebase_core.dart';
 import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
 import '../widgets/auth_modal_view.dart';
+import '../widgets/email_verification_view.dart';
 import '../pages/main_tab_view.dart';
 import 'account_status_guard.dart';
 
@@ -123,13 +125,12 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
       return _buildLoadingScreen();
     }
 
-    // Show main app if logged in
+    // Show main app if logged in (email verification gate matches web)
     if (authService.isLoggedIn) {
-      debugPrint('🏠 AppStartupWrapper: Returning MainTabView');
-      // Run calendar cleanup in background
+      debugPrint('🏠 AppStartupWrapper: Returning verified shell');
       _runCalendarCleanup();
-      return AccountStatusGuard(
-        child: MainTabView(initialTabIndex: widget.initialTabIndex),
+      return _EmailVerificationOrHome(
+        initialTabIndex: widget.initialTabIndex,
       );
     }
 
@@ -214,6 +215,75 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Blocks [MainTabView] until Firebase reports [User.emailVerified] (web parity).
+class _EmailVerificationOrHome extends StatefulWidget {
+  const _EmailVerificationOrHome({required this.initialTabIndex});
+
+  final int initialTabIndex;
+
+  @override
+  State<_EmailVerificationOrHome> createState() =>
+      _EmailVerificationOrHomeState();
+}
+
+class _EmailVerificationOrHomeState extends State<_EmailVerificationOrHome> {
+  bool _ready = false;
+  bool _verified = false;
+  String _email = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _syncVerification();
+  }
+
+  Future<void> _syncVerification() async {
+    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _verified = true;
+        });
+      }
+      return;
+    }
+    await user.reload();
+    final fa.User? fresh = fa.FirebaseAuth.instance.currentUser;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _ready = true;
+      _verified = fresh?.emailVerified ?? false;
+      _email = fresh?.email ?? '';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (!_verified) {
+      return EmailVerificationView(
+        email: _email,
+        navigateToHomeOnVerify: false,
+        onVerified: () {
+          _syncVerification();
+        },
+      );
+    }
+    return AccountStatusGuard(
+      child: MainTabView(initialTabIndex: widget.initialTabIndex),
     );
   }
 }
