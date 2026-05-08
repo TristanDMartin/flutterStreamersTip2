@@ -247,13 +247,15 @@ service cloud.firestore {
         request.resource.data.isActive == true &&
         (isUserAdmin() || isWithinFollowLimit(request.auth.uid));
       allow update: if request.auth != null &&
-        exists(/databases/$(database)/documents/follows/$(followId)) &&
-        request.auth.uid == existingFollowFollowerId() &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['isActive', 'updatedAt']);
+        (exists(/databases/$(database)/documents/follows/$(followId))
+          ? request.auth.uid == existingFollowFollowerId() &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['isActive', 'updatedAt'])
+          : false);
       allow delete: if request.auth != null &&
-        exists(/databases/$(database)/documents/follows/$(followId)) &&
-        request.auth.uid == existingFollowFollowerId();
+        (exists(/databases/$(database)/documents/follows/$(followId))
+          ? request.auth.uid == existingFollowFollowerId()
+          : false);
       allow list: if request.auth != null;
     }
 
@@ -774,7 +776,7 @@ service cloud.firestore {
   function isFirestoreAdminSelf() {
     let path = /databases/$(database)/documents/users/$(request.auth.uid);
     return exists(path)
-      && (
+      ? (
         ('role' in get(path).data && get(path).data.role == 'admin') ||
         ('isAdmin' in get(path).data && get(path).data.isAdmin == true) ||
         (
@@ -782,7 +784,8 @@ service cloud.firestore {
           get(path).data.admin is map &&
           get(path).data.admin.isAdmin == true
         )
-      );
+      )
+      : false;
   }
 
   function isAdmin() {
@@ -797,9 +800,10 @@ service cloud.firestore {
   }
 
   function hasAdminClaim() {
-    return request.auth.token is map &&
-      'admin' in request.auth.token &&
-      request.auth.token.admin == true;
+    return request.auth.token is map
+      ? 'admin' in request.auth.token &&
+        request.auth.token.admin == true
+      : false;
   }
 
   function isNotBannedUser() {
@@ -911,12 +915,13 @@ service cloud.firestore {
   }
   
   function isWithinFollowLimit(userId) {
+    let path = /databases/$(database)/documents/rate_limits/$(userId);
     return isUserAdmin() ||
-           !exists(/databases/$(database)/documents/rate_limits/$(userId)) ||
-           (!('follow_time' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
-           (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.follow_time.seconds > 60) ||
-           (!('follow_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
-           (get(/databases/$(database)/documents/rate_limits/$(userId)).data.follow_count < 30);
+           (!exists(path) ? true :
+             (!('follow_time' in get(path).data)) ||
+             (request.time.seconds - get(path).data.follow_time.seconds > 60) ||
+             (!('follow_count' in get(path).data)) ||
+             (get(path).data.follow_count < 30));
   }
 
   function followFollowerId() {
