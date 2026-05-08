@@ -131,7 +131,7 @@ class VideoPerformanceService {
     await Future.wait(futures);
   }
 
-  /// Pause video controller (VideoPreloaderService handles disposal)
+  /// Pause video controller; active playback owners handle final disposal.
   Future<void> pauseVideo(String videoUrl) async {
     final controller = _videoControllers[videoUrl];
     if (controller != null) {
@@ -152,7 +152,7 @@ class VideoPerformanceService {
     await pauseVideo(videoUrl);
   }
 
-  /// Pause all videos (VideoPreloaderService handles disposal)
+  /// Pause all tracked videos; active playback owners handle final disposal.
   Future<void> pauseAll() async {
     final controllerUrls = _videoControllers.keys.toList();
 

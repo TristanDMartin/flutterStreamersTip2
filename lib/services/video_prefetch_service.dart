@@ -2,9 +2,11 @@ import 'dart:developer';
 import 'package:http/http.dart' as http;
 import 'video_cache_service.dart';
 import 'network_policy_service.dart';
-import 'video_controller_pool_service.dart';
 
-/// Service responsible for prefetching video content for instant play
+/// Service responsible for prefetching network media for instant play.
+///
+/// This intentionally does not create or own VideoPlayerController instances.
+/// Playback controller ownership stays with the active player path.
 class VideoPrefetchService {
   static final VideoPrefetchService _instance = VideoPrefetchService._internal();
   factory VideoPrefetchService() => _instance;
@@ -12,11 +14,9 @@ class VideoPrefetchService {
 
   final VideoCacheService _cacheService = VideoCacheService();
   final NetworkPolicyService _networkPolicy = NetworkPolicyService();
-  final VideoControllerPoolService _controllerPool = VideoControllerPoolService();
 
   // Prefetch configuration
   static const int _prefetchWindowSize = 3; // Prefetch next 3 videos
-  static const int _keepBehindCount = 1; // Keep 1 video behind
 
   // Current prefetch state
   final Set<String> _prefetchingVideos = {};
@@ -36,10 +36,7 @@ class VideoPrefetchService {
       
       // Prefetch first segment of video
       await _prefetchFirstSegment(videoUrl);
-      
-      // Prepare controller
-      await _controllerPool.prepareController(videoId, videoUrl);
-      
+
       log('✅ Video primed successfully: $videoId');
     } catch (e) {
       log('❌ Error priming video $videoId: $e');
@@ -66,12 +63,6 @@ class VideoPrefetchService {
           await _prefetchItem(item, priority: _getPrefetchPriority(index, currentIndex));
         }
       }
-
-      // Evict controllers outside window
-      await _controllerPool.evictOutsideWindow(
-        center: currentIndex,
-        radius: _prefetchWindowSize + _keepBehindCount,
-      );
 
     } catch (e) {
       log('❌ Error prefetching window: $e');
@@ -130,7 +121,6 @@ class VideoPrefetchService {
       // Prefetch video content based on network conditions
       if (_networkPolicy.prefetchMediaSegments) {
         await _prefetchFirstSegment(item.videoUrl);
-        await _controllerPool.prepareController(item.videoId, item.videoUrl);
       } else {
         // On slow networks, just prefetch playlist
         await _prefetchPlaylist(item.videoUrl);
@@ -255,7 +245,6 @@ class VideoPrefetchService {
     try {
       _prefetchingVideos.remove(videoId);
       _prefetchTimestamps.remove(videoId);
-      await _controllerPool.cancelPreparation(videoId);
       log('❌ Cancelled prefetch: $videoId');
     } catch (e) {
       log('❌ Error cancelling prefetch: $e');

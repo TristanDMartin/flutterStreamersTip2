@@ -29,8 +29,8 @@ Future<HomeVideo?> loadHomeVideoForPlayback(String videoId) async {
   return _buildHomeVideoFromDoc(data, videoId);
 }
 
-String? _firstNonEmptyString(List<dynamic?> values) {
-  for (final dynamic? v in values) {
+String? _firstNonEmptyString(List<Object?> values) {
+  for (final Object? v in values) {
     if (v is String && v.trim().isNotEmpty) {
       return v.trim();
     }
@@ -44,7 +44,7 @@ Map<String, dynamic>? _nestedCreator(Map<String, dynamic> data) {
     return raw;
   }
   if (raw is Map) {
-    return Map<String, dynamic>.from(raw as Map);
+    return Map<String, dynamic>.from(raw);
   }
   return null;
 }
@@ -52,7 +52,7 @@ Map<String, dynamic>? _nestedCreator(Map<String, dynamic> data) {
 User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
   final Map<String, dynamic>? nested = _nestedCreator(data);
   final String id = (ownerId ?? '').trim();
-  final String displayName = _firstNonEmptyString(<dynamic?>[
+  final String displayName = _firstNonEmptyString(<Object?>[
         nested?['displayName'],
         nested?['name'],
         data['creatorDisplayName'],
@@ -62,7 +62,7 @@ User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
         data['authorName'],
       ]) ??
       (id.isNotEmpty ? 'Creator' : 'Unknown');
-  final String username = _firstNonEmptyString(<dynamic?>[
+  final String username = _firstNonEmptyString(<Object?>[
         nested?['username'],
         nested?['handle'],
         data['creatorUsername'],
@@ -71,7 +71,7 @@ User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
         data['channelUsername'],
       ]) ??
       (id.isNotEmpty ? 'creator' : 'unknown');
-  final String? avatarUrl = _firstNonEmptyString(<dynamic?>[
+  final String? avatarUrl = _firstNonEmptyString(<Object?>[
     nested?['avatarURL'],
     nested?['avatarUrl'],
     nested?['photoURL'],

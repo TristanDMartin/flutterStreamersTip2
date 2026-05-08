@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/home_video.dart';
 import '../services/feed_bootstrap_service.dart';
 import '../services/video_prefetch_service.dart';
-import '../services/video_controller_pool_service.dart';
 
 /// Provider for the feed queue state
 final feedQueueProvider = StateNotifierProvider<FeedQueue, FeedState>((ref) {
@@ -18,7 +17,6 @@ class FeedQueue extends StateNotifier<FeedState> {
   
   final FeedBootstrapService _bootstrapService = FeedBootstrapService();
   final VideoPrefetchService _prefetchService = VideoPrefetchService();
-  final VideoControllerPoolService _controllerPool = VideoControllerPoolService();
 
   /// Bootstrap the feed for instant play
   Future<void> bootstrap() async {
@@ -74,11 +72,8 @@ class FeedQueue extends StateNotifier<FeedState> {
     // Prefetch window around new index
     _prefetchWindow(newIndex);
     
-    // Release old controller if needed
-    if (oldIndex >= 0 && oldIndex < state.items.length) {
-      final oldVideoId = state.items[oldIndex].id;
-      _controllerPool.releaseController(oldVideoId);
-    }
+    // Playback ownership lives in the active player path; queue prefetch only
+    // warms network media.
   }
 
   /// Prefetch window around current index
@@ -159,9 +154,6 @@ class FeedQueue extends StateNotifier<FeedState> {
         currentIndex: 0,
       );
       
-      // Dispose all controllers
-      await _controllerPool.dispose();
-      
       // Bootstrap again
       await bootstrap();
       
@@ -202,7 +194,6 @@ class FeedQueue extends StateNotifier<FeedState> {
   /// Dispose resources
   @override
   void dispose() {
-    _controllerPool.dispose();
     super.dispose();
   }
 }

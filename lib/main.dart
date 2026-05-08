@@ -20,7 +20,6 @@ import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/global_playback_manager.dart';
 import 'services/performance_emergency_service.dart';
-// import 'services/global_post_count_fix.dart'; // ❌ REMOVED: Interferes with PostCounterService
 import 'services/navigation_observer.dart';
 import 'routing/app_routes.dart';
 import 'widgets/ios_minimal_startup.dart';
@@ -215,11 +214,6 @@ void _initializeBackgroundServices() async {
   await _initializeServiceSafely('PushNotificationService', () async {
     await PushNotificationService().initialize();
   });
-
-  // ❌ REMOVED: GlobalPostCountFix interfered with real-time post counting
-  // await _initializeServiceSafely('GlobalPostCountFix', () async {
-  //   await GlobalPostCountFix().fixAllUsersPostCounts();
-  // });
 
   await _initializeServiceSafely('GoogleServicesFix', () async {
     await GoogleServicesFix.initialize();

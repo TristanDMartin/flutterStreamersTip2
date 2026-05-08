@@ -230,7 +230,9 @@ async function main() {
     } finally {
       try {
         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch (_) {}
+      } catch (cleanupError) {
+        console.error('Failed to remove temp migration file:', cleanupError);
+      }
     }
   }
 

@@ -87,7 +87,6 @@ exports.transcodeVideo = functions
       return null;
     }
 
-    const userId = pathParts[1];
     let videoId;
     if (pathParts.length === 3) {
       videoId = pathParts[2].replace('.mp4', '');
@@ -141,7 +140,9 @@ exports.transcodeVideo = functions
           transcodingError: error.message,
           updatedAt: FieldValue.serverTimestamp(),
         }, {merge: true});
-      } catch (_) {}
+      } catch (updateError) {
+        console.error('Failed to mark video transcoding failure:', updateError);
+      }
       return null;
     }
   });
@@ -159,7 +160,7 @@ exports.backfillVideoTranscoding = functions
 /**
  * Process a single video for backfill transcoding
  */
-async function processVideoForBackfill(storageClient, db, videoId, userId, originalVideoUrl) {
+async function _processVideoForBackfill(storageClient, db, videoId, userId, originalVideoUrl) {
   // Get bucket name from the original video URL or use default
   // Get actual project ID from admin
   const projectId = admin.app().options.projectId || 'streamerstip-6cfdb';
@@ -167,15 +168,15 @@ async function processVideoForBackfill(storageClient, db, videoId, userId, origi
   
   // Try to extract bucket name from URL
   if (originalVideoUrl.startsWith('gs://')) {
-    const match = originalVideoUrl.match(/gs:\/\/([^\/]+)/);
+    const match = originalVideoUrl.match(/gs:\/\/([^/]+)/);
     if (match && match[1].length >= 3) bucketName = match[1];
   } else if (originalVideoUrl.includes('storage.googleapis.com')) {
-    const match = originalVideoUrl.match(/storage\.googleapis\.com\/([^\/]+)/);
+    const match = originalVideoUrl.match(/storage\.googleapis\.com\/([^/]+)/);
     if (match && match[1].length >= 3) bucketName = match[1];
   } else if (originalVideoUrl.includes('firebasestorage.googleapis.com')) {
     // Firebase Storage URL format: https://firebasestorage.googleapis.com/v0/b/BUCKET_NAME/o/path
     // Match: /v0/b/BUCKET_NAME/ (not /v0/b/v0/)
-    const match = originalVideoUrl.match(/\/v0\/b\/([^\/\?]+)/);
+    const match = originalVideoUrl.match(/\/v0\/b\/([^/?]+)/);
     if (match && match[1] && match[1].length >= 3 && match[1] !== 'v0') {
       bucketName = match[1];
     }
@@ -402,7 +403,7 @@ async function generateUniqueUsername(base, uid) {
   let username = sanitizedBase;
   let counter = 1;
 
-  while (true) {
+  for (;;) {
     const usernameDoc = await firestore.collection('usernames').doc(username).get();
     if (!usernameDoc.exists) {
       return username;
@@ -511,7 +512,7 @@ exports.onBookmarkCreate = functions.firestore
 // Cloud Function to cancel notifications when a bookmark is deleted
 exports.onBookmarkDelete = functions.firestore
   .document('users/{uid}/bookmarks/{eventId}')
-  .onDelete(async (snap, context) => {
+  .onDelete(async (snap, _context) => {
     const data = snap.data();
     const taskId = data.scheduledTaskId;
     
@@ -524,7 +525,7 @@ exports.onBookmarkDelete = functions.firestore
   });
 
 // Cloud Function to send the actual notification
-exports.sendEventNotification = functions.https.onCall(async (data, context) => {
+async function sendEventNotificationData(data) {
   const { uid, eventId, title, creatorId } = data;
   
   // Verify the bookmark still exists and notifications are enabled
@@ -588,7 +589,11 @@ exports.sendEventNotification = functions.https.onCall(async (data, context) => 
     console.error('Error sending notification:', error);
     return { success: false, error: error.message };
   }
-});
+}
+
+exports.sendEventNotification = functions.https.onCall(
+  async (data, _context) => sendEventNotificationData(data),
+);
 
 // Helper function to schedule a notification task
 async function scheduleNotificationTask({ uid, eventId, runAt, title, creatorId }) {
@@ -599,13 +604,13 @@ async function scheduleNotificationTask({ uid, eventId, runAt, title, creatorId 
   
   if (delay <= 0) {
     // Event is in the past, send immediately
-    return await sendEventNotification({ uid, eventId, title, creatorId });
+    return await sendEventNotificationData({ uid, eventId, title, creatorId });
   }
   
   // Schedule for later
   setTimeout(async () => {
     try {
-      await sendEventNotification({ uid, eventId, title, creatorId });
+      await sendEventNotificationData({ uid, eventId, title, creatorId });
     } catch (error) {
       console.error('Error in scheduled notification:', error);
     }
@@ -680,7 +685,7 @@ exports.onVideoCreate = functions.firestore
 // Trigger: When a video is updated
 exports.onVideoUpdate = functions.firestore
   .document('videos/{videoId}')
-  .onUpdate(async (change, context) => {
+  .onUpdate(async (change, _context) => {
     const beforeData = change.before.data();
     const afterData = change.after.data();
     const beforeStatus = beforeData.status || 'draft';
@@ -836,7 +841,6 @@ exports.onLikeCreate = functions.firestore
   .document('likes/{videoId}/byUser/{userId}')
   .onCreate(async (snap, context) => {
     const { videoId, userId } = context.params;
-    const likeData = snap.data();
     const likerId = userId;
 
     console.log(`👍 Like created: Video ${videoId} by user ${likerId}`);
@@ -962,7 +966,7 @@ exports.onCommentCreate = functions.firestore
 // Trigger: When a user follows another user
 exports.onFollowCreate = functions.firestore
   .document('follows/{followId}')
-  .onCreate(async (snap, context) => {
+  .onCreate(async (snap, _context) => {
     const followData = snap.data();
     const followerId = followData.followerId;
     const followedId = followData.followedId;
@@ -1379,16 +1383,42 @@ exports.onCommentReply = functions.firestore
     }
   });
 
+async function getDeviceTokens(uid) {
+  const tokensSnapshot = await admin.firestore()
+    .collection('users')
+    .doc(uid)
+    .collection('deviceTokens')
+    .get();
+  return tokensSnapshot.docs.map((doc) => doc.id).filter(Boolean);
+}
+
+async function sendToTokens(tokens, message, uid) {
+  if (!tokens || tokens.length === 0) {
+    return {successCount: 0, failureCount: 0};
+  }
+  const response = await admin.messaging().sendMulticast({
+    ...message,
+    tokens,
+  });
+  if (response.failureCount > 0) {
+    console.warn(
+      `Push notification had ${response.failureCount} failures for ${uid}`,
+    );
+  }
+  return response;
+}
+
 /**
  * Send notifications to followers when a new video is published
  */
 exports.onVideoPublish = functions.firestore
   .document('videos/{videoId}')
   .onCreate(async (snap, context) => {
+    let videoId = context.params.videoId;
+    let creatorId = null;
     try {
       const videoData = snap.data();
-      const { videoId } = context.params;
-      const creatorId = videoData.userId || videoData.creatorId;
+      creatorId = videoData.userId || videoData.creatorId;
       
       console.log(`📹 New video published: ${videoId} by ${creatorId}`);
       
@@ -1589,7 +1619,7 @@ exports.onCalendarEventStart = functions.firestore
   });
 
 // Helper function to format numbers
-function formatNumber(num) {
+function _formatNumber(num) {
   if (num >= 1000000) {
     return `${(num / 1000000).toFixed(1)}M`;
   } else if (num >= 1000) {
@@ -1684,7 +1714,7 @@ exports.apiReports = onRequest({region}, async (req, res) => {
         return;
       }
       const idToken = authHeader.split('Bearer ')[1];
-      const decoded = await admin.auth().verifyIdToken(idToken);
+      await admin.auth().verifyIdToken(idToken);
       const snapshot = await firestore.collection('reports').orderBy('timestamp', 'desc').limit(50).get();
       const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.status(200).json({ reports });
@@ -2111,7 +2141,7 @@ exports.onCommentDelete = functions.region(region).firestore
 
 exports.onFollowDelete = functions.region(region).firestore
   .document('follows/{followId}')
-  .onDelete(async (snap, context) => {
+  .onDelete(async (snap, _context) => {
     const data = snap.data();
     const followerId = data.followerId;
     const followedId = data.followedId;
