@@ -11,6 +11,8 @@
     "backfill:mux-feed-fields": "node scripts/backfill_mux_feed_fields.js",
     "migrate:legacy-video-comment-replies": "node scripts/migrate_legacy_video_comment_replies.js",
     "grant-admin-claims": "node scripts/grant_admin_claims.js",
+    "reconcile:counters": "node reconcile_counters.js",
+    "reconcile:counters:emulator": "cd .. && firebase emulators:exec --only firestore --project demo-follows-tests \"node cloud_functions/reconcile_counters.js\"",
     "test:rules:follows": "node follows_rules_test.js",
     "test:e2e:follows": "node follows_e2e_test.js"
   },
