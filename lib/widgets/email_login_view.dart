@@ -3,9 +3,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../core/theme/st_theme_tokens.dart';
-import '../services/pending_auth_redirect_service.dart';
 import '../services/robust_auth_service.dart';
+import '../utils/auth_login_input.dart';
+import '../utils/auth_post_login_navigation.dart';
+import 'auth_page_shell.dart';
 import 'signup_view.dart';
 import 'forgot_password_view.dart';
 import 'two_factor_verification_view.dart';
@@ -67,13 +68,11 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: brightness == Brightness.dark
-            ? Brightness.light
-            : Brightness.dark,
+        statusBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: theme.colorScheme.surface,
-        systemNavigationBarIconBrightness: brightness == Brightness.dark
-            ? Brightness.light
-            : Brightness.dark,
+        systemNavigationBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
       ),
     );
   }
@@ -96,162 +95,35 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
-    final bool isDark = theme.brightness == Brightness.dark;
     final authService = ref.watch(robustAuthServiceProvider);
-    ref.listen(robustAuthServiceProvider, (previous, next) {
-      if (next.isLoggedIn && mounted) {
-        debugPrint("✅ User authenticated, resolving post-auth destination");
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          PendingAuthRedirectService.instance.consumeOrGoHome(context);
-        });
-      }
-    });
-
-    return Material(
-      color: Colors.transparent,
-      child: Scaffold(
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: isDark
-                  ? <Color>[
-                      StThemeColors.darkBackground,
-                      scheme.surfaceContainerLow,
-                      scheme.surface,
-                    ]
-                  : <Color>[
-                      scheme.primary.withValues(alpha: 0.45),
-                      scheme.surfaceContainerLow,
-                      scheme.surface,
-                    ],
-            ),
-          ),
-          child: Stack(
-            children: [
-              _buildBackgroundDecor(),
-              GestureDetector(
-                onTap: () {
-                  FocusScope.of(context).unfocus();
-                },
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 450),
-                  curve: Curves.easeOut,
-                  opacity: _isContentVisible ? 1 : 0,
-                  child: AnimatedSlide(
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeOutCubic,
-                    offset: _isContentVisible
-                        ? Offset.zero
-                        : const Offset(0, 0.03),
-                    child: SafeArea(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 8,
-                        ),
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight:
-                                MediaQuery.of(context).size.height -
-                                MediaQuery.of(context).padding.top -
-                                16,
-                          ),
-                          child: Column(
-                            children: [
-                              _buildAnimatedSection(
-                                delay: 0,
-                                child: _buildLoginForm(),
-                              ),
-                              const SizedBox(height: 28),
-                              _buildAnimatedSection(
-                                delay: 120,
-                                child: _buildSignUpSection(),
-                              ),
-                              const SizedBox(height: 16),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+    return AuthPageShell(
+      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+      minHeightBottomPadding: 16,
+      showLoading: authService.shouldShowLoading,
+      loadingText: 'Signing in...',
+      showAlert: _showAlert,
+      alertMessage: _alertMessage,
+      onDismissAlert: () => setState(() => _showAlert = false),
+      content: AnimatedOpacity(
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOut,
+        opacity: _isContentVisible ? 1 : 0,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutCubic,
+          offset: _isContentVisible ? Offset.zero : const Offset(0, 0.03),
+          child: Column(
+            children: <Widget>[
+              _buildAnimatedSection(
+                delay: 0,
+                child: _buildLoginForm(),
               ),
-              if (authService.shouldShowLoading)
-                Container(
-                  color: scheme.scrim.withValues(alpha: 0.35),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            scheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Signing in...",
-                          style: TextStyle(
-                            color: scheme.onSurface,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              if (_showAlert) ...[
-                Positioned.fill(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _showAlert = false),
-                    child: Container(
-                      color: scheme.scrim.withValues(alpha: 0.45),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: AlertDialog(
-                      backgroundColor: scheme.surfaceContainerHigh,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      title: Text(
-                        "Error",
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      content: Text(
-                        _alertMessage.isEmpty
-                            ? "Something went wrong."
-                            : _alertMessage,
-                        style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.75),
-                          height: 1.3,
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: scheme.primary,
-                          ),
-                          onPressed: () => setState(() => _showAlert = false),
-                          child: const Text("OK"),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              const SizedBox(height: 28),
+              _buildAnimatedSection(
+                delay: 120,
+                child: _buildSignUpSection(),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -286,8 +158,8 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                         minimumSize: const Size(44, 44),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      onPressed: widget.dismiss ??
-                          () => Navigator.of(context).pop(),
+                      onPressed:
+                          widget.dismiss ?? () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.arrow_back, size: 24),
                     ),
                   ),
@@ -394,7 +266,10 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
               focusNode: _emailFocusNode,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
-              autofillHints: const [AutofillHints.username, AutofillHints.email],
+              autofillHints: const [
+                AutofillHints.username,
+                AutofillHints.email
+              ],
               validator: _validateEmailOrUsername,
               onEditingComplete: () {
                 _passwordFocusNode.requestFocus();
@@ -477,9 +352,11 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         focusNode: focusNode,
         controller: controller,
         obscureText: isPassword && _obscurePassword,
-        keyboardType: keyboardType,
+        keyboardType: isPassword ? TextInputType.visiblePassword : keyboardType,
         textInputAction: textInputAction,
         autofillHints: autofillHints,
+        autocorrect: !isPassword,
+        enableSuggestions: !isPassword,
         validator: validator,
         onEditingComplete: onEditingComplete,
         onFieldSubmitted: onSubmitted,
@@ -602,12 +479,13 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     if (input.isEmpty) {
       return 'Enter your email or username';
     }
+    if (AuthLoginInput.isEmailFormat(input)) {
+      return null;
+    }
     if (input.contains('@')) {
-      final emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-      if (!emailPattern.hasMatch(input)) {
-        return 'Enter a valid email address';
-      }
-    } else if (input.length < 3) {
+      return 'Enter a valid email address';
+    }
+    if (input.length < 3) {
       return 'Username must be at least 3 characters';
     }
     return null;
@@ -638,7 +516,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
 
     try {
       final authService = ref.read(robustAuthServiceProvider);
-      final isEmail = emailOrUsername.contains('@');
+      final bool isEmail = AuthLoginInput.isEmailFormat(emailOrUsername);
       late final AuthRequestResult result;
       if (isEmail) {
         debugPrint("🔐 Signing in with email: $emailOrUsername");
@@ -666,10 +544,13 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             MaterialPageRoute(
               builder: (context) => TwoFactorVerificationView(
                 userId: user.uid,
-                onVerified: (bool verified) {
+                onVerified: (bool verified) async {
                   if (verified && mounted) {
-                    Navigator.of(context).pop(); // Pop verification view
-                    // Auth state listener will handle the rest
+                    Navigator.of(context).pop();
+                    WidgetsBinding.instance.addPostFrameCallback((_) async {
+                      if (!mounted) return;
+                      await navigateAfterAuthenticated(context);
+                    });
                   }
                 },
                 onCancel: () {
@@ -683,6 +564,8 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             ),
           );
         }
+      } else if (result.success && mounted) {
+        await navigateAfterAuthenticated(context);
       }
     } catch (e) {
       debugPrint("❌ Sign-in error: $e");
@@ -747,59 +630,6 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     );
   }
 
-  Widget _buildBackgroundDecor() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final Color primarySoft = scheme.primary.withValues(alpha: 0.14);
-    final Color secondarySoft = scheme.secondary.withValues(alpha: 0.1);
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            top: -90,
-            right: -20,
-            child: _buildGlowOrb(
-              size: 220,
-              colors: [primarySoft, primarySoft.withValues(alpha: 0)],
-            ),
-          ),
-          Positioned(
-            top: 220,
-            left: -70,
-            child: _buildGlowOrb(
-              size: 180,
-              colors: [secondarySoft, secondarySoft.withValues(alpha: 0)],
-            ),
-          ),
-          Positioned(
-            bottom: -50,
-            right: -10,
-            child: _buildGlowOrb(
-              size: 170,
-              colors: [
-                scheme.primary.withValues(alpha: 0.08),
-                Colors.transparent,
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGlowOrb({
-    required double size,
-    required List<Color> colors,
-  }) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: colors),
-      ),
-    );
-  }
-
   Widget _buildGlassPanel({
     required Widget child,
     EdgeInsetsGeometry padding = const EdgeInsets.all(16),
@@ -811,26 +641,28 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         : scheme.surface.withValues(alpha: 0.72);
     final Color panelBorder =
         scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: double.infinity,
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            color: panelFill,
-            border: Border.all(color: panelBorder),
-            boxShadow: [
-              BoxShadow(
-                color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
-                blurRadius: 32,
-                offset: const Offset(0, 18),
-              ),
-            ],
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            width: double.infinity,
+            padding: padding,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              color: panelFill,
+              border: Border.all(color: panelBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
+                  blurRadius: 32,
+                  offset: const Offset(0, 18),
+                ),
+              ],
+            ),
+            child: child,
           ),
-          child: child,
         ),
       ),
     );
@@ -838,8 +670,9 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
 
   String _getUserFriendlyErrorMessage(String error) {
     if (error.contains('user-not-found') ||
-        error.contains('Username not found')) {
-      return 'No account found with this email/username';
+        error.contains('Username not found') ||
+        error.contains('No account found')) {
+      return 'No account found with this email or username.';
     } else if (error.contains('wrong-password') ||
         error.contains('invalid-credential')) {
       return 'Incorrect password';

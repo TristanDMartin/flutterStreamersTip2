@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/password_validation.dart';
 import 'auth_rate_limiting_service.dart';
 import 'tiktok_account_switcher.dart';
 import 'google_services_fix.dart';
@@ -304,6 +305,29 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
   }
 
+  String _firebaseAuthUserMessage(Object e) {
+    if (e is firebase_auth.FirebaseAuthException) {
+      switch (e.code) {
+        case 'invalid-email':
+          return 'Invalid email address.';
+        case 'user-disabled':
+          return 'This account has been disabled.';
+        case 'too-many-requests':
+          return 'Too many failed attempts. Please try again later.';
+        case 'user-not-found':
+        case 'wrong-password':
+        case 'invalid-credential':
+        case 'invalid-login-credentials':
+          return 'Incorrect email/username or password.';
+        case 'weak-password':
+          return 'Password is too weak. Use a stronger password.';
+        default:
+          return e.message ?? 'Authentication failed.';
+      }
+    }
+    return e.toString();
+  }
+
   /// Sign in with email (debounced, single-flight)
   Future<AuthRequestResult> signInWithEmail(
     String email,
@@ -352,13 +376,11 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
     } catch (e) {
-      // Record failed attempt
       await _rateLimiter.recordAttempt();
-
       return AuthRequestResult(
         requestId: requestId,
         success: false,
-        error: e.toString(),
+        error: _firebaseAuthUserMessage(e),
       );
     }
   }
@@ -381,67 +403,47 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
 
-      // First, find the user by username in Firestore (try both cases)
-      QuerySnapshot usersQuery = await _firestoreInstance
-          .collection('users')
-          .where('username', isEqualTo: username)
-          .limit(1)
-          .get();
-
-      // If not found with original case, try lowercase
-      if (usersQuery.docs.isEmpty) {
-        usersQuery = await _firestoreInstance
-            .collection('users')
-            .where('username', isEqualTo: username.toLowerCase())
-            .limit(1)
-            .get();
-      }
-
-      // If still not found, try uppercase
-      if (usersQuery.docs.isEmpty) {
-        usersQuery = await _firestoreInstance
-            .collection('users')
-            .where('username', isEqualTo: username.toUpperCase())
-            .limit(1)
-            .get();
-      }
-
-      if (usersQuery.docs.isEmpty) {
-        // Record failed attempt
+      final String trimmed = username.trim();
+      if (trimmed.isEmpty) {
         await _rateLimiter.recordAttempt();
-
-        // Debug information removed for production
-
         return AuthRequestResult(
           requestId: requestId,
           success: false,
-          error: 'Username not found',
+          error: 'Enter your username.',
         );
       }
+      final String normalizedUsername = trimmed.toLowerCase();
+      final QuerySnapshot<Map<String, dynamic>> usersQuery =
+          await _firestoreInstance
+              .collection('users')
+              .where('username', isEqualTo: normalizedUsername)
+              .limit(1)
+              .get();
 
-      final userDoc = usersQuery.docs.first;
-      final userData = userDoc.data();
-      final email = (userData as Map<String, dynamic>)['email'] as String?;
-
-      if (email == null || email.isEmpty) {
-        // Record failed attempt
+      if (usersQuery.docs.isEmpty) {
         await _rateLimiter.recordAttempt();
-
         return AuthRequestResult(
           requestId: requestId,
           success: false,
-          error: 'No email associated with this username',
+          error: 'No account found with this email or username.',
         );
       }
 
-      // print("📧 Found email for username $username: $email (request: $requestId)");
+      final Map<String, dynamic> userData = usersQuery.docs.first.data();
+      final String? resolvedEmail = userData['email'] as String?;
 
-      // Now sign in with the email and password
-      return await signInWithEmail(email, password, requestId);
+      if (resolvedEmail == null || resolvedEmail.trim().isEmpty) {
+        await _rateLimiter.recordAttempt();
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: 'No account found with this email or username.',
+        );
+      }
+
+      return await signInWithEmail(resolvedEmail.trim(), password, requestId);
     } catch (e) {
-      // Record failed attempt
       await _rateLimiter.recordAttempt();
-
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -597,203 +599,49 @@ class RobustAuthenticationService extends ChangeNotifier {
     });
   }
 
-  /// Quick test login with your credentials for testing
-  Future<AuthRequestResult> quickTestLogin() async {
-    final requestId = _generateRequestId();
-    _currentRequestId = requestId;
-
-    // cspell:ignore technqs
-    // print("🧪 Quick test login with technqs credentials");
-
-    try {
-      // First try to sign in
-      try {
-        final userCredential = await _authInstance.signInWithEmailAndPassword(
-          email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
-          password: 'Ntizzle1@1988',
-        );
-
-        if (userCredential.user != null) {
-          // print("✅ Quick test login successful");
-          await _handleUserSignIn(userCredential.user!);
-          _isLoggedIn = true;
-          notifyListeners();
-
-          return AuthRequestResult(
-            requestId: requestId,
-            success: true,
-            user: _currentUser,
-          );
-        }
-      } catch (signInError) {
-        // print("⚠️ Sign in failed, trying to create account: $signInError");
-
-        // If sign in fails, try to create the account
-        try {
-          final userCredential =
-              await _authInstance.createUserWithEmailAndPassword(
-            email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
-            password: 'Ntizzle1@1988',
-          );
-
-          if (userCredential.user != null) {
-            // print("✅ Test account created successfully");
-
-            // Update display name
-            await userCredential.user!
-                .updateDisplayName('technqs'); // cspell:ignore technqs
-
-            // Create user document in Firestore
-            await _createUserDocument(
-              userCredential.user!,
-              displayName: 'technqs', // cspell:ignore technqs
-              username: 'technqs', // cspell:ignore technqs
-            );
-
-            // Handle sign in
-            await _handleUserSignIn(userCredential.user!);
-            _isLoggedIn = true;
-            notifyListeners();
-
-            return AuthRequestResult(
-              requestId: requestId,
-              success: true,
-              user: _currentUser,
-            );
-          }
-        } catch (createError) {
-          // print("❌ Account creation failed: $createError");
-          return AuthRequestResult(
-            requestId: requestId,
-            success: false,
-            error: 'Failed to create or sign in: $createError',
-          );
-        }
-      }
-
-      // print("❌ Quick test login failed - no user returned");
-      return AuthRequestResult(
-        requestId: requestId,
-        success: false,
-        error: 'No user returned from Firebase',
-      );
-    } catch (e) {
-      // print("❌ Quick test login error: $e");
-      return AuthRequestResult(
-        requestId: requestId,
-        success: false,
-        error: e.toString(),
-      );
-    }
-  }
-
-  /// Development bypass login - creates a mock user for testing
-  Future<AuthRequestResult> bypassLogin() async {
-    final requestId = _generateRequestId();
-    _currentRequestId = requestId;
-
-    // print("🚀 Bypass login - creating mock user for development");
-
-    try {
-      // Create a mock user for development
-      const mockUser = User(
-        id: 'dev_user_123',
-        displayName: 'technqs',
-        username: 'technqs',
-        avatarURL: null,
-        bio: 'Development test user',
-        hashtags: ['#developer', '#testing'],
-        onlineStatus: 'online',
-        aiSelf: 'I am a development test user',
-        postCount: 0,
-        followerCount: 0,
-        followingCount: 0,
-        calendarEvents: [],
-      );
-
-      _currentUser = mockUser;
-      _isLoggedIn = true;
-      notifyListeners();
-
-      // print("✅ Bypass login successful - mock user created");
-      // print("🔔 Mock user ID: ${mockUser.id}");
-      // print("🔔 Mock user display name: ${mockUser.displayName}");
-
-      return AuthRequestResult(
-        requestId: requestId,
-        success: true,
-        user: _currentUser,
-      );
-    } catch (e) {
-      // print("❌ Bypass login error: $e");
-      return AuthRequestResult(
-        requestId: requestId,
-        success: false,
-        error: e.toString(),
-      );
-    }
-  }
-
-  /// Mock follow functionality for development
-  Future<bool> mockFollowUser(String targetUserId) async {
-    // print("🔔 Mock follow user called for: $targetUserId");
-    // print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
-
-    // Simulate a successful follow operation
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // print("✅ Mock follow successful for: $targetUserId");
-    return true;
-  }
-
-  /// Mock unfollow functionality for development
-  Future<bool> mockUnfollowUser(String targetUserId) async {
-    // print("🔔 Mock unfollow user called for: $targetUserId");
-    // print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
-
-    // Simulate a successful unfollow operation
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // print("✅ Mock unfollow successful for: $targetUserId");
-    return true;
-  }
-
   /// Sign up with email and password
   Future<void> signUpWithEmail(String email, String password,
       String displayName, String username) async {
     debugPrint("📝 Signing up with email: $email");
 
     try {
-      // Validate username first
-      final usernameValidation =
-          await _usernameLockService.validateUsername(username);
+      final String trimmedEmail = email.trim();
+      final String normalizedUsername = username.trim().toLowerCase();
+      final String? pwReject = PasswordRequirements.signupRejectReason(
+        password,
+      );
+      if (pwReject != null) {
+        throw Exception(pwReject);
+      }
+
+      final UsernameValidationResult usernameValidation =
+          await _usernameLockService.validateUsername(normalizedUsername);
       if (!usernameValidation.isValid) {
         throw Exception(usernameValidation.errorMessage ?? 'Invalid username');
       }
 
-      // Check if user already exists and handle account deletion scenarios
-      await _handleExistingUserCheck(email);
+      await _handleExistingUserCheck(trimmedEmail);
 
-      // Create user with Firebase Auth
-      final userCredential = await _authInstance.createUserWithEmailAndPassword(
-        email: email,
+      final firebase_auth.UserCredential userCredential =
+          await _authInstance.createUserWithEmailAndPassword(
+        email: trimmedEmail,
         password: password,
       );
 
       if (userCredential.user != null) {
         debugPrint("✅ User created successfully");
 
-        // Update display name
-        await userCredential.user!.updateDisplayName(displayName);
+        final String profileDisplayName = displayName.trim().isNotEmpty
+            ? displayName.trim()
+            : normalizedUsername;
+        await userCredential.user!.updateDisplayName(profileDisplayName);
 
-        // Create user document in Firestore
         await _createUserDocument(
           userCredential.user!,
-          displayName: displayName,
-          username: username,
+          displayName: profileDisplayName,
+          username: normalizedUsername,
         );
 
-        // Handle sign in
         await _handleUserSignIn(userCredential.user!);
         _isLoggedIn = true;
         notifyListeners();
@@ -802,6 +650,9 @@ class RobustAuthenticationService extends ChangeNotifier {
       } else {
         throw Exception('No user returned from Firebase');
       }
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      debugPrint("❌ Sign up FirebaseAuthException: ${e.code}");
+      throw Exception(_firebaseAuthUserMessage(e));
     } catch (e) {
       debugPrint("❌ Sign up error: $e");
       debugPrint("❌ Error type: ${e.runtimeType}");
@@ -839,6 +690,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           _firestoreInstance.collection("users").doc(firebaseUser.uid);
 
       await userRef.set({
+        'uid': firebaseUser.uid,
         'id': firebaseUser.uid,
         'email': firebaseUser.email,
         'displayName': displayName,

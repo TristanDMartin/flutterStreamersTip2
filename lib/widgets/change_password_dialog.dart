@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../utils/password_validation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
 
@@ -6,22 +8,25 @@ class ChangePasswordDialog extends ConsumerStatefulWidget {
   const ChangePasswordDialog({super.key});
 
   @override
-  ConsumerState<ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+  ConsumerState<ChangePasswordDialog> createState() =>
+      _ChangePasswordDialogState();
 }
 
 class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
-  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
-  
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
   final FocusNode _currentPasswordFocus = FocusNode();
   final FocusNode _newPasswordFocus = FocusNode();
   final FocusNode _confirmPasswordFocus = FocusNode();
-  
+
   bool _obscureCurrentPassword = true;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
-  
+
   String? _errorMessage;
   bool _isLoading = false;
 
@@ -68,9 +73,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Current Password Field
             TextField(
               controller: _currentPasswordController,
@@ -83,7 +88,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
                 fillColor: Colors.grey[50],
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureCurrentPassword ? Icons.visibility : Icons.visibility_off,
+                    _obscureCurrentPassword
+                        ? Icons.visibility
+                        : Icons.visibility_off,
                   ),
                   onPressed: () {
                     setState(() {
@@ -95,9 +102,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _newPasswordFocus.requestFocus(),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // New Password Field
             TextField(
               controller: _newPasswordController,
@@ -110,7 +117,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
                 fillColor: Colors.grey[50],
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureNewPassword ? Icons.visibility : Icons.visibility_off,
+                    _obscureNewPassword
+                        ? Icons.visibility
+                        : Icons.visibility_off,
                   ),
                   onPressed: () {
                     setState(() {
@@ -122,9 +131,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _confirmPasswordFocus.requestFocus(),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Confirm Password Field
             TextField(
               controller: _confirmPasswordController,
@@ -137,7 +146,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
                 fillColor: Colors.grey[50],
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                    _obscureConfirmPassword
+                        ? Icons.visibility
+                        : Icons.visibility_off,
                   ),
                   onPressed: () {
                     setState(() {
@@ -149,9 +160,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _changePassword(),
             ),
-            
+
             const SizedBox(height: 8),
-            
+
             // Password requirements
             Text(
               'Password must be at least 6 characters long',
@@ -160,9 +171,9 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
                 color: Colors.grey[600],
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Error message
             if (_errorMessage != null) ...[
               Container(
@@ -190,13 +201,14 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
               ),
               const SizedBox(height: 16),
             ],
-            
+
             // Buttons
             Row(
               children: [
                 Expanded(
                   child: TextButton(
-                    onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                    onPressed:
+                        _isLoading ? null : () => Navigator.of(context).pop(),
                     child: const Text('Cancel'),
                   ),
                 ),
@@ -218,7 +230,8 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Text('Change Password'),
@@ -232,18 +245,27 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
     );
   }
 
-  bool _isFormValid() {
-    return _currentPasswordController.text.isNotEmpty &&
-           _newPasswordController.text.isNotEmpty &&
-           _confirmPasswordController.text.isNotEmpty &&
-           _newPasswordController.text == _confirmPasswordController.text &&
-           _newPasswordController.text.length >= 6;
-  }
-
   Future<void> _changePassword() async {
-    if (!_isFormValid()) {
+    if (_currentPasswordController.text.isEmpty ||
+        _newPasswordController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty) {
       setState(() {
-        _errorMessage = 'Please fill in all fields and ensure passwords match';
+        _errorMessage = 'Please fill in all fields';
+      });
+      return;
+    }
+    if (_newPasswordController.text != _confirmPasswordController.text) {
+      setState(() {
+        _errorMessage = 'New passwords do not match';
+      });
+      return;
+    }
+    final String? rejectReason = PasswordRequirements.signupRejectReason(
+      _newPasswordController.text,
+    );
+    if (rejectReason != null) {
+      setState(() {
+        _errorMessage = rejectReason;
       });
       return;
     }

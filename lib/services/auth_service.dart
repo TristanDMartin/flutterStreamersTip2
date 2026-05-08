@@ -13,6 +13,7 @@ import '../models/user_status.dart';
 import 'username_lock_service.dart';
 import 'r2_media_service.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/password_validation.dart';
 
 class AuthenticationService extends ChangeNotifier {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
@@ -223,7 +224,11 @@ class AuthenticationService extends ChangeNotifier {
   // Set up real-time listener for user data changes
   void _setupUserDataListener(String userId) {
     _userDataSub?.cancel();
-    _userDataSub = _firestore.collection('users').doc(userId).snapshots().listen((snapshot) {
+    _userDataSub = _firestore
+        .collection('users')
+        .doc(userId)
+        .snapshots()
+        .listen((snapshot) {
       if (snapshot.exists && _currentUser != null) {
         final data = snapshot.data()!;
 
@@ -375,87 +380,33 @@ class AuthenticationService extends ChangeNotifier {
     }
   }
 
-  // Sign in with username
+  // Sign in with username (lowercase lookup; same semantics as web LoginModal)
   Future<void> signInWithUsername(String username, String password) async {
     try {
-      // print("🔐 Looking up user by username: $username");
       setLoading(true);
-
-      // First, find the user by username in Firestore
-      // print("🔐 Firestore instance created");
-
-      final query =
-          _firestore.collection('users').where('username', isEqualTo: username);
-      // print("🔐 Query created for username: $username");
-
-      final snapshot = await query.get();
-      // print("🔐 Query executed, found ${snapshot.docs.length} documents");
-
-      // Log all documents for debugging
-      for (int index = 0; index < snapshot.docs.length; index++) {
-        // final doc = snapshot.docs[index];
-        // print("📄 Document $index: ID = ${doc.id}, Data = ${doc.data()}");
+      final String trimmed = username.trim();
+      if (trimmed.isEmpty) {
+        throw Exception('Enter your username.');
       }
+      final String normalizedUsername = trimmed.toLowerCase();
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+          .collection('users')
+          .where('username', isEqualTo: normalizedUsername)
+          .limit(1)
+          .get();
 
       if (snapshot.docs.isEmpty) {
-        // print("❌ No user found with username: $username");
-        // print("🔐 Available usernames in database:");
-        // Let's also check what usernames exist in the database
-        final allUsersQuery = _firestore.collection('users').limit(10);
-        final allUsersSnapshot = await allUsersQuery.get();
-        for (final doc in allUsersSnapshot.docs) {
-          final data = doc.data();
-          final username = data['username'] as String?;
-          if (username != null) {
-            // print("👤 Found username: $username");
-          }
-        }
-        throw Exception('Username not found');
+        throw Exception('No account found with this email or username.');
       }
 
-      final userDoc = snapshot.docs.first;
-      final userData = userDoc.data();
-      // print("🔐 User data: $userData");
-
-      // Try multiple ways to find the email
-      String? email;
-
-      // 1. Check for email field
-      if (userData['email'] != null) {
-        email = userData['email'] as String;
-        // print("✅ Found email in 'email' field: $email");
-      }
-      // 2. Check if id field contains email
-      else if (userData['id'] != null) {
-        final idField = userData['id'] as String;
-        if (idField.contains("@")) {
-          email = idField;
-          // print("✅ Found email in 'id' field: $email");
-          // print("ℹ️ Using email directly without updating document");
-        }
-      }
-      // 3. Check for firebaseUid to get email from Firebase Auth
-      else if (userData['firebaseUid'] != null) {
-        // final firebaseUid = userData['firebaseUid'] as String;
-        // print("🔐 Found firebaseUid: $firebaseUid (would need admin SDK for email lookup)");
-        // This would require admin SDK, but we can try to sign in with the UID
-        // For now, we'll throw an error and suggest using email
-        throw Exception(
-            'No email found for username. Please use email to sign in.');
+      final Map<String, dynamic> userData = snapshot.docs.first.data();
+      final String? email = userData['email'] as String?;
+      if (email == null || email.trim().isEmpty) {
+        throw Exception('No account found with this email or username.');
       }
 
-      if (email == null) {
-        // print("❌ No email found for username: $username");
-        // print("🔐 Available fields: ${userData.keys.toList()}");
-        throw Exception('No email associated with this username');
-      }
-
-      // print("✅ Using email for authentication: $email");
-
-      // Now sign in with the email and password
-      await signInWithEmail(email, password);
+      await signInWithEmail(email.trim(), password);
     } catch (e) {
-      // print("❌ Username lookup error: $e");
       setLoading(false);
       rethrow;
     }
@@ -470,18 +421,37 @@ class AuthenticationService extends ChangeNotifier {
   }) async {
     try {
       setLoading(true);
+      final String normalizedUsername = username.trim().toLowerCase();
+      final String trimMail = email.trim();
+      final String? pwReject = PasswordRequirements.signupRejectReason(
+        password,
+      );
+      if (pwReject != null) {
+        throw Exception(pwReject);
+      }
+      final UsernameValidationResult usernameValidation =
+          await _usernameLockService.validateUsername(normalizedUsername);
+      if (!usernameValidation.isValid) {
+        throw Exception(usernameValidation.errorMessage ?? 'Invalid username');
+      }
 
       final firebase_auth.UserCredential userCredential =
           await _auth.createUserWithEmailAndPassword(
-        email: email,
+        email: trimMail,
         password: password,
       );
 
       final firebase_auth.User? user = userCredential.user;
       if (user != null) {
-        await user.updateDisplayName(displayName);
-        await _createOrUpdateUserDocument(user,
-            displayName: displayName, username: username);
+        final String profileName = displayName.trim().isNotEmpty
+            ? displayName.trim()
+            : normalizedUsername;
+        await user.updateDisplayName(profileName);
+        await _createOrUpdateUserDocument(
+          user,
+          displayName: profileName,
+          username: normalizedUsername,
+        );
       }
 
       setLoading(false);
@@ -536,79 +506,12 @@ class AuthenticationService extends ChangeNotifier {
     }
   }
 
-  // Bypass login as technqs (Development/Testing)
-  Future<void> bypassLoginAsTechnqs() async {
-    try {
-      setLoading(true);
-
-      // Fetch existing user data from Firestore
-      final querySnapshot = await _firestore
-          .collection('users')
-          .where('username', isEqualTo: 'technqs')
-          .limit(1)
-          .get();
-
-      if (querySnapshot.docs.isEmpty) {
-        throw Exception('User technqs not found in database');
-      }
-
-      final userDoc = querySnapshot.docs.first;
-      final userData = userDoc.data();
-
-      // Store the full user profile data
-      _currentUserProfile = userData;
-
-      // Create a User object from Firestore data
-      final user = User(
-        id: userData['uid'] ?? 'unknown',
-        username: userData['username'] ?? 'user',
-        displayName: userData['displayName'] ?? 'User',
-        bio: userData['bio'] ?? '',
-        avatarURL: resolveAvatarUrl(userData),
-        onlineStatus: userData['onlineStatus'] ?? 'online',
-        hashtags:
-            (userData['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
-        postCount: userData['postCount'] ?? 0,
-        followerCount: UserCountFields.readFollowersCount(userData),
-        followingCount: UserCountFields.readFollowingCount(userData),
-      );
-
-      _currentUser = user;
-      _isLoggedIn = true;
-      _isLoading = false;
-
-      // Notify listeners of the change
-      notifyListeners();
-
-      // Print detailed user information
-      // print("✅ Successfully bypassed login as technqs");
-      // print("📊 User data loaded: ${userData['displayName']} (${userData['username']})");
-      // print("📧 Email: ${userData['email']}");
-      // print("🆔 UID: ${userData['uid']}");
-      // print("🖼️ Avatar: ${userData['photoURL'] ?? 'No avatar'}");
-
-      // Print additional profile data if available
-      if (userData['bio'] != null) {
-        // print("📝 Bio: ${userData['bio']}");
-      }
-      if (userData['platform'] != null) {
-        // print("🎮 Platform: ${userData['platform']}");
-      }
-      if (userData['createdAt'] != null) {
-        // print("📅 Created: ${userData['createdAt']}");
-      }
-    } catch (e) {
-      setLoading(false);
-      // print("❌ Bypass login failed: $e");
-      rethrow;
-    }
-  }
-
   // Create or update user document in Firestore
   Future<void> _createOrUpdateUserDocument(firebase_auth.User user,
       {String? displayName, String? username}) async {
     try {
-      final userData = {
+      final userData = <String, dynamic>{
+        'id': user.uid,
         'uid': user.uid,
         'email': user.email,
         'displayName': displayName ?? user.displayName ?? 'Unknown User',
@@ -643,6 +546,12 @@ class AuthenticationService extends ChangeNotifier {
       final user = _auth.currentUser;
       if (user == null) {
         throw Exception('No user is currently signed in');
+      }
+
+      final String? rejectReason =
+          PasswordRequirements.signupRejectReason(newPassword);
+      if (rejectReason != null) {
+        throw Exception(rejectReason);
       }
 
       // Re-authenticate user with current password
@@ -730,8 +639,7 @@ class AuthenticationService extends ChangeNotifier {
       }
 
       debugPrint('⬆️ Uploading avatar to R2...');
-      final downloadUrl =
-          await R2MediaService.instance.uploadAvatar(imageFile);
+      final downloadUrl = await R2MediaService.instance.uploadAvatar(imageFile);
       debugPrint('✅ Avatar uploaded to R2: $downloadUrl');
 
       // Update user profile in Firestore (website + legacy readers use photoURL)
@@ -767,7 +675,8 @@ class AuthenticationService extends ChangeNotifier {
         _currentUserProfile!['avatarURL'] = downloadUrl;
         _currentUserProfile!['avatarUrl'] = downloadUrl;
         _currentUserProfile!['photoURL'] = downloadUrl;
-        _currentUserProfile!['avatarUpdatedAt'] = DateTime.now().toIso8601String();
+        _currentUserProfile!['avatarUpdatedAt'] =
+            DateTime.now().toIso8601String();
         _currentUserProfile!['updatedAt'] = DateTime.now().toIso8601String();
       }
 
@@ -800,7 +709,8 @@ class AuthenticationService extends ChangeNotifier {
 
       String errorMessage = 'Failed to upload avatar';
       if (e.toString().contains('Media upload not configured')) {
-        errorMessage = 'Avatar upload is temporarily unavailable. Try again later.';
+        errorMessage =
+            'Avatar upload is temporarily unavailable. Try again later.';
       } else if (e.toString().contains('No internet connection')) {
         errorMessage =
             'No internet connection. Please check your network and try again.';
@@ -827,8 +737,10 @@ class AuthenticationService extends ChangeNotifier {
 
   Future<void> _syncPublicUserAvatar(String uid, String avatarUrl) async {
     try {
-      final displayName = _currentUser?.displayName ?? _currentUserProfile?['displayName'];
-      final username = _currentUser?.username ?? _currentUserProfile?['username'];
+      final displayName =
+          _currentUser?.displayName ?? _currentUserProfile?['displayName'];
+      final username =
+          _currentUser?.username ?? _currentUserProfile?['username'];
 
       await _firestore.collection('publicUsers').doc(uid).set({
         'uid': uid,

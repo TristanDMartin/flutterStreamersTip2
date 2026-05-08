@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:ui';
 
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/st_theme_tokens.dart';
-import '../services/pending_auth_redirect_service.dart';
 import '../services/robust_auth_service.dart';
+import '../utils/auth_post_login_navigation.dart';
+import '../utils/password_validation.dart';
+import 'auth_page_shell.dart';
 import 'email_verification_view.dart';
 import 'email_login_view.dart';
 
@@ -32,11 +36,12 @@ class _SignupViewState extends ConsumerState<SignupView> {
   bool _showAlert = false;
   String _alertMessage = "";
   PasswordStrength _passwordStrength = PasswordStrength.none;
+  Timer? _passwordStrengthDebounce;
 
   @override
   void initState() {
     super.initState();
-    _passwordController.addListener(_validatePassword);
+    _passwordController.addListener(_schedulePasswordStrengthUpdate);
     _emailController.addListener(_onAnyFieldChanged);
     _usernameController.addListener(_onAnyFieldChanged);
     _confirmPasswordController.addListener(_onAnyFieldChanged);
@@ -64,13 +69,11 @@ class _SignupViewState extends ConsumerState<SignupView> {
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: brightness == Brightness.dark
-            ? Brightness.light
-            : Brightness.dark,
+        statusBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: theme.colorScheme.surface,
-        systemNavigationBarIconBrightness: brightness == Brightness.dark
-            ? Brightness.light
-            : Brightness.dark,
+        systemNavigationBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
         systemNavigationBarDividerColor: Colors.transparent,
       ),
     );
@@ -78,7 +81,8 @@ class _SignupViewState extends ConsumerState<SignupView> {
 
   @override
   void dispose() {
-    _passwordController.removeListener(_validatePassword);
+    _passwordStrengthDebounce?.cancel();
+    _passwordController.removeListener(_schedulePasswordStrengthUpdate);
     _emailController.removeListener(_onAnyFieldChanged);
     _usernameController.removeListener(_onAnyFieldChanged);
     _confirmPasswordController.removeListener(_onAnyFieldChanged);
@@ -107,204 +111,68 @@ class _SignupViewState extends ConsumerState<SignupView> {
     );
   }
 
-  void _validatePassword() {
-    setState(() {
-      _passwordStrength = _calculatePasswordStrength(_passwordController.text);
+  void _schedulePasswordStrengthUpdate() {
+    _passwordStrengthDebounce?.cancel();
+    _passwordStrengthDebounce = Timer(const Duration(milliseconds: 140), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _passwordStrength =
+            _calculatePasswordStrength(_passwordController.text);
+      });
     });
   }
 
   PasswordStrength _calculatePasswordStrength(String password) {
-    if (password.isEmpty) return PasswordStrength.none;
-    final requirements = _checkPasswordRequirements(password);
-    final metCount = requirements.values.where((met) => met).length;
-    if (metCount == requirements.length) return PasswordStrength.strong;
-    if (metCount >= 4) return PasswordStrength.medium;
-    return PasswordStrength.weak;
-  }
-
-  Map<String, bool> _checkPasswordRequirements(String password) {
-    return {
-      'length': password.length >= 8,
-      'uppercase': password.contains(RegExp(r'[A-Z]')),
-      'lowercase': password.contains(RegExp(r'[a-z]')),
-      'number': password.contains(RegExp(r'[0-9]')),
-      'special': password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]')),
-      'notCommon': !_isCommonPassword(password),
-      'notSequential': !_hasSequentialCharacters(password),
-    };
-  }
-
-  bool _isCommonPassword(String password) {
-    final commonPasswords = [
-      'password',
-      '12345678',
-      'qwerty',
-      'abc123',
-      'password123',
-      'admin',
-      'letmein',
-      'welcome',
-      'monkey',
-      '1234567890',
-      'password1',
-      '123456789',
-    ];
-    return commonPasswords.contains(password.toLowerCase());
-  }
-
-  bool _hasSequentialCharacters(String password) {
-    if (password.length < 3) return false;
-    for (int i = 0; i < password.length - 2; i++) {
-      final char1 = password[i].toLowerCase();
-      final char2 = password[i + 1].toLowerCase();
-      final char3 = password[i + 2].toLowerCase();
-      if (char1.codeUnitAt(0) + 1 == char2.codeUnitAt(0) &&
-          char2.codeUnitAt(0) + 1 == char3.codeUnitAt(0)) {
-        return true;
-      }
-      if (char1 == char2 && char2 == char3) {
-        return true;
-      }
+    if (password.isEmpty) {
+      return PasswordStrength.none;
     }
-    return false;
+    final Map<String, bool> requirements =
+        PasswordRequirements.checklist(password);
+    final int metCount = requirements.values.where((bool met) => met).length;
+    if (metCount == requirements.length) {
+      return PasswordStrength.strong;
+    }
+    if (metCount >= 5) {
+      return PasswordStrength.medium;
+    }
+    return PasswordStrength.weak;
   }
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
-    final bool isDark = theme.brightness == Brightness.dark;
     final authService = ref.watch(robustAuthServiceProvider);
     ref.listen(robustAuthServiceProvider, (previous, next) {
       if (next.isLoggedIn && mounted) {
+        final firebase_auth.User? u =
+            firebase_auth.FirebaseAuth.instance.currentUser;
+        if (u != null && !u.emailVerified) {
+          return;
+        }
         debugPrint("✅ User authenticated, resolving post-auth destination");
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
-          PendingAuthRedirectService.instance.consumeOrGoHome(context);
+          await navigateAfterAuthenticated(context);
         });
       }
     });
 
-    return Material(
-      color: Colors.transparent,
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        extendBodyBehindAppBar: true,
-        extendBody: true,
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: isDark
-                  ? <Color>[
-                      StThemeColors.darkBackground,
-                      scheme.surfaceContainerLow,
-                      scheme.surface,
-                    ]
-                  : <Color>[
-                      scheme.primary.withValues(alpha: 0.45),
-                      scheme.surfaceContainerLow,
-                      scheme.surface,
-                    ],
-            ),
-          ),
-          child: Stack(
-            children: [
-              _buildBackgroundDecor(),
-              GestureDetector(
-                onTap: () => FocusScope.of(context).unfocus(),
-                child: SafeArea(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                    child: Column(
-                      children: [
-                        _buildSignupForm(),
-                        const SizedBox(height: 20),
-                        _buildSignInSection(),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (authService.shouldShowLoading)
-                Container(
-                  color: scheme.scrim.withValues(alpha: 0.35),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            scheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Creating account...",
-                          style: TextStyle(
-                            color: scheme.onSurface,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              if (_showAlert) ...[
-                Positioned.fill(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _showAlert = false),
-                    child: Container(
-                      color: scheme.scrim.withValues(alpha: 0.45),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: AlertDialog(
-                      backgroundColor: scheme.surfaceContainerHigh,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      title: Text(
-                        "Error",
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      content: Text(
-                        _alertMessage.isEmpty
-                            ? "Something went wrong."
-                            : _alertMessage,
-                        style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.75),
-                          height: 1.3,
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: scheme.primary,
-                          ),
-                          onPressed: () => setState(() => _showAlert = false),
-                          child: const Text("OK"),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+    return AuthPageShell(
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+      minHeightBottomPadding: 20,
+      showLoading: authService.shouldShowLoading,
+      loadingText: 'Creating account...',
+      showAlert: _showAlert,
+      alertMessage: _alertMessage,
+      onDismissAlert: () => setState(() => _showAlert = false),
+      content: Column(
+        children: <Widget>[
+          _buildSignupForm(),
+          const SizedBox(height: 20),
+          _buildSignInSection(),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
@@ -511,9 +379,11 @@ class _SignupViewState extends ConsumerState<SignupView> {
       child: TextField(
         controller: controller,
         obscureText: obscure,
-        keyboardType: keyboardType,
+        keyboardType: isPassword ? TextInputType.visiblePassword : keyboardType,
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
+        autocorrect: !isPassword,
+        enableSuggestions: !isPassword,
         style: TextStyle(color: scheme.onSurface),
         decoration: InputDecoration(
           hintText: hint,
@@ -551,7 +421,8 @@ class _SignupViewState extends ConsumerState<SignupView> {
   Widget _buildPasswordRequirements() {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final password = _passwordController.text;
-    final requirements = _checkPasswordRequirements(password);
+    final Map<String, bool> requirements =
+        PasswordRequirements.checklist(password);
     final Color borderColor = _passwordStrength == PasswordStrength.strong
         ? StThemeColors.successGreen
         : _passwordStrength == PasswordStrength.medium
@@ -606,12 +477,12 @@ class _SignupViewState extends ConsumerState<SignupView> {
             requirements['special']!,
           ),
           _buildRequirementItem(
-            "Not a common password",
-            requirements['notCommon']!,
+            'Not a common password',
+            requirements['notWeak']!,
           ),
           _buildRequirementItem(
-            "No sequential characters",
-            requirements['notSequential']!,
+            'No triple repeated characters (aaa)',
+            requirements['notTripleRepeat']!,
           ),
         ],
       ),
@@ -636,9 +507,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
             child: Text(
               text,
               style: TextStyle(
-                color: met
-                    ? scheme.onSurface
-                    : scheme.onSurfaceVariant,
+                color: met ? scheme.onSurface : scheme.onSurfaceVariant,
                 fontSize: 12,
               ),
             ),
@@ -742,6 +611,15 @@ class _SignupViewState extends ConsumerState<SignupView> {
       });
       return;
     }
+    final RegExp usernameChars = RegExp(r'^[a-zA-Z0-9_]+$');
+    if (!usernameChars.hasMatch(username)) {
+      setState(() {
+        _alertMessage =
+            'Username can only contain letters, numbers, and underscores.';
+        _showAlert = true;
+      });
+      return;
+    }
     if (password != confirmPassword) {
       setState(() {
         _alertMessage = "Passwords do not match";
@@ -749,9 +627,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
       });
       return;
     }
-    if (_passwordStrength != PasswordStrength.strong) {
+    if (!PasswordRequirements.meetsSignupPolicy(password)) {
       setState(() {
-        _alertMessage = "Please meet all password requirements";
+        _alertMessage = PasswordRequirements.signupRejectReason(password) ??
+            'Please meet all password requirements';
         _showAlert = true;
       });
       return;
@@ -777,9 +656,6 @@ class _SignupViewState extends ConsumerState<SignupView> {
               email: email,
               onVerified: () {
                 debugPrint("✅ Email verified, user can access app");
-              },
-              onSkip: () {
-                debugPrint("⚠️ User skipped email verification");
               },
             ),
           ),
@@ -827,59 +703,6 @@ class _SignupViewState extends ConsumerState<SignupView> {
     );
   }
 
-  Widget _buildBackgroundDecor() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final Color primarySoft = scheme.primary.withValues(alpha: 0.14);
-    final Color secondarySoft = scheme.secondary.withValues(alpha: 0.1);
-    return IgnorePointer(
-      child: Stack(
-        children: <Widget>[
-          Positioned(
-            top: -90,
-            right: -20,
-            child: _buildGlowOrb(
-              size: 220,
-              colors: <Color>[primarySoft, primarySoft.withValues(alpha: 0)],
-            ),
-          ),
-          Positioned(
-            top: 200,
-            left: -70,
-            child: _buildGlowOrb(
-              size: 180,
-              colors: <Color>[secondarySoft, secondarySoft.withValues(alpha: 0)],
-            ),
-          ),
-          Positioned(
-            bottom: -50,
-            right: -10,
-            child: _buildGlowOrb(
-              size: 170,
-              colors: <Color>[
-                scheme.primary.withValues(alpha: 0.08),
-                Colors.transparent,
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGlowOrb({
-    required double size,
-    required List<Color> colors,
-  }) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: colors),
-      ),
-    );
-  }
-
   Widget _buildGlassPanel({
     required Widget child,
     EdgeInsetsGeometry padding = const EdgeInsets.all(16),
@@ -891,26 +714,28 @@ class _SignupViewState extends ConsumerState<SignupView> {
         : scheme.surface.withValues(alpha: 0.72);
     final Color panelBorder =
         scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: double.infinity,
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            color: panelFill,
-            border: Border.all(color: panelBorder),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
-                blurRadius: 32,
-                offset: const Offset(0, 18),
-              ),
-            ],
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            width: double.infinity,
+            padding: padding,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              color: panelFill,
+              border: Border.all(color: panelBorder),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
+                  blurRadius: 32,
+                  offset: const Offset(0, 18),
+                ),
+              ],
+            ),
+            child: child,
           ),
-          child: child,
         ),
       ),
     );

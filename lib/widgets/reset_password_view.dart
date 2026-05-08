@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/password_validation.dart';
 import 'email_login_view.dart';
 
 class ResetPasswordView extends ConsumerStatefulWidget {
@@ -398,9 +399,12 @@ class _ResetPasswordViewState extends ConsumerState<ResetPasswordView> {
       return;
     }
 
-    if (password.length < 8) {
+    final String? rejectReason = PasswordRequirements.signupRejectReason(
+      password,
+    );
+    if (rejectReason != null) {
       setState(() {
-        _alertMessage = "Password must be at least 8 characters long";
+        _alertMessage = rejectReason;
         _showAlert = true;
       });
       return;

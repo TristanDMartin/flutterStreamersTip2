@@ -9,13 +9,16 @@ import '../services/pending_auth_redirect_service.dart';
 class EmailVerificationView extends ConsumerStatefulWidget {
   final String email;
   final VoidCallback? onVerified;
-  final VoidCallback? onSkip;
+
+  /// When true (default), verified users run [PendingAuthRedirectService.consumeOrGoHome].
+  /// Set false when this widget is embedded in a shell that should rebuild instead.
+  final bool navigateToHomeOnVerify;
 
   const EmailVerificationView({
     super.key,
     required this.email,
     this.onVerified,
-    this.onSkip,
+    this.navigateToHomeOnVerify = true,
   });
 
   @override
@@ -168,7 +171,9 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
           await Future.delayed(const Duration(seconds: 1));
           if (mounted) {
             widget.onVerified?.call();
-            PendingAuthRedirectService.instance.consumeOrGoHome(context);
+            if (widget.navigateToHomeOnVerify) {
+              PendingAuthRedirectService.instance.consumeOrGoHome(context);
+            }
           }
         } else if (!silent) {
           setState(() {
@@ -202,41 +207,40 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
     }
   }
 
-  Future<void> _handleSkip() async {
-    final shouldSkip = await showDialog<bool>(
+  Future<void> _handleSignOut() async {
+    final bool? confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (BuildContext context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
         title: const Text(
-          "Skip Verification?",
+          'Sign out?',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
         content: const Text(
-          "You can verify your email later in settings. Some features may be limited until verification.",
+          'Verify your email to use StreamersTip. Sign out and log back '
+          'in after you verify.',
           style: TextStyle(color: Colors.white70, height: 1.3),
         ),
-        actions: [
+        actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text(
-              "Skip",
+              'Sign out',
               style: TextStyle(color: Colors.orange),
             ),
           ),
         ],
       ),
     );
-
-    if (shouldSkip == true && mounted) {
-      widget.onSkip?.call();
-      PendingAuthRedirectService.instance.consumeOrGoHome(context);
+    if (confirm == true && mounted) {
+      await FirebaseAuth.instance.signOut();
     }
   }
 
@@ -277,9 +281,9 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
     return Row(
       children: [
         TextButton(
-          onPressed: _handleSkip,
+          onPressed: _handleSignOut,
           child: const Text(
-            "Skip",
+            'Sign out',
             style: TextStyle(color: Colors.orange),
           ),
         ),
@@ -293,10 +297,7 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
           ),
         ),
         const Spacer(),
-        const Text(
-          "Skip",
-          style: TextStyle(color: Colors.transparent),
-        ),
+        const SizedBox(width: 56),
       ],
     );
   }

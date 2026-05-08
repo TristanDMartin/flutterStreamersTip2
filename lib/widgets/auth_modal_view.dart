@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../services/robust_auth_service.dart';
-import '../services/pending_auth_redirect_service.dart';
+import '../utils/auth_post_login_navigation.dart';
 import '../views/terms_and_privacy_view.dart';
 import 'email_login_view.dart';
 import 'privacy_policy_view.dart';
@@ -52,13 +52,11 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: brightness == Brightness.dark
-            ? Brightness.light
-            : Brightness.dark,
+        statusBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: theme.colorScheme.surface,
-        systemNavigationBarIconBrightness: brightness == Brightness.dark
-            ? Brightness.light
-            : Brightness.dark,
+        systemNavigationBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
       ),
     );
   }
@@ -89,12 +87,11 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
 
     // Listen to auth state changes to navigate when user signs in
     ref.listen(robustAuthServiceProvider, (previous, next) {
-      // Check if user is now logged in
       if (next.isLoggedIn && mounted) {
         debugPrint("✅ User authenticated, resolving post-auth destination");
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
-          PendingAuthRedirectService.instance.consumeOrGoHome(context);
+          await navigateAfterAuthenticated(context);
         });
       }
     });
@@ -131,9 +128,8 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
                   child: AnimatedSlide(
                     duration: const Duration(milliseconds: 500),
                     curve: Curves.easeOutCubic,
-                    offset: _isContentVisible
-                        ? Offset.zero
-                        : const Offset(0, 0.03),
+                    offset:
+                        _isContentVisible ? Offset.zero : const Offset(0, 0.03),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
@@ -518,27 +514,30 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     final Color panelFill = isDark
         ? scheme.surface.withValues(alpha: 0.42)
         : scheme.surface.withValues(alpha: 0.72);
-    final Color panelBorder = scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: double.infinity,
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            color: panelFill,
-            border: Border.all(color: panelBorder),
-            boxShadow: [
-              BoxShadow(
-                color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
-                blurRadius: 32,
-                offset: const Offset(0, 18),
-              ),
-            ],
+    final Color panelBorder =
+        scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            width: double.infinity,
+            padding: padding,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              color: panelFill,
+              border: Border.all(color: panelBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
+                  blurRadius: 32,
+                  offset: const Offset(0, 18),
+                ),
+              ],
+            ),
+            child: child,
           ),
-          child: child,
         ),
       ),
     );
