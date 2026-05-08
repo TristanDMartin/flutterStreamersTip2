@@ -237,15 +237,7 @@ service cloud.firestore {
     match /follows/{followId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null &&
-        followFollowerId() is string &&
-        followTargetId() is string &&
-        followFollowerId() != '' &&
-        followTargetId() != '' &&
-        request.auth.uid != followTargetId() &&
-        request.auth.uid == followFollowerId() &&
-        followId == followFollowerId() + '_' + followTargetId() &&
-        request.resource.data.isActive == true &&
-        (isUserAdmin() || isWithinFollowLimit(request.auth.uid));
+        (isUidFirstFollowCreate(followId) || isLegacyFollowCreate(followId));
       allow update: if request.auth != null &&
         (exists(/databases/$(database)/documents/follows/$(followId))
           ? request.auth.uid == existingFollowFollowerId() &&
@@ -922,6 +914,32 @@ service cloud.firestore {
              (request.time.seconds - get(path).data.follow_time.seconds > 60) ||
              (!('follow_count' in get(path).data)) ||
              (get(path).data.follow_count < 30));
+  }
+
+  function isUidFirstFollowCreate(followId) {
+    return request.resource.data.keys().hasAll([
+      'followerUserId',
+      'targetUserId',
+      'isActive'
+    ])
+      ? request.auth.uid == request.resource.data.followerUserId &&
+        request.auth.uid != request.resource.data.targetUserId &&
+        followId == request.resource.data.followerUserId + '_' + request.resource.data.targetUserId &&
+        request.resource.data.isActive == true
+      : false;
+  }
+
+  function isLegacyFollowCreate(followId) {
+    return request.resource.data.keys().hasAll([
+      'followerId',
+      'followingId',
+      'isActive'
+    ])
+      ? request.auth.uid == request.resource.data.followerId &&
+        request.auth.uid != request.resource.data.followingId &&
+        followId == request.resource.data.followerId + '_' + request.resource.data.followingId &&
+        request.resource.data.isActive == true
+      : false;
   }
 
   function followFollowerId() {
