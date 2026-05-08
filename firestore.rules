@@ -247,10 +247,12 @@ service cloud.firestore {
         request.resource.data.isActive == true &&
         (isUserAdmin() || isWithinFollowLimit(request.auth.uid));
       allow update: if request.auth != null &&
+        exists(/databases/$(database)/documents/follows/$(followId)) &&
         request.auth.uid == existingFollowFollowerId() &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['isActive', 'updatedAt']);
       allow delete: if request.auth != null &&
+        exists(/databases/$(database)/documents/follows/$(followId)) &&
         request.auth.uid == existingFollowFollowerId();
       allow list: if request.auth != null;
     }
@@ -773,8 +775,8 @@ service cloud.firestore {
     let path = /databases/$(database)/documents/users/$(request.auth.uid);
     return exists(path)
       && (
-        get(path).data.role == 'admin' ||
-        get(path).data.isAdmin == true ||
+        ('role' in get(path).data && get(path).data.role == 'admin') ||
+        ('isAdmin' in get(path).data && get(path).data.isAdmin == true) ||
         (
           'admin' in get(path).data &&
           get(path).data.admin is map &&
@@ -785,13 +787,19 @@ service cloud.firestore {
 
   function isAdmin() {
     return request.auth != null && (
-      ('admin' in request.auth.token && request.auth.token.admin == true) ||
+      hasAdminClaim() ||
       isFirestoreAdminSelf()
     );
   }
 
   function isUserAdmin() {
     return isAdmin();
+  }
+
+  function hasAdminClaim() {
+    return request.auth.token is map &&
+      'admin' in request.auth.token &&
+      request.auth.token.admin == true;
   }
 
   function isNotBannedUser() {
