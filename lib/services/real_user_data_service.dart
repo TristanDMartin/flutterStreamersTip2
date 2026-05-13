@@ -9,6 +9,7 @@ import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/trending_creator.dart';
 import '../services/logging_service.dart';
+import 'follows_service.dart';
 
 /// Helper class to track trending scores for creators
 class TrendingCreatorScore {
@@ -349,8 +350,8 @@ class RealUserDataService {
         final creator = await getUserById(ownerId);
         if (creator == null) continue;
 
-        final thumbnailUrl = (data['thumbnailUrl'] ?? data['thumbnailURL'])
-            as String?;
+        final thumbnailUrl =
+            (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
         VideoThumbnails? thumbnails;
         if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
           thumbnails = VideoThumbnails(
@@ -708,43 +709,12 @@ class RealUserDataService {
 
   /// Unfollow a user
   Future<bool> unfollowUser(String targetUserId) async {
-    try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
-
-      final snapshot = await _firestore
-          .collection('follows')
-          .where('followerId', isEqualTo: currentUser.uid)
-          .where('followingId', isEqualTo: targetUserId)
-          .where('status', isEqualTo: 'active')
-          .get();
-
-      for (final doc in snapshot.docs) {
-        await doc.reference.update({
-          'status': 'inactive',
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      // Update follower counts
-      await _firestore.collection('users').doc(currentUser.uid).update({
-        'followingCount': FieldValue.increment(-1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _firestore.collection('users').doc(targetUserId).update({
-        'followerCount': FieldValue.increment(-1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
+    final success = await FollowsService().unfollowUser(targetUserId);
+    if (success) {
       LoggingService.instance.debug('✅ User unfollowed: $targetUserId',
           tag: 'RealUserDataService');
-      return true;
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error unfollowing user',
-          tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
-      return false;
     }
+    return success;
   }
 
   /// Check if user is following another user

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../components/onboarding/product_tour_target_keys.dart';
 import '../../models/feed_tab.dart';
+import '../../providers/product_tour_ui_provider.dart';
 import 'feed_dropdown_widget.dart';
 
 /// Feed selector widget for HomeView (single themed pill with dropdown + compass)
-class FeedSelectorWidget extends StatefulWidget {
-  final FeedTab activeTab;
-  final ValueChanged<FeedTab> onTabSelected;
-  final VoidCallback onDiscoverTap;
-
+class FeedSelectorWidget extends ConsumerStatefulWidget {
   const FeedSelectorWidget({
     super.key,
     required this.activeTab,
@@ -16,11 +16,15 @@ class FeedSelectorWidget extends StatefulWidget {
     required this.onDiscoverTap,
   });
 
+  final FeedTab activeTab;
+  final ValueChanged<FeedTab> onTabSelected;
+  final VoidCallback onDiscoverTap;
+
   @override
-  State<FeedSelectorWidget> createState() => _FeedSelectorWidgetState();
+  ConsumerState<FeedSelectorWidget> createState() => _FeedSelectorWidgetState();
 }
 
-class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
+class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
   bool _isDropdownOpen = false;
   OverlayEntry? _overlayEntry;
   final LayerLink _dropdownLink = LayerLink();
@@ -52,39 +56,50 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
   void _showOverlay() {
     _removeOverlay();
 
-    final overlay = Overlay.of(context);
+    final OverlayState overlay = Overlay.of(context);
     _overlayEntry = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              key: const ValueKey('feed-selector-overlay-barrier'),
-              behavior: HitTestBehavior.translucent,
-              onTap: _closeDropdown,
-              child: const SizedBox.expand(),
-            ),
-          ),
-          CompositedTransformFollower(
-            link: _dropdownLink,
-            showWhenUnlinked: false,
-            targetAnchor: Alignment.bottomLeft,
-            followerAnchor: Alignment.topLeft,
-            offset: const Offset(0, 8),
-            child: Material(
-              elevation: 100,
-              color: Colors.transparent,
-              child: FeedDropdownWidget(
-                activeTab: widget.activeTab,
-                isVisible: true,
-                onTabSelected: (FeedTab tab) {
-                  _closeDropdown();
-                  widget.onTabSelected(tab);
-                },
-                onClose: _closeDropdown,
+      builder: (BuildContext overlayContext) => Consumer(
+        builder: (BuildContext ctx, WidgetRef ref, Widget? _) {
+          final ProductTourUiPhase phase =
+              ref.watch(productTourUiPhaseProvider);
+          final FeedTab? tourHighlight =
+              phase == ProductTourUiPhase.progressionDropdown
+                  ? FeedTab.following
+                  : null;
+          return Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: GestureDetector(
+                  key: const ValueKey<String>('feed-selector-overlay-barrier'),
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _closeDropdown,
+                  child: const SizedBox.expand(),
+                ),
               ),
-            ),
-          ),
-        ],
+              CompositedTransformFollower(
+                link: _dropdownLink,
+                showWhenUnlinked: false,
+                targetAnchor: Alignment.bottomLeft,
+                followerAnchor: Alignment.topLeft,
+                offset: const Offset(0, 8),
+                child: Material(
+                  elevation: 100,
+                  color: Colors.transparent,
+                  child: FeedDropdownWidget(
+                    activeTab: widget.activeTab,
+                    tourHighlightTab: tourHighlight,
+                    isVisible: true,
+                    onTabSelected: (FeedTab tab) {
+                      _closeDropdown();
+                      widget.onTabSelected(tab);
+                    },
+                    onClose: _closeDropdown,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
 
@@ -93,6 +108,33 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<ProductTourUiPhase>(
+      productTourUiPhaseProvider,
+      (ProductTourUiPhase? previous, ProductTourUiPhase next) {
+        if (next == ProductTourUiPhase.progressionDropdown &&
+            !_isDropdownOpen) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _isDropdownOpen = true;
+            });
+            _showOverlay();
+          });
+        }
+        if (next == ProductTourUiPhase.idle &&
+            previous == ProductTourUiPhase.progressionDropdown &&
+            _isDropdownOpen) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _closeDropdown();
+            }
+          });
+        }
+      },
+    );
+
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isLight = Theme.of(context).brightness == Brightness.light;
     final Color labelColor = scheme.onSurface;
@@ -122,112 +164,115 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Single themed pill with dropdown
-            CompositedTransformTarget(
-              link: _dropdownLink,
-              child: Semantics(
-                button: true,
-                expanded: _isDropdownOpen,
-                label: 'Choose home feed',
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    final bool shouldOpen = !_isDropdownOpen;
-                    setState(() {
-                      _isDropdownOpen = shouldOpen;
-                    });
+          children: <Widget>[
+            KeyedSubtree(
+              key: ProductTourTargetKeys.progression,
+              child: CompositedTransformTarget(
+                link: _dropdownLink,
+                child: Semantics(
+                  button: true,
+                  expanded: _isDropdownOpen,
+                  label: 'Choose home feed',
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      final bool shouldOpen = !_isDropdownOpen;
+                      setState(() {
+                        _isDropdownOpen = shouldOpen;
+                      });
 
-                    if (shouldOpen) {
-                      _showOverlay();
-                    } else {
-                      _removeOverlay();
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: glassColors,
+                      if (shouldOpen) {
+                        _showOverlay();
+                      } else {
+                        _removeOverlay();
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
                       ),
-                      border: Border.all(
-                        color: borderColor,
-                        width: 1.2,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: glassColors,
+                        ),
+                        border: Border.all(
+                          color: borderColor,
+                          width: 1.2,
+                        ),
+                        boxShadow: pillShadows,
                       ),
-                      boxShadow: pillShadows,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.activeTab.displayName,
-                          style: TextStyle(
-                            color: labelColor,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.3,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            widget.activeTab.displayName,
+                            style: TextStyle(
+                              color: labelColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.3,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          _isDropdownOpen
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                          color: scheme.primary,
-                          size: 20,
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Icon(
+                            _isDropdownOpen
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: scheme.primary,
+                            size: 20,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-
-            // Discover button (compass icon)
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                widget.onDiscoverTap();
-              },
-              child: Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[
-                      scheme.surface.withValues(alpha: isLight ? 0.95 : 0.92),
-                      scheme.surfaceContainerLow.withValues(
-                        alpha: isLight ? 0.88 : 0.85,
+            KeyedSubtree(
+              key: ProductTourTargetKeys.discover,
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  widget.onDiscoverTap();
+                },
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        scheme.surface.withValues(alpha: isLight ? 0.95 : 0.92),
+                        scheme.surfaceContainerLow.withValues(
+                          alpha: isLight ? 0.88 : 0.85,
+                        ),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: scheme.outline
+                          .withValues(alpha: isLight ? 0.4 : 0.34),
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: scheme.shadow.withValues(
+                          alpha: isLight ? 0.1 : 0.28,
+                        ),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
-                  border: Border.all(
-                    color:
-                        scheme.outline.withValues(alpha: isLight ? 0.4 : 0.34),
+                  child: Icon(
+                    Icons.explore_outlined,
+                    color: scheme.primary,
+                    size: 22,
                   ),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: scheme.shadow.withValues(
-                        alpha: isLight ? 0.1 : 0.28,
-                      ),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.explore_outlined,
-                  color: scheme.primary,
-                  size: 22,
                 ),
               ),
             ),

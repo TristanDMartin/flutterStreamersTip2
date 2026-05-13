@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/support_shell_style.dart';
+import '../../../components/onboarding/onboarding_models.dart';
+import '../../../components/onboarding/onboarding_service.dart';
+import '../../../components/onboarding/product_tour_target_keys.dart';
 import '../gamification_providers.dart';
 import '../models/gamification_summary_model.dart';
 import '../missions/mission_engine.dart';
@@ -33,6 +36,8 @@ class CreatorProgressionPanel extends ConsumerWidget {
         bundle: bundle,
         uid: user.uid,
         onRefresh: () async {
+          await OnboardingService()
+              .syncLevelOneMissionsFromAccountEvidence(user.uid);
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
@@ -64,6 +69,130 @@ class CreatorProgressionPanel extends ConsumerWidget {
       },
     );
     return ColoredBox(color: shell.scaffold, child: body);
+  }
+}
+
+class _FirstThingsToDoSection extends StatelessWidget {
+  const _FirstThingsToDoSection({required this.uid});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream:
+          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot,
+      ) {
+        final OnboardingState onboarding =
+            OnboardingState.fromUserMap(snapshot.data?.data());
+        return _FirstThingsToDoCard(onboarding: onboarding);
+      },
+    );
+  }
+}
+
+class _FirstThingsToDoCard extends StatelessWidget {
+  const _FirstThingsToDoCard({required this.onboarding});
+
+  final OnboardingState onboarding;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final int complete = onboarding.completedMissionCount;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: 0.84),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.flag_circle_rounded,
+                color: scheme.primary,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'First things to do',
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '$complete/${levelOneMissions.length}',
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 6,
+              value: onboarding.levelOneProgress,
+              backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
+              valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...levelOneMissions.map((OnboardingMission mission) {
+            final bool done = onboarding.completedMissions.contains(mission.id);
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    done
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    color: done
+                        ? Colors.greenAccent.withValues(alpha: 0.9)
+                        : scheme.onSurface.withValues(alpha: 0.42),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      mission.title,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(
+                          alpha: done ? 0.92 : 0.68,
+                        ),
+                        fontWeight: done ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    mission.reward,
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 }
 
@@ -101,14 +230,19 @@ class _ProgressionBody extends StatelessWidget {
           120,
         ),
         children: <Widget>[
-          _HeroHeader(
-            level: model.level,
-            rankTitle: rankTitle,
-            creatorScore: model.creatorScore,
-            streakDays: model.streakDays,
+          KeyedSubtree(
+            key: ProductTourTargetKeys.progressionPanel,
+            child: _HeroHeader(
+              level: model.level,
+              rankTitle: rankTitle,
+              creatorScore: model.creatorScore,
+              streakDays: model.streakDays,
+            ),
           ),
           const SizedBox(height: 18),
           TierBadgeStrip(subscription: bundle.subscription),
+          const SizedBox(height: 18),
+          _FirstThingsToDoSection(uid: uid),
           const SizedBox(height: 18),
           _SectionTitle(
             title: 'Level progress',

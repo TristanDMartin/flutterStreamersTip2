@@ -187,26 +187,30 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 child: Stack(
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         // Avatar with ring
                         _buildAvatarWithRing(context, shell),
 
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
 
                         // Notification text
                         Expanded(
                           child: _buildNotificationText(shell),
                         ),
 
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 10),
 
                         // Action item
-                        _buildActionItem(
-                          context,
-                          shell,
-                          isFollowing,
-                          isMutualFollow,
-                          currentUserId,
+                        Flexible(
+                          flex: 0,
+                          child: _buildActionItem(
+                            context,
+                            shell,
+                            isFollowing,
+                            isMutualFollow,
+                            currentUserId,
+                          ),
                         ),
                       ],
                     ),
@@ -405,15 +409,19 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         const SizedBox(height: 4),
         Row(
           children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _handleActorTap,
-              child: Text(
-                '@${widget.notification.user.username}',
-                style: TextStyle(
-                  color: shell.mutedStrong,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _handleActorTap,
+                child: Text(
+                  '@${widget.notification.user.username}',
+                  style: TextStyle(
+                    color: shell.mutedStrong,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
@@ -434,6 +442,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -456,8 +466,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           widget.onPostTap(widget.notification);
         },
         child: Container(
-          width: 50,
-          height: 50,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -476,8 +486,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             borderRadius: BorderRadius.circular(12),
             child: OptimizedImage(
               imageUrl: widget.notification.postThumbnailUrl!,
-              width: 50,
-              height: 50,
+              width: 44,
+              height: 44,
               fit: BoxFit.cover,
               placeholder: Container(
                 color: shell.skeletonFill,
@@ -549,7 +559,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 ),
               ],
             ),
-                    child: _isLoadingFollowStatus
+            child: _isLoadingFollowStatus
                 ? SizedBox(
                     width: 14,
                     height: 14,

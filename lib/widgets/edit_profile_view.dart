@@ -20,6 +20,7 @@ import '../features/admin/widgets/admin_shield_button.dart';
 import '../features/admin/views/admin_control_center_view.dart';
 import '../constants/app_colors.dart';
 import '../core/theme/st_theme_tokens.dart';
+import '../components/onboarding/onboarding_mission_actions.dart';
 
 class EditProfileView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -245,6 +246,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     // Update all profile views through ProfileUpdateService
     try {
       await _profileUpdateService?.updateUserData(updateData);
+      await OnboardingMissionActions.complete('complete_profile');
     } catch (e) {
       // Error updating profile views, using fallback
       if (kDebugMode) {
@@ -252,6 +254,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       }
       // Fallback to direct Firestore update
       _saveToFirestore(updateData);
+      await OnboardingMissionActions.complete('complete_profile');
     }
   }
 

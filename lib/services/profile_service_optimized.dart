@@ -6,6 +6,7 @@ import '../models/user.dart' as app_user;
 import '../models/user_count_fields.dart';
 import '../models/calendar_event.dart';
 import '../models/home_video.dart';
+import 'follows_service.dart';
 
 class ProfileServiceOptimized {
   static final ProfileServiceOptimized _instance =
@@ -196,46 +197,14 @@ class ProfileServiceOptimized {
   /// Unfollow a user
   Future<bool> unfollowUser(String userId) async {
     final currentUser = _auth.currentUser;
-    if (currentUser == null) return false;
-
-    try {
-      final batch = _firestore.batch();
-
-      // Find and delete relationship
-      final relationshipQuery = await _firestore
-          .collection('relationships')
-          .where('followerId', isEqualTo: currentUser.uid)
-          .where('followingId', isEqualTo: userId)
-          .get();
-
-      for (final doc in relationshipQuery.docs) {
-        batch.delete(doc.reference);
-      }
-
-      // Update follower count
-      final userRef = _firestore.collection('users').doc(userId);
-      batch.update(userRef, {
-        'followerCount': FieldValue.increment(-1),
-      });
-
-      // Update following count
-      final currentUserRef =
-          _firestore.collection('users').doc(currentUser.uid);
-      batch.update(currentUserRef, {
-        'followingCount': FieldValue.increment(-1),
-      });
-
-      await batch.commit();
-
-      // Clear cache
+    final success = await FollowsService().unfollowUser(userId);
+    if (success) {
       _userCache.remove(userId);
-      _userCache.remove(currentUser.uid);
-
-      return true;
-    } catch (e) {
-      // print('Error unfollowing user: $e');
-      return false;
+      if (currentUser != null) {
+        _userCache.remove(currentUser.uid);
+      }
     }
+    return success;
   }
 
   /// Check if user is following another user

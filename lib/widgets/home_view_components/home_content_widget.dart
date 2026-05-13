@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:developer';
+import '../../components/onboarding/product_tour_target_keys.dart';
 import '../../models/home_video.dart';
 import '../../providers/home_provider.dart' as hp;
 import '../../models/feed_tab.dart';
@@ -95,7 +96,6 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     final isLoading = feedData.isLoading;
     final hasError = feedData.hasError;
 
-    // 🔍 DIAGNOSTIC: Log video count for debugging
     if (kDebugMode) {
       debugPrint(
         '📊 HomeContent[$activeFeed]: videos=${videos.length}, isLoading=$isLoading, hasError=$hasError',
@@ -106,9 +106,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     }
 
     return Stack(
-      children: [
-        // Video content fills entire screen
-        Positioned.fill(child: _buildVideoContent(videos, isLoading, hasError)),
+      children: <Widget>[
+        KeyedSubtree(
+          key: ProductTourTargetKeys.homeFeed,
+          child: Positioned.fill(
+            child: _buildVideoContent(videos, isLoading, hasError),
+          ),
+        ),
 
         if (activeFeed == FeedTab.forYou && hasError && videos.isNotEmpty)
           Positioned(

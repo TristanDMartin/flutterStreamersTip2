@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import '../utils/auth_login_input.dart';
 import '../utils/auth_post_login_navigation.dart';
+import '../qa/qa_keys.dart';
 import 'auth_page_shell.dart';
 import 'signup_view.dart';
 import 'forgot_password_view.dart';
@@ -260,6 +261,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             _buildFieldLabel("Email or Username"),
             const SizedBox(height: 8),
             _buildTextField(
+              qaKey: QaKeys.authLoginEmailOrUsername,
               controller: _emailController,
               hint: "yourname or you@example.com",
               icon: Icons.person_outline_rounded,
@@ -279,6 +281,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             _buildFieldLabel("Password"),
             const SizedBox(height: 8),
             _buildTextField(
+              qaKey: QaKeys.authLoginPassword,
               controller: _passwordController,
               hint: "Enter your password",
               icon: Icons.lock_outline_rounded,
@@ -316,6 +319,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   Widget _buildTextField({
+    Key? qaKey,
     required TextEditingController controller,
     required String hint,
     required IconData icon,
@@ -349,6 +353,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         ],
       ),
       child: TextFormField(
+        key: qaKey,
         focusNode: focusNode,
         controller: controller,
         obscureText: isPassword && _obscurePassword,
@@ -399,6 +404,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     return Opacity(
       opacity: isEnabled ? 1.0 : 0.5,
       child: Semantics(
+        key: QaKeys.authLoginSubmit,
         button: true,
         enabled: isEnabled,
         label: 'Sign in',

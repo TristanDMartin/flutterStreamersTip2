@@ -7,12 +7,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/feed_tab.dart';
 import '../models/home_video.dart';
 import '../services/video_service.dart' as video_service;
-import '../services/favorites_service.dart';
 import '../services/following_feed_service.dart';
 import '../services/comments_service.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/streamers_tip_like_service.dart';
-import 'favorites_provider.dart';
+import '../services/unified_bookmark_service.dart';
+import '../services/algorithm_cache_service.dart';
 import 'video_service_provider.dart';
 import '../services/global_playback_manager.dart';
 import '../constants/playback_owners.dart';
@@ -22,18 +22,18 @@ const Object _feedSliceUnset = Object();
 
 class HomeViewModel extends StateNotifier<HomeState> {
   final video_service.VideoService _videoService;
-  final FavoritesService _favoritesService;
   final FollowingFeedService _followingFeedService;
   final CommentsService _commentsService;
   final StreamersTipLikeService _likeService = StreamersTipLikeService.instance;
+  final UnifiedBookmarkService _bookmarkService =
+      UnifiedBookmarkService.instance;
+  final AlgorithmCacheService _algorithmCacheService = AlgorithmCacheService();
 
   HomeViewModel({
     required video_service.VideoService videoService,
-    required FavoritesService favoritesService,
     FollowingFeedService? followingFeedService,
     CommentsService? commentsService,
   })  : _videoService = videoService,
-        _favoritesService = favoritesService,
         _followingFeedService =
             followingFeedService ?? FollowingFeedService.instance,
         _commentsService = commentsService ?? CommentsService(),
@@ -135,6 +135,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
       current.insert(0, video);
     }
     state = state.copyWith(forYouVideos: current);
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      unawaited(_cacheForYouFeed(userId: userId, videos: current));
+    }
     log('✅ Video added to feed: ${video.id}');
   }
 
@@ -179,6 +183,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
     });
 
     state = state.copyWith(forYouVideos: sortedVideos);
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      unawaited(_cacheForYouFeed(userId: userId, videos: sortedVideos));
+    }
     log(
       '🎯 UnifiedAlgorithm: For You feed updated with ${sortedVideos.length} ranked videos (newest first)',
     );
@@ -284,8 +292,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     log('⏳ Waiting for authentication...');
 
-    // Wait up to 10 seconds for authentication
-    for (int i = 0; i < 50; i++) {
+    // Keep startup moving. App shell normally calls this after auth is ready,
+    // so this is only a short grace period, not a full-screen wait.
+    for (int i = 0; i < 8; i++) {
       await Future.delayed(const Duration(milliseconds: 200));
       if (auth.currentUser != null) {
         log(
@@ -295,7 +304,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       }
     }
 
-    log('⚠️ Authentication timeout - proceeding without auth');
+    log('⚠️ Authentication not ready after 1600ms - proceeding without auth');
   }
 
   /// Load cached videos for instant display
@@ -307,9 +316,17 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       // Wait for authentication to be ready
       await _waitForAuthentication();
+      final String? userId = FirebaseAuth.instance.currentUser?.uid;
+
+      if (await _restoreWarmForYouFeed(userId)) return;
 
       // Load real videos from VideoService instead of sample videos
-      await _videoService.loadAllVideos();
+      await _videoService.loadAllVideos().timeout(
+        const Duration(seconds: 6),
+        onTimeout: () {
+          log('⏰ HomeProvider: Video load timed out; ending startup wait');
+        },
+      );
       final realVideos = _videoService.getAllVideos();
 
       log('📱 Loaded ${realVideos.length} real videos from VideoService');
@@ -335,6 +352,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
           clearError: true,
         );
         state = state.copyWith(followingVideos: const []);
+        if (userId != null) {
+          unawaited(_cacheForYouFeed(userId: userId, videos: realVideos));
+        }
       }
 
       log(
@@ -346,7 +366,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       // 🔥 INSTANT PLAY: Preload first video via PlaybackManager (VideoService.preloadVideo is a no-op)
       if (state.forYouVideos.isNotEmpty) {
-        GlobalPlaybackManager.instance.preloadAround(0, state.forYouVideos);
+        GlobalPlaybackManager.instance.preloadStartupWindow(
+          state.forYouVideos,
+        );
       }
     } catch (e) {
       log('❌ Error loading cached videos: $e');
@@ -355,7 +377,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
           isLoading: false,
           error: 'Connection is unstable. Showing your last loaded feed.',
         );
-        GlobalPlaybackManager.instance.preloadAround(0, state.forYouVideos);
+        GlobalPlaybackManager.instance.preloadStartupWindow(
+          state.forYouVideos,
+        );
       } else {
         _updateForYouFeed(
           videos: const <HomeVideo>[],
@@ -367,6 +391,62 @@ class HomeViewModel extends StateNotifier<HomeState> {
         state = state.copyWith(followingVideos: const []);
       }
     }
+  }
+
+  Future<void> _cacheForYouFeed({
+    required String userId,
+    required List<HomeVideo> videos,
+    Map<String, dynamic>? nextCursor,
+  }) async {
+    if (videos.isEmpty) return;
+    final visibleVideos = videos.take(30).toList(growable: false);
+    await _algorithmCacheService.cacheForYouFeed(
+      userId: userId,
+      videos: visibleVideos,
+      nextCursor: _cacheableCursor(nextCursor),
+    );
+    await _algorithmCacheService.cacheLastKnownForYouFeed(
+      videos: visibleVideos,
+    );
+  }
+
+  Future<bool> _restoreWarmForYouFeed(String? userId) async {
+    CachedFeedResult? cachedFeed;
+    if (userId != null) {
+      cachedFeed = await _algorithmCacheService.getCachedForYouFeed(userId);
+    }
+    cachedFeed ??= await _algorithmCacheService.getLastKnownForYouFeed();
+    if (cachedFeed == null) return false;
+
+    final cachedVideos = cachedFeed.videos;
+    if (cachedVideos.isEmpty) return false;
+
+    log(
+      '⚡ HomeProvider: Warm start from cached For You feed (${cachedVideos.length} videos)',
+    );
+    _updateForYouFeed(
+      videos: cachedVideos,
+      isLoading: false,
+      nextCursor: null,
+      lastDocument: null,
+      clearError: true,
+    );
+    state = state.copyWith(followingVideos: const []);
+    GlobalPlaybackManager.instance.preloadStartupWindow(cachedVideos);
+    return true;
+  }
+
+  Map<String, dynamic>? _cacheableCursor(Map<String, dynamic>? cursor) {
+    if (cursor == null) return null;
+
+    final safeCursor = <String, dynamic>{};
+    for (final entry in cursor.entries) {
+      final value = entry.value;
+      if (value == null || value is String || value is num || value is bool) {
+        safeCursor[entry.key] = value;
+      }
+    }
+    return safeCursor.isEmpty ? null : safeCursor;
   }
 
   /// Preload avatars for instant display (conservative to prevent buffer overflow)
@@ -504,6 +584,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
           log(
             '✅ Background refresh: ${freshVideos.length} videos (incl. new uploads)',
           );
+          final String? userId = FirebaseAuth.instance.currentUser?.uid;
+          if (userId != null) {
+            unawaited(_cacheForYouFeed(userId: userId, videos: freshVideos));
+          }
         }
       } catch (e) {
         log('⚠️ Background video refresh failed (non-critical): $e');
@@ -603,6 +687,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
         lastDocument: page['lastDocument'],
         clearError: true,
       );
+      final String? userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        unawaited(
+          _cacheForYouFeed(
+            userId: userId,
+            videos: videos,
+            nextCursor: nextCursor,
+          ),
+        );
+      }
     } catch (e) {
       if (state.forYouSlice?.requestId != rid) return;
       final existingItems = state.forYouSlice?.items ?? state.forYouVideos;
@@ -848,67 +942,71 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> toggleLike(String videoId) async {
     try {
-      final success = await _videoService.toggleLike(videoId);
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        return;
+      }
+      final bool success = await _likeService.toggleLike(videoId, user.uid);
       if (success) {
-        // Update local state
-        _updateVideoLikeState(videoId);
+        await setVideoLikeStateFromService(videoId);
       }
     } catch (e) {
       log('Error toggling like: $e');
     }
   }
 
-  /// Complete implementation matching Swift pattern
+  /// Bookmark toggle — same persistence path as fullscreen player rail.
   Future<void> toggleFavorite(String videoId) async {
-    final arrayInfo = _arrayTypeAndIndex(videoId);
-    if (arrayInfo == null) return;
-
-    final (arrayType, index) = arrayInfo;
-
-    // Use the new FavoritesService to handle the toggle
-    await _favoritesService.toggleFavorite(videoId);
-
-    // Update the UI state to match FavoritesService
-    final isFavorited = _favoritesService.isFavorited(videoId);
-    _updateVideoAtIndex(arrayType, index, (video) {
-      return video.copyWith(isFavorited: isFavorited);
-    });
-  }
-
-  /// Array type detection - matches Swift implementation
-  (FeedTab, int)? _arrayTypeAndIndex(String videoId) {
-    // Check For You videos first
-    for (int i = 0; i < forYouVideos.length; i++) {
-      if (forYouVideos[i].id == videoId) {
-        return (FeedTab.forYou, i);
-      }
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
     }
-
-    // Check Following videos
-    for (int i = 0; i < followingVideos.length; i++) {
-      if (followingVideos[i].id == videoId) {
-        return (FeedTab.following, i);
-      }
+    await _bookmarkService.initialize(user.uid);
+    final BookmarkResult result =
+        await _bookmarkService.toggleBookmark(videoId);
+    if (!result.success || result.isBookmarked == null) {
+      return;
     }
-
-    return null;
+    final bool favorited = result.isBookmarked!;
+    _updateVideoAcrossFeeds(
+      videoId,
+      (HomeVideo video) => video.copyWith(isFavorited: favorited),
+    );
   }
 
   // MARK: - Sync States
 
   Future<void> syncLikeStates() async {
-    // Sync like states from the backend
-    // This would typically fetch user's liked videos and update local state
-    log('Syncing like states...');
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      log('syncLikeStates: no user');
+      return;
+    }
+    await _likeService.loadUserLikedVideos(user.uid);
+    _replaceVideoFeeds((HomeVideo video) {
+      final LikeState likeState = _likeService.getLikeState(video.id);
+      return video.copyWith(
+        isLiked: likeState.isLiked,
+        likes: likeState.likeCount > 0 || likeState.isLiked
+            ? likeState.likeCount
+            : video.likes,
+      );
+    });
+    log('Syncing like states: done');
   }
 
   Future<void> syncFavoriteStates() async {
-    // Sync favorite states from the new FavoritesService
-    log('Syncing favorite states from FavoritesService...');
-
-    _replaceVideoFeeds((video) {
-      final isFavorited = _favoritesService.isFavorited(video.id);
-      return video.copyWith(isFavorited: isFavorited);
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      log('syncFavoriteStates: no user');
+      return;
+    }
+    await _bookmarkService.initialize(user.uid);
+    log('Syncing favorite states from UnifiedBookmarkService...');
+    _replaceVideoFeeds((HomeVideo video) {
+      return video.copyWith(
+        isFavorited: _bookmarkService.isBookmarked(video.id),
+      );
     });
   }
 
@@ -1035,88 +1133,27 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   Future<void> _updateVideoFavoriteState(String videoId) async {
-    // Check if video exists in current feeds before attempting optimistic update
-    final videoExistsInForYou = state.forYouVideos.any((v) => v.id == videoId);
-    final videoExistsInFollowing = state.followingVideos.any(
-      (v) => v.id == videoId,
-    );
-
-    // Store original state for rollback (will be used in catch block if needed)
-    bool originalForYouState = false;
-    bool originalFollowingState = false;
-
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
     try {
-      if (!videoExistsInForYou && !videoExistsInFollowing) {
-        // Video not in current feeds - just update the service without UI changes
-        log('⚠️ Video $videoId not in current feeds, updating service only');
-        await _favoritesService.toggleFavorite(videoId);
-        log(
-          '✅ Successfully toggled favorite for video: $videoId (service only)',
-        );
+      await _bookmarkService.initialize(user.uid);
+      final BookmarkResult result =
+          await _bookmarkService.toggleBookmark(videoId);
+      if (!result.success || result.isBookmarked == null) {
+        log('❌ Bookmark toggle failed for $videoId: ${result.error}');
         return;
       }
-
-      // Get original states for rollback
-      originalForYouState = _getVideoFavoriteState(state.forYouVideos, videoId);
-      originalFollowingState = _getVideoFavoriteState(
-        state.followingVideos,
+      final bool favorited = result.isBookmarked!;
+      _updateVideoAcrossFeeds(
         videoId,
+        (HomeVideo video) => video.copyWith(isFavorited: favorited),
       );
-
-      // Optimistic UI update - update immediately for better UX
-      if (videoExistsInForYou) {
-        _updateVideoInFeedTab(FeedTab.forYou, videoId, (video) {
-          return video.copyWith(isFavorited: !video.isFavorited);
-        });
-      }
-
-      if (videoExistsInFollowing) {
-        _updateVideoInFeedTab(FeedTab.following, videoId, (video) {
-          return video.copyWith(isFavorited: !video.isFavorited);
-        });
-      }
-
-      // Update the favorites service asynchronously
-      await _favoritesService.toggleFavorite(videoId);
-
       log('✅ Successfully toggled favorite for video: $videoId');
     } catch (e) {
-      // Rollback optimistic update on error (only if video exists in feeds)
-      final videoExistsInForYou = state.forYouVideos.any(
-        (v) => v.id == videoId,
-      );
-      final videoExistsInFollowing = state.followingVideos.any(
-        (v) => v.id == videoId,
-      );
-
-      if (videoExistsInForYou) {
-        _updateVideoInFeedTab(FeedTab.forYou, videoId, (video) {
-          return video.copyWith(isFavorited: originalForYouState);
-        });
-      }
-
-      if (videoExistsInFollowing) {
-        _updateVideoInFeedTab(FeedTab.following, videoId, (video) {
-          return video.copyWith(isFavorited: originalFollowingState);
-        });
-      }
-
       log('❌ Error toggling favorite for video $videoId: $e');
-      rethrow; // Re-throw to be handled by the calling widget
-    }
-  }
-
-  bool _getVideoFavoriteState(List<HomeVideo> videos, String videoId) {
-    try {
-      final video = videos.firstWhere((v) => v.id == videoId);
-      return video.isFavorited;
-    } catch (e) {
-      // Video not found in current feed arrays - this can happen during feed transitions
-      // Return false as default and let the FavoritesService handle the actual state
-      log(
-        '⚠️ Video $videoId not found in current feed arrays, using default favorite state',
-      );
-      return false;
+      rethrow;
     }
   }
 
@@ -1399,12 +1436,10 @@ class FeedSlice {
 // MARK: - Provider
 
 final homeProvider = StateNotifierProvider<HomeViewModel, HomeState>((ref) {
-  final videoService = ref.read(videoServiceProvider);
-  final favoritesService = ref.read(favoritesServiceProvider);
-
+  final video_service.VideoService videoService =
+      ref.read(videoServiceProvider);
   return HomeViewModel(
     videoService: videoService,
-    favoritesService: favoritesService,
     followingFeedService: FollowingFeedService.instance,
   );
 });

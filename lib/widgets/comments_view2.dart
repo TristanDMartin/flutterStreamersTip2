@@ -59,6 +59,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   StreamSubscription<VideoCommentsSnapshot>? _commentsSubscription;
   CommentSortOption _sortOption = CommentSortOption.newest;
   final Map<String, String> _linkedThreadIds = <String, String>{};
+  int _commentsStreamApplyToken = 0;
 
   @override
   void initState() {
@@ -85,41 +86,46 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
     _commentsSubscription =
         CommentsService().watchCommentsForVideo(widget.videoId).listen(
-      (snapshot) async {
+      (VideoCommentsSnapshot snapshot) async {
+        final int applyToken = ++_commentsStreamApplyToken;
         try {
-          final enrichedComments = await Future.wait(
+          final List<Comment> enrichedComments = await Future.wait(
             snapshot.comments.map(_enrichCommentTree),
           );
 
-          if (mounted) {
-            setState(() {
-              _comments
-                ..clear()
-                ..addAll(enrichedComments);
-              _linkedThreadIds
-                ..clear()
-                ..addAll(snapshot.linkedThreadIds);
-              _applySorting();
-              _isLoading = false;
-              _errorMessage = null;
-            });
+          if (!mounted || applyToken != _commentsStreamApplyToken) {
+            return;
           }
-        } catch (e) {
-          if (mounted) {
-            setState(() {
-              _errorMessage = 'Error loading comments';
-              _isLoading = false;
-            });
-          }
-        }
-      },
-      onError: (error) {
-        if (mounted) {
           setState(() {
-            _errorMessage = 'Failed to load comments';
+            _comments
+              ..clear()
+              ..addAll(enrichedComments);
+            _linkedThreadIds
+              ..clear()
+              ..addAll(snapshot.linkedThreadIds);
+            _applySorting();
+            _isLoading = false;
+            _errorMessage = null;
+          });
+        } catch (e) {
+          if (!mounted || applyToken != _commentsStreamApplyToken) {
+            return;
+          }
+          setState(() {
+            _errorMessage = 'Error loading comments';
             _isLoading = false;
           });
         }
+      },
+      onError: (Object error) {
+        _commentsStreamApplyToken++;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _errorMessage = 'Failed to load comments';
+          _isLoading = false;
+        });
       },
     );
   }
@@ -390,37 +396,39 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
   @override
   Widget build(BuildContext context) {
-    final double modalHeight = MediaQuery.sizeOf(context).height * 0.5;
+    final MediaQueryData mediaQuery = MediaQuery.of(context);
+    final double keyboardHeight = mediaQuery.viewInsets.bottom;
+    final double availableHeight =
+        mediaQuery.size.height - keyboardHeight - mediaQuery.padding.top - 12;
+    final double modalHeight = (mediaQuery.size.height * 0.62)
+        .clamp(320.0, availableHeight.clamp(280.0, mediaQuery.size.height))
+        .toDouble();
 
-    return Stack(
-      children: [
-        // Block all touches to video beneath
-        Positioned.fill(
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            behavior: HitTestBehavior.opaque,
-            child: Container(color: Colors.transparent),
-          ),
-        ),
-        _CommentsModalWithKeyboardLift(
-          modalHeight: modalHeight,
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(bottom: keyboardHeight),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: SizedBox(
+          height: modalHeight,
+          width: double.infinity,
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: RepaintBoundary(
-              child: Container(
-                height: modalHeight,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.34),
-                      AppColors.supportBackground.withValues(alpha: 0.58),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+            child: Material(
+              color: Colors.transparent,
+              child: RepaintBoundary(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primary.withValues(alpha: 0.34),
+                        AppColors.supportBackground.withValues(alpha: 0.58),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
                   ),
-                ),
-                child: GestureDetector(
-                  onTap: () {},
                   child: Column(
                     children: [
                       _buildDragIndicator(),
@@ -435,7 +443,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -769,6 +777,11 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         child: TextField(
           controller: _textController,
           focusNode: _inputFocusNode,
+          keyboardType: TextInputType.text,
+          textInputAction: TextInputAction.send,
+          minLines: 1,
+          maxLines: 4,
+          onSubmitted: (_) => _addComment(),
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             hintText: _replyingTo != null ? 'Reply...' : 'Add a comment...',
@@ -802,39 +815,6 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
           ],
         ),
         child: const Icon(Icons.send, color: Colors.white, size: 20),
-      ),
-    );
-  }
-}
-
-/// Isolates keyboard inset so [CommentsView2] state does not rebuild each frame.
-class _CommentsModalWithKeyboardLift extends StatelessWidget {
-  const _CommentsModalWithKeyboardLift({
-    required this.modalHeight,
-    required this.child,
-  });
-
-  final double modalHeight;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: SizedBox(
-            height: modalHeight,
-            width: double.infinity,
-            child: child,
-          ),
-        ),
       ),
     );
   }

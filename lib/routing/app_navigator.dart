@@ -149,20 +149,25 @@ class AppNavigator {
     Function(String userId)? onShare,
     Function(String tabName)? onNavigateToTab,
     bool fullscreenDialog = true,
+    GlobalKey? tourAnchorKey,
   }) {
+    final StreamerCardView card = StreamerCardView(
+      userId: userId,
+      currentUserId: currentUserId,
+      onDismiss: onDismiss,
+      onFollow: onFollow,
+      onMessage: onMessage,
+      onShare: onShare,
+      onNavigateToTab: onNavigateToTab,
+    );
+    final Widget page = tourAnchorKey != null
+        ? KeyedSubtree(key: tourAnchorKey, child: card)
+        : card;
     return Navigator.of(context).push<T>(
       MaterialPageRoute<T>(
         settings: const RouteSettings(name: '/streamer_card'),
         fullscreenDialog: fullscreenDialog,
-        builder: (_) => StreamerCardView(
-          userId: userId,
-          currentUserId: currentUserId,
-          onDismiss: onDismiss,
-          onFollow: onFollow,
-          onMessage: onMessage,
-          onShare: onShare,
-          onNavigateToTab: onNavigateToTab,
-        ),
+        builder: (_) => page,
       ),
     );
   }

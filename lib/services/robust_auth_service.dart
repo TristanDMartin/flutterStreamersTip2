@@ -61,11 +61,15 @@ class RobustAuthenticationService extends ChangeNotifier {
   GoogleSignIn get _googleSignInInstance {
     if (_googleSignIn == null) {
       try {
-        _googleSignIn = GoogleSignIn();
+        _googleSignIn = GoogleSignIn(
+          scopes: const ['email', 'profile'],
+        );
       } catch (e) {
         debugPrint(
             '❌ RobustAuthenticationService: Error creating GoogleSignIn: $e');
-        _googleSignIn = GoogleSignIn();
+        _googleSignIn = GoogleSignIn(
+          scopes: const ['email', 'profile'],
+        );
       }
     }
     return _googleSignIn!;
@@ -108,6 +112,11 @@ class RobustAuthenticationService extends ChangeNotifier {
   // Constants
   static const Duration _debounceDelay = Duration(milliseconds: 400);
   static const Duration _minimumSpinnerTime = Duration(milliseconds: 2500);
+  static const Duration _googleSignOutTimeout = Duration(seconds: 8);
+  static const Duration _googleAccountPickerTimeout = Duration(seconds: 90);
+  static const Duration _googleTokenTimeout = Duration(seconds: 20);
+  static const Duration _firebaseCredentialTimeout = Duration(seconds: 30);
+  static const Duration _userHydrationTimeout = Duration(seconds: 30);
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -455,15 +464,21 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Sign in with Google (debounced, single-flight)
   Future<AuthRequestResult> signInWithGoogle(String requestId) async {
     try {
-      // print("🔐 Starting Google Sign-In process (request: $requestId)");
+      debugPrint("🔐 Google auth[$requestId]: starting");
 
       // First, sign out any existing Google session to avoid conflicts
-      await _googleSignInInstance.signOut();
+      debugPrint("🔐 Google auth[$requestId]: resetting Google session");
+      await _googleSignInInstance.signOut().timeout(_googleSignOutTimeout);
 
+      debugPrint("🔐 Google auth[$requestId]: opening account picker");
       final GoogleSignInAccount? googleUser =
-          await _googleSignInInstance.signIn();
+          await _googleSignInInstance.signIn().timeout(
+                _googleAccountPickerTimeout,
+                onTimeout: () => null,
+              );
 
       if (googleUser == null) {
+        debugPrint("ℹ️ Google auth[$requestId]: cancelled or timed out");
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -471,13 +486,16 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
 
-      // print("✅ Google Sign-In successful for: ${googleUser.email}");
+      debugPrint(
+          "✅ Google auth[$requestId]: account selected ${googleUser.email}");
 
       try {
+        debugPrint("🔐 Google auth[$requestId]: requesting auth tokens");
         final GoogleSignInAuthentication googleAuth =
-            await googleUser.authentication;
+            await googleUser.authentication.timeout(_googleTokenTimeout);
 
         if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+          debugPrint("❌ Google auth[$requestId]: missing auth tokens");
           return AuthRequestResult(
             requestId: requestId,
             success: false,
@@ -490,9 +508,10 @@ class RobustAuthenticationService extends ChangeNotifier {
           idToken: googleAuth.idToken,
         );
 
-        // print("🔐 Signing in to Firebase with Google credential");
-        final userCredential =
-            await _authInstance.signInWithCredential(credential);
+        debugPrint("🔐 Google auth[$requestId]: signing into Firebase");
+        final userCredential = await _authInstance
+            .signInWithCredential(credential)
+            .timeout(_firebaseCredentialTimeout);
 
         if (userCredential.user != null) {
           debugPrint(
@@ -500,7 +519,9 @@ class RobustAuthenticationService extends ChangeNotifier {
 
           // Update local auth state immediately instead of waiting only on the
           // auth state stream, which can lag on some Android Google Sign-In flows.
-          await _handleUserSignIn(userCredential.user!);
+          debugPrint("🔐 Google auth[$requestId]: hydrating user profile");
+          await _handleUserSignIn(userCredential.user!)
+              .timeout(_userHydrationTimeout);
           _isLoggedIn = true;
           _isCheckingAuth = false;
           notifyListeners();
@@ -519,8 +540,12 @@ class RobustAuthenticationService extends ChangeNotifier {
           );
         }
       } catch (authError) {
+        debugPrint(
+            "❌ Google auth[$requestId]: Firebase/token step failed: $authError");
         // Sign out from Google if Firebase auth fails
-        await _googleSignInInstance.signOut();
+        await _googleSignInInstance
+            .signOut()
+            .timeout(_googleSignOutTimeout, onTimeout: () => null);
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -528,6 +553,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
     } catch (e) {
+      debugPrint("❌ Google auth[$requestId]: failed: $e");
       // Use Google Services fix for error handling
       String errorMessage = GoogleServicesFix.getGoogleServicesErrorMessage(e);
 

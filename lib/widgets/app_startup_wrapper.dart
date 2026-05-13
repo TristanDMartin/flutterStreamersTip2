@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -72,9 +73,13 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     if (currentUser != null) {
       // Run cleanup in background (non-blocking)
       CalendarCleanupService().cleanupExpiredEvents(currentUser.id).then((_) {
-        debugPrint('✅ App startup: Calendar cleanup completed');
+        if (kDebugMode) {
+          debugPrint('✅ App startup: Calendar cleanup completed');
+        }
       }).catchError((error) {
-        debugPrint('⚠️ App startup: Calendar cleanup error: $error');
+        if (kDebugMode) {
+          debugPrint('⚠️ App startup: Calendar cleanup error: $error');
+        }
       });
     }
   }
@@ -87,10 +92,12 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     // Give Firebase a brief chance to finish cold-start initialization, but do
     // not trap users on the splash forever if initialization fails/degrades.
     if (Firebase.apps.isEmpty && !_firebaseStartupGracePeriodElapsed) {
-      debugPrint(
-          '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen');
+      if (kDebugMode) {
+        debugPrint(
+            '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen');
+      }
       return _buildLoadingScreen();
-    } else if (Firebase.apps.isEmpty) {
+    } else if (Firebase.apps.isEmpty && kDebugMode) {
       debugPrint(
           '⚠️ AppStartupWrapper: Firebase unavailable after startup grace period - continuing to auth UI');
     }
@@ -103,11 +110,13 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
         final loginChanged = previous.isLoggedIn != next.isLoggedIn;
 
         if (loadingChanged || loginChanged) {
-          debugPrint('🔄 AppStartupWrapper: Auth state changed');
-          debugPrint(
-              '   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}');
-          debugPrint(
-              '   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}');
+          if (kDebugMode) {
+            debugPrint('🔄 AppStartupWrapper: Auth state changed');
+            debugPrint(
+                '   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}');
+            debugPrint(
+                '   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}');
+          }
 
           if (mounted) {
             setState(() {});
@@ -116,9 +125,10 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
       }
     });
 
-    // Debug logging
-    debugPrint(
-        '🎯 AppStartupWrapper: isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, isCheckingAuth=${authService.isCheckingAuth}');
+    if (kDebugMode) {
+      debugPrint(
+          '🎯 AppStartupWrapper: isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, isCheckingAuth=${authService.isCheckingAuth}');
+    }
 
     // Show splash screen while loading or checking auth
     if (authService.shouldShowLoading) {
@@ -127,15 +137,18 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
 
     // Show main app if logged in (email verification gate matches web)
     if (authService.isLoggedIn) {
-      debugPrint('🏠 AppStartupWrapper: Returning verified shell');
+      if (kDebugMode) {
+        debugPrint('🏠 AppStartupWrapper: Returning verified shell');
+      }
       _runCalendarCleanup();
       return _EmailVerificationOrHome(
         initialTabIndex: widget.initialTabIndex,
       );
     }
 
-    // Show auth modal if not logged in
-    debugPrint('🔐 AppStartupWrapper: Showing auth modal');
+    if (kDebugMode) {
+      debugPrint('🔐 AppStartupWrapper: Showing auth modal');
+    }
     return const AuthModalView();
   }
 

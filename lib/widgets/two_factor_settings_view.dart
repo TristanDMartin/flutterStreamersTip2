@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -16,6 +17,24 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
   final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
   bool _isEnabled = false;
   bool _isLoading = true;
+
+  bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  Widget _wrapIosTextScale(BuildContext context, Widget child) {
+    if (!_isIos) {
+      return child;
+    }
+    final MediaQueryData data = MediaQuery.of(context);
+    return MediaQuery(
+      data: data.copyWith(
+        textScaler: data.textScaler.clamp(
+          minScaleFactor: 0.82,
+          maxScaleFactor: 1.04,
+        ),
+      ),
+      child: child,
+    );
+  }
 
   @override
   void initState() {
@@ -59,53 +78,73 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
     final user = firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final confirm = await showDialog<bool>(
+    final bool? confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        title: const Text(
-          'Disable Two-Factor Authentication',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Are you sure you want to disable two-factor authentication? '
-          'This will make your account less secure.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
-              'Disable',
-              style: TextStyle(color: Colors.red),
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        final TextTheme tt = Theme.of(ctx).textTheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text(
+            'Disable Two-Factor Authentication',
+            style: tt.titleLarge?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ],
-      ),
+          content: Text(
+            'Are you sure you want to disable two-factor authentication? '
+            'This will make your account less secure.',
+            style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancel', style: TextStyle(color: cs.primary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(
+                'Disable',
+                style: TextStyle(
+                  color: cs.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirm == true) {
       try {
         await _twoFactorService.disable2FA(user.uid);
         if (mounted) {
+          final ColorScheme cs = Theme.of(context).colorScheme;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Two-factor authentication disabled'),
-              backgroundColor: Colors.green,
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                'Two-factor authentication disabled',
+                style: TextStyle(color: cs.onInverseSurface),
+              ),
+              backgroundColor: cs.inverseSurface,
             ),
           );
           await _load2FAStatus();
         }
       } catch (e) {
         if (mounted) {
+          final ColorScheme cs = Theme.of(context).colorScheme;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                'Error: $e',
+                style: TextStyle(color: cs.onErrorContainer),
+              ),
+              backgroundColor: cs.errorContainer,
             ),
           );
         }
@@ -115,199 +154,233 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final double pad = _isIos ? 16 : 24;
+    final double statusTitle = _isIos ? 16 : 20;
+    final double statusBody = _isIos ? 12.5 : 14;
+    final double sectionTitle = _isIos ? 16 : 18;
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF1C135D),
+      final Widget loading = Scaffold(
+        backgroundColor: c.surface,
         appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          title: const Text(
+          backgroundColor: c.surface,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: c.onSurface,
+          title: Text(
             'Two-Factor Authentication',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(
+              color: c.onSurface,
+              fontWeight: FontWeight.w600,
+              fontSize: _isIos ? 16 : 20,
+            ),
           ),
         ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
+        body: Center(child: CircularProgressIndicator(color: c.primary)),
       );
+      return _wrapIosTextScale(context, loading);
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF1C135D),
+    final Widget scaffold = Scaffold(
+      backgroundColor: c.surface,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: c.surface,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: c.onSurface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: c.onSurface),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Two-Factor Authentication',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: c.onSurface,
+            fontWeight: FontWeight.w600,
+            fontSize: _isIos ? 16 : 20,
+          ),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: _isEnabled
-                      ? Colors.green.withValues(alpha: 0.2)
-                      : Colors.orange.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _isEnabled ? Colors.green : Colors.orange,
-                    width: 2,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _isEnabled ? Icons.check_circle : Icons.warning,
-                      color: _isEnabled ? Colors.green : Colors.orange,
-                      size: 40,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[c.surface, c.surfaceContainerLow],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(pad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Container(
+                  padding: EdgeInsets.all(_isIos ? 16 : 20),
+                  decoration: BoxDecoration(
+                    color: _isEnabled
+                        ? c.tertiaryContainer.withValues(alpha: 0.55)
+                        : c.errorContainer.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: _isEnabled ? c.tertiary : c.error,
+                      width: 2,
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _isEnabled ? '2FA Enabled' : '2FA Disabled',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(
+                        _isEnabled ? Icons.check_circle : Icons.warning,
+                        color: _isEnabled ? c.tertiary : c.error,
+                        size: _isIos ? 32 : 40,
+                      ),
+                      SizedBox(width: _isIos ? 12 : 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              _isEnabled ? '2FA Enabled' : '2FA Disabled',
+                              style: TextStyle(
+                                color: c.onSurface,
+                                fontSize: statusTitle,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _isEnabled
-                                ? 'Your account is protected with two-factor authentication'
-                                : 'Enable two-factor authentication to secure your account',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.7),
-                              fontSize: 14,
+                            const SizedBox(height: 4),
+                            Text(
+                              _isEnabled
+                                  ? 'Your account is protected with two-factor '
+                                      'authentication'
+                                  : 'Enable two-factor authentication to secure '
+                                      'your account',
+                              style: TextStyle(
+                                color: c.onSurfaceVariant,
+                                fontSize: statusBody,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              if (_isEnabled) ...[
-                _buildInfoSection(),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _disable2FA,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.withValues(alpha: 0.2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        side: const BorderSide(color: Colors.red),
+                SizedBox(height: _isIos ? 24 : 32),
+                if (_isEnabled) ...<Widget>[
+                  _buildInfoSection(sectionTitle),
+                  SizedBox(height: _isIos ? 18 : 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: _isIos ? 44 : 48,
+                    child: OutlinedButton(
+                      onPressed: _disable2FA,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: c.error,
+                        side: BorderSide(color: c.error),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      'Disable 2FA',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                      child: Text(
+                        'Disable 2FA',
+                        style: TextStyle(
+                          color: c.error,
+                          fontSize: _isIos ? 14 : 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ] else ...[
-                const Text(
-                  'Benefits of Two-Factor Authentication:',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildBenefitItem(
-                    Icons.security, 'Extra layer of security for your account'),
-                _buildBenefitItem(
-                    Icons.shield, 'Protection against unauthorized access'),
-                _buildBenefitItem(
-                    Icons.verified_user, 'Verified account status'),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _enable2FA,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF955CFF),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                    ),
-                    child: const Text(
-                      'Enable 2FA',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                ] else ...<Widget>[
+                  Text(
+                    'Benefits of Two-Factor Authentication:',
+                    style: TextStyle(
+                      color: c.onSurface,
+                      fontSize: sectionTitle,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
+                  SizedBox(height: _isIos ? 12 : 16),
+                  _buildBenefitItem(
+                    Icons.security,
+                    'Extra layer of security for your account',
+                  ),
+                  _buildBenefitItem(
+                    Icons.shield,
+                    'Protection against unauthorized access',
+                  ),
+                  _buildBenefitItem(
+                    Icons.verified_user,
+                    'Verified account status',
+                  ),
+                  SizedBox(height: _isIos ? 24 : 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: _isIos ? 44 : 48,
+                    child: FilledButton(
+                      onPressed: _enable2FA,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: c.primary,
+                        foregroundColor: c.onPrimary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                      child: Text(
+                        'Enable 2FA',
+                        style: TextStyle(
+                          fontSize: _isIos ? 14 : 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
+    return _wrapIosTextScale(context, scaffold);
   }
 
-  Widget _buildInfoSection() {
+  Widget _buildInfoSection(double sectionTitle) {
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final double body = _isIos ? 12.5 : 14;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
+      children: <Widget>[
+        Text(
           'How It Works',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
+            color: c.onSurface,
+            fontSize: sectionTitle,
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: _isIos ? 12 : 16),
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(_isIos ? 12 : 16),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.2),
+            color: c.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: c.outlineVariant),
           ),
           child: Column(
-            children: [
-              const Text(
+            children: <Widget>[
+              Text(
                 'When you log in, you\'ll be asked for:',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: c.onSurface, fontSize: body),
               ),
               const SizedBox(height: 12),
               _buildStepItem('1', 'Your password'),
               _buildStepItem('2', 'A 6-digit code from your authenticator app'),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Or use a backup code if you lose access',
                 style: TextStyle(
-                  color: Colors.orange,
-                  fontSize: 12,
+                  color: c.error,
+                  fontSize: _isIos ? 11 : 12,
                 ),
               ),
             ],
@@ -318,22 +391,24 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
   }
 
   Widget _buildStepItem(String number, String text) {
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final double t = _isIos ? 12.5 : 14;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        children: [
+        children: <Widget>[
           Container(
             width: 24,
             height: 24,
-            decoration: const BoxDecoration(
-              color: Color(0xFF955CFF),
+            decoration: BoxDecoration(
+              color: c.primary,
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Text(
                 number,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: c.onPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
@@ -344,10 +419,7 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: c.onSurface, fontSize: t),
             ),
           ),
         ],
@@ -356,19 +428,18 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
   }
 
   Widget _buildBenefitItem(IconData icon, String text) {
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final double t = _isIos ? 12.5 : 14;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        children: [
-          Icon(icon, color: Colors.green, size: 24),
+        children: <Widget>[
+          Icon(icon, color: c.tertiary, size: _isIos ? 20 : 24),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: c.onSurface, fontSize: t),
             ),
           ),
         ],

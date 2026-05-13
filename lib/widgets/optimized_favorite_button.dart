@@ -1,6 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/favorites_service_optimized.dart';
+import '../services/unified_bookmark_service.dart';
 
 class OptimizedFavoriteButton extends StatefulWidget {
   final String videoId;
@@ -45,7 +46,6 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
   Future<void> _toggleFavorite() async {
     if (_isLoading) return;
 
-    // Immediate UI feedback
     HapticFeedback.lightImpact();
     setState(() {
       _isLoading = true;
@@ -53,28 +53,42 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
     });
 
     try {
-      final success = await FavoritesServiceOptimized().toggleFavorite(widget.videoId);
-      
-      if (!success) {
-        // Revert on failure
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          setState(() {
+            _isFavorited = !_isFavorited;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+      final UnifiedBookmarkService svc = UnifiedBookmarkService.instance;
+      await svc.initialize(user.uid);
+      final BookmarkResult result = await svc.toggleBookmark(widget.videoId);
+      if (!mounted) return;
+      if (!result.success || result.isBookmarked == null) {
         setState(() {
           _isFavorited = !_isFavorited;
         });
-        return;
+      } else {
+        setState(() {
+          _isFavorited = result.isBookmarked!;
+        });
+        widget.onFavoriteChanged?.call();
       }
-
-      // Notify parent of change
-      widget.onFavoriteChanged?.call();
     } catch (e) {
-      // Revert on error
-      setState(() {
-        _isFavorited = !_isFavorited;
-      });
-    // print('Error toggling favorite: $e');
+      if (mounted) {
+        setState(() {
+          _isFavorited = !_isFavorited;
+        });
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../components/onboarding/onboarding_mission_actions.dart';
 import 'content_planning_models.dart';
 import 'content_planning_repository.dart';
 
@@ -18,5 +19,9 @@ final FutureProvider<List<ContentPlan>> contentPlansProvider =
   }
   final ContentPlanningRepository repository =
       ref.watch(contentPlanningRepositoryProvider);
-  return repository.listPlans(idToken: token, userId: user.uid);
+  final plans = await repository.listPlans(idToken: token, userId: user.uid);
+  if (plans.isNotEmpty) {
+    await OnboardingMissionActions.complete(user.uid, 'create_content_plan');
+  }
+  return plans;
 });

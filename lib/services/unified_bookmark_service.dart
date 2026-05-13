@@ -21,6 +21,8 @@ class UnifiedBookmarkService extends ChangeNotifier {
   final Set<String> _pendingOperations = {};
   final StreamController<BookmarkEvent> _eventController =
       StreamController<BookmarkEvent>.broadcast();
+  String? _initializedUserId;
+  bool _hasLoadedInitialState = false;
 
   // Getters
   Stream<BookmarkEvent> get eventStream => _eventController.stream;
@@ -44,14 +46,24 @@ class UnifiedBookmarkService extends ChangeNotifier {
 
   /// Initialize the service and load user's bookmarks
   Future<void> initialize(String userId) async {
+    if (_initializedUserId == userId && _hasLoadedInitialState) {
+      return;
+    }
     try {
       debugPrint('🔄 UnifiedBookmarkService: Initializing for user $userId');
+      if (_initializedUserId != null && _initializedUserId != userId) {
+        _bookmarkStates.clear();
+        _pendingOperations.clear();
+      }
+      _initializedUserId = userId;
 
       // Load user's bookmarks from Firebase
       await _loadUserBookmarks(userId);
+      _hasLoadedInitialState = true;
 
       debugPrint('✅ UnifiedBookmarkService: Initialized successfully');
     } catch (e) {
+      _hasLoadedInitialState = false;
       debugPrint('❌ UnifiedBookmarkService: Initialization failed: $e');
       _eventController.add(BookmarkEvent.error('Initialization failed: $e'));
     }
@@ -100,10 +112,10 @@ class UnifiedBookmarkService extends ChangeNotifier {
     }
 
     _pendingOperations.add(videoId);
+    final currentState = _bookmarkStates[videoId];
+    final isCurrentlyBookmarked = currentState?.isBookmarked ?? false;
 
     try {
-      final currentState = _bookmarkStates[videoId];
-      final isCurrentlyBookmarked = currentState?.isBookmarked ?? false;
       final newBookmarkState = !isCurrentlyBookmarked;
 
       // Optimistic update
@@ -134,9 +146,7 @@ class UnifiedBookmarkService extends ChangeNotifier {
       }
     } catch (e) {
       // Revert optimistic update on error
-      final originalState = _bookmarkStates[videoId];
-      _updateLocalState(
-          videoId, originalState?.isBookmarked ?? false, BookmarkStatus.synced);
+      _updateLocalState(videoId, isCurrentlyBookmarked, BookmarkStatus.synced);
       _eventController.add(BookmarkEvent.error('Operation failed: $e'));
 
       return BookmarkResult.error('Operation failed: $e');
@@ -155,29 +165,38 @@ class UnifiedBookmarkService extends ChangeNotifier {
       final userDocRef = _firestore.collection('users').doc(userId);
       final favoriteDocRef = userDocRef.collection('favorites').doc(videoId);
       final videoDocRef = _firestore.collection('videos').doc(videoId);
-      final batch = _firestore.batch();
+      var shouldUpdateCounter = false;
 
-      if (isBookmarking) {
-        batch.set(favoriteDocRef, {
-          'videoId': videoId,
-          'timestamp': FieldValue.serverTimestamp(),
-          'source': 'mobile',
-        });
-        batch.set(videoDocRef, {
-          'favorites': FieldValue.increment(1),
-          'favoriteCount': FieldValue.increment(1),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } else {
-        batch.delete(favoriteDocRef);
-        batch.set(videoDocRef, {
-          'favorites': FieldValue.increment(-1),
-          'favoriteCount': FieldValue.increment(-1),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+      await _firestore.runTransaction<void>((transaction) async {
+        final favoriteDoc = await transaction.get(favoriteDocRef);
+        final bool exists = favoriteDoc.exists;
+
+        if (isBookmarking) {
+          if (exists) {
+            return;
+          }
+          transaction.set(favoriteDocRef, {
+            'videoId': videoId,
+            'timestamp': FieldValue.serverTimestamp(),
+            'source': 'mobile',
+          });
+          shouldUpdateCounter = true;
+          return;
+        }
+
+        if (!exists) {
+          return;
+        }
+        transaction.delete(favoriteDocRef);
+        shouldUpdateCounter = true;
+      });
+
+      if (shouldUpdateCounter) {
+        unawaited(_updateVideoFavoriteCounters(
+          videoDocRef: videoDocRef,
+          isBookmarking: isBookmarking,
+        ));
       }
-
-      await batch.commit();
 
       debugPrint(
         isBookmarking
@@ -190,6 +209,47 @@ class UnifiedBookmarkService extends ChangeNotifier {
       debugPrint('❌ UnifiedBookmarkService: Operation failed for $videoId: $e');
       return BookmarkResult.error('Operation failed: $e');
     }
+  }
+
+  Future<void> _updateVideoFavoriteCounters({
+    required DocumentReference<Map<String, dynamic>> videoDocRef,
+    required bool isBookmarking,
+  }) async {
+    try {
+      await _firestore.runTransaction<void>((transaction) async {
+        final videoDoc = await transaction.get(videoDocRef);
+        if (!videoDoc.exists) {
+          return;
+        }
+        transaction.set(
+          videoDocRef,
+          <String, dynamic>{
+            'favorites': _nextCounter(videoDoc, 'favorites', isBookmarking),
+            'favoriteCount':
+                _nextCounter(videoDoc, 'favoriteCount', isBookmarking),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      });
+    } catch (e) {
+      debugPrint(
+        '⚠️ UnifiedBookmarkService: Counter update skipped for ${videoDocRef.id}: $e',
+      );
+    }
+  }
+
+  int _nextCounter(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+    String field,
+    bool increment,
+  ) {
+    final value = snapshot.data()?[field];
+    final current = value is num ? value.toInt().clamp(0, 1 << 31).toInt() : 0;
+    if (increment) {
+      return current + 1;
+    }
+    return (current - 1).clamp(0, 1 << 31).toInt();
   }
 
   /// Update local state
@@ -219,6 +279,8 @@ class UnifiedBookmarkService extends ChangeNotifier {
   Future<void> clearBookmarks() async {
     _bookmarkStates.clear();
     _pendingOperations.clear();
+    _initializedUserId = null;
+    _hasLoadedInitialState = false;
     notifyListeners();
   }
 

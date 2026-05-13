@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/gamification/models/subscription_plan.dart';
+import '../components/onboarding/product_tour_target_keys.dart';
 import '../models/creator_command_snapshot.dart';
 import '../providers/creator_command_provider.dart';
 import '../routing/app_navigator.dart';
@@ -512,6 +513,7 @@ class _QuickCommandRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: _CommandButton(
+            key: ProductTourTargetKeys.tippyAi,
             icon: Icons.auto_awesome_rounded,
             label: snapshot.tippyAiEnabled ? 'Tippy' : 'Tippy (locked)',
             onTap: () => _executeTippyFromCommandCenter(
@@ -527,6 +529,7 @@ class _QuickCommandRow extends StatelessWidget {
 
 class _CommandButton extends StatelessWidget {
   const _CommandButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,

@@ -18,6 +18,7 @@ import '../services/performance_monitoring_service.dart';
 import '../widgets/status_aware_avatar.dart';
 import '../providers/status_provider.dart';
 import '../routing/app_navigator.dart';
+import '../components/onboarding/product_tour_target_keys.dart';
 import '../providers/follow_refresh_provider.dart';
 import '../providers/video_service_provider.dart' as video_providers;
 import '../constants/app_colors.dart';
@@ -675,10 +676,12 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           );
         }
       },
-      child: ColoredBox(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        child: SafeArea(
-          child: Column(
+      child: KeyedSubtree(
+        key: ProductTourTargetKeys.network,
+        child: ColoredBox(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: SafeArea(
+            child: Column(
             children: [
               _buildTopChrome(),
               AnimatedSize(
@@ -702,6 +705,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),

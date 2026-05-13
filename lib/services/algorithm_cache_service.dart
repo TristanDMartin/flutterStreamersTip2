@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
+import '../models/video_thumbnails.dart';
 import '../utils/video_url_resolver.dart';
 
 /// Production-ready caching service for recommendation algorithm
@@ -15,11 +17,12 @@ class AlgorithmCacheService {
   // Cache keys
   static const String _followingFeedKey = 'following_feed_cache';
   static const String _forYouFeedKey = 'for_you_feed_cache';
+  static const String _lastKnownForYouFeedKey = 'for_you_feed_cache:last_known';
   static const String _userProfileKey = 'user_profile_cache';
   static const String _algorithmConfigKey = 'algorithm_config_cache';
 
   // Cache TTL (Time To Live) in minutes
-  static const int _feedCacheTTL = 15; // 15 minutes
+  static const int _feedCacheTTL = 720; // 12 hours for warm app launches
   static const int _profileCacheTTL = 60; // 1 hour
   static const int _configCacheTTL = 1440; // 24 hours
 
@@ -117,6 +120,28 @@ class AlgorithmCacheService {
     }
   }
 
+  /// Cache the latest visible For You feed without requiring auth on restore.
+  Future<void> cacheLastKnownForYouFeed({
+    required List<HomeVideo> videos,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheData = {
+        'userId': 'last_known',
+        'videos': videos.map((v) => _videoToMap(v)).toList(),
+        'nextCursor': null,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'ttl': _feedCacheTTL,
+      };
+
+      await prefs.setString(_lastKnownForYouFeedKey, json.encode(cacheData));
+
+      debugPrint('✅ Cached last-known For You feed (${videos.length} videos)');
+    } catch (e) {
+      debugPrint('❌ Error caching last-known For You feed: $e');
+    }
+  }
+
   /// Get cached For You feed
   Future<CachedFeedResult?> getCachedForYouFeed(String userId) async {
     try {
@@ -146,6 +171,36 @@ class AlgorithmCacheService {
       return CachedFeedResult(videos: videos, nextCursor: nextCursor);
     } catch (e) {
       debugPrint('❌ Error retrieving cached For You feed: $e');
+      return null;
+    }
+  }
+
+  /// Get the latest visible For You feed for fastest warm startup.
+  Future<CachedFeedResult?> getLastKnownForYouFeed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheData = prefs.getString(_lastKnownForYouFeedKey);
+
+      if (cacheData == null) return null;
+
+      final data = json.decode(cacheData) as Map<String, dynamic>;
+      final timestamp = data['timestamp'] as int;
+      final ttl = data['ttl'] as int;
+
+      final age = DateTime.now().millisecondsSinceEpoch - timestamp;
+      if (age > ttl * 60 * 1000) {
+        await prefs.remove(_lastKnownForYouFeedKey);
+        return null;
+      }
+
+      final videos =
+          (data['videos'] as List).map((v) => _videoFromMap(v)).toList();
+
+      debugPrint(
+          '✅ Retrieved last-known For You feed (${videos.length} videos)');
+      return CachedFeedResult(videos: videos);
+    } catch (e) {
+      debugPrint('❌ Error retrieving last-known For You feed: $e');
       return null;
     }
   }
@@ -347,6 +402,19 @@ class AlgorithmCacheService {
       },
       'videoURL': video.videoURL,
       'thumbnailURL': video.thumbnailURL,
+      'thumbnails': video.thumbnails == null
+          ? null
+          : {
+              'urls': video.thumbnails!.urls
+                  .map((key, value) => MapEntry(key.toString(), value)),
+              'generatedAt':
+                  video.thumbnails!.generatedAt?.millisecondsSinceEpoch,
+              'aspectRatio': video.thumbnails!.aspectRatio,
+              'sourceTimestamp': video.thumbnails!.sourceTimestamp,
+              'qualityScore': video.thumbnails!.qualityScore,
+              'isGenerating': video.thumbnails!.isGenerating,
+              'errorMessage': video.thumbnails!.errorMessage,
+            },
       'likes': video.likes,
       'comments': video.comments,
       'views': video.views,
@@ -356,23 +424,63 @@ class AlgorithmCacheService {
       'isDraft': video.isDraft,
       'mlScore': video.mlScore,
       'categoryId': video.categoryId,
-      'createdAt': DateTime.now()
-          .millisecondsSinceEpoch, // HomeVideo doesn't have createdAt field
+      'duration': video.duration,
+      'createdAt': video.createdAt?.millisecondsSinceEpoch,
+      'allowSave': video.allowSave,
+      'allowRemix': video.allowRemix,
+      'visibility': video.visibility,
+      'status': video.status,
+      'isPinned': video.isPinned,
+      'tags': video.tags,
+      'playlistIds': video.playlistIds,
     };
   }
 
   /// Convert Map to HomeVideo from cache
   HomeVideo _videoFromMap(Map<String, dynamic> data) {
+    final creatorData = (data['creator'] as Map?)?.cast<String, dynamic>() ??
+        <String, dynamic>{};
+    final thumbnailsData =
+        (data['thumbnails'] as Map?)?.cast<String, dynamic>();
+    final thumbnailUrls =
+        (thumbnailsData?['urls'] as Map?)?.cast<String, dynamic>();
+    final int? createdAtMs =
+        data['createdAt'] is int ? data['createdAt'] as int : null;
+    final int? generatedAtMs = thumbnailsData?['generatedAt'] is int
+        ? thumbnailsData!['generatedAt'] as int
+        : null;
+
     return HomeVideo(
       id: data['id'] ?? '',
       creator: User(
-        id: data['creator']['id'] ?? '',
-        username: data['creator']['username'] ?? '',
-        displayName: data['creator']['displayName'] ?? '',
-        avatarURL: data['creator']['avatarURL'],
+        id: creatorData['id'] ?? '',
+        username: creatorData['username'] ?? '',
+        displayName: creatorData['displayName'] ?? '',
+        avatarURL: creatorData['avatarURL'],
       ),
       videoURL: resolveVideoUrl(data),
       thumbnailURL: data['thumbnailURL'],
+      thumbnails: thumbnailUrls == null
+          ? null
+          : VideoThumbnails(
+              urls: thumbnailUrls.map(
+                (key, value) =>
+                    MapEntry(int.tryParse(key) ?? 0, value.toString()),
+              )..removeWhere((key, value) => key <= 0 || value.isEmpty),
+              generatedAt: generatedAtMs == null
+                  ? null
+                  : Timestamp.fromMillisecondsSinceEpoch(generatedAtMs),
+              aspectRatio:
+                  (thumbnailsData?['aspectRatio'] as num?)?.toDouble() ??
+                      9.0 / 16.0,
+              sourceTimestamp:
+                  (thumbnailsData?['sourceTimestamp'] as num?)?.toDouble() ??
+                      0.0,
+              qualityScore:
+                  (thumbnailsData?['qualityScore'] as num?)?.toDouble() ?? 1.0,
+              isGenerating: thumbnailsData?['isGenerating'] == true,
+              errorMessage: thumbnailsData?['errorMessage'] as String?,
+            ),
       likes: data['likes'] ?? 0,
       comments: data['comments'] ?? 0,
       views: data['views'] ?? 0,
@@ -380,9 +488,22 @@ class AlgorithmCacheService {
       isLiked: data['isLiked'] ?? false,
       isFavorited: data['isFavorited'] ?? false,
       isDraft: data['isDraft'] ?? false,
-      mlScore: data['mlScore'] ?? 0.0,
+      mlScore: (data['mlScore'] as num?)?.toDouble() ?? 0.0,
       categoryId: data['categoryId'] ?? '',
-      // createdAt field not available in HomeVideo model
+      duration: (data['duration'] as num?)?.toDouble(),
+      createdAt: createdAtMs == null
+          ? null
+          : Timestamp.fromMillisecondsSinceEpoch(createdAtMs),
+      allowSave: data['allowSave'] != false,
+      allowRemix: data['allowRemix'] != false,
+      visibility: data['visibility'] ?? 'public',
+      status: data['status'] ?? 'published',
+      isPinned: data['isPinned'] == true,
+      tags: (data['tags'] as List?)?.map((e) => e.toString()).toList() ??
+          const <String>[],
+      playlistIds:
+          (data['playlistIds'] as List?)?.map((e) => e.toString()).toList() ??
+              const <String>[],
     );
   }
 }

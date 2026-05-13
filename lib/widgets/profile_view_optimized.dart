@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 
+import '../components/onboarding/product_tour_target_keys.dart';
 import '../models/user.dart' as app_user;
 import '../providers/follow_refresh_provider.dart';
 import '../routing/app_navigator.dart';
@@ -211,38 +212,41 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody: true,
       extendBodyBehindAppBar: true,
-      body: AnimatedBuilder(
-        animation: _flipAnimation,
-        builder: (BuildContext context, Widget? child) {
-          final bool isShowingFront = _flipAnimation.value < 0.5;
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateY(_flipAnimation.value * 3.14159),
-            child: isShowingFront
-                ? ProfileViewFrontShell(
-                    userData: userData,
-                    profileUserId: widget.user.id,
-                    isCurrentUser: widget.isCurrentUser,
-                    selectedTabIndex: _selectedTabIndex,
-                    onTabSelected: _onTabSelected,
-                    contentFade: _contentFadeAnimation,
-                    contentSlide: _contentSlideAnimation,
-                    onBack: () => Navigator.of(context).pop(),
-                    onFlip: _flipCard,
-                    onStreamerCard: _openStreamerCard,
-                  )
-                : Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()..rotateY(3.14159),
-                    child: ProfileBackView(
-                      user: userData,
+      body: KeyedSubtree(
+        key: ProductTourTargetKeys.profile,
+        child: AnimatedBuilder(
+          animation: _flipAnimation,
+          builder: (BuildContext context, Widget? child) {
+            final bool isShowingFront = _flipAnimation.value < 0.5;
+            return Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(_flipAnimation.value * 3.14159),
+              child: isShowingFront
+                  ? ProfileViewFrontShell(
+                      userData: userData,
+                      profileUserId: widget.user.id,
+                      isCurrentUser: widget.isCurrentUser,
+                      selectedTabIndex: _selectedTabIndex,
+                      onTabSelected: _onTabSelected,
+                      contentFade: _contentFadeAnimation,
+                      contentSlide: _contentSlideAnimation,
+                      onBack: () => Navigator.of(context).pop(),
                       onFlip: _flipCard,
+                      onStreamerCard: _openStreamerCard,
+                    )
+                  : Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()..rotateY(3.14159),
+                      child: ProfileBackView(
+                        user: userData,
+                        onFlip: _flipCard,
+                      ),
                     ),
-                  ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

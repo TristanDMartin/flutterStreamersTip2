@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,8 @@ import '../providers/follow_refresh_provider.dart';
 import 'comments_view2.dart';
 import 'enhanced_share_sheet.dart';
 import '../routing/app_navigator.dart';
+import '../components/onboarding/product_tour_target_keys.dart';
+import '../providers/product_tour_ui_provider.dart';
 // import 'video_thumbnail_view.dart'; // Removed - unused
 
 /// 🔥 FIX: Field mapping utility for data model consistency
@@ -181,6 +184,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     'active',
   ];
   String? _selectedCategory;
+  final ScrollController _discoverScrollController = ScrollController();
   final Map<String, Future<List<Map<String, dynamic>>>> _categoryFeedFutures =
       {};
 
@@ -442,6 +446,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     // ✅ FIX #2: Cancel timer to prevent leaks
     _trendingRefreshTimer?.cancel();
 
+    _discoverScrollController.dispose();
+
     // Cache cleared (removed unused _cachedVideos)
 
     // 🔊 AUDIO FIX: Don't pause here - NavigationObserver will call setActiveOwner
@@ -692,18 +698,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           _buildLiveAvatar(
               context, creator.id, creator.avatarURL, creator.username),
           const SizedBox(height: 8),
-          Flexible(
-            child: Text(
-              creator.displayName ?? creator.username,
-              style: TextStyle(
-                color: s.onCard,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          Text(
+            creator.displayName ?? creator.username,
+            style: TextStyle(
+              color: s.onCard,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           _buildLiveFollowerCount(context, creator.id, creator.followerCount),
         ],
@@ -750,8 +754,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           .snapshots(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data();
-        final liveCount = FieldMapper.safeInt(
-          data?['followerCount'] ?? data?['followersCount'] ?? initialCount,
+        final liveCount = math.max(
+          0,
+          FieldMapper.safeInt(
+            data?['followerCount'] ?? data?['followersCount'] ?? initialCount,
+          ),
         );
         final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
         return Text(
@@ -977,6 +984,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         _navigateToActivity(context);
       },
       child: Container(
+        key: ProductTourTargetKeys.discoverActivity,
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(8),
         child: Stack(
@@ -1020,6 +1028,25 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      productTourDiscoverCreatorsPrepProvider,
+      (int? previous, int next) {
+        if (previous == null || next <= previous) {
+          return;
+        }
+        if (!mounted) {
+          return;
+        }
+        setState(() => _selectedCategory = null);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_discoverScrollController.hasClients) {
+            return;
+          }
+          _discoverScrollController.jumpTo(0);
+        });
+      },
+    );
+
     ref.listen<int>(followRefreshProvider, (previous, next) {
       if (previous == next) return;
       ref.read(discoverProvider.notifier).loadTrendingCreators();
@@ -1055,6 +1082,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           backgroundColor: s.refreshBackground,
           onRefresh: _refreshDiscoverView,
           child: CustomScrollView(
+            controller: _discoverScrollController,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
@@ -1165,7 +1193,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
               // Trending Creators Section with Lazy Loading
               SliverToBoxAdapter(
-                child: Padding(
+                child: KeyedSubtree(
+                  key: ProductTourTargetKeys.discoverTrending,
+                  child: Padding(
                   padding: const EdgeInsets.only(
                     left: 20,
                     right: 20,
@@ -1237,10 +1267,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     ),
                   ),
                 ),
+                ),
               ),
 
               SliverToBoxAdapter(
-                child: Padding(
+                child: KeyedSubtree(
+                  key: ProductTourTargetKeys.discoverCategories,
+                  child: Padding(
                   padding: EdgeInsets.only(
                     left: 20,
                     right: 20,
@@ -1270,69 +1303,90 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                           : null,
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildSectionHeading(
-                          context,
-                          'Categories',
-                          'Jump into the corner of the app that fits your mood',
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          height: 132,
-                          width: double.infinity,
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              const double sep = 10;
-                              const int visibleSlots = 6;
-                              final double maxW = constraints.maxWidth;
-                              final double raw =
-                                  (maxW - sep * (visibleSlots - 1)) /
-                                      visibleSlots;
-                              final double cardW =
-                                  raw < 48 ? 48.0 : raw;
-                              return ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                physics: const BouncingScrollPhysics(),
-                                padding: const EdgeInsets.only(bottom: 4),
-                                itemCount: discoverState.categories.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(width: sep),
-                                itemBuilder: (context, index) {
-                                  final category =
-                                      discoverState.categories[index];
-                                  return SizedBox(
-                                    width: cardW,
-                                    child: _accessibilityService
-                                        .createAccessibleButton(
-                                      semanticLabel:
-                                          'Category ${category.name}',
-                                      semanticHint:
-                                          _selectedCategory == category.id
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeading(
+                            context,
+                            'Categories',
+                            'Jump into the corner of the app that fits your mood',
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            height: 196,
+                            width: double.infinity,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                              final pages = <List<discover_models.Category>>[];
+                              for (int i = 0;
+                                  i < discoverState.categories.length;
+                                  i += 6) {
+                                pages.add(
+                                  discoverState.categories
+                                      .skip(i)
+                                      .take(6)
+                                      .toList(growable: false),
+                                );
+                              }
+                              return PageView.builder(
+                                clipBehavior: Clip.none,
+                                physics: const PageScrollPhysics(
+                                  parent: BouncingScrollPhysics(),
+                                ),
+                                itemCount: pages.length,
+                                itemBuilder: (context, pageIndex) {
+                                  final page = pages[pageIndex];
+                                  return Padding(
+                                    padding: EdgeInsets.only(
+                                      right: pageIndex == pages.length - 1
+                                          ? 0
+                                          : 10,
+                                    ),
+                                    child: GridView.builder(
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      gridDelegate:
+                                          const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 3,
+                                        crossAxisSpacing: 10,
+                                        mainAxisSpacing: 10,
+                                        childAspectRatio: 1.22,
+                                      ),
+                                      itemCount: page.length,
+                                      itemBuilder: (context, index) {
+                                        final category = page[index];
+                                        return _accessibilityService
+                                            .createAccessibleButton(
+                                          semanticLabel:
+                                              'Category ${category.name}',
+                                          semanticHint: _selectedCategory ==
+                                                  category.id
                                               ? 'Currently selected category. '
                                                   'Tap to deselect.'
                                               : 'Tap to select this category',
-                                      onPressed: () => _onCategorySelected(
-                                        _selectedCategory == category.id
-                                            ? null
-                                            : category.id,
-                                      ),
-                                      hapticFeedbackType:
-                                          AccessibilityHapticFeedbackType
-                                              .light,
-                                      child: CategoryCard(
-                                        key: ValueKey(category.id),
-                                        category: category,
-                                        isSelected: _selectedCategory ==
-                                            category.id,
-                                        hasCategorySelected:
-                                            _selectedCategory != null,
-                                        onTap: () => _onCategorySelected(
-                                          _selectedCategory == category.id
-                                              ? null
-                                              : category.id,
-                                        ),
-                                      ),
+                                          onPressed: () => _onCategorySelected(
+                                            _selectedCategory == category.id
+                                                ? null
+                                                : category.id,
+                                          ),
+                                          hapticFeedbackType:
+                                              AccessibilityHapticFeedbackType
+                                                  .light,
+                                          child: CategoryCard(
+                                            key: ValueKey(category.id),
+                                            category: category,
+                                            isSelected: _selectedCategory ==
+                                                category.id,
+                                            hasCategorySelected:
+                                                _selectedCategory != null,
+                                            onTap: () => _onCategorySelected(
+                                              _selectedCategory == category.id
+                                                  ? null
+                                                  : category.id,
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   );
                                 },
@@ -1344,6 +1398,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     ),
                   ),
                 ),
+              ),
               ),
 
               // Content based on category selection
@@ -2574,14 +2629,16 @@ class _CategoryVideoFeedStatefulState
                       );
                     },
                     onShowComments: () {
-                      // ✅ FIX: Use actual CommentsView2 instead of placeholder
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          fullscreenDialog: true,
-                          builder: (context) => CommentsView2(
-                            videoId: video.id,
-                            videoOwnerId: video.creator.id,
-                          ),
+                      showModalBottomSheet<void>(
+                        context: context,
+                        routeSettings: const RouteSettings(name: '/comments'),
+                        backgroundColor: Colors.transparent,
+                        isScrollControlled: true,
+                        isDismissible: true,
+                        enableDrag: true,
+                        builder: (context) => CommentsView2(
+                          videoId: video.id,
+                          videoOwnerId: video.creator.id,
                         ),
                       );
                     },

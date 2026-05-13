@@ -1,9 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 
 /// Google Services Fix
-/// 
+///
 /// This service handles Google Play Services authentication issues
 /// and provides fallback mechanisms for when Google services are unavailable.
 class GoogleServicesFix {
@@ -34,10 +36,10 @@ class GoogleServicesFix {
       final GoogleSignIn googleSignIn = GoogleSignIn(
         scopes: ['email', 'profile'],
       );
-      
+
       // Try to get the current user without signing in
       await googleSignIn.signInSilently();
-      
+
       debugPrint('✅ GoogleServicesFix: Google Sign-In test successful');
     } catch (e) {
       throw Exception('Google Sign-In test failed: $e');
@@ -49,18 +51,23 @@ class GoogleServicesFix {
 
   /// Get a user-friendly error message for Google Services issues
   static String getGoogleServicesErrorMessage(dynamic error) {
+    if (error is TimeoutException ||
+        error.toString().contains('TimeoutException')) {
+      return 'Google sign-in took too long. Please try again.';
+    }
+
     if (error.toString().contains('Unknown calling package name')) {
       return 'Google Play Services configuration issue. Please contact support.';
     }
-    
+
     if (error.toString().contains('Network error')) {
       return 'Network connection required for Google services.';
     }
-    
+
     if (error.toString().contains('SignInRequiredException')) {
       return 'Please sign in to use Google services.';
     }
-    
+
     return 'Google services temporarily unavailable. Please try again.';
   }
 
@@ -69,7 +76,8 @@ class GoogleServicesFix {
     required String requestId,
   }) async {
     if (!_isGoogleServicesAvailable) {
-      debugPrint('⚠️ GoogleServicesFix: Google Sign-In not available, using fallback');
+      debugPrint(
+          '⚠️ GoogleServicesFix: Google Sign-In not available, using fallback');
       return null;
     }
 
@@ -84,7 +92,8 @@ class GoogleServicesFix {
         return null;
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
       final credential = fa.GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,

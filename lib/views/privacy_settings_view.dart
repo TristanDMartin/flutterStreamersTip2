@@ -1,9 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../core/theme/st_theme_tokens.dart';
 
 class PrivacySettingsView extends ConsumerStatefulWidget {
   const PrivacySettingsView({super.key});
@@ -17,6 +16,24 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   bool _isSaving = false;
+
+  bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  Widget _wrapIosTextScale(BuildContext context, Widget child) {
+    if (!_isIos) {
+      return child;
+    }
+    final MediaQueryData data = MediaQuery.of(context);
+    return MediaQuery(
+      data: data.copyWith(
+        textScaler: data.textScaler.clamp(
+          minScaleFactor: 0.82,
+          maxScaleFactor: 1.04,
+        ),
+      ),
+      child: child,
+    );
+  }
 
   String _profileVisibility = 'public';
   String _videoPrivacy = 'public';
@@ -88,20 +105,30 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           .set({key: value}, SetOptions(merge: true));
 
       if (mounted) {
+        final ColorScheme cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Settings updated'),
-            backgroundColor: StThemeColors.successGreen,
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Settings updated',
+              style: TextStyle(color: cs.onInverseSurface),
+            ),
+            backgroundColor: cs.inverseSurface,
             duration: const Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
+        final ColorScheme cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error updating settings: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Error updating settings: $e',
+              style: TextStyle(color: cs.onErrorContainer),
+            ),
+            backgroundColor: cs.errorContainer,
           ),
         );
       }
@@ -127,6 +154,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
         style: TextStyle(
           color: cs.onSurface,
           fontWeight: FontWeight.bold,
+          fontSize: _isIos ? 17 : 22,
         ),
       ),
     );
@@ -136,28 +164,41 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
   Widget build(BuildContext context) {
     final ColorScheme cs = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: cs.surface,
-        appBar: _buildAppBar(context),
-        body: Center(
-          child: CircularProgressIndicator(color: cs.primary),
+      return _wrapIosTextScale(
+        context,
+        Scaffold(
+          backgroundColor: cs.surface,
+          appBar: _buildAppBar(context),
+          body: Center(
+            child: CircularProgressIndicator(color: cs.primary),
+          ),
         ),
       );
     }
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      appBar: _buildAppBar(context),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_isSaving)
-              LinearProgressIndicator(
-                backgroundColor: cs.surfaceContainerLow,
-                color: cs.primary,
-              ),
+    return _wrapIosTextScale(
+      context,
+      Scaffold(
+        backgroundColor: cs.surface,
+        appBar: _buildAppBar(context),
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[cs.surface, cs.surfaceContainerLow],
+            ),
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(_isIos ? 16 : 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_isSaving)
+                  LinearProgressIndicator(
+                    backgroundColor: cs.surfaceContainerLow,
+                    color: cs.primary,
+                  ),
             _buildSection(
               context,
               'Profile',
@@ -278,8 +319,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                 ),
               ],
             ),
-            const SizedBox(height: 40),
-          ],
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -299,7 +342,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           title,
           style: TextStyle(
             color: on,
-            fontSize: 20,
+            fontSize: _isIos ? 17 : 20,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -332,7 +375,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     final ColorScheme cs = Theme.of(context).colorScheme;
     final Color on = cs.onSurface;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(_isIos ? 14 : 20),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -349,7 +392,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
               color: on.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: on, size: 20),
+            child: Icon(icon, color: on, size: _isIos ? 18 : 20),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -360,7 +403,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                   title,
                   style: TextStyle(
                     color: on,
-                    fontSize: 16,
+                    fontSize: _isIos ? 14 : 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -369,7 +412,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                   subtitle,
                   style: TextStyle(
                     color: on.withValues(alpha: 0.65),
-                    fontSize: 12,
+                    fontSize: _isIos ? 11 : 12,
                   ),
                 ),
               ],
@@ -388,7 +431,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
             child: DropdownButton<String>(
               value: value,
               dropdownColor: cs.surfaceContainerHigh,
-              style: TextStyle(color: on, fontSize: 14),
+              style: TextStyle(
+                color: on,
+                fontSize: _isIos ? 13 : 14,
+              ),
               underline: const SizedBox(),
               items: options.map((String option) {
                 return DropdownMenuItem<String>(
@@ -418,7 +464,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     final ColorScheme cs = Theme.of(context).colorScheme;
     final Color on = cs.onSurface;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(_isIos ? 14 : 20),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -435,7 +481,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
               color: on.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: on, size: 20),
+            child: Icon(icon, color: on, size: _isIos ? 18 : 20),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -446,7 +492,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                   title,
                   style: TextStyle(
                     color: on,
-                    fontSize: 16,
+                    fontSize: _isIos ? 14 : 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -455,7 +501,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                   subtitle,
                   style: TextStyle(
                     color: on.withValues(alpha: 0.65),
-                    fontSize: 12,
+                    fontSize: _isIos ? 11 : 12,
                   ),
                 ),
               ],

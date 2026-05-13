@@ -9,6 +9,7 @@ import '../core/theme/st_theme_tokens.dart';
 import '../services/robust_auth_service.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../utils/password_validation.dart';
+import '../qa/qa_keys.dart';
 import 'auth_page_shell.dart';
 import 'email_verification_view.dart';
 import 'email_login_view.dart';
@@ -303,6 +304,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
           ),
           const SizedBox(height: 28),
           _buildTextField(
+            qaFieldKey: QaKeys.authSignupEmail,
             controller: _emailController,
             hint: "Email",
             icon: Icons.email_outlined,
@@ -311,6 +313,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
           ),
           const SizedBox(height: 16),
           _buildTextField(
+            qaFieldKey: QaKeys.authSignupUsername,
             controller: _usernameController,
             hint: "Username",
             icon: Icons.person_outline_rounded,
@@ -318,6 +321,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
           ),
           const SizedBox(height: 16),
           _buildTextField(
+            qaFieldKey: QaKeys.authSignupPassword,
             controller: _passwordController,
             hint: "Password",
             icon: Icons.lock_outline_rounded,
@@ -330,6 +334,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
           ],
           const SizedBox(height: 16),
           _buildTextField(
+            qaFieldKey: QaKeys.authSignupConfirmPassword,
             controller: _confirmPasswordController,
             hint: "Confirm Password",
             icon: Icons.lock_outline_rounded,
@@ -346,6 +351,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
   }
 
   Widget _buildTextField({
+    Key? qaFieldKey,
     required TextEditingController controller,
     required String hint,
     required IconData icon,
@@ -377,6 +383,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
         ],
       ),
       child: TextField(
+        key: qaFieldKey,
         controller: controller,
         obscureText: obscure,
         keyboardType: isPassword ? TextInputType.visiblePassword : keyboardType,
@@ -528,6 +535,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
     return Opacity(
       opacity: isEnabled ? 1.0 : 0.5,
       child: Semantics(
+        key: QaKeys.authSignupSubmit,
         button: true,
         enabled: isEnabled,
         label: 'Create account',

@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'qr_scanner_view.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../constants/app_colors.dart';
+import '../components/onboarding/onboarding_mission_actions.dart';
 import '../services/profile_link_service.dart';
 import '../services/url_handler_service.dart';
 // Removed qr_flutter to avoid missing dependency for now
@@ -70,7 +71,8 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     final normalized = ProfileLinkService.normalizeIncomingProfileLink(code);
     if (!normalized.startsWith(ProfileLinkService.appScheme)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('That QR code is not a StreamersTip profile link.')),
+        const SnackBar(
+            content: Text('That QR code is not a StreamersTip profile link.')),
       );
       return;
     }
@@ -85,6 +87,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   void _copyProfileLink() {
     if (_shareURL != null) {
       Clipboard.setData(ClipboardData(text: _shareURL!));
+      OnboardingMissionActions.complete('share_creator_card');
       HapticFeedback.mediumImpact();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile link copied to clipboard!')),
@@ -103,10 +106,12 @@ class _ShareProfileViewState extends State<ShareProfileView> {
           subject: 'StreamersTip profile',
         ),
       );
+      await OnboardingMissionActions.complete('share_creator_card');
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the share sheet right now.')),
+        const SnackBar(
+            content: Text('Could not open the share sheet right now.')),
       );
     }
   }

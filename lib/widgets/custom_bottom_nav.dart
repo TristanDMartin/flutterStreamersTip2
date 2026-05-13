@@ -3,9 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../components/onboarding/product_tour_target_keys.dart';
 import '../core/theme/st_theme_tokens.dart';
 
-import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
 import '../utils/performance_utils.dart';
 import '../utils/responsive_layout.dart';
@@ -195,22 +195,21 @@ class CustomBottomNav extends ConsumerWidget {
   }
 
   Widget _buildNavItem(
-    ColorScheme colorScheme,
-    bool isLight,
-    int index,
-    IconData icon,
-    String label,
-    _NavMetrics metrics,
-    TextScaler navTextScaler,
-  ) {
+      ColorScheme colorScheme,
+      bool isLight,
+      int index,
+      IconData icon,
+      String label,
+      _NavMetrics metrics,
+      TextScaler navTextScaler,
+      {GlobalKey? tourKey}) {
     final Color on = colorScheme.onSurface;
     final Color muted = isLight
         ? Colors.white.withValues(alpha: 0.72)
         : on.withValues(alpha: 0.4);
     final bool isSelected = currentIndex == index;
-    final Color iconAndLabel = isSelected
-        ? (isLight ? Colors.white : on)
-        : muted;
+    final Color iconAndLabel =
+        isSelected ? (isLight ? Colors.white : on) : muted;
     final Color? fill = isSelected
         ? (isLight
             ? Colors.white.withValues(alpha: 0.14)
@@ -224,50 +223,55 @@ class CustomBottomNav extends ConsumerWidget {
             width: 1,
           )
         : null;
+    final Widget iconCircle = Container(
+      padding: EdgeInsets.all(metrics.iconPadding),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: fill,
+        border: ring,
+      ),
+      child: Icon(
+        icon,
+        color: iconAndLabel,
+        size: metrics.iconSize,
+      ),
+    );
+    final Widget iconSlot = tourKey != null
+        ? KeyedSubtree(key: tourKey, child: iconCircle)
+        : iconCircle;
+    final Widget tapTarget = OptimizedButton(
+      buttonId: 'nav_$index',
+      onPressed: () => onTap(index),
+      child: Padding(
+        padding: EdgeInsets.all(metrics.itemPadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            iconSlot,
+            SizedBox(height: metrics.labelGap),
+            Text(
+              label,
+              textScaler: navTextScaler,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: iconAndLabel,
+                fontSize: metrics.labelFontSize,
+                height: 1.0,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
     return Semantics(
       label: label,
       hint: isSelected ? 'Selected tab' : 'Tap to switch to $label tab',
       selected: isSelected,
       button: true,
-      child: OptimizedButton(
-        buttonId: 'nav_$index',
-        onPressed: () => onTap(index),
-        child: Padding(
-          padding: EdgeInsets.all(metrics.itemPadding),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                padding: EdgeInsets.all(metrics.iconPadding),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: fill,
-                  border: ring,
-                ),
-                child: Icon(
-                  icon,
-                  color: iconAndLabel,
-                  size: metrics.iconSize,
-                ),
-              ),
-              SizedBox(height: metrics.labelGap),
-              Text(
-                label,
-                textScaler: navTextScaler,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: iconAndLabel,
-                  fontSize: metrics.labelFontSize,
-                  height: 1.0,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: tapTarget,
     );
   }
 
@@ -283,9 +287,8 @@ class CustomBottomNav extends ConsumerWidget {
     final Color muted = isLight
         ? Colors.white.withValues(alpha: 0.72)
         : on.withValues(alpha: 0.4);
-    final Color iconAndLabel = isSelected
-        ? (isLight ? Colors.white : on)
-        : muted;
+    final Color iconAndLabel =
+        isSelected ? (isLight ? Colors.white : on) : muted;
     final Color? fill = isSelected
         ? (isLight
             ? Colors.white.withValues(alpha: 0.14)
@@ -300,14 +303,9 @@ class CustomBottomNav extends ConsumerWidget {
           )
         : null;
     final unreadCountAsync = ref.watch(unreadMessagesProvider);
-    final activityUnreadCountAsync = ref.watch(unreadActivityCountProvider);
-
-    var totalUnreadCount = 0;
+    var messageUnreadCount = 0;
     unreadCountAsync.whenOrNull(
-      data: (unreadCount) => totalUnreadCount += unreadCount,
-    );
-    activityUnreadCountAsync.whenOrNull(
-      data: (unreadCount) => totalUnreadCount += unreadCount,
+      data: (int unreadCount) => messageUnreadCount += unreadCount,
     );
 
     return Semantics(
@@ -338,12 +336,12 @@ class CustomBottomNav extends ConsumerWidget {
                       size: metrics.iconSize,
                     ),
                   ),
-                  if (totalUnreadCount > 0)
+                  if (messageUnreadCount > 0)
                     Positioned(
                       right: 0,
                       top: 0,
                       child: Semantics(
-                        label: '$totalUnreadCount unread notifications',
+                        label: '$messageUnreadCount unread messages',
                         child: Container(
                           padding: EdgeInsets.all(metrics.badgePadding),
                           decoration: BoxDecoration(
@@ -355,9 +353,9 @@ class CustomBottomNav extends ConsumerWidget {
                             minHeight: metrics.badgeMinSize,
                           ),
                           child: Text(
-                            totalUnreadCount > 99
+                            messageUnreadCount > 99
                                 ? '99+'
-                                : totalUnreadCount.toString(),
+                                : messageUnreadCount.toString(),
                             textScaler: navTextScaler,
                             style: TextStyle(
                               color: colorScheme.onError,
@@ -402,61 +400,64 @@ class CustomBottomNav extends ConsumerWidget {
     final Color createMuted = isLight
         ? Colors.white.withValues(alpha: 0.72)
         : on.withValues(alpha: 0.4);
-    return Semantics(
-      label: 'Create content',
-      hint: 'Tap to open camera and create new content',
-      button: true,
-      child: OptimizedButton(
-        buttonId: 'nav_add',
-        onPressed: () => onTap(2),
-        child: Padding(
-          padding: EdgeInsets.all(metrics.itemPadding),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: EdgeInsets.all(metrics.iconPadding),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[
-                      StThemeColors.brandPurple,
-                      StThemeColors.brandBlue,
-                    ],
-                    stops: <double>[0.0, 1.0],
-                  ),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: StThemeColors.brandPurple.withValues(alpha: 0.4),
-                      blurRadius: metrics.addShadowBlur,
-                      spreadRadius: 0,
-                      offset: const Offset(0, 5),
+    return KeyedSubtree(
+      key: ProductTourTargetKeys.uploadButton,
+      child: Semantics(
+        label: 'Create content',
+        hint: 'Tap to open camera and create new content',
+        button: true,
+        child: OptimizedButton(
+          buttonId: 'nav_add',
+          onPressed: () => onTap(2),
+          child: Padding(
+            padding: EdgeInsets.all(metrics.itemPadding),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  padding: EdgeInsets.all(metrics.iconPadding),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        StThemeColors.brandPurple,
+                        StThemeColors.brandBlue,
+                      ],
+                      stops: <double>[0.0, 1.0],
                     ),
-                  ],
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: StThemeColors.brandPurple.withValues(alpha: 0.4),
+                        blurRadius: metrics.addShadowBlur,
+                        spreadRadius: 0,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.add,
+                    color: colorScheme.onPrimary,
+                    size: metrics.iconSize,
+                  ),
                 ),
-                child: Icon(
-                  Icons.add,
-                  color: colorScheme.onPrimary,
-                  size: metrics.iconSize,
+                SizedBox(height: metrics.labelGap),
+                Text(
+                  'Create',
+                  textScaler: navTextScaler,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: createMuted,
+                    fontSize: metrics.labelFontSize,
+                    height: 1.0,
+                    fontWeight: FontWeight.normal,
+                  ),
                 ),
-              ),
-              SizedBox(height: metrics.labelGap),
-              Text(
-                'Create',
-                textScaler: navTextScaler,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: createMuted,
-                  fontSize: metrics.labelFontSize,
-                  height: 1.0,
-                  fontWeight: FontWeight.normal,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

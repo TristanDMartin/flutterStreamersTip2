@@ -32,6 +32,11 @@ service cloud.firestore {
       match /presence/{presenceDocId} {
         allow read: if request.auth != null;
         allow write: if request.auth != null && request.auth.uid == userId;
+
+        match /{nestedPresenceDoc=**} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId;
+        }
       }
       
       // Users can read and write their own subcollections
@@ -131,24 +136,27 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null && 
-        (request.auth.uid == resource.data.authorId || 
-         request.auth.uid == resource.data.commenterId);
+        (isCommentAuthor(resource.data) || isUserAdmin());
     }
     
     // Users can read and write video comments
     match /videos/{videoId}/comments/{commentId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null &&
-        isNotBannedUser() &&
-        request.auth.uid == request.resource.data.user.id &&
-        (isUserAdmin() || isWithinCommentLimit(request.auth.uid));
-      allow update: if request.auth != null && 
-        (request.auth.uid == resource.data.user.id || 
-         // Allow adding replies to any comment
-         request.resource.data.keys().hasAll(['replies']) && 
-         request.resource.data.replies is list);
-      allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.user.id;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && (
+        isCommentAuthor(resource.data) ||
+        isUserAdmin() ||
+        isVideoOwnerById(videoId) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'likedBy', 'likeCount', 'isLiked', 'replyCount',
+          'linkedThreadId', 'updatedAt'
+        ])
+      );
+      allow delete: if request.auth != null && (
+        isCommentAuthor(resource.data) ||
+        isUserAdmin() ||
+        isVideoOwnerById(videoId)
+      );
     }
     
     // Allow querying video comments collection
@@ -372,6 +380,14 @@ service cloud.firestore {
       allow create, update: if request.auth != null &&
         request.auth.uid == creatorId;
       allow delete: if false;
+
+      match /{metricDoc=**} {
+        allow read, list: if request.auth != null &&
+          (request.auth.uid == creatorId || isUserAdmin());
+        allow create, update: if request.auth != null &&
+          request.auth.uid == creatorId;
+        allow delete: if false;
+      }
     }
 
     match /support_tickets/{ticketId} {
@@ -496,9 +512,9 @@ service cloud.firestore {
     // Feed telemetry written by Home feed impressions/play-start/skip logging
     match /feedSkipLogs/{logId} {
       allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.userId;
+        && request.auth.uid == requestOwnerId();
       allow read, list: if request.auth != null
-        && (request.auth.uid == resource.data.userId || isUserAdmin());
+        && (request.auth.uid == resourceOwnerId() || isUserAdmin());
       allow update, delete: if false;
     }
     
@@ -710,15 +726,15 @@ service cloud.firestore {
     
     // Scheduled posts collection - for video scheduling
     match /scheduled_posts/{scheduledPostId} {
-      allow read: if request.auth != null && 
-        request.auth.uid == resource.data.authorId;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.authorId;
-      allow update: if request.auth != null && 
-        request.auth.uid == resource.data.authorId;
-      allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.authorId;
+      allow read, list: if request.auth != null &&
+        (isScheduledPostOwner(resource.data) || isUserAdmin());
+      allow create: if request.auth != null &&
+        isScheduledPostOwner(request.resource.data);
+      allow update: if request.auth != null &&
+        (isScheduledPostOwner(resource.data) || isUserAdmin()) &&
+        isScheduledPostOwner(request.resource.data);
+      allow delete: if request.auth != null &&
+        (isScheduledPostOwner(resource.data) || isUserAdmin());
     }
   }
   
@@ -739,8 +755,6 @@ service cloud.firestore {
 
   function isBookmarkFavoriteCountOnlyUpdate() {
     return request.auth != null
-      && resource.data.keys().hasAll(['userId'])
-      && request.auth.uid != resource.data.userId
       && request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['favorites', 'favoriteCount', 'updatedAt'])
       && isFavoriteAndFavoriteCountStepTogether();
@@ -752,7 +766,19 @@ service cloud.firestore {
     let beforeFC = videoIntField(resource.data, 'favoriteCount');
     let afterFC = videoIntField(request.resource.data, 'favoriteCount');
     return (afterF == beforeF + 1 && afterFC == beforeFC + 1)
-      || (afterF == beforeF - 1 && afterFC == beforeFC - 1);
+      || (beforeF > 0 && beforeFC > 0 && afterF == beforeF - 1 && afterFC == beforeFC - 1)
+      || (beforeF == 0 && beforeFC == 0 && afterF == 0 && afterFC == 0);
+  }
+
+  function isVideoOwnerById(videoId) {
+    let path = /databases/$(database)/documents/videos/$(videoId);
+    return request.auth != null &&
+      exists(path) &&
+      (
+        ('userId' in get(path).data && get(path).data.userId == request.auth.uid) ||
+        ('creatorId' in get(path).data && get(path).data.creatorId == request.auth.uid) ||
+        ('creator_id' in get(path).data && get(path).data.creator_id == request.auth.uid)
+      );
   }
 
   // Validation functions
@@ -886,6 +912,29 @@ service cloud.firestore {
         'lastViewedAt', 'lastLikedAt', 'lastCommentedAt', 'lastSharedAt',
         'updatedAt', 'timestamp'
       ]);
+  }
+
+  function isScheduledPostOwner(data) {
+    return request.auth != null && (
+      ('authorId' in data && data.authorId == request.auth.uid) ||
+      ('userId' in data && data.userId == request.auth.uid) ||
+      ('uid' in data && data.uid == request.auth.uid) ||
+      ('ownerId' in data && data.ownerId == request.auth.uid) ||
+      ('creatorId' in data && data.creatorId == request.auth.uid)
+    );
+  }
+
+  function isCommentAuthor(data) {
+    return request.auth != null && (
+      ('user' in data && data.user is map &&
+        'id' in data.user && data.user.id == request.auth.uid) ||
+      ('author' in data && data.author is map &&
+        'id' in data.author && data.author.id == request.auth.uid) ||
+      ('userId' in data && data.userId == request.auth.uid) ||
+      ('authorId' in data && data.authorId == request.auth.uid) ||
+      ('commenterId' in data && data.commenterId == request.auth.uid) ||
+      ('uid' in data && data.uid == request.auth.uid)
+    );
   }
   
   function isWithinCommentLimit(userId) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
+import '../components/onboarding/onboarding_mission_actions.dart';
 import '../core/theme/support_shell_style.dart';
 import '../models/scheduled_post.dart';
 import '../services/scheduled_post_service.dart';
@@ -63,6 +64,7 @@ class _LinkedPlatformsViewState extends State<LinkedPlatformsView> {
 
     try {
       await _scheduledPostService.reconnectPlatform(platform);
+      await OnboardingMissionActions.complete('connect_platform');
       _didUpdateConnections = true;
       await _loadConnections();
       if (!mounted) return;

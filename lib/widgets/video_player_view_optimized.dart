@@ -34,6 +34,7 @@ import '../utils/video_health_gate.dart';
 import '../utils/responsive_layout.dart';
 import '../constants/app_colors.dart';
 import '../services/thumbnail_service.dart';
+import '../components/onboarding/onboarding_feature_tip.dart';
 import '../widgets/creator_command_center_overlay.dart';
 import '../models/creator_command_snapshot.dart';
 import '../providers/creator_command_provider.dart';
@@ -123,7 +124,7 @@ class _VideoPlayerViewOptimizedState
   bool _wasRegistered =
       false; // Track if controller was registered with registry
   bool _isBookmarked =
-      false; // Local bookmark state that syncs with FavoritesService
+      false; // Local bookmark state; UnifiedBookmarkService is source of truth
   bool _didFirstReadyRebuild =
       false; // Track if we've triggered rebuild when controller becomes ready
   bool _isCaptionExpanded = false;
@@ -670,6 +671,24 @@ class _VideoPlayerViewOptimizedState
       debugPrint(
           '📚 VideoPlayerView: Initialized bookmark state for video ${widget.video.id}: $_isBookmarked');
     }
+
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      unawaited(
+        _bookmarkService.initialize(currentUser.uid).then((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _isBookmarked = _bookmarkService.isBookmarked(widget.video.id);
+          });
+        }).catchError((Object error) {
+          if (kDebugMode) {
+            debugPrint('⚠️ VideoPlayerView: Bookmark init failed: $error');
+          }
+        }),
+      );
+    }
   }
 
   /// Comment badge = all visible comment docs (top-level + replies), not deleted.
@@ -1127,6 +1146,11 @@ class _VideoPlayerViewOptimizedState
         _hasSeenFirstFrame = true;
         _firstFrameRenderedAt ??= DateTime.now();
       });
+      GlobalPlaybackManager.instance.noteFirstFrameRendered(
+        widget.video.id,
+        controllerId: controller.hashCode,
+        size: controller.value.size,
+      );
       _firstFrameWatchdog?.cancel();
       _firstFrameWatchdog = null;
       log('✅ VideoPlayer: Poster cleared for ${widget.video.id} ($reason)');
@@ -2351,6 +2375,11 @@ class _VideoPlayerViewOptimizedState
             _firstFrameRenderedAt = DateTime.now();
             _firstFrameWatchdog?.cancel();
             _firstFrameWatchdog = null;
+            GlobalPlaybackManager.instance.noteFirstFrameRendered(
+              widget.video.id,
+              controllerId: controller.hashCode,
+              size: value.size,
+            );
 
             // Drop the poster as soon as we have a confirmed rendered frame.
             // This avoids the "frozen/blurry on open" look caused by keeping the
@@ -2825,6 +2854,10 @@ class _VideoPlayerViewOptimizedState
       return;
     }
     try {
+      final User? authUser = FirebaseAuth.instance.currentUser;
+      if (authUser != null) {
+        await bookmarkService.initialize(authUser.uid);
+      }
       final BookmarkResult result =
           await bookmarkService.toggleBookmark(widget.video.id);
 
@@ -2851,11 +2884,16 @@ class _VideoPlayerViewOptimizedState
             errorMessage = 'Failed to update bookmark';
           }
 
+          final ColorScheme scheme = Theme.of(context).colorScheme;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                errorMessage,
+                style: TextStyle(color: scheme.onInverseSurface),
+              ),
+              backgroundColor: scheme.inverseSurface.withValues(alpha: 0.92),
+              duration: const Duration(seconds: 3),
             ),
           );
         }
@@ -2876,11 +2914,16 @@ class _VideoPlayerViewOptimizedState
           errorMessage = 'Failed to update bookmark';
         }
 
+        final ColorScheme scheme = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              errorMessage,
+              style: TextStyle(color: scheme.onInverseSurface),
+            ),
+            backgroundColor: scheme.inverseSurface.withValues(alpha: 0.92),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -2994,7 +3037,43 @@ class _VideoPlayerViewOptimizedState
     });
   }
 
-  void _handleComment() {
+  Future<bool> _showVideoFeatureTipIfNeeded(OnboardingFeatureTip tip) async {
+    final User? authUser = FirebaseAuth.instance.currentUser;
+    final String userId = authUser?.uid ?? 'local';
+    if (!mounted || _isDisposed) {
+      return false;
+    }
+    return showOnboardingFeatureTipIfNeeded(
+      context: context,
+      userId: userId,
+      tip: tip,
+    );
+  }
+
+  Future<void> _handleComment() async {
+    final User? authUser = FirebaseAuth.instance.currentUser;
+    final bool isOwnUploadedContent =
+        authUser != null && authUser.uid == widget.video.creator.id;
+    if (isOwnUploadedContent) {
+      final bool shouldOpen = await _showVideoFeatureTipIfNeeded(
+        const OnboardingFeatureTip(
+          id: 'threads_after_first_upload',
+          icon: Icons.forum_rounded,
+          title: 'Turn comments into Threads',
+          body:
+              'After your first upload, strong comments can become longer conversations in Threads.',
+          points: <String>[
+            'Open comments on your post to spot good discussion starters',
+            'Use Thread to give a comment its own focused conversation',
+          ],
+          action: 'Open comments',
+        ),
+      );
+      if (!shouldOpen || !mounted || _isDisposed) {
+        return;
+      }
+    }
+
     if (widget.onShowComments != null) {
       widget.onShowComments!();
       return;
@@ -3004,6 +3083,7 @@ class _VideoPlayerViewOptimizedState
 
     showModalBottomSheet<void>(
       context: context,
+      routeSettings: const RouteSettings(name: '/comments'),
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       isDismissible: true,
@@ -3022,12 +3102,29 @@ class _VideoPlayerViewOptimizedState
     });
   }
 
-  void _handleBookmark() {
+  Future<void> _handleBookmark() async {
     if (UnifiedBookmarkService.instance.hasPendingOperation(widget.video.id)) {
       return;
     }
     HapticFeedback.lightImpact();
-    _handleFavoriteChanged();
+    final bool shouldSave = await _showVideoFeatureTipIfNeeded(
+      const OnboardingFeatureTip(
+        id: 'bookmark_video',
+        icon: Icons.bookmark_rounded,
+        title: 'Save videos for later',
+        body:
+            'Bookmarks keep useful clips close without interrupting your feed.',
+        points: <String>[
+          'Tap Bookmark again to remove a saved video',
+          'Find saved videos from your profile bookmarks',
+        ],
+        action: 'Save video',
+      ),
+    );
+    if (!shouldSave || !mounted || _isDisposed) {
+      return;
+    }
+    await _handleFavoriteChanged();
   }
 
   void _handleShare() {
@@ -4053,7 +4150,7 @@ class _VideoPlayerViewOptimizedState
             _buildActionButton(
               icon: Icons.chat_bubble_outline,
               count: _formatCompactCount(_commentCount),
-              onTap: _handleComment,
+              onTap: () => unawaited(_handleComment()),
               metrics: railMetrics,
             ),
             SizedBox(height: railMetrics.itemGap),
@@ -4063,7 +4160,7 @@ class _VideoPlayerViewOptimizedState
               count: _formatCompactCount(_favoriteCount),
               onTap: _bookmarkService.hasPendingOperation(widget.video.id)
                   ? null
-                  : _handleBookmark,
+                  : () => unawaited(_handleBookmark()),
               isActive: _isBookmarked,
               isLoading: false,
               metrics: railMetrics,

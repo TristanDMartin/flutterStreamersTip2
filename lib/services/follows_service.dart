@@ -110,43 +110,73 @@ class FollowsService {
           .where('followerId', isEqualTo: currentUserId)
           .where('followedId', isEqualTo: targetUserId)
           .get();
-      final int removed = primary.docs.length +
-          legacy.docs.length +
-          legacyAlt.docs.length;
-      if (removed == 0) {
-        return true;
+      final Map<String, DocumentReference<Map<String, dynamic>>> followRefs =
+          <String, DocumentReference<Map<String, dynamic>>>{};
+      for (final doc in primary.docs) {
+        followRefs[doc.reference.path] = doc.reference;
       }
-      final WriteBatch batch = _firestore.batch();
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-          in primary.docs) {
-        batch.delete(doc.reference);
+      for (final doc in legacy.docs) {
+        followRefs[doc.reference.path] = doc.reference;
       }
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-          in legacy.docs) {
-        batch.delete(doc.reference);
+      for (final doc in legacyAlt.docs) {
+        followRefs[doc.reference.path] = doc.reference;
       }
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-          in legacyAlt.docs) {
-        batch.delete(doc.reference);
-      }
+      if (followRefs.isEmpty) return true;
+
       final DocumentReference<Map<String, dynamic>> currentUserRef =
           _firestore.collection('users').doc(currentUserId);
       final DocumentReference<Map<String, dynamic>> targetUserRef =
           _firestore.collection('users').doc(targetUserId);
-      batch.update(currentUserRef, {
-        'followingCount': FieldValue.increment(-removed),
-        'updatedAt': FieldValue.serverTimestamp(),
+
+      await _firestore.runTransaction<void>((transaction) async {
+        final followDocs = <DocumentSnapshot<Map<String, dynamic>>>[];
+        for (final ref in followRefs.values) {
+          final doc = await transaction.get(ref);
+          if (doc.exists) {
+            followDocs.add(doc);
+          }
+        }
+        if (followDocs.isEmpty) return;
+
+        final currentUserDoc = await transaction.get(currentUserRef);
+        final targetUserDoc = await transaction.get(targetUserRef);
+        final int removed = followDocs.length;
+
+        for (final doc in followDocs) {
+          transaction.delete(doc.reference);
+        }
+        transaction.update(currentUserRef, {
+          'followingCount':
+              (_readCounter(currentUserDoc, 'followingCount') - removed)
+                  .clamp(0, 1 << 31)
+                  .toInt(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        final int nextFollowers =
+            (_readCounter(targetUserDoc, 'followersCount') - removed)
+                .clamp(0, 1 << 31)
+                .toInt();
+        transaction.update(targetUserRef, {
+          'followersCount': nextFollowers,
+          'followerCount':
+              (_readCounter(targetUserDoc, 'followerCount') - removed)
+                  .clamp(0, 1 << 31)
+                  .toInt(),
+        });
       });
-      batch.update(targetUserRef, {
-        'followersCount': FieldValue.increment(-removed),
-        'followerCount': FieldValue.increment(-removed),
-      });
-      await batch.commit();
       return true;
     } catch (e) {
       debugPrint('❌ FollowsService: Error unfollowing user: $e');
       return false;
     }
+  }
+
+  int _readCounter(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+    String field,
+  ) {
+    final value = snapshot.data()?[field];
+    return value is num ? value.toInt().clamp(0, 1 << 31).toInt() : 0;
   }
 
   Future<void> _ensureCounterFields(String userId) async {
@@ -385,6 +415,7 @@ class FollowsService {
         controller.close();
       }
     }
+
     sub1 = s1.listen(
       controller.add,
       onError: controller.addError,

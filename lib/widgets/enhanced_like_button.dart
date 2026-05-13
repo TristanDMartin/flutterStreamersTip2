@@ -64,6 +64,8 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   bool _isProcessing = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
       _videoStatsSubscription;
+  final StreamersTipLikeService _likeService = StreamersTipLikeService.instance;
+  VoidCallback? _likeServiceListener;
   DateTime? _lastTapTime;
   static const Duration _debounceDuration =
       Duration(milliseconds: 150); // Faster response
@@ -96,70 +98,27 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
     });
   }
 
-  /// Start listening to StreamersTipLikeService state changes
+  /// Listens to [StreamersTipLikeService] only (no per-second polling).
   void _startListeningToServiceChanges() {
-    // Use a more efficient approach with immediate updates after actions
-    _setupReactiveUpdates();
-
-    // Fallback polling for safety (less frequent)
-    Future.doWhile(() async {
-      await Future.delayed(
-          const Duration(milliseconds: 1000)); // Reduced frequency
-      if (mounted) {
-        final streamersTipLikeService = StreamersTipLikeService();
-        final currentState =
-            streamersTipLikeService.getLikeState(widget.videoId);
-
-        // Update local state if it differs from service state
-        if (_isLiked != currentState.isLiked ||
-            _likeCount != currentState.likeCount) {
-          final int nextLikeCount =
-              _coerceServiceLikeCount(currentState.likeCount);
-          debugPrint(
-              '⚠️ POLLING OVERRIDE: Service state differs from UI! videoId: ${widget.videoId}');
-          debugPrint('   UI: _isLiked=$_isLiked, _likeCount=$_likeCount');
-          debugPrint(
-              '   Service: isLiked=${currentState.isLiked}, likeCount=${currentState.likeCount}');
-          debugPrint('   ❗ OVERWRITING UI with service state...');
-
-          if (mounted) {
-            setState(() {
-              _isLiked = currentState.isLiked;
-              _likeCount = nextLikeCount;
-            });
-            debugPrint(
-                '✅ POLLING: UI updated - _isLiked: $_isLiked, _likeCount: $_likeCount');
-          }
-        }
-        return mounted; // Continue while widget is mounted
+    if (_likeServiceListener != null) {
+      return;
+    }
+    _likeServiceListener = () {
+      if (!mounted) {
+        return;
       }
-      return false; // Stop if widget is disposed
-    });
-  }
-
-  /// Set up reactive updates for immediate state synchronization
-  void _setupReactiveUpdates() {
-    // Listen to service changes more efficiently
-    final streamersTipLikeService = StreamersTipLikeService();
-
-    // Add a listener for immediate updates
-    streamersTipLikeService.addListener(() {
-      if (mounted) {
-        final currentState =
-            streamersTipLikeService.getLikeState(widget.videoId);
-        if (_isLiked != currentState.isLiked ||
-            _likeCount != currentState.likeCount) {
-          final int nextLikeCount =
-              _coerceServiceLikeCount(currentState.likeCount);
-          setState(() {
-            _isLiked = currentState.isLiked;
-            _likeCount = nextLikeCount;
-          });
-          debugPrint(
-              '🔄 REACTIVE: UI updated immediately - _isLiked: $_isLiked, _likeCount: $_likeCount');
-        }
+      final LikeState currentState = _likeService.getLikeState(widget.videoId);
+      if (_isLiked != currentState.isLiked ||
+          _likeCount != currentState.likeCount) {
+        final int nextLikeCount =
+            _coerceServiceLikeCount(currentState.likeCount);
+        setState(() {
+          _isLiked = currentState.isLiked;
+          _likeCount = nextLikeCount;
+        });
       }
-    });
+    };
+    _likeService.addListener(_likeServiceListener!);
   }
 
   void _initializeAnimations() {
@@ -228,6 +187,9 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
 
   @override
   void dispose() {
+    if (_likeServiceListener != null) {
+      _likeService.removeListener(_likeServiceListener!);
+    }
     _videoStatsSubscription?.cancel();
     _heartAnimationController.dispose();
     _sparkleController.dispose();

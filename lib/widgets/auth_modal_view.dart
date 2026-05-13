@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -395,7 +396,8 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
         onTap: onTap,
         child: Container(
           width: double.infinity,
-          height: 48,
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
@@ -411,23 +413,33 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
               ),
             ],
           ),
-          child: Center(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 20, color: Colors.white),
-                const SizedBox(width: 12),
-                Text(
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   text,
-                  style: const TextStyle(
-                    fontSize: 17,
+                  style: TextStyle(
+                    fontSize: !kIsWeb &&
+                            defaultTargetPlatform == TargetPlatform.iOS
+                        ? 15.5
+                        : 17,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
+                    letterSpacing: 0.1,
                     color: Colors.white,
+                    height: 1.15,
                   ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

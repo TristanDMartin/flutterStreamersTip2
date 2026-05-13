@@ -55,7 +55,7 @@ class GlobalPlaybackManager {
   /// 🔥 PHASE 1 FIX: Cooldown tracking for two-stage eviction (videoId -> expiration time)
   final Map<String, DateTime> _cooldownUntil = {};
 
-  /// 🔥 PHASE 1 FIX: Pin set for current + next 2 videos (protected from disposal)
+  /// 🔥 PHASE 1 FIX: Pin set for previous/current/next videos protected from disposal.
   final Set<String> _pinnedVideoIds = {};
 
   /// Cooldown period before hard disposal (seconds)
@@ -82,6 +82,14 @@ class GlobalPlaybackManager {
 
   /// Timestamp of the last preload request.
   DateTime? _lastPreloadRequestedAt;
+
+  /// Monotonic token for cancelling stale startup warmup jobs.
+  int _startupWarmGeneration = 0;
+
+  /// Timing marks used to measure perceived playback readiness.
+  final Map<String, DateTime> _controllerWarmStartedAt = {};
+  final Map<String, DateTime> _focusRequestedAt = {};
+  final Set<String> _firstFrameLoggedForActivation = {};
 
   /// 🔥 INSTANT PLAYBACK: Mark a controller as initializing
   void markControllerInitializing(String videoId) {
@@ -128,11 +136,11 @@ class GlobalPlaybackManager {
   final Map<String, int> _videoIdToIndex = {};
 
   /// Configuration
-  // 🔥 TIKTOK-STYLE: Keep exactly 3 controllers (prev/current/next).
-  // This reduces Surface churn on Android and prevents “black screen on swipe back”.
+  // 🔥 TIKTOK-STYLE: Keep current + next 2 + previous 1 hot, with a little
+  // transient headroom while async initialization and cooldown cleanup settle.
   static const int poolRadius = 2;
   static const int recoveryTimeoutMs = 5000;
-  static const int maxControllerPoolSize = 5;
+  static const int maxControllerPoolSize = 6;
 
   // ============================================
   // BLOCKING SYSTEM (from Coordinator)
@@ -432,6 +440,8 @@ class GlobalPlaybackManager {
           'isPlayingBefore=$isPlayingBefore');
       if (!initialized || hasError) return;
       _currentlyPlayingController = controller;
+      _focusRequestedAt[targetVideoId] = DateTime.now();
+      _firstFrameLoggedForActivation.remove(targetVideoId);
       if (value.isPlaying && value.position > Duration.zero) {
         if (_activeVideoId == targetVideoId &&
             _controllerPool[targetVideoId] == controller) {
@@ -1134,6 +1144,10 @@ class GlobalPlaybackManager {
     _controllerPool.remove(videoId);
     _controllerOwners.remove(videoId);
     _muteStates.remove(videoId);
+    _controllerWarmStartedAt.remove(videoId);
+    _focusRequestedAt.remove(videoId);
+    _firstFrameLoggedForActivation
+        .removeWhere((entry) => entry.startsWith('$videoId:'));
     if (controller != null && !isAttached) {
       try {
         if (_isControllerSafe(videoId, controller)) {
@@ -1189,6 +1203,9 @@ class GlobalPlaybackManager {
     _cooldownUntil.clear();
     _pinnedVideoIds.clear();
     _initializingControllers.clear();
+    _controllerWarmStartedAt.clear();
+    _focusRequestedAt.clear();
+    _firstFrameLoggedForActivation.clear();
     _activeVideoId = null;
     _activeOwner = null;
     _isPaused = false;
@@ -1378,6 +1395,7 @@ class GlobalPlaybackManager {
       return null;
     }
     _initializingControllers.add(videoId);
+    _controllerWarmStartedAt[videoId] = DateTime.now();
     VideoPlayerController? created;
     try {
       created = VideoPlayerController.networkUrl(
@@ -1394,7 +1412,11 @@ class GlobalPlaybackManager {
                 throw TimeoutException('getOrCreateController init 8s'),
           );
       registerController(videoId, created, owner: owner ?? 'home/feed');
-      log('✅ PlaybackManager: getOrCreateController created and registered: $videoId');
+      final warmStartedAt = _controllerWarmStartedAt[videoId];
+      final initMs = warmStartedAt == null
+          ? null
+          : DateTime.now().difference(warmStartedAt).inMilliseconds;
+      log('✅ PlaybackManager: getOrCreateController created and registered: $videoId${initMs == null ? '' : ' initMs=${initMs}ms'}');
       return created;
     } catch (e) {
       log('❌ PlaybackManager: getOrCreateController failed $videoId: $e');
@@ -1509,7 +1531,7 @@ class GlobalPlaybackManager {
   /// Update pin set for the active window around the current video.
   void _updatePinSet(
     int currentIndex, {
-    int backwardRadius = 2,
+    int backwardRadius = 1,
     int forwardRadius = 2,
   }) {
     _pinnedVideoIds.clear();
@@ -1580,6 +1602,32 @@ class GlobalPlaybackManager {
 
     _indexToVideoId[index] = videoId;
     _videoIdToIndex[videoId] = index;
+  }
+
+  void noteFirstFrameRendered(
+    String videoId, {
+    int? controllerId,
+    Size? size,
+  }) {
+    final activationStartedAt = _focusRequestedAt[videoId];
+    final warmStartedAt = _controllerWarmStartedAt[videoId];
+    final now = DateTime.now();
+    final activationMs = activationStartedAt == null
+        ? null
+        : now.difference(activationStartedAt).inMilliseconds;
+    final warmToFrameMs = warmStartedAt == null
+        ? null
+        : now.difference(warmStartedAt).inMilliseconds;
+    final key = '$videoId:${activationStartedAt?.millisecondsSinceEpoch ?? 0}';
+    if (_firstFrameLoggedForActivation.contains(key)) return;
+    _firstFrameLoggedForActivation.add(key);
+    log(
+      '🎞️ PlaybackManager: first_frame video=$videoId '
+      'controller=${controllerId ?? 'unknown'} '
+      'size=${size == null ? 'unknown' : '${size.width.toStringAsFixed(0)}x${size.height.toStringAsFixed(0)}'} '
+      'activationMs=${activationMs ?? 'n/a'} warmToFrameMs=${warmToFrameMs ?? 'n/a'} '
+      'pool=${_controllerPool.length}',
+    );
   }
 
   /// Called when visible index changes in vertical feed.
@@ -1760,6 +1808,82 @@ class GlobalPlaybackManager {
     }
   }
 
+  void preloadStartupWindow(
+    List<HomeVideo> videos, {
+    int startIndex = 0,
+  }) {
+    if (videos.isEmpty) return;
+    final int safeIndex = startIndex.clamp(0, videos.length - 1);
+    final int generation = ++_startupWarmGeneration;
+    log(
+      '🚀 PlaybackManager: Startup warm window from index $safeIndex '
+      '(videos=${videos.length})',
+    );
+
+    Future<void>(() async {
+      final indices = _preloadOrder(
+        index: safeIndex,
+        videoCount: videos.length,
+        direction: 1,
+        backwardRadius: 1,
+        forwardRadius: 2,
+      );
+
+      for (final index in indices) {
+        final video = videos[index];
+        if (video.id.isNotEmpty) {
+          _syncFeedIndexMapping(index, video.id);
+        }
+      }
+      _updatePinSet(safeIndex, backwardRadius: 0, forwardRadius: 2);
+
+      await Future.wait(indices.map((index) async {
+        if (generation != _startupWarmGeneration) return;
+        final video = videos[index];
+        await ensureControllerReady(index, video);
+        if (index == safeIndex) {
+          setDesiredFocus(video.id, PlaybackOwners.home);
+        }
+      }));
+      disposeFarControllers(safeIndex);
+    }).catchError((e, stackTrace) {
+      log('⚠️ PlaybackManager: Startup warm window failed: $e');
+      log('Stack trace: $stackTrace');
+    });
+  }
+
+  List<int> _preloadOrder({
+    required int index,
+    required int videoCount,
+    required int direction,
+    required int backwardRadius,
+    required int forwardRadius,
+  }) {
+    final orderedOffsets = <int>[0];
+    if (direction < 0) {
+      for (int offset = -1; offset >= -backwardRadius; offset--) {
+        orderedOffsets.add(offset);
+      }
+      for (int offset = 1; offset <= forwardRadius; offset++) {
+        orderedOffsets.add(offset);
+      }
+    } else {
+      for (int offset = 1; offset <= forwardRadius; offset++) {
+        orderedOffsets.add(offset);
+      }
+      for (int offset = -1; offset >= -backwardRadius; offset--) {
+        orderedOffsets.add(offset);
+      }
+    }
+
+    final seen = <int>{};
+    return orderedOffsets
+        .map((offset) => index + offset)
+        .where((candidate) =>
+            candidate >= 0 && candidate < videoCount && seen.add(candidate))
+        .toList(growable: false);
+  }
+
   /// Preload controllers around given index
   /// 🔒 SAFETY: Defers disposal to avoid disposing controllers during widget build
   /// 🔥 FIX SLOW LOADING: Preloads videos in background (non-blocking) for instant UI response
@@ -1800,30 +1924,39 @@ class GlobalPlaybackManager {
     final int forwardRadius;
     if (direction > 0) {
       backwardRadius = 1;
-      forwardRadius = 3;
+      forwardRadius = 2;
     } else if (direction < 0) {
-      backwardRadius = 3;
+      backwardRadius = 2;
       forwardRadius = 1;
     } else {
-      backwardRadius = 2;
+      backwardRadius = 1;
       forwardRadius = 2;
     }
-
-    // 🔥 PHASE 1 FIX: Update pin set before preloading.
-    _updatePinSet(
-      index,
-      backwardRadius: backwardRadius,
-      forwardRadius: forwardRadius,
-    );
 
     // 🔥 FIX: Wrap in try-catch to prevent crashes during rapid swiping
     try {
       // Bias warming toward the user's swipe direction so the next likely
       // landing video is ready without over-churning the controller pool.
-      final Set<int> preloadIndices = <int>{};
-      for (int offset = -backwardRadius; offset <= forwardRadius; offset++) {
-        preloadIndices.add(index + offset);
+      final List<int> preloadIndices = _preloadOrder(
+        index: index,
+        videoCount: videos.length,
+        direction: direction,
+        backwardRadius: backwardRadius,
+        forwardRadius: forwardRadius,
+      );
+
+      for (final n in preloadIndices) {
+        final video = videos[n];
+        if (video.id.isNotEmpty) {
+          _syncFeedIndexMapping(n, video.id);
+        }
       }
+
+      _updatePinSet(
+        index,
+        backwardRadius: backwardRadius,
+        forwardRadius: forwardRadius,
+      );
 
       for (final n in preloadIndices) {
         // 🔒 SAFETY: Double-check bounds before accessing

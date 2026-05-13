@@ -1,7 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'about_view.dart';
 import 'blocked_accounts_view.dart';
-import 'linked_platforms_view.dart';
 import 'community_guidelines_view.dart';
 import 'content_preferences_view.dart';
 import 'manage_account_view.dart';
@@ -30,6 +30,16 @@ class _SettingsViewState extends State<SettingsView> {
   late final TextEditingController _searchController;
   late String _searchQuery;
 
+  bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  double get _headerTitleSize => _isIos ? 20 : 24;
+
+  double get _sectionTitleSize => _isIos ? 16 : 18;
+
+  double get _itemTitleSize => _isIos ? 14.5 : 16;
+
+  double get _itemSubtitleSize => _isIos ? 12 : 13;
+
   @override
   void initState() {
     super.initState();
@@ -48,7 +58,7 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   Widget build(BuildContext context) {
     final ColorScheme c = Theme.of(context).colorScheme;
-    return Scaffold(
+    final Widget scaffold = Scaffold(
       backgroundColor: c.surface,
       body: DecoratedBox(
         decoration: BoxDecoration(
@@ -226,6 +236,19 @@ class _SettingsViewState extends State<SettingsView> {
         ),
       ),
     );
+    if (_isIos) {
+      final MediaQueryData data = MediaQuery.of(context);
+      return MediaQuery(
+        data: data.copyWith(
+          textScaler: data.textScaler.clamp(
+            minScaleFactor: 0.82,
+            maxScaleFactor: 1.05,
+          ),
+        ),
+        child: scaffold,
+      );
+    }
+    return scaffold;
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -262,7 +285,7 @@ class _SettingsViewState extends State<SettingsView> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: on,
-                  fontSize: 24,
+                  fontSize: _headerTitleSize,
                   fontWeight: FontWeight.w900,
                   height: 1.0,
                 ),
@@ -340,7 +363,7 @@ class _SettingsViewState extends State<SettingsView> {
           title,
           style: TextStyle(
             color: on,
-            fontSize: 18,
+            fontSize: _sectionTitleSize,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.2,
             shadows: [
@@ -439,7 +462,7 @@ class _SettingsViewState extends State<SettingsView> {
                     title,
                     style: TextStyle(
                       color: on,
-                      fontSize: 16,
+                      fontSize: _itemTitleSize,
                       fontWeight: FontWeight.w800,
                       height: 1.15,
                     ),
@@ -451,7 +474,7 @@ class _SettingsViewState extends State<SettingsView> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: on.withValues(alpha: 0.66),
-                      fontSize: 13,
+                      fontSize: _itemSubtitleSize,
                       fontWeight: FontWeight.w500,
                       height: 1.2,
                     ),
@@ -488,9 +511,22 @@ class _SettingsViewState extends State<SettingsView> {
         );
         return;
       case 'Linked Platforms':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const LinkedPlatformsView(),
+        final ColorScheme cs = Theme.of(context).colorScheme;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: const Text(
+              'Linked platforms are coming soon. You\'ll be able to '
+              'connect YouTube, TikTok, Instagram, and more.',
+            ),
+            backgroundColor: cs.inverseSurface,
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: cs.onInverseSurface,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
           ),
         );
         return;

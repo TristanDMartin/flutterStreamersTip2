@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import '../services/video_upload_service.dart';
@@ -29,6 +30,7 @@ import '../widgets/platform_row.dart';
 import '../core/feature_flags.dart';
 import '../core/theme/support_shell_style.dart';
 import '../utils/category_schema.dart';
+import '../components/onboarding/onboarding_mission_actions.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:developer' as developer;
@@ -2327,11 +2329,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     // Empty list means schedule for main platform only
     final List<PlatformKey> selectedPlatformKeys = <PlatformKey>[];
 
-    final double mediaAspectRatio = _isInitialized && _controller.value.isInitialized
-        ? _controller.value.aspectRatio
-        : (9.0 / 16.0);
-    final int mediaDurationMs = (_videoDuration?.inMilliseconds ?? 30000)
-        .clamp(1000, 300000);
+    final double mediaAspectRatio =
+        _isInitialized && _controller.value.isInitialized
+            ? _controller.value.aspectRatio
+            : (9.0 / 16.0);
+    final int mediaDurationMs =
+        (_videoDuration?.inMilliseconds ?? 30000).clamp(1000, 300000);
     // Create media from video file
     final List<PostMedia> media = [
       PostMedia(
@@ -2894,6 +2897,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         if (result.streamerstipSuccess) {
           final uploadedVideoId = execution.uploadedVideoId ?? videoId;
           UploadStatusManager().enterProcessing(uploadedVideoId);
+          unawaited(
+            OnboardingMissionActions.complete('upload_first_post'),
+          );
 
           _showCrossPostResultSheet(
             result: result,

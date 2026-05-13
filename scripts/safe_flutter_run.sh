@@ -33,5 +33,5 @@ fi
 
 # Run Flutter with all passed arguments
 echo "🚀 Starting Flutter build..."
-exec flutter run "$@"
-
+MOBILE_BILLING_VERIFY_URL="${MOBILE_BILLING_VERIFY_URL:-https://us-central1-streamerstip-6cfdb.cloudfunctions.net/verifyMobilePurchase}"
+exec flutter run --dart-define="MOBILE_BILLING_VERIFY_URL=$MOBILE_BILLING_VERIFY_URL" "$@"

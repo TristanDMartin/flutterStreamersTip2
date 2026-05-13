@@ -20,6 +20,38 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
 
+  bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  double get _pagePadding => _isIos ? 14 : 24;
+
+  double get _profileNameSize => _isIos ? 17 : 24;
+
+  double get _profileHandleSize => _isIos ? 12.5 : 16;
+
+  double get _sectionTitleSize => _isIos ? 15 : 20;
+
+  double get _infoRowFontSize => _isIos ? 11 : 14;
+
+  double get _listTitleSize => _isIos ? 13.5 : 16;
+
+  double get _listSubtitleSize => _isIos ? 10 : 12;
+
+  Widget _wrapIosTextScale(BuildContext context, Widget child) {
+    if (!_isIos) {
+      return child;
+    }
+    final MediaQueryData data = MediaQuery.of(context);
+    return MediaQuery(
+      data: data.copyWith(
+        textScaler: data.textScaler.clamp(
+          minScaleFactor: 0.82,
+          maxScaleFactor: 1.04,
+        ),
+      ),
+      child: child,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -66,11 +98,16 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     if (savedAccounts.isEmpty || savedAccounts.length == 1) {
       debugPrint('⚠️ Only one account, triggering Add Account instead');
       if (mounted) {
+        final ColorScheme cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Add another account to enable switching'),
-            backgroundColor: Colors.blue,
-            duration: Duration(seconds: 2),
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Add another account to enable switching',
+              style: TextStyle(color: cs.onInverseSurface),
+            ),
+            backgroundColor: cs.inverseSurface,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -93,23 +130,26 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     debugPrint('➕ Add Account button tapped');
 
     // Show loading dialog
-    showDialog(
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text(
-              'Signing in with Google...',
-              style: TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-      ),
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              CircularProgressIndicator(color: cs.primary),
+              const SizedBox(height: 16),
+              Text(
+                'Signing in with Google...',
+                style: TextStyle(color: cs.onSurface),
+              ),
+            ],
+          ),
+        );
+      },
     );
 
     try {
@@ -130,19 +170,29 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         if (!mounted) {
           return;
         }
+        final ColorScheme csOk = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Account added successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Account added successfully.',
+              style: TextStyle(color: csOk.onInverseSurface),
+            ),
+            backgroundColor: csOk.inverseSurface,
+            duration: const Duration(seconds: 3),
           ),
         );
       } else if (mounted) {
+        final ColorScheme csErr = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Failed to add account. Please try again.'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Failed to add account. Please try again.',
+              style: TextStyle(color: csErr.onErrorContainer),
+            ),
+            backgroundColor: csErr.errorContainer,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -150,11 +200,15 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       debugPrint('❌ Error in _addAccount: $e');
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
-
+        final ColorScheme csE = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Error: $e',
+              style: TextStyle(color: csE.onErrorContainer),
+            ),
+            backgroundColor: csE.errorContainer,
           ),
         );
       }
@@ -162,32 +216,43 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Future<void> _signOut() async {
-    final confirm = await showDialog<bool>(
+    final bool? confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        title: const Text(
-          'Sign Out',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Are you sure you want to sign out? Your saved accounts will remain so you can switch back later.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
-              'Sign Out',
-              style: TextStyle(color: Colors.red),
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        final TextTheme tt = Theme.of(ctx).textTheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text(
+            'Sign Out',
+            style: tt.titleLarge?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ],
-      ),
+          content: Text(
+            'Are you sure you want to sign out? Your saved accounts will '
+            'remain so you can switch back later.',
+            style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancel', style: TextStyle(color: cs.primary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(
+                'Sign Out',
+                style: TextStyle(
+                  color: cs.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirm == true) {
@@ -209,79 +274,89 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     if (user == null) return;
 
     // First confirmation
-    final firstConfirm = await showDialog<bool>(
+    final bool? firstConfirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        title: const Text(
-          'Delete Account',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This will permanently delete your account and all data.',
-              style: TextStyle(color: Colors.white70),
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        final TextTheme tt = Theme.of(ctx).textTheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text(
+            'Delete Account',
+            style: tt.titleLarge?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.bold,
             ),
-            SizedBox(height: 16),
-            Text(
-              'This action cannot be undone.',
-              style: TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.bold,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'This will permanently delete your account and all data.',
+                style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
               ),
-            ),
-            SizedBox(height: 12),
-            Text(
-              'All of the following will be deleted:',
-              style: TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w600,
+              const SizedBox(height: 16),
+              Text(
+                'This action cannot be undone.',
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.error,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
+              const SizedBox(height: 12),
+              Text(
+                'All of the following will be deleted:',
+                style: tt.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '• Your profile and account',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              Text(
+                '• All your videos',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              Text(
+                '• All your followers and following',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              Text(
+                '• All your likes and comments',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              Text(
+                '• All your messages',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              Text(
+                '• All your bookmarks and saved content',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancel', style: TextStyle(color: cs.primary)),
             ),
-            SizedBox(height: 8),
-            Text(
-              '• Your profile and account',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            Text(
-              '• All your videos',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            Text(
-              '• All your followers and following',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            Text(
-              '• All your likes and comments',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            Text(
-              '• All your messages',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            Text(
-              '• All your bookmarks and saved content',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(
+                'Continue',
+                style: TextStyle(
+                  color: cs.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
-              'Continue',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
     if (firstConfirm != true) {
@@ -294,61 +369,75 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
 
     // Final confirmation with text input
     final textController = TextEditingController();
-    final finalConfirm = await showDialog<bool>(
+    final bool? finalConfirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        title: const Text(
-          'Final Confirmation',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Type "DELETE" to confirm account deletion:',
-              style: TextStyle(color: Colors.white70),
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        final TextTheme tt = Theme.of(ctx).textTheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text(
+            'Final Confirmation',
+            style: tt.titleLarge?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.bold,
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: textController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                filled: true,
-                fillColor: Colors.black.withValues(alpha: 0.5),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                'Type "DELETE" to confirm account deletion:',
+                style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
               ),
-              autofocus: true,
+              const SizedBox(height: 16),
+              TextField(
+                controller: textController,
+                style: TextStyle(color: cs.onSurface),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                ),
+                autofocus: true,
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancel', style: TextStyle(color: cs.primary)),
+            ),
+            TextButton(
+              onPressed: () {
+                if (textController.text.trim() == 'DELETE') {
+                  Navigator.of(ctx).pop(true);
+                } else {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      behavior: SnackBarBehavior.floating,
+                      content: Text(
+                        'Please type "DELETE" exactly',
+                        style: TextStyle(color: cs.onInverseSurface),
+                      ),
+                      backgroundColor: cs.inverseSurface,
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                'Delete Account',
+                style: TextStyle(
+                  color: cs.error,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (textController.text.trim() == 'DELETE') {
-                Navigator.of(context).pop(true);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please type "DELETE" exactly'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              }
-            },
-            child: const Text(
-              'Delete Account',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
     if (finalConfirm == true && mounted) {
@@ -361,23 +450,26 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     if (user == null) return;
 
     // Show loading dialog
-    showDialog(
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        backgroundColor: Color(0xFF1C1C1E),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text(
-              'Deleting account...',
-              style: TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-      ),
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              CircularProgressIndicator(color: cs.primary),
+              const SizedBox(height: 16),
+              Text(
+                'Deleting account...',
+                style: TextStyle(color: cs.onSurface),
+              ),
+            ],
+          ),
+        );
+      },
     );
 
     try {
@@ -395,10 +487,15 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         Navigator.of(context).pop(); // Pop settings view
 
         // Show success message
+        final ColorScheme csDel = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account deleted successfully'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Account deleted successfully',
+              style: TextStyle(color: csDel.onInverseSurface),
+            ),
+            backgroundColor: csDel.inverseSurface,
           ),
         );
       }
@@ -406,10 +503,15 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
 
+        final ColorScheme csX = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error deleting account: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Error deleting account: ${e.toString()}',
+              style: TextStyle(color: csX.onErrorContainer),
+            ),
+            backgroundColor: csX.errorContainer,
           ),
         );
       }
@@ -474,58 +576,91 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
 
   @override
   Widget build(BuildContext context) {
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF1C135D),
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    final ColorScheme c = Theme.of(context).colorScheme;
+    final Widget scaffold = Scaffold(
+      backgroundColor: c.surface,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: c.surface,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: c.onSurface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: c.onSurface),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Manage Account',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: c.onSurface,
+            fontWeight: FontWeight.w600,
+            fontSize: _isIos ? 16 : 20,
+          ),
         ),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildProfileHeader(user),
-                  const SizedBox(height: 32),
-                  _buildAccountInfo(user),
-                  const SizedBox(height: 32),
-                  _buildSecuritySection(),
-                  const SizedBox(height: 32),
-                  _buildAccountActions(),
-                ],
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[c.surface, c.surfaceContainerLow],
+          ),
+        ),
+        child: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : SafeArea(
+                top: false,
+                bottom: true,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  padding: EdgeInsets.fromLTRB(
+                    _pagePadding,
+                    _pagePadding,
+                    _pagePadding,
+                    _pagePadding + 28,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildProfileHeader(user),
+                      const SizedBox(height: 32),
+                      _buildAccountInfo(user),
+                      const SizedBox(height: 32),
+                      _buildSecuritySection(),
+                      const SizedBox(height: 32),
+                      _buildAccountActions(),
+                    ],
+                  ),
+                ),
               ),
-            ),
+      ),
     );
+    return _wrapIosTextScale(context, scaffold);
   }
 
   Widget _buildProfileHeader(firebase_auth.User? user) {
-    final avatarURL = resolveAvatarUrl(_userData);
-    final displayName = _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
-    final username = _userData?['username'] as String? ?? 'username';
-
+    final String? avatarURL = resolveAvatarUrl(_userData);
+    final String displayName =
+        _userData?['displayName'] as String? ??
+            user?.displayName ??
+            'User';
+    final String username =
+        _userData?['username'] as String? ?? 'username';
+    final ColorScheme c = Theme.of(context).colorScheme;
     return Column(
       children: [
         _buildAvatarWithGradientRing(avatarURL),
         const SizedBox(height: 16),
         Text(
           displayName,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
+          style: TextStyle(
+            color: c.onSurface,
+            fontSize: _profileNameSize,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -533,8 +668,8 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         Text(
           '@$username',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 16,
+            color: c.onSurfaceVariant,
+            fontSize: _profileHandleSize,
           ),
         ),
       ],
@@ -542,6 +677,7 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Widget _buildAvatarWithGradientRing(String? avatarURL) {
+    final ColorScheme c = Theme.of(context).colorScheme;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -551,7 +687,7 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             gradient: SweepGradient(
-              colors: [
+              colors: <Color>[
                 Color(0xFFFF6CAB),
                 Color(0xFF8E54E9),
                 Color(0xFF3D99F7),
@@ -565,24 +701,25 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
               height: 104,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.2),
+                color: c.surfaceContainerHighest,
               ),
               child: ClipOval(
                 child: avatarURL != null && avatarURL.isNotEmpty
                     ? Image.network(
                         avatarURL,
-                        key: ValueKey(avatarURL),
+                        key: ValueKey<String>(avatarURL),
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
+                        errorBuilder:
+                            (BuildContext ctx, Object error, StackTrace? st) =>
+                                Icon(
                           Icons.person,
-                          color: Colors.white,
+                          color: c.onSurfaceVariant,
                           size: 48,
                         ),
                       )
-                    : const Icon(
+                    : Icon(
                         Icons.person,
-                        color: Colors.white,
+                        color: c.onSurfaceVariant,
                         size: 48,
                       ),
               ),
@@ -594,27 +731,26 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Widget _buildAccountInfo(firebase_auth.User? user) {
+    final ColorScheme c = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(_isIos ? 16 : 20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: c.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-        ),
+        border: Border.all(color: c.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Account Information',
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
+              color: c.onSurface,
+              fontSize: _sectionTitleSize,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: _isIos ? 16 : 20),
           _buildInfoRow(Icons.email, 'Email', user?.email ?? 'Not provided'),
           const SizedBox(height: 16),
           _buildInfoRow(
@@ -641,27 +777,36 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
+    final ColorScheme c = Theme.of(context).colorScheme;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 20),
+        Icon(
+          icon,
+          color: c.onSurfaceVariant,
+          size: _isIos ? 18 : 20,
+        ),
         const SizedBox(width: 12),
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 14,
+            color: c.onSurfaceVariant,
+            fontSize: _infoRowFontSize,
           ),
         ),
-        const Spacer(),
-        Flexible(
+        const SizedBox(width: 8),
+        Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
+            style: TextStyle(
+              color: c.onSurface,
+              fontSize: _infoRowFontSize,
               fontWeight: FontWeight.w600,
             ),
-            textAlign: TextAlign.right,
+            textAlign: TextAlign.end,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -675,16 +820,16 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         color: Colors.green.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle, color: Colors.green, size: 16),
-          SizedBox(width: 4),
+          Icon(Icons.check_circle, color: Colors.green, size: _isIos ? 14 : 16),
+          const SizedBox(width: 4),
           Text(
             'Email Verified',
             style: TextStyle(
               color: Colors.green,
-              fontSize: 12,
+              fontSize: _isIos ? 11 : 12,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -700,16 +845,16 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         color: Colors.orange.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.warning, color: Colors.orange, size: 16),
-          SizedBox(width: 4),
+          Icon(Icons.warning, color: Colors.orange, size: _isIos ? 14 : 16),
+          const SizedBox(width: 4),
           Text(
             'Email Not Verified',
             style: TextStyle(
               color: Colors.orange,
-              fontSize: 12,
+              fontSize: _isIos ? 11 : 12,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -719,51 +864,60 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Widget _buildSecuritySection() {
+    final ColorScheme c = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Security',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
+            color: c.onSurface,
+            fontSize: _sectionTitleSize,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: c.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
-            ),
+            border: Border.all(color: c.outlineVariant),
           ),
           child: ListTile(
+            dense: _isIos,
+            visualDensity:
+                _isIos ? VisualDensity.compact : VisualDensity.standard,
             leading: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: c.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.security, color: Colors.white, size: 20),
-            ),
-            title: const Text(
-              'Two-Factor Authentication',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-            ),
-            subtitle: const Text(
-              'Add an extra layer of security',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
+              child: Icon(
+                Icons.security,
+                color: c.primary,
+                size: _isIos ? 18 : 20,
               ),
             ),
-            trailing: const Icon(
+            title: Text(
+              'Two-Factor Authentication',
+              style: TextStyle(
+                color: c.onSurface,
+                fontWeight: FontWeight.w600,
+                fontSize: _listTitleSize,
+              ),
+            ),
+            subtitle: Text(
+              'Add an extra layer of security',
+              style: TextStyle(
+                color: c.onSurfaceVariant,
+                fontSize: _listSubtitleSize,
+              ),
+            ),
+            trailing: Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white54,
-              size: 16,
+              color: c.outline,
+              size: _isIos ? 14 : 16,
             ),
             onTap: () {
               Navigator.of(context).push(
@@ -779,48 +933,56 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Widget _buildAccountActions() {
+    final ColorScheme c = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Account Actions',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
+            color: c.onSurface,
+            fontSize: _sectionTitleSize,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: c.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
-            ),
+            border: Border.all(color: c.outlineVariant),
           ),
           child: Column(
             children: [
               ListTile(
+                dense: _isIos,
+                visualDensity:
+                    _isIos ? VisualDensity.compact : VisualDensity.standard,
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: c.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.swap_horiz,
-                      color: Colors.white, size: 20),
+                  child: Icon(
+                    Icons.swap_horiz,
+                    color: c.onSurface,
+                    size: _isIos ? 18 : 20,
+                  ),
                 ),
-                title: const Text(
+                title: Text(
                   'Switch Account',
                   style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600),
+                    color: c.onSurface,
+                    fontWeight: FontWeight.w600,
+                    fontSize: _listTitleSize,
+                  ),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Switch to another account',
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+                    color: c.onSurfaceVariant,
+                    fontSize: _listSubtitleSize,
                   ),
                 ),
                 onTap: () {
@@ -828,30 +990,36 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
                   _switchAccount();
                 },
               ),
-              Divider(
-                color: Colors.white.withValues(alpha: 0.1),
-                height: 1,
-              ),
+              Divider(color: c.outlineVariant, height: 1),
               ListTile(
+                dense: _isIos,
+                visualDensity:
+                    _isIos ? VisualDensity.compact : VisualDensity.standard,
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: c.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.add_circle_outline,
-                      color: Colors.white, size: 20),
+                  child: Icon(
+                    Icons.add_circle_outline,
+                    color: c.onSurface,
+                    size: _isIos ? 18 : 20,
+                  ),
                 ),
-                title: const Text(
+                title: Text(
                   'Add Account',
                   style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600),
+                    color: c.onSurface,
+                    fontWeight: FontWeight.w600,
+                    fontSize: _listTitleSize,
+                  ),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Add a new Google account',
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+                    color: c.onSurfaceVariant,
+                    fontSize: _listSubtitleSize,
                   ),
                 ),
                 onTap: () {
@@ -859,57 +1027,70 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
                   _addAccount();
                 },
               ),
-              Divider(
-                color: Colors.white.withValues(alpha: 0.1),
-                height: 1,
-              ),
+              Divider(color: c.outlineVariant, height: 1),
               ListTile(
+                dense: _isIos,
+                visualDensity:
+                    _isIos ? VisualDensity.compact : VisualDensity.standard,
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: c.errorContainer.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.logout, color: Colors.red, size: 20),
+                  child: Icon(
+                    Icons.logout,
+                    color: c.error,
+                    size: _isIos ? 18 : 20,
+                  ),
                 ),
-                title: const Text(
+                title: Text(
                   'Sign Out',
-                  style:
-                      TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: c.error,
+                    fontWeight: FontWeight.w600,
+                    fontSize: _listTitleSize,
+                  ),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Sign out of your account',
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+                    color: c.onSurfaceVariant,
+                    fontSize: _listSubtitleSize,
                   ),
                 ),
                 onTap: _signOut,
               ),
-              Divider(
-                color: Colors.white.withValues(alpha: 0.1),
-                height: 1,
-              ),
+              Divider(color: c.outlineVariant, height: 1),
               ListTile(
+                dense: _isIos,
+                visualDensity:
+                    _isIos ? VisualDensity.compact : VisualDensity.standard,
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: c.errorContainer.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.delete_forever,
-                      color: Colors.red, size: 20),
+                  child: Icon(
+                    Icons.delete_forever,
+                    color: c.error,
+                    size: _isIos ? 18 : 20,
+                  ),
                 ),
-                title: const Text(
+                title: Text(
                   'Delete Account',
-                  style:
-                      TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: c.error,
+                    fontWeight: FontWeight.w600,
+                    fontSize: _listTitleSize,
+                  ),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Permanently delete your account',
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+                    color: c.onSurfaceVariant,
+                    fontSize: _listSubtitleSize,
                   ),
                 ),
                 onTap: _deleteAccount,

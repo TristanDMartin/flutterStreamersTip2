@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/theme/support_shell_style.dart';
@@ -7,19 +8,25 @@ class TermsAndPrivacyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isIos =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    return Scaffold(
+    final Widget scaffold = Scaffold(
       backgroundColor: shell.scaffold,
       appBar: AppBar(
         backgroundColor: shell.panelSurface,
         title: Text(
           'Terms & Privacy',
-          style: TextStyle(color: shell.onChrome),
+          style: TextStyle(
+            color: shell.onChrome,
+            fontSize: isIos ? 17 : null,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         iconTheme: IconThemeData(color: shell.onChrome),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isIos ? 16 : 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -44,6 +51,19 @@ class TermsAndPrivacyView extends StatelessWidget {
         ),
       ),
     );
+    if (isIos) {
+      final MediaQueryData data = MediaQuery.of(context);
+      return MediaQuery(
+        data: data.copyWith(
+          textScaler: data.textScaler.clamp(
+            minScaleFactor: 0.82,
+            maxScaleFactor: 1.04,
+          ),
+        ),
+        child: scaffold,
+      );
+    }
+    return scaffold;
   }
 
   Widget _buildOption(
@@ -52,6 +72,8 @@ class TermsAndPrivacyView extends StatelessWidget {
     String subtitle,
     VoidCallback onTap,
   ) {
+    final bool isIos =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return InkWell(
       onTap: onTap,
@@ -74,7 +96,7 @@ class TermsAndPrivacyView extends StatelessWidget {
                     title,
                     style: TextStyle(
                       color: shell.onChrome,
-                      fontSize: 16,
+                      fontSize: isIos ? 14 : 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -83,7 +105,7 @@ class TermsAndPrivacyView extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       color: shell.muted,
-                      fontSize: 14,
+                      fontSize: isIos ? 12 : 14,
                     ),
                   ),
                 ],

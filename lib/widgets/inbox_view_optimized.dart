@@ -18,6 +18,7 @@ import 'status_aware_avatar.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/responsive_layout.dart';
 import '../providers/unread_messages_provider.dart';
+import '../components/onboarding/product_tour_target_keys.dart';
 import '../routing/app_navigator.dart';
 import 'new_message_view.dart';
 import 'draft_feedback_view.dart';
@@ -497,37 +498,40 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            _buildSearchBar(),
-            _buildTabBar(),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 240),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.02),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  );
-                },
-                child: _isLoading
-                    ? _buildLoadingState()
-                    : _error != null
-                        ? _buildErrorState()
-                        : _buildTabContent(),
+      body: KeyedSubtree(
+        key: ProductTourTargetKeys.inbox,
+        child: SafeArea(
+          child: Column(
+            children: <Widget>[
+              _buildHeader(),
+              _buildSearchBar(),
+              _buildTabBar(),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 240),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.02),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: _isLoading
+                      ? _buildLoadingState()
+                      : _error != null
+                          ? _buildErrorState()
+                          : _buildTabContent(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1044,7 +1048,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             _toggleSelection(chat.id ?? '');
           },
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             child: Row(
               children: [
                 // Avatar with selection indicator and online status
@@ -1053,7 +1057,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     StatusAwareAvatar(
                       userId: otherUserId,
                       avatarURL: userProfile?.avatarURL,
-                      radius: 27,
+                      radius: 22,
                       showOnlineIndicator: true,
                     ),
                     // Selection indicator
@@ -1121,7 +1125,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       ),
                   ],
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 // Chat content
                 Expanded(
                   child: Column(
@@ -1131,8 +1135,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         participantName,
                         style: TextStyle(
                           color: _on,
-                          fontSize: 19,
-                          fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w700,
+                          fontSize: 17,
+                          fontWeight:
+                              hasUnread ? FontWeight.w800 : FontWeight.w700,
                           letterSpacing: -0.2,
                         ),
                         maxLines: 1,
@@ -1143,12 +1148,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         children: [
                           Expanded(
                             child: Text(
-                              (chat.lastMessage ?? secondaryLabel).trim().isEmpty
+                              (chat.lastMessage ?? secondaryLabel)
+                                      .trim()
+                                      .isEmpty
                                   ? secondaryLabel
                                   : (chat.lastMessage ?? secondaryLabel),
                               style: TextStyle(
                                 color: _on.withValues(alpha: 0.66),
-                                fontSize: 16,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w500,
                                 height: 1.2,
                               ),
@@ -1831,37 +1838,37 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           builder: (BuildContext context) {
             final ColorScheme c = Theme.of(context).colorScheme;
             return AlertDialog(
-            backgroundColor: c.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text(
-              'Delete Items',
-              style: TextStyle(color: c.onSurface),
-            ),
-            content: Text(
-              'Are you sure you want to delete ${_selectedItems.length} selected items? This action cannot be undone.',
-              style: TextStyle(color: c.onSurface.withValues(alpha: 0.7)),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(color: c.onSurface.withValues(alpha: 0.6)),
-                ),
+              backgroundColor: c.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              title: Text(
+                'Delete Items',
+                style: TextStyle(color: c.onSurface),
+              ),
+              content: Text(
+                'Are you sure you want to delete ${_selectedItems.length} selected items? This action cannot be undone.',
+                style: TextStyle(color: c.onSurface.withValues(alpha: 0.7)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: c.onSurface.withValues(alpha: 0.6)),
                   ),
                 ),
-                child: const Text('Delete'),
-              ),
-            ],
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Delete'),
+                ),
+              ],
             );
           },
         ) ??

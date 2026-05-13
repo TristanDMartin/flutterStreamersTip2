@@ -34,9 +34,8 @@ class UserCountFields {
   }
 
   static int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
+    if (value is int) return value.clamp(0, 1 << 31).toInt();
+    if (value is num) return value.toInt().clamp(0, 1 << 31).toInt();
     return null;
   }
 }
-

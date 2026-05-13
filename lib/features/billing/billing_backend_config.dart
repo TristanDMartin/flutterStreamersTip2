@@ -7,7 +7,8 @@
 /// Expected JSON body: [MobilePurchaseVerificationPayload.toJson].
 const String kMobileBillingVerifyUrl = String.fromEnvironment(
   'MOBILE_BILLING_VERIFY_URL',
-  defaultValue: '',
+  defaultValue:
+      'https://us-central1-streamerstip-6cfdb.cloudfunctions.net/verifyMobilePurchase',
 );
 
 /// `true` when the app was built with a non-empty

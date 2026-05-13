@@ -13,13 +13,14 @@ import '../models/home_video.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/favorites_provider.dart';
 import '../providers/feed_state_provider.dart';
+import '../providers/product_tour_ui_provider.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/unified_algorithm_service.dart';
 import '../services/global_playback_manager.dart';
 import '../services/streamers_tip_like_service.dart';
-import '../services/favorites_service_optimized.dart';
+import '../services/unified_bookmark_service.dart';
 import '../services/video_prefetch_service.dart';
 import '../widgets/network_status_widget.dart';
 import '../views/network_view.dart';
@@ -45,6 +46,7 @@ class HomeView extends ConsumerStatefulWidget {
 class _HomeViewState extends ConsumerState<HomeView>
     with WidgetsBindingObserver {
   ProviderSubscription<bool>? _homeViewReactivateSubscription;
+  ProviderSubscription<ProductTourUiPhase>? _productTourUiPhaseSubscription;
   final VideoPrefetchService _videoPrefetchService = VideoPrefetchService();
   bool _showStreamerCard = false;
   StreamerCard? _currentStreamerCard;
@@ -80,6 +82,12 @@ class _HomeViewState extends ConsumerState<HomeView>
           isRouteCurrent: ModalRoute.of(context)?.isCurrent ?? false,
         );
         ref.read(homeViewReactivateProvider.notifier).clearReactivation();
+      },
+    );
+    _productTourUiPhaseSubscription = ref.listenManual<ProductTourUiPhase>(
+      productTourUiPhaseProvider,
+      (ProductTourUiPhase? previous, ProductTourUiPhase next) {
+        _handleProductTourUiPhase(previous, next);
       },
     );
 
@@ -150,6 +158,38 @@ class _HomeViewState extends ConsumerState<HomeView>
     unawaited(_loadUserFavorites());
     unawaited(_loadVideos());
     _controller.markAsActiveOwner();
+  }
+
+  void _handleProductTourUiPhase(
+    ProductTourUiPhase? previous,
+    ProductTourUiPhase next,
+  ) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (next) {
+        case ProductTourUiPhase.progressionView:
+          _closeCommandCenter();
+          unawaited(_handleFeedTabChange(FeedTab.following));
+          break;
+        case ProductTourUiPhase.threadsView:
+          _closeCommandCenter();
+          unawaited(_handleFeedTabChange(FeedTab.threads));
+          break;
+        case ProductTourUiPhase.tippyCommandCenter:
+          unawaited(_handleFeedTabChange(FeedTab.forYou));
+          setState(() {
+            _commandCenterState = CreatorCommandCenterState.expanded;
+          });
+          break;
+        case ProductTourUiPhase.idle:
+        case ProductTourUiPhase.progressionDropdown:
+          if (previous == ProductTourUiPhase.tippyCommandCenter) {
+            _closeCommandCenter();
+          }
+          break;
+      }
+    });
   }
 
   /// ✅ IMPROVEMENT: Handle return to HomeView with simplified logic
@@ -226,7 +266,7 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       log('🔄 HomeView: Loading favorites for user ${currentUser.uid}');
 
-      await FavoritesServiceOptimized().forceSync();
+      await UnifiedBookmarkService.instance.initialize(currentUser.uid);
 
       log('✅ HomeView: Favorites loaded successfully');
     } catch (e) {
@@ -413,6 +453,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     _firebaseReadyRetryTimer?.cancel();
     _firebaseReadyRetryTimer = null;
     _homeViewReactivateSubscription?.close();
+    _productTourUiPhaseSubscription?.close();
     _homeViewReactivateSubscription = null;
     WidgetsBinding.instance.removeObserver(this);
     try {

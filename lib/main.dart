@@ -24,6 +24,8 @@ import 'services/navigation_observer.dart';
 import 'routing/app_routes.dart';
 import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
+import 'services/robust_auth_service.dart';
+import 'components/onboarding/streamers_tip_onboarding.dart';
 import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -344,9 +346,30 @@ class MyApp extends ConsumerWidget {
       onGenerateRoute: AppRoutes.onGenerateRoute,
       initialRoute: AppRoutes.root,
       builder: (context, child) {
+        final Widget navigatorChild = child ?? const SizedBox.shrink();
         return MediaQuery(
           data: AppResponsive.normalizedMediaQuery(MediaQuery.of(context)),
-          child: child ?? const SizedBox.shrink(),
+          child: Consumer(
+            builder: (BuildContext context, WidgetRef ref, Widget? _) {
+              final (String userId, String? username) = ref.watch(
+                robustAuthServiceProvider.select(
+                  (RobustAuthenticationService auth) {
+                    final u = auth.currentUser;
+                    return (u?.id ?? '', u?.username);
+                  },
+                ),
+              );
+              if (userId.isEmpty) {
+                return navigatorChild;
+              }
+              return StreamersTipOnboarding(
+                userId: userId,
+                email: firebase_auth.FirebaseAuth.instance.currentUser?.email,
+                username: username,
+                child: navigatorChild,
+              );
+            },
+          ),
         );
       },
       debugShowCheckedModeBanner: false,

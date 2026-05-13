@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../components/onboarding/onboarding_feature_tip.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/custom_bottom_nav.dart';
@@ -14,6 +15,7 @@ import '../services/profile_update_service.dart';
 import '../services/clean_relationship_service.dart';
 import '../providers/home_provider.dart';
 import '../providers/feed_state_provider.dart';
+import '../providers/product_tour_ui_provider.dart';
 import '../services/global_playback_manager.dart';
 import '../routing/app_routes.dart';
 import '../constants/playback_owners.dart';
@@ -31,6 +33,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   late int _currentIndex;
   late PageController _pageController;
   late NetworkViewModelAdvanced _networkViewModel;
+  ProviderSubscription<int?>? _productTourTabSubscription;
 
   // ⏱️ MEMORY FIX: Timers for proper cancellation
   Timer? _unblockTimer;
@@ -44,6 +47,27 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     _currentIndex = widget.initialTabIndex;
     _pageController = PageController(initialPage: _currentIndex);
     _networkViewModel = NetworkViewModelAdvanced();
+    _productTourTabSubscription = ref.listenManual<int?>(
+      productTourMainTabIndexRequestProvider,
+      (int? previous, int? next) {
+        if (next == null) {
+          return;
+        }
+        if (!mounted) {
+          return;
+        }
+        if (_currentIndex != next) {
+          _onTabTapped(next);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          ref.read(productTourMainTabIndexRequestProvider.notifier).state =
+              null;
+        });
+      },
+    );
     _startDataSync();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -53,6 +77,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   @override
   void dispose() {
+    _productTourTabSubscription?.close();
     // ⏱️ MEMORY FIX: Cancel all timers to prevent memory leaks
     _unblockTimer?.cancel();
     _cameraNavTimer?.cancel();
@@ -64,6 +89,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   }
 
   void _requestHomeReactivation(String reason) {
+    if (!mounted) return;
     if (_currentIndex != 0) return;
     ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
     log('▶️ MainTabView: Requested HomeView reactivation ($reason)');
@@ -72,8 +98,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   void _startDataSync() {
     // Initialize data synchronization after login
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       // Initialize clean relationship service
       await CleanRelationshipService().initialize();
+      if (!mounted) return;
 
       final authService = ref.read(robustAuthServiceProvider);
       if (authService.isLoggedIn && authService.currentUser != null) {
@@ -96,7 +124,14 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     });
   }
 
-  void _onTabTapped(int index) {
+  Future<void> _onTabTapped(int index) async {
+    if (index != 0) {
+      final bool shouldContinue = await _showFirstTapTipIfNeeded(index);
+      if (!shouldContinue || !mounted) {
+        return;
+      }
+    }
+
     // Handle the creation screen (index 2) specially
     if (index == 2) {
       _onUploadTapped();
@@ -135,16 +170,38 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
     _pageController
         .animateToPage(
-          index,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        )
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    )
         .then((_) {
-          _syncPlaybackForCurrentTab();
-        });
+      if (!mounted) return;
+      _syncPlaybackForCurrentTab();
+    });
+  }
+
+  Future<bool> _showFirstTapTipIfNeeded(int index) async {
+    final OnboardingFeatureTip? tip = OnboardingFeatureTip.forTabIndex(index);
+    if (tip == null) {
+      return true;
+    }
+    if (!mounted) {
+      return false;
+    }
+    final authService = ref.read(robustAuthServiceProvider);
+    final String userId = authService.currentUser?.id ?? 'local';
+    if (!mounted) {
+      return false;
+    }
+    return showOnboardingFeatureTipIfNeeded(
+      context: context,
+      userId: userId,
+      tip: tip,
+    );
   }
 
   void _syncPlaybackForCurrentTab() {
+    if (!mounted) return;
     final playbackManager = GlobalPlaybackManager.instance;
     if (_currentIndex == 0) {
       _requestHomeReactivation('tab_sync');
@@ -165,6 +222,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       if (!mounted) return;
       // Navigate directly to StreamersTip camera view
       Navigator.of(context).pushNamed(AppRoutes.camera).then((_) {
+        if (!mounted) return;
         _syncPlaybackForCurrentTab();
       });
     });
@@ -181,6 +239,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       if (!mounted) return;
       // Navigate to inbox view as full screen
       Navigator.of(context).pushNamed(AppRoutes.inbox).then((_) {
+        if (!mounted) return;
         _syncPlaybackForCurrentTab();
       });
     });
@@ -220,16 +279,17 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         if (!mounted) return;
         Navigator.of(context)
             .push(
-              MaterialPageRoute(
-                builder: (context) =>
-                    ProfileViewOptimized(user: user, isCurrentUser: true),
-                fullscreenDialog: true,
-                settings: const RouteSettings(name: '/profile'),
-              ),
-            )
+          MaterialPageRoute(
+            builder: (context) =>
+                ProfileViewOptimized(user: user, isCurrentUser: true),
+            fullscreenDialog: true,
+            settings: const RouteSettings(name: '/profile'),
+          ),
+        )
             .then((_) {
-              _syncPlaybackForCurrentTab();
-            });
+          if (!mounted) return;
+          _syncPlaybackForCurrentTab();
+        });
       });
     }
   }
@@ -280,7 +340,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final Color on = colorScheme.onSurface;
-    return Scaffold(
+    final Widget shell = Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody:
           true, // This allows content to extend behind the bottom navigation
@@ -349,5 +409,6 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         onTap: _onTabTapped,
       ),
     );
+    return shell;
   }
 }
