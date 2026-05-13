@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - master
+      - flutterStreamersTip2
 
 jobs:
   flutter:
@@ -58,26 +59,33 @@ jobs:
   # Next.js only; skipped unless E2E_BASE_URL is configured (Flutter-only QA
   # does not need this job).
   web-e2e:
-    if: ${{ secrets.E2E_BASE_URL != '' }}
     runs-on: ubuntu-latest
+    env:
+      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Skip web e2e when no base URL is configured
+        if: ${{ env.E2E_BASE_URL == '' }}
+        run: echo "E2E_BASE_URL is not configured; skipping web e2e."
+
       - uses: actions/setup-node@v4
+        if: ${{ env.E2E_BASE_URL != '' }}
         with:
           node-version: "22"
 
       - name: Install Playwright deps
+        if: ${{ env.E2E_BASE_URL != '' }}
         run: npm ci
         working-directory: tests/e2e
 
       - name: Install Chromium
+        if: ${{ env.E2E_BASE_URL != '' }}
         run: npx playwright install --with-deps chromium
         working-directory: tests/e2e
 
       - name: Run Playwright
-        env:
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+        if: ${{ env.E2E_BASE_URL != '' }}
         working-directory: tests/e2e
         run: npm test
 
