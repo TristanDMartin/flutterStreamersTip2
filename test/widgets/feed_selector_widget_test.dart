@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/models/feed_tab.dart';
 import 'package:streamers_tip/widgets/home_view_components/feed_selector_widget.dart';
@@ -8,12 +9,14 @@ Widget _buildSelector({
   ValueChanged<FeedTab>? onTabSelected,
   VoidCallback? onDiscoverTap,
 }) {
-  return MaterialApp(
-    home: Scaffold(
-      body: FeedSelectorWidget(
-        activeTab: activeTab,
-        onTabSelected: onTabSelected ?? (_) {},
-        onDiscoverTap: onDiscoverTap ?? () {},
+  return ProviderScope(
+    child: MaterialApp(
+      home: Scaffold(
+        body: FeedSelectorWidget(
+          activeTab: activeTab,
+          onTabSelected: onTabSelected ?? (_) {},
+          onDiscoverTap: onDiscoverTap ?? () {},
+        ),
       ),
     ),
   );
