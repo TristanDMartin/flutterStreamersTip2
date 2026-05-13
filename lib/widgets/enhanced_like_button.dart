@@ -225,6 +225,13 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
 
       // Load the latest like count from Firebase first
       await streamersTipLikeService.loadVideoLikeCount(widget.videoId);
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        await streamersTipLikeService.isVideoLikedByUser(
+          widget.videoId,
+          currentUser.uid,
+        );
+      }
 
       final state = streamersTipLikeService.getLikeState(widget.videoId);
 

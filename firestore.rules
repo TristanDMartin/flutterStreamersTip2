@@ -197,6 +197,7 @@ service cloud.firestore {
                 || request.resource.data.status != 'ready')
           )
           || isBookmarkFavoriteCountOnlyUpdate()
+          || isVideoLikeCountOnlyUpdate()
         );
       allow delete: if request.auth != null && isVideoDocumentOwner();
     }
@@ -234,10 +235,15 @@ service cloud.firestore {
       allow write: if request.auth != null &&
         (isUserAdmin() || isWithinLikeLimit(request.auth.uid));
       
-      // Allow subcollections for user-specific likes
+      // Canonical cross-platform like edge. Mobile, web, and Cloud Functions
+      // all use this shape: /likes/{videoId}/byUser/{userId}.
       match /byUser/{userId} {
         allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null
+          && request.auth.uid == userId
+          && request.resource.data.userId == userId
+          && request.resource.data.videoId == videoId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
     }
     
@@ -768,6 +774,28 @@ service cloud.firestore {
     return (afterF == beforeF + 1 && afterFC == beforeFC + 1)
       || (beforeF > 0 && beforeFC > 0 && afterF == beforeF - 1 && afterFC == beforeFC - 1)
       || (beforeF == 0 && beforeFC == 0 && afterF == 0 && afterFC == 0);
+  }
+
+  function isVideoLikeCountOnlyUpdate() {
+    return request.auth != null
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['likes', 'likeCount', 'updatedAt'])
+      && isLikeAndLikeCountStepTogether();
+  }
+
+  function isLikeAndLikeCountStepTogether() {
+    let beforeCount = canonicalVideoLikeCount(resource.data);
+    let afterLikes = videoIntField(request.resource.data, 'likes');
+    let afterLikeCount = videoIntField(request.resource.data, 'likeCount');
+    return (afterLikes == beforeCount + 1 && afterLikeCount == beforeCount + 1)
+      || (beforeCount > 0 && afterLikes == beforeCount - 1 && afterLikeCount == beforeCount - 1)
+      || (beforeCount == 0 && afterLikes == 0 && afterLikeCount == 0);
+  }
+
+  function canonicalVideoLikeCount(data) {
+    return videoIntField(data, 'likes') > 0
+      ? videoIntField(data, 'likes')
+      : videoIntField(data, 'likeCount');
   }
 
   function isVideoOwnerById(videoId) {
