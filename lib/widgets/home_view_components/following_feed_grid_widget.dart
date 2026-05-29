@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
-import 'dart:developer';
 import '../../models/home_video.dart';
 import '../../widgets/player_screen.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/thumbnail_tile.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// RedNote-style grid feed for Following tab
 /// 2-column masonry layout with video cards
@@ -45,7 +45,7 @@ class _FollowingFeedGridWidgetState
   }
 
   void _openVideoPlayer(HomeVideo video, int index) {
-    log('🎬 FollowingFeedGrid: Opening video ${video.id} at index $index');
+    secureLog('🎬 FollowingFeedGrid: Opening video ${video.id} at index $index');
     
     // 🔥 DEDUPLICATE: Get unique videos list for player
     final uniqueVideos = <String, HomeVideo>{};
@@ -128,7 +128,7 @@ class _FollowingFeedGridWidgetState
     }
     
     if (deduplicatedVideos.length != widget.videos.length) {
-      log('⚠️ FollowingFeedGrid: Deduplicated ${widget.videos.length} videos to ${deduplicatedVideos.length} unique videos');
+      secureLog('⚠️ FollowingFeedGrid: Deduplicated ${widget.videos.length} videos to ${deduplicatedVideos.length} unique videos');
     }
 
     // Calculate header height: SafeArea top + FeedSelector height (50) + margins (8*2) = ~66 + SafeArea

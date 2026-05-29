@@ -1,7 +1,7 @@
-import 'dart:developer';
 import 'package:http/http.dart' as http;
 import 'video_cache_service.dart';
 import 'network_policy_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service responsible for prefetching network media for instant play.
 ///
@@ -29,7 +29,7 @@ class VideoPrefetchService {
     required String videoUrl,
   }) async {
     try {
-      log('🎯 Priming video for instant play: $videoId');
+      secureLog('🎯 Priming video for instant play: $videoId');
       
       // Prefetch poster immediately
       await _prefetchPoster(posterUrl);
@@ -37,9 +37,9 @@ class VideoPrefetchService {
       // Prefetch first segment of video
       await _prefetchFirstSegment(videoUrl);
 
-      log('✅ Video primed successfully: $videoId');
+      secureLog('✅ Video primed successfully: $videoId');
     } catch (e) {
-      log('❌ Error priming video $videoId: $e');
+      secureLog('❌ Error priming video $videoId: $e');
     }
   }
 
@@ -54,7 +54,7 @@ class VideoPrefetchService {
       // Calculate prefetch targets
       final targets = _calculatePrefetchTargets(currentIndex, items.length);
       
-      log('🔄 Prefetching window around index $currentIndex: $targets');
+      secureLog('🔄 Prefetching window around index $currentIndex: $targets');
 
       // Prefetch each target
       for (final index in targets) {
@@ -65,7 +65,7 @@ class VideoPrefetchService {
       }
 
     } catch (e) {
-      log('❌ Error prefetching window: $e');
+      secureLog('❌ Error prefetching window: $e');
     }
   }
 
@@ -108,7 +108,7 @@ class VideoPrefetchService {
 
       // Check network policy
       if (!_networkPolicy.canPrefetch(priority)) {
-        log('⏸️ Skipping prefetch due to network policy: ${item.videoId}');
+        secureLog('⏸️ Skipping prefetch due to network policy: ${item.videoId}');
         return;
       }
 
@@ -126,9 +126,9 @@ class VideoPrefetchService {
         await _prefetchPlaylist(item.videoUrl);
       }
 
-      log('✅ Prefetched item: ${item.videoId} (priority: ${priority.toStringAsFixed(1)})');
+      secureLog('✅ Prefetched item: ${item.videoId} (priority: ${priority.toStringAsFixed(1)})');
     } catch (e) {
-      log('❌ Error prefetching item ${item.videoId}: $e');
+      secureLog('❌ Error prefetching item ${item.videoId}: $e');
     } finally {
       _prefetchingVideos.remove(item.videoId);
     }
@@ -148,10 +148,10 @@ class VideoPrefetchService {
       final response = await http.get(Uri.parse(posterUrl));
       if (response.statusCode == 200) {
         await _cacheService.cacheThumbnail(posterUrl, response.bodyBytes);
-        log('📸 Poster cached: ${posterUrl.split('/').last}');
+        secureLog('📸 Poster cached: ${posterUrl.split('/').last}');
       }
     } catch (e) {
-      log('❌ Error prefetching poster: $e');
+      secureLog('❌ Error prefetching poster: $e');
     }
   }
 
@@ -168,7 +168,7 @@ class VideoPrefetchService {
         await _prefetchVideoChunk(videoUrl, 0, 1024 * 1024); // 1MB chunk
       }
     } catch (e) {
-      log('❌ Error prefetching first segment: $e');
+      secureLog('❌ Error prefetching first segment: $e');
     }
   }
 
@@ -199,10 +199,10 @@ class VideoPrefetchService {
       if (segmentUrl != null) {
         // Fetch the first segment
         await _prefetchVideoChunk(segmentUrl, 0, 2 * 1024 * 1024); // 2MB
-        log('🎬 HLS first segment cached: ${segmentUrl.split('/').last}');
+        secureLog('🎬 HLS first segment cached: ${segmentUrl.split('/').last}');
       }
     } catch (e) {
-      log('❌ Error prefetching HLS segment: $e');
+      secureLog('❌ Error prefetching HLS segment: $e');
     }
   }
 
@@ -218,10 +218,10 @@ class VideoPrefetchService {
 
       if (response.statusCode == 206) { // Partial content
         // For now, just log the chunk - would need to implement chunk caching
-        log('📦 Video chunk downloaded: ${videoUrl.split('/').last}');
+        secureLog('📦 Video chunk downloaded: ${videoUrl.split('/').last}');
       }
     } catch (e) {
-      log('❌ Error prefetching video chunk: $e');
+      secureLog('❌ Error prefetching video chunk: $e');
     }
   }
 
@@ -232,11 +232,11 @@ class VideoPrefetchService {
         final response = await http.get(Uri.parse(videoUrl));
         if (response.statusCode == 200) {
           // For now, just log the playlist - would need to implement playlist caching
-          log('📋 Playlist downloaded: ${videoUrl.split('/').last}');
+          secureLog('📋 Playlist downloaded: ${videoUrl.split('/').last}');
         }
       }
     } catch (e) {
-      log('❌ Error prefetching playlist: $e');
+      secureLog('❌ Error prefetching playlist: $e');
     }
   }
 
@@ -245,9 +245,9 @@ class VideoPrefetchService {
     try {
       _prefetchingVideos.remove(videoId);
       _prefetchTimestamps.remove(videoId);
-      log('❌ Cancelled prefetch: $videoId');
+      secureLog('❌ Cancelled prefetch: $videoId');
     } catch (e) {
-      log('❌ Error cancelling prefetch: $e');
+      secureLog('❌ Error cancelling prefetch: $e');
     }
   }
 

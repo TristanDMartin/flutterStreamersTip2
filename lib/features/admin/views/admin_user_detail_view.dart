@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../utils/sensitive_data_redactor.dart';
+import '../../../utils/user_facing_error.dart';
 import '../admin_backend_service.dart';
 import '../widgets/admin_action_confirm_sheet.dart';
 import 'admin_video_detail_view.dart';
@@ -13,7 +15,9 @@ class AdminUserDetailView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('User $userId')),
+      appBar: AppBar(
+        title: Text('User ${SensitiveDataRedactor.maskId(userId)}'),
+      ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('users')
@@ -45,7 +49,7 @@ class AdminUserDetailView extends StatelessWidget {
                             )),
                 const SizedBox(height: 8),
                 Text('Email: $em'),
-                Text('UID: $userId'),
+                Text('UID: ${SensitiveDataRedactor.maskId(userId)}'),
                 Text('Tier: $tier'),
                 Text('Role: $role'),
                 Text('Account status: $ac'),
@@ -72,7 +76,9 @@ class AdminUserDetailView extends StatelessWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('$e')),
+                          SnackBar(
+                            content: Text(UserFacingError.message(e)),
+                          ),
                         );
                       }
                     }
@@ -90,7 +96,9 @@ class AdminUserDetailView extends StatelessWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('$e')),
+                          SnackBar(
+                            content: Text(UserFacingError.message(e)),
+                          ),
                         );
                       }
                     }
@@ -123,7 +131,9 @@ class AdminUserDetailView extends StatelessWidget {
                       children: docs.map((doc) {
                         return ListTile(
                           dense: true,
-                          title: Text(doc.id),
+                          title: Text(
+                            SensitiveDataRedactor.maskId(doc.id),
+                          ),
                           subtitle: Text(
                             (doc.data()['status'] ?? '').toString(),
                           ),

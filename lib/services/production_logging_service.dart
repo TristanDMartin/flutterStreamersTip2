@@ -1,6 +1,8 @@
 import 'dart:developer';
 import 'package:flutter/foundation.dart';
 
+import '../utils/sensitive_data_redactor.dart';
+
 /// Production-ready logging service with conditional logging levels
 class ProductionLoggingService {
   static final ProductionLoggingService _instance =
@@ -62,13 +64,16 @@ class ProductionLoggingService {
     final errorStr = error != null ? ' | Error: $error' : '';
     final stackStr = stackTrace != null ? ' | Stack: $stackTrace' : '';
 
-    final logMessage = '$timestamp $level$tagStr: $message$errorStr$stackStr';
+    final String logMessage =
+        '$timestamp $level$tagStr: $message$errorStr$stackStr';
+    final String safeMessage = kReleaseMode
+        ? SensitiveDataRedactor.redact(logMessage)
+        : logMessage;
 
     if (kDebugMode) {
-      debugPrint(logMessage);
+      debugPrint(safeMessage);
     } else {
-      // In production, use developer log for better performance
-      log(logMessage, level: _getLogLevel(level));
+      log(safeMessage, level: _getLogLevel(level));
     }
   }
 

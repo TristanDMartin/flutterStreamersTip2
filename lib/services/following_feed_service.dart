@@ -1,4 +1,3 @@
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/video_url_resolver.dart';
@@ -6,6 +5,7 @@ import '../models/home_video.dart';
 import '../models/user.dart';
 import 'real_user_data_service.dart';
 import 'user_blocking_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service to fetch Following feed videos from Connections list
 /// This ensures Following tab pulls from NetworkView Connections data
@@ -28,29 +28,29 @@ class FollowingFeedService {
     dynamic startAfter,
   }) async {
     try {
-      log('👥 FollowingFeedService: Fetching videos for viewer $viewerId');
+      secureLog('👥 FollowingFeedService: Fetching videos for viewer $viewerId');
       final authorIds = await _collectAuthorIds(viewerId);
-      log('👥 FollowingFeedService: Collected ${authorIds.length} author IDs');
+      secureLog('👥 FollowingFeedService: Collected ${authorIds.length} author IDs');
       if (authorIds.isEmpty) {
-        log('👥 FollowingFeedService: No valid author IDs for viewer $viewerId');
+        secureLog('👥 FollowingFeedService: No valid author IDs for viewer $viewerId');
         return {
           'videos': <HomeVideo>[],
           'lastDocument': null,
           'authorCount': 0,
         };
       }
-      log('👥 FollowingFeedService: Fetching videos for ${authorIds.length} authors');
+      secureLog('👥 FollowingFeedService: Fetching videos for ${authorIds.length} authors');
       final result =
           await _fetchVideosFromAuthors(authorIds, limit, startAfter);
       final videos = result['videos'] as List<HomeVideo>;
-      log('👥 FollowingFeedService: Fetched ${videos.length} videos');
+      secureLog('👥 FollowingFeedService: Fetched ${videos.length} videos');
       return {
         ...result,
         'authorCount': authorIds.length,
       };
     } catch (e, stackTrace) {
-      log('❌ FollowingFeedService: Error fetching following videos: $e');
-      log('📍 Stack trace: $stackTrace');
+      secureLog('❌ FollowingFeedService: Error fetching following videos: $e');
+      secureLog('📍 Stack trace: $stackTrace');
       return {
         'videos': <HomeVideo>[],
         'lastDocument': null,
@@ -60,45 +60,45 @@ class FollowingFeedService {
   }
 
   Future<List<String>> _collectAuthorIds(String viewerId) async {
-    log('👥 FollowingFeedService: Starting _collectAuthorIds for viewer $viewerId');
+    secureLog('👥 FollowingFeedService: Starting _collectAuthorIds for viewer $viewerId');
     final Set<String> rawIds = <String>{};
     try {
-      log('👥 FollowingFeedService: Fetching user connections...');
+      secureLog('👥 FollowingFeedService: Fetching user connections...');
       final connections = await _getUserConnections(viewerId);
-      log('👥 FollowingFeedService: Got ${connections.length} connections');
+      secureLog('👥 FollowingFeedService: Got ${connections.length} connections');
       if (connections.isNotEmpty) {
-        log('👥 FollowingFeedService: Processing ${connections.length} connections');
+        secureLog('👥 FollowingFeedService: Processing ${connections.length} connections');
         for (final connection in connections) {
           final String peerId = connection.peerId.isNotEmpty
               ? connection.peerId
               : connection.connectionId;
           if (_shouldIncludeConnection(connection) && peerId.isNotEmpty) {
             rawIds.add(peerId);
-            log('   - Connection ${connection.connectionId} resolved to peer $peerId');
+            secureLog('   - Connection ${connection.connectionId} resolved to peer $peerId');
           }
         }
       } else {
-        log('👥 FollowingFeedService: No connections documents for $viewerId');
+        secureLog('👥 FollowingFeedService: No connections documents for $viewerId');
       }
     } catch (e, stackTrace) {
-      log('❌ FollowingFeedService: Error reading connections: $e');
-      log('📍 Stack trace: $stackTrace');
+      secureLog('❌ FollowingFeedService: Error reading connections: $e');
+      secureLog('📍 Stack trace: $stackTrace');
     }
-    log('👥 FollowingFeedService: Using connections as single source of truth');
+    secureLog('👥 FollowingFeedService: Using connections as single source of truth');
     rawIds.remove(viewerId);
-    log('👥 FollowingFeedService: After removing viewerId, rawIds count: ${rawIds.length}');
+    secureLog('👥 FollowingFeedService: After removing viewerId, rawIds count: ${rawIds.length}');
     
-    log('👥 FollowingFeedService: Filtering existing user IDs...');
+    secureLog('👥 FollowingFeedService: Filtering existing user IDs...');
     List<String> filteredIds =
         await _filterExistingUserIds(rawIds.toList());
     final blockedIds = await UserBlockingService().getBlockedUsers();
     if (blockedIds.isNotEmpty) {
       filteredIds = filteredIds.where((id) => !blockedIds.contains(id)).toList();
-      log('👥 FollowingFeedService: Excluded ${blockedIds.length} blocked creators');
+      secureLog('👥 FollowingFeedService: Excluded ${blockedIds.length} blocked creators');
     }
-    log('👥 FollowingFeedService: Collected ${filteredIds.length} verified author IDs');
+    secureLog('👥 FollowingFeedService: Collected ${filteredIds.length} verified author IDs');
     if (filteredIds.length != rawIds.length) {
-      log('👥 FollowingFeedService: Filtered out ${rawIds.length - filteredIds.length} invalid IDs');
+      secureLog('👥 FollowingFeedService: Filtered out ${rawIds.length - filteredIds.length} invalid IDs');
     }
     return filteredIds;
   }
@@ -121,7 +121,7 @@ class FollowingFeedService {
           validIds.add(doc.id);
         }
       } catch (e) {
-        log('❌ FollowingFeedService: Error validating user IDs chunk: $e');
+        secureLog('❌ FollowingFeedService: Error validating user IDs chunk: $e');
       }
     }
     return validIds.toList();
@@ -140,7 +140,7 @@ class FollowingFeedService {
           .where((connection) => connection.peerId.isNotEmpty)
           .toList();
     } catch (e) {
-      log('❌ FollowingFeedService: Error fetching connections: $e');
+      secureLog('❌ FollowingFeedService: Error fetching connections: $e');
       return [];
     }
   }
@@ -169,7 +169,7 @@ class FollowingFeedService {
       final connections = await _getUserConnections(viewerId);
       return connections.any(_shouldIncludeConnection);
     } catch (e) {
-      log('❌ FollowingFeedService: Error checking connections: $e');
+      secureLog('❌ FollowingFeedService: Error checking connections: $e');
       return false;
     }
   }
@@ -182,7 +182,7 @@ class FollowingFeedService {
           .where(_shouldIncludeConnection)
           .length;
     } catch (e) {
-      log('❌ FollowingFeedService: Error getting connections count: $e');
+      secureLog('❌ FollowingFeedService: Error getting connections count: $e');
       return 0;
     }
   }
@@ -292,7 +292,7 @@ class FollowingFeedService {
 
       return 0.0;
     } catch (e) {
-      log('⚠️ FollowingFeedService: Error parsing duration "$duration": $e');
+      secureLog('⚠️ FollowingFeedService: Error parsing duration "$duration": $e');
       return 0.0;
     }
   }
@@ -321,7 +321,7 @@ class FollowingFeedService {
       try {
         hydratedCreator = await _userDataService.getUserById(userId);
       } catch (e) {
-        log('⚠️ FollowingFeedService: Failed to hydrate creator $userId: $e');
+        secureLog('⚠️ FollowingFeedService: Failed to hydrate creator $userId: $e');
       }
     }
     if (hydratedCreator != null) {
@@ -356,14 +356,14 @@ class FollowingFeedService {
     // 🔍 DEBUG: Log video URL resolution
     final resolvedUrl = resolveVideoUrl(data);
     if (resolvedUrl.isEmpty) {
-      log('⚠️ FollowingFeedService: No video URL found for ${doc.id}');
-      log('   Available fields: ${data.keys.toList()}');
-      log('   videoUrl: ${data['videoUrl']}');
-      log('   videoURL: ${data['videoURL']}');
-      log('   canonicalPlaybackUrl: ${data['canonicalPlaybackUrl']}');
-      log('   metadata: ${data['metadata']}');
+      secureLog('⚠️ FollowingFeedService: No video URL found for ${doc.id}');
+      secureLog('   Available fields: ${data.keys.toList()}');
+      secureLog('   videoUrl: ${data['videoUrl']}');
+      secureLog('   videoURL: ${data['videoURL']}');
+      secureLog('   canonicalPlaybackUrl: ${data['canonicalPlaybackUrl']}');
+      secureLog('   metadata: ${data['metadata']}');
     } else {
-      log(
+      secureLog(
         '✅ FollowingFeedService: Resolved video URL for ${doc.id}: '
         '${resolvedUrl.substring(0, resolvedUrl.length > 50 ? 50 : resolvedUrl.length)}...',
       );
@@ -472,8 +472,8 @@ class FollowingFeedService {
         'lastDocument': lastDoc,
       };
     } catch (e, stackTrace) {
-      log('❌ FollowingFeedService: Feed-entry fetch failed: $e');
-      log('📍 Stack trace: $stackTrace');
+      secureLog('❌ FollowingFeedService: Feed-entry fetch failed: $e');
+      secureLog('📍 Stack trace: $stackTrace');
       return {
         'videos': <HomeVideo>[],
         'lastDocument': null,

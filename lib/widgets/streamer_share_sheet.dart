@@ -16,6 +16,7 @@ import 'video_qr_code_dialog.dart';
 
 class StreamerShareSheet extends ConsumerWidget {
   final String userId;
+  final String? username;
   final String? displayName;
   final String? profileImageUrl;
   final VoidCallback? onDismiss;
@@ -23,6 +24,7 @@ class StreamerShareSheet extends ConsumerWidget {
   const StreamerShareSheet({
     super.key,
     required this.userId,
+    this.username,
     this.displayName,
     this.profileImageUrl,
     this.onDismiss,
@@ -30,9 +32,12 @@ class StreamerShareSheet extends ConsumerWidget {
 
   // Validate input parameters
   bool get _isValidUserId => userId.isNotEmpty && userId.length > 3;
-  String get _sanitizedUserId =>
-      userId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
-  String get _profileUrl => ProfileLinkService.webProfileUrlById(_sanitizedUserId);
+  String get _sanitizedUsername =>
+      (username ?? '').trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+  String get _profileUrl => ProfileLinkService.publicProfileUrl(
+        username: _sanitizedUsername.isNotEmpty ? _sanitizedUsername : null,
+        userId: userId,
+      );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1013,8 +1018,10 @@ class StreamerShareSheet extends ConsumerWidget {
         context: context,
         builder: (context) => ProfileQRCodeDialog(
           userId: userId,
-          username: _sanitizedUserId,
-          displayName: displayName ?? _sanitizedUserId,
+          username: _sanitizedUsername.isNotEmpty
+              ? _sanitizedUsername
+              : (displayName ?? 'profile'),
+          displayName: displayName ?? _sanitizedUsername,
           shareUrl: _profileUrl,
         ),
       );

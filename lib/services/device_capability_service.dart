@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:developer' as developer;
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service for detecting device capabilities and recommending video quality
 class DeviceCapabilityService {
@@ -25,19 +25,19 @@ class DeviceCapabilityService {
         // Keep a safe-but-not-overly-pessimistic default so we do not
         // downshift flagship phones into blurry 720p unnecessarily.
         _cachedHeapSizeMB = 512;
-        developer.log('📱 DeviceCapability: Estimated Android heap: 512MB (balanced default)');
+        secureLog('📱 DeviceCapability: Estimated Android heap: 512MB (balanced default)');
       } else if (Platform.isIOS) {
         // iOS devices generally have more memory available
         // Conservative default for iOS
         _cachedHeapSizeMB = 512;
-        developer.log('📱 DeviceCapability: Estimated iOS heap: 512MB (conservative)');
+        secureLog('📱 DeviceCapability: Estimated iOS heap: 512MB (conservative)');
       } else {
         // Desktop/other platforms
         _cachedHeapSizeMB = 512;
-        developer.log('📱 DeviceCapability: Estimated heap: 512MB (default)');
+        secureLog('📱 DeviceCapability: Estimated heap: 512MB (default)');
       }
     } catch (e) {
-      developer.log('⚠️ DeviceCapability: Error detecting heap size: $e');
+      secureLog('⚠️ DeviceCapability: Error detecting heap size: $e');
       _cachedHeapSizeMB = 256; // Safe default (lowest)
     }
 
@@ -58,10 +58,10 @@ class DeviceCapabilityService {
     // > 256MB: 1080p (prefer sharper playback, step down only when needed)
     if (heapSize <= 256) {
       _cachedRecommendedResolution = '720';
-      developer.log('📱 DeviceCapability: Recommended resolution: 720p (low memory device)');
+      secureLog('📱 DeviceCapability: Recommended resolution: 720p (low memory device)');
     } else {
       _cachedRecommendedResolution = '1080';
-      developer.log('📱 DeviceCapability: Recommended resolution: 1080p (preferred sharp playback)');
+      secureLog('📱 DeviceCapability: Recommended resolution: 1080p (preferred sharp playback)');
     }
 
     return _cachedRecommendedResolution!;

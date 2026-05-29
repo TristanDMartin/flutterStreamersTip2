@@ -9,8 +9,12 @@ import '../models/user.dart' as app_user;
 import '../routing/app_routes.dart';
 import '../services/pending_auth_redirect_service.dart';
 import 'profile_link_service.dart';
+import '../routing/app_navigator.dart';
 import '../utils/video_url_resolver.dart';
+import '../utils/video_document_rules.dart';
 import '../widgets/player_screen.dart';
+import '../utils/sensitive_data_redactor.dart';
+import '../utils/user_facing_error.dart';
 import 'logging_service.dart';
 
 class EnhancedDeepLinkingService {
@@ -43,7 +47,8 @@ class EnhancedDeepLinkingService {
   Future<void> handleDeepLink(String link, BuildContext context) async {
     try {
       LoggingService.instance.info(
-        '🔗 EnhancedDeepLinkingService: Handling deep link: $link',
+        '🔗 EnhancedDeepLinkingService: Handling deep link: '
+        '${SensitiveDataRedactor.redact(link)}',
         tag: 'EnhancedDeepLinkingService',
       );
 
@@ -226,6 +231,13 @@ class EnhancedDeepLinkingService {
 
       final videoData = videoDoc.data()!;
 
+      if (!isVideoVisibleInFeed(videoData)) {
+        if (context.mounted) {
+          await AppNavigator.openVideoUnavailable(context, videoId: videoId);
+        }
+        return;
+      }
+
       // Check if video is public or user has access
       final privacy = videoData['privacy'] as String?;
       final currentUser = _auth.currentUser;
@@ -297,17 +309,26 @@ class EnhancedDeepLinkingService {
   Future<void> _handleProfileLink(String path, Map<String, String> queryParams,
       BuildContext context) async {
     try {
-      final userId = path.split('/profile/')[1];
-      if (userId.isEmpty) {
-        throw Exception('Invalid user ID');
+      final String identifier = Uri.decodeComponent(
+        path.split('/profile/')[1].split('?').first,
+      );
+      if (identifier.isEmpty) {
+        throw Exception('Invalid profile identifier');
       }
 
       LoggingService.instance.info(
-        '👤 EnhancedDeepLinkingService: Processing profile link: $userId',
+        '👤 EnhancedDeepLinkingService: Processing profile link: '
+        '${SensitiveDataRedactor.maskId(identifier)}',
         tag: 'EnhancedDeepLinkingService',
       );
 
-      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!SensitiveDataRedactor.looksLikeFirebaseUid(identifier)) {
+        await _handleUserLink('/user/$identifier', queryParams, context);
+        return;
+      }
+
+      final userDoc =
+          await _firestore.collection('users').doc(identifier).get();
       if (!userDoc.exists) {
         throw Exception('Profile not found');
       }
@@ -319,7 +340,7 @@ class EnhancedDeepLinkingService {
           AppRoutes.profile,
           arguments: ProfileRouteArgs(
             user: user,
-            isCurrentUser: _auth.currentUser?.uid == userId,
+            isCurrentUser: _auth.currentUser?.uid == userDoc.id,
           ),
         );
       }
@@ -662,19 +683,22 @@ class EnhancedDeepLinkingService {
     required String type,
     required String id,
     Map<String, String>? queryParams,
+    String? username,
   }) {
-    final normalizedType = type == 'user' ? 'profile' : type;
-    final baseUrl = ProfileLinkService.webBaseUrl;
-    final path = '/$normalizedType/$id';
-
-    if (queryParams != null && queryParams.isNotEmpty) {
-      final queryString = queryParams.entries
-          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
-          .join('&');
-      return '$baseUrl$path?$queryString';
+    final String baseUrl = ProfileLinkService.webBaseUrl;
+    final String path = _sharePathForType(
+      type: type,
+      id: id,
+      username: username,
+    );
+    final String url = '$baseUrl$path';
+    if (queryParams == null || queryParams.isEmpty) {
+      return url;
     }
-
-    return '$baseUrl$path';
+    final String queryString = queryParams.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    return '$url?$queryString';
   }
 
   /// Generate app deep link
@@ -682,19 +706,44 @@ class EnhancedDeepLinkingService {
     required String type,
     required String id,
     Map<String, String>? queryParams,
+    String? username,
   }) {
-    final normalizedType = type == 'user' ? 'profile' : type;
-    final baseUrl = ProfileLinkService.appScheme;
-    final path = '$normalizedType/$id';
-
-    if (queryParams != null && queryParams.isNotEmpty) {
-      final queryString = queryParams.entries
-          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
-          .join('&');
-      return '$baseUrl$path?$queryString';
+    final String path = _sharePathForType(
+      type: type,
+      id: id,
+      username: username,
+    ).replaceFirst('/', '');
+    final String url = '${ProfileLinkService.appScheme}$path';
+    if (queryParams == null || queryParams.isEmpty) {
+      return url;
     }
+    final String queryString = queryParams.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    return '$url?$queryString';
+  }
 
-    return '$baseUrl$path';
+  static String _sharePathForType({
+    required String type,
+    required String id,
+    String? username,
+  }) {
+    final String normalized = type == 'user' || type == 'profile'
+        ? 'profile'
+        : type;
+    if (normalized == 'profile') {
+      final String? cleanUsername = username?.trim();
+      if (cleanUsername != null &&
+          cleanUsername.isNotEmpty &&
+          !SensitiveDataRedactor.looksLikeFirebaseUid(cleanUsername)) {
+        return '/user/${Uri.encodeComponent(cleanUsername)}';
+      }
+      if (!SensitiveDataRedactor.looksLikeFirebaseUid(id)) {
+        return '/user/${Uri.encodeComponent(id)}';
+      }
+      return '/profile/${Uri.encodeComponent(id)}';
+    }
+    return '/$normalized/${Uri.encodeComponent(id)}';
   }
 
   void _replaceWithNamedRoute(BuildContext context, String routeName) {

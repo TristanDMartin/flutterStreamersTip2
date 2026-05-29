@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service for syncing avatar data between the Flutter app and website
 class WebsiteSyncService extends ChangeNotifier {
@@ -37,20 +37,20 @@ class WebsiteSyncService extends ChangeNotifier {
   }) async {
     try {
       if (avatarURL == null || avatarURL.isEmpty) {
-        log("⚠️ No avatar URL to sync");
+        secureLog("⚠️ No avatar URL to sync");
         return false;
       }
 
-      log("🔄 Starting avatar sync to website for user: $userId");
+      secureLog("🔄 Starting avatar sync to website for user: $userId");
       
       // Get avatar data as base64
       final avatarBase64 = await _getAvatarAsBase64(avatarURL);
       if (avatarBase64 == null) {
-        log("❌ Failed to get avatar as base64");
+        secureLog("❌ Failed to get avatar as base64");
         return false;
       }
 
-      log("📸 Successfully fetched avatar data: ${avatarBase64.length} characters");
+      secureLog("📸 Successfully fetched avatar data: ${avatarBase64.length} characters");
       
       // Prepare sync data
       final syncData = {
@@ -62,18 +62,18 @@ class WebsiteSyncService extends ChangeNotifier {
         'avatarBase64': avatarBase64,
       };
 
-      log("📤 Sending avatar data to website:");
-      log("   - User ID: $userId");
-      log("   - Display Name: $displayName");
-      log("   - Username: $username");
-      log("   - Avatar URL: $avatarURL");
-      log("   - Has Base64: ${avatarBase64.isNotEmpty}");
+      secureLog("📤 Sending avatar data to website:");
+      secureLog("   - User ID: $userId");
+      secureLog("   - Display Name: $displayName");
+      secureLog("   - Username: $username");
+      secureLog("   - Avatar URL: $avatarURL");
+      secureLog("   - Has Base64: ${avatarBase64.isNotEmpty}");
 
       // Send to website
       final response = await _sendToWebsite(syncData);
       
       if (response) {
-        log("✅ Avatar successfully synced to website");
+        secureLog("✅ Avatar successfully synced to website");
         
         // Save sync timestamp locally
         await _saveSyncTimestamp(userId);
@@ -83,11 +83,11 @@ class WebsiteSyncService extends ChangeNotifier {
         
         return true;
       } else {
-        log("❌ Failed to sync avatar to website");
+        secureLog("❌ Failed to sync avatar to website");
         return false;
       }
     } catch (e) {
-      log("❌ Error syncing avatar to website: $e");
+      secureLog("❌ Error syncing avatar to website: $e");
       return false;
     }
   }
@@ -102,7 +102,7 @@ class WebsiteSyncService extends ChangeNotifier {
         return 'data:image/jpeg;base64,$base64String';
       }
     } catch (e) {
-      log("❌ Error fetching avatar: $e");
+      secureLog("❌ Error fetching avatar: $e");
     }
     return null;
   }
@@ -120,7 +120,7 @@ class WebsiteSyncService extends ChangeNotifier {
 
       final uri = Uri.parse(_websiteAPIURL).replace(queryParameters: queryParams);
       
-      log("🌐 Sending request to: $uri");
+      secureLog("🌐 Sending request to: $uri");
       
       final response = await http.get(uri).timeout(
         const Duration(seconds: 30),
@@ -129,24 +129,24 @@ class WebsiteSyncService extends ChangeNotifier {
         },
       );
 
-      log("📡 Website response status: ${response.statusCode}");
-      log("📡 Website response body: ${response.body}");
+      secureLog("📡 Website response status: ${response.statusCode}");
+      secureLog("📡 Website response body: ${response.body}");
 
       if (response.statusCode == 200) {
         try {
           final responseData = jsonDecode(response.body);
-          log("📡 Website response data: $responseData");
+          secureLog("📡 Website response data: $responseData");
           return true;
         } catch (e) {
-          log("⚠️ Invalid JSON response from website: $e");
+          secureLog("⚠️ Invalid JSON response from website: $e");
           return true; // Still consider it successful if status is 200
         }
       } else {
-        log("❌ Website sync failed with status: ${response.statusCode}");
+        secureLog("❌ Website sync failed with status: ${response.statusCode}");
         return false;
       }
     } catch (e) {
-      log("❌ Error sending to website: $e");
+      secureLog("❌ Error sending to website: $e");
       return false;
     }
   }
@@ -158,7 +158,7 @@ class WebsiteSyncService extends ChangeNotifier {
       final key = 'avatar_sync_${userId}_timestamp';
       await prefs.setInt(key, DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
-      log("⚠️ Error saving sync timestamp: $e");
+      secureLog("⚠️ Error saving sync timestamp: $e");
     }
   }
 
@@ -172,7 +172,7 @@ class WebsiteSyncService extends ChangeNotifier {
         return DateTime.fromMillisecondsSinceEpoch(timestamp);
       }
     } catch (e) {
-      log("⚠️ Error getting sync timestamp: $e");
+      secureLog("⚠️ Error getting sync timestamp: $e");
     }
     return null;
   }
@@ -188,7 +188,7 @@ class WebsiteSyncService extends ChangeNotifier {
     
     _currentUserId = userId;
     
-    log("👂 Setting up real-time listener for user: $userId");
+    secureLog("👂 Setting up real-time listener for user: $userId");
     
     _userListener = _firestore
         .collection('users')
@@ -217,9 +217,9 @@ class WebsiteSyncService extends ChangeNotifier {
           newAvatarURL != null && 
           previousAvatarURL != newAvatarURL) {
         
-        log("🔄 Avatar URL changed in Firestore - updating app");
-        log("   Old: $previousAvatarURL");
-        log("   New: $newAvatarURL");
+        secureLog("🔄 Avatar URL changed in Firestore - updating app");
+        secureLog("   Old: $previousAvatarURL");
+        secureLog("   New: $newAvatarURL");
         
         // Update local storage
         await prefs.setString(key, newAvatarURL);
@@ -227,19 +227,19 @@ class WebsiteSyncService extends ChangeNotifier {
         // Notify listeners about avatar update
         notifyListeners();
         
-        log("✅ Avatar updated in app from website sync");
+        secureLog("✅ Avatar updated in app from website sync");
       } else if (previousAvatarURL == null && newAvatarURL != null) {
         // First time setting avatar
         await prefs.setString(key, newAvatarURL);
       }
     } catch (e) {
-      log("❌ Error checking avatar update: $e");
+      secureLog("❌ Error checking avatar update: $e");
     }
   }
 
   /// Test function for development
   Future<void> testSyncWithRealData() async {
-    log("🧪 Testing avatar sync with real data...");
+    secureLog("🧪 Testing avatar sync with real data...");
     
     // Replace these with your actual test data
     const testUserId = "test_user_123";
@@ -255,22 +255,22 @@ class WebsiteSyncService extends ChangeNotifier {
     );
     
     if (success) {
-      log("✅ Test sync successful");
+      secureLog("✅ Test sync successful");
     } else {
-      log("❌ Test sync failed");
+      secureLog("❌ Test sync failed");
     }
   }
 
   /// Test two-way sync functionality
   Future<void> testTwoWaySync() async {
-    log("🧪 Testing two-way sync functionality...");
+    secureLog("🧪 Testing two-way sync functionality...");
     
     // Test website → app sync
-    log("📱 Testing website → app sync...");
+    secureLog("📱 Testing website → app sync...");
     await _simulateWebsiteUpdate();
     
     // Test app → website sync
-    log("🌐 Testing app → website sync...");
+    secureLog("🌐 Testing app → website sync...");
     await testSyncWithRealData();
   }
 
@@ -286,9 +286,9 @@ class WebsiteSyncService extends ChangeNotifier {
           .doc(testUserId)
           .update({'avatarURL': newAvatarURL});
       
-      log("🔄 Simulated website update - new avatar URL: $newAvatarURL");
+      secureLog("🔄 Simulated website update - new avatar URL: $newAvatarURL");
     } catch (e) {
-      log("❌ Error simulating website update: $e");
+      secureLog("❌ Error simulating website update: $e");
     }
   }
 

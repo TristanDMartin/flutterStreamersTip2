@@ -1,4 +1,3 @@
-import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 import '../models/home_video.dart';
 import '../models/connection_lite.dart';
@@ -94,18 +94,18 @@ class EnhancedShareService {
           videoDoc = snap.data() ?? <String, dynamic>{};
         }
       } catch (e) {
-        log('⚠️ EnhancedShareService: video doc fetch: $e');
+        secureLog('⚠️ EnhancedShareService: video doc fetch: $e');
       }
       _shareVideoPayloadCache[video.id] =
           ShareVideoPayload.fromHomeVideo(video, videoDoc: videoDoc);
 
       ConnectionsService().getConnectionsPreview().catchError((Object e) {
-        log('⚠️ EnhancedShareService: Failed to prefetch connections: $e');
+        secureLog('⚠️ EnhancedShareService: Failed to prefetch connections: $e');
         return <ConnectionLite>[];
       });
 
       _generateVideoThumbnail(video).catchError((Object e) {
-        log('⚠️ EnhancedShareService: Background thumbnail: $e');
+        secureLog('⚠️ EnhancedShareService: Background thumbnail: $e');
         return null;
       });
 

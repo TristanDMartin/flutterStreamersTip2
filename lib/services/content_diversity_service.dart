@@ -1,5 +1,5 @@
-import 'dart:developer';
 import '../models/home_video.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Content diversity service - Prevents creator fatigue
 /// Implements TikTok-style content rotation and fresh creator injection
@@ -23,7 +23,7 @@ class ContentDiversityService {
   ) {
     if (videos.length < 3) return videos; // Not enough to diversify
 
-    log('🎨 Applying diversity rules to ${videos.length} videos (respecting newest-first order)');
+    secureLog('🎨 Applying diversity rules to ${videos.length} videos (respecting newest-first order)');
 
     // 🚀 NEWEST FIRST: Group videos by time windows to preserve newest-first order
     // Only apply diversity within same time window (e.g., same day)
@@ -50,7 +50,7 @@ class ContentDiversityService {
     // Combine: recent first (newest), then older
     final diversified = [...diversifiedRecent, ...diversifiedOlder];
 
-    log('✅ Diversity applied: ${videos.length} → ${diversified.length} videos (newest-first preserved)');
+    secureLog('✅ Diversity applied: ${videos.length} → ${diversified.length} videos (newest-first preserved)');
     return diversified;
   }
 
@@ -88,7 +88,7 @@ class ContentDiversityService {
             lastCreatorId = alternateVideo.creator.id;
             sameCreatorCount = 1;
             seenCreators.add(alternateVideo.creator.id);
-            log('🔄 Swapped creator: ${video.creator.username} → ${alternateVideo.creator.username}');
+            secureLog('🔄 Swapped creator: ${video.creator.username} → ${alternateVideo.creator.username}');
             i--; // Adjust index after removal
             continue;
           }
@@ -112,7 +112,7 @@ class ContentDiversityService {
           lastCategory = differentCategory.categoryId;
           videosSinceLastCategory = 0;
           seenCreators.add(differentCategory.creator.id);
-          log('🎯 Category rotation: ${video.categoryId} → ${differentCategory.categoryId}');
+          secureLog('🎯 Category rotation: ${video.categoryId} → ${differentCategory.categoryId}');
           i--; // Adjust index after removal
           continue;
         }
@@ -132,7 +132,7 @@ class ContentDiversityService {
           remainingVideos.remove(freshCreator);
           seenCreators.add(freshCreator.creator.id);
           videosSinceLastFreshCreator = 0;
-          log('✨ Fresh creator injected: ${freshCreator.creator.username}');
+          secureLog('✨ Fresh creator injected: ${freshCreator.creator.username}');
           i--; // Adjust index after removal
           continue;
         }
@@ -198,7 +198,7 @@ class ContentDiversityService {
 
     final score = (creatorDiversity * 0.7) + (categoryDiversity * 0.3);
 
-    log(
+    secureLog(
       '📊 Diversity score: ${score.toStringAsFixed(2)} '
       '($uniqueCreators creators, $uniqueCategories categories)',
     );

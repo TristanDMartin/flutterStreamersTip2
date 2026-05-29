@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Creator growth service - Boosts new and consistent creators
 class CreatorGrowthService {
@@ -30,13 +30,13 @@ class CreatorGrowthService {
       // 1. New Creator Boost (first 10 videos)
       if (metrics.totalVideos <= 10) {
         multiplier *= newCreatorBoost;
-        log('🆕 New creator boost applied: $creatorId (${metrics.totalVideos} videos) - ${newCreatorBoost}x');
+        secureLog('🆕 New creator boost applied: $creatorId (${metrics.totalVideos} videos) - ${newCreatorBoost}x');
       }
 
       // 2. Consistency Boost (uploads weekly)
       if (metrics.uploadConsistency > 0.7) {
         multiplier *= consistencyBoost;
-        log(
+        secureLog(
           '📅 Consistency boost applied: $creatorId '
           '(${(metrics.uploadConsistency * 100).toStringAsFixed(0)}%) - '
           '${consistencyBoost}x',
@@ -46,7 +46,7 @@ class CreatorGrowthService {
       // 3. Growth Velocity Boost (>20% follower growth per week)
       if (metrics.growthVelocity > 0.2) {
         multiplier *= growthBoost;
-        log(
+        secureLog(
           '📈 Growth boost applied: $creatorId '
           '(${(metrics.growthVelocity * 100).toStringAsFixed(0)}% growth) - '
           '${growthBoost}x',
@@ -56,13 +56,13 @@ class CreatorGrowthService {
       // 4. Comeback Boost (inactive → active)
       if (metrics.isComebackCreator) {
         multiplier *= comebackBoost;
-        log('🔄 Comeback boost applied: $creatorId - ${comebackBoost}x');
+        secureLog('🔄 Comeback boost applied: $creatorId - ${comebackBoost}x');
       }
 
-      log('✅ Total creator boost for $creatorId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog('✅ Total creator boost for $creatorId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
-      log('❌ Error calculating creator boost: $e');
+      secureLog('❌ Error calculating creator boost: $e');
       return 1.0; // No boost on error
     }
   }
@@ -98,7 +98,7 @@ class CreatorGrowthService {
         isComebackCreator: isComebackCreator,
       );
     } catch (e) {
-      log('❌ Error getting creator metrics: $e');
+      secureLog('❌ Error getting creator metrics: $e');
       return CreatorMetrics(
         creatorId: creatorId,
         totalVideos: 0,
@@ -167,7 +167,7 @@ class CreatorGrowthService {
           e.toString().contains('PERMISSION_DENIED')) {
         return 0.0;
       }
-      log('⚠️ Error calculating growth velocity: $e');
+      secureLog('⚠️ Error calculating growth velocity: $e');
       return 0.0;
     }
   }
@@ -215,9 +215,9 @@ class CreatorGrowthService {
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      log('✅ Creator metrics updated: $creatorId');
+      secureLog('✅ Creator metrics updated: $creatorId');
     } catch (e) {
-      log('❌ Error updating creator metrics: $e');
+      secureLog('❌ Error updating creator metrics: $e');
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/logging_service.dart';
+import '../utils/user_facing_error.dart';
 
 class LazyLoadingList<T> extends ConsumerStatefulWidget {
   final Future<List<T>> Function(int page, int limit) loadData;
@@ -105,7 +106,7 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
       setState(() {
         _isLoading = false;
         _hasError = true;
-        _errorMessage = e.toString();
+        _errorMessage = UserFacingError.message(e);
       });
     }
   }
@@ -143,7 +144,7 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
       setState(() {
         _isLoading = false;
         _hasError = true;
-        _errorMessage = e.toString();
+        _errorMessage = UserFacingError.message(e);
       });
     }
   }
@@ -370,7 +371,7 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
       setState(() {
         _isLoading = false;
         _hasError = true;
-        _errorMessage = e.toString();
+        _errorMessage = UserFacingError.message(e);
       });
     }
   }
@@ -408,7 +409,7 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
       setState(() {
         _isLoading = false;
         _hasError = true;
-        _errorMessage = e.toString();
+        _errorMessage = UserFacingError.message(e);
       });
     }
   }

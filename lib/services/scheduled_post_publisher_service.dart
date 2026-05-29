@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'firestore_scheduled_post_service.dart';
 import '../models/scheduled_post.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service to periodically check and publish scheduled posts
 class ScheduledPostPublisherService {
@@ -19,13 +19,13 @@ class ScheduledPostPublisherService {
   /// Default interval is 30 seconds for more responsive publishing
   void startPeriodicCheck({Duration interval = const Duration(seconds: 30)}) {
     if (_isRunning) {
-      developer.log('⚠️ Scheduled post publisher already running',
+      secureLog('⚠️ Scheduled post publisher already running',
           name: 'ScheduledPostPublisherService');
       return;
     }
 
     _isRunning = true;
-    developer.log('✅ Starting scheduled post publisher (checking every ${interval.inSeconds} seconds)',
+    secureLog('✅ Starting scheduled post publisher (checking every ${interval.inSeconds} seconds)',
         name: 'ScheduledPostPublisherService');
 
     // Check immediately
@@ -42,7 +42,7 @@ class ScheduledPostPublisherService {
     _checkTimer?.cancel();
     _checkTimer = null;
     _isRunning = false;
-    developer.log('⏸️ Stopped scheduled post publisher',
+    secureLog('⏸️ Stopped scheduled post publisher',
         name: 'ScheduledPostPublisherService');
   }
 
@@ -52,19 +52,19 @@ class ScheduledPostPublisherService {
       final readyPosts = await _scheduledPostService.getPostsReadyToPublish();
       
       if (readyPosts.isEmpty) {
-        developer.log('📭 No scheduled posts ready to publish',
+        secureLog('📭 No scheduled posts ready to publish',
             name: 'ScheduledPostPublisherService');
         return;
       }
 
-      developer.log('📬 Found ${readyPosts.length} scheduled posts ready to publish',
+      secureLog('📬 Found ${readyPosts.length} scheduled posts ready to publish',
           name: 'ScheduledPostPublisherService');
 
       for (final postData in readyPosts) {
         try {
           await _publishScheduledPost(postData);
         } catch (e) {
-          developer.log('❌ Error publishing scheduled post ${postData['id']}: $e',
+          secureLog('❌ Error publishing scheduled post ${postData['id']}: $e',
               name: 'ScheduledPostPublisherService');
           // Mark as failed
           await _scheduledPostService.updateScheduledPostStatus(
@@ -74,7 +74,7 @@ class ScheduledPostPublisherService {
         }
       }
     } catch (e) {
-      developer.log('❌ Error checking scheduled posts: $e',
+      secureLog('❌ Error checking scheduled posts: $e',
           name: 'ScheduledPostPublisherService');
     }
   }
@@ -83,13 +83,13 @@ class ScheduledPostPublisherService {
   Future<void> _publishScheduledPost(Map<String, dynamic> postData) async {
     final postId = postData['id'] as String;
 
-    developer.log('📤 Publishing scheduled post: $postId',
+    secureLog('📤 Publishing scheduled post: $postId',
         name: 'ScheduledPostPublisherService');
 
     try {
       await _scheduledPostService.publishNow(postId);
     } catch (e) {
-      developer.log('❌ Error publishing scheduled post: $e',
+      secureLog('❌ Error publishing scheduled post: $e',
           name: 'ScheduledPostPublisherService');
       rethrow;
     }

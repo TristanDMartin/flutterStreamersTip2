@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/user_facing_error.dart';
 import 'production_logging_service.dart';
 
 /// Standard error types
@@ -329,7 +330,7 @@ class StandardizedErrorHandler {
     return AppError(
       type: ErrorType.unknown,
       code: ErrorCode.unknownError,
-      message: 'An unexpected error occurred: ${error.toString()}',
+      message: UserFacingError.message(error),
       originalError: error,
       context: context ?? 'unknown',
       metadata: metadata ?? {},

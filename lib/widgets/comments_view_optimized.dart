@@ -5,6 +5,7 @@ import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import '../services/comments_service.dart';
 import '../services/auth_service.dart';
+import '../utils/user_facing_error.dart';
 import 'optimized_comment_tile.dart';
 
 class CommentsViewOptimized extends ConsumerStatefulWidget {
@@ -185,7 +186,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       await _loadComments();
     } catch (e) {
       if (mounted) {
-        setState(() => _errorMessage = e.toString());
+        setState(() => _errorMessage = UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -231,7 +232,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
         await _loadComments();
       }
     } catch (e) {
-      setState(() => _errorMessage = e.toString());
+      setState(() => _errorMessage = UserFacingError.message(e));
     }
   }
 

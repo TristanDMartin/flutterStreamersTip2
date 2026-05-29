@@ -11,6 +11,7 @@ import '../services/auth_service.dart';
 import '../services/profile_update_service.dart';
 import '../services/content_moderation_service.dart';
 import '../services/storage_diagnostic_service.dart';
+import '../utils/user_facing_error.dart';
 import '../services/admin_service.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
@@ -250,7 +251,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     } catch (e) {
       // Error updating profile views, using fallback
       if (kDebugMode) {
-        // print('ProfileUpdateService error: $e');
+        // appLog('ProfileUpdateService error: $e');
       }
       // Fallback to direct Firestore update
       _saveToFirestore(updateData);
@@ -295,7 +296,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     } catch (e) {
       // Error saving to Firestore - silent fail to avoid user spam
       if (kDebugMode) {
-        // print('Firestore save error: $e');
+        // appLog('Firestore save error: $e');
       }
     }
   }
@@ -466,7 +467,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
         } else if (e.toString().contains('User not authenticated')) {
           errorMessage = 'Please sign in again to upload your avatar.';
         } else {
-          errorMessage = e.toString().replaceAll('Exception: ', '');
+          errorMessage = UserFacingError.message(e);
         }
 
         scaffoldMessenger.showSnackBar(
@@ -477,12 +478,12 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             action: SnackBarAction(
               label: _selectedImage != null
                   ? 'Retry'
-                  : 'Diagnose', // ✅ FIX #5: Add retry option
+                  : (kDebugMode ? 'Diagnose' : 'OK'),
               textColor: Colors.white,
               onPressed: () {
                 if (_selectedImage != null) {
                   _uploadAvatar(_selectedImage!); // ✅ FIX #5: Retry upload
-                } else {
+                } else if (kDebugMode) {
                   _runStorageDiagnostics();
                 }
               },
@@ -494,6 +495,9 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Future<void> _runStorageDiagnostics() async {
+    if (!kDebugMode) {
+      return;
+    }
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -545,7 +549,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Diagnostics failed: $e'),
+            content: Text(UserFacingError.message(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -684,7 +688,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 } catch (e) {
                   // Error updating status, using fallback
                   if (kDebugMode) {
-                    // print('Status update error: $e');
+                    // appLog('Status update error: $e');
                   }
                 }
 

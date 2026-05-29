@@ -1,6 +1,6 @@
-import 'dart:developer';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'follows_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service to determine Follow button state based on NetworkView logic
 /// Implements the product rules for Follow/Following/Connected/Self states
@@ -40,7 +40,7 @@ class FollowButtonService {
       // 4. Default: show Follow button
       return FollowButtonState.follow;
     } catch (e) {
-      log('❌ FollowButtonService: Error determining state: $e');
+      secureLog('❌ FollowButtonService: Error determining state: $e');
       return FollowButtonState.follow; // Safe default
     }
   }
@@ -50,7 +50,7 @@ class FollowButtonService {
     try {
       return await _followsService.isMutualFollow(creatorId);
     } catch (e) {
-      log('❌ FollowButtonService: Error checking connections: $e');
+      secureLog('❌ FollowButtonService: Error checking connections: $e');
       return false;
     }
   }
@@ -60,7 +60,7 @@ class FollowButtonService {
     try {
       return await _followsService.isFollowing(creatorId);
     } catch (e) {
-      log('❌ FollowButtonService: Error checking following: $e');
+      secureLog('❌ FollowButtonService: Error checking following: $e');
       return false;
     }
   }
@@ -71,14 +71,14 @@ class FollowButtonService {
     required String creatorId,
   }) async {
     try {
-      log('👥 FollowButtonService: Following user $creatorId');
+      secureLog('👥 FollowButtonService: Following user $creatorId');
       final success = await _followsService.followUser(creatorId);
       if (!success) return false;
 
-      log('✅ FollowButtonService: Successfully followed $creatorId');
+      secureLog('✅ FollowButtonService: Successfully followed $creatorId');
       return true;
     } catch (e) {
-      log('❌ FollowButtonService: Error following user: $e');
+      secureLog('❌ FollowButtonService: Error following user: $e');
       return false;
     }
   }
@@ -89,14 +89,14 @@ class FollowButtonService {
     required String creatorId,
   }) async {
     try {
-      log('👥 FollowButtonService: Unfollowing user $creatorId');
+      secureLog('👥 FollowButtonService: Unfollowing user $creatorId');
       final success = await _followsService.unfollowUser(creatorId);
       if (!success) return false;
 
-      log('✅ FollowButtonService: Successfully unfollowed $creatorId');
+      secureLog('✅ FollowButtonService: Successfully unfollowed $creatorId');
       return true;
     } catch (e) {
-      log('❌ FollowButtonService: Error unfollowing user: $e');
+      secureLog('❌ FollowButtonService: Error unfollowing user: $e');
       return false;
     }
   }

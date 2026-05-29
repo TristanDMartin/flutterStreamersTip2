@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Real-time trending service - Surfaces hot content instantly
 /// Implements burst detection, geographic trending, and time-of-day optimization
@@ -27,27 +27,27 @@ class RealtimeTrendingService {
       final burstScore = await _detectBurst(videoId);
       if (burstScore > 0.7) {
         multiplier *= burstBoost;
-        log('💥 Burst detected for $videoId - ${burstBoost}x');
+        secureLog('💥 Burst detected for $videoId - ${burstBoost}x');
       }
 
       // 2. Hourly trending (last 1-6 hours)
       final hourlyScore = await _getHourlyTrendingScore(videoId);
       if (hourlyScore > 0.6) {
         multiplier *= hourlyTrendingBoost;
-        log('🔥 Hourly trending for $videoId - ${hourlyTrendingBoost}x');
+        secureLog('🔥 Hourly trending for $videoId - ${hourlyTrendingBoost}x');
       }
 
       // 3. Time-of-day optimization
       final timeMultiplier = _getTimeOfDayMultiplier();
       multiplier *= timeMultiplier;
       if (timeMultiplier > 1.0) {
-        log('🕐 Prime time boost - ${timeMultiplier}x');
+        secureLog('🕐 Prime time boost - ${timeMultiplier}x');
       }
 
-      log('✅ Total trending boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog('✅ Total trending boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
-      log('❌ Error calculating trending boost: $e');
+      secureLog('❌ Error calculating trending boost: $e');
       return 1.0;
     }
   }
@@ -79,11 +79,11 @@ class RealtimeTrendingService {
       // Burst = >200% increase in engagement
       final burstScore = (acceleration / 2.0).clamp(0.0, 1.0);
 
-      log('💥 Burst detection: $videoId - last hour: $lastHour, prev: $previousHour, score: ${burstScore.toStringAsFixed(2)}');
+      secureLog('💥 Burst detection: $videoId - last hour: $lastHour, prev: $previousHour, score: ${burstScore.toStringAsFixed(2)}');
 
       return burstScore;
     } catch (e) {
-      log('❌ Error detecting burst: $e');
+      secureLog('❌ Error detecting burst: $e');
       return 0.0;
     }
   }
@@ -110,13 +110,13 @@ class RealtimeTrendingService {
       final trendingScore = (engagementRate * 3.0).clamp(0.0, 1.0);
 
       if (viewsCount > 50) {
-        log('🔥 Hourly trending: $videoId - $engagementCount/$viewsCount = ${trendingScore.toStringAsFixed(2)}');
+        secureLog('🔥 Hourly trending: $videoId - $engagementCount/$viewsCount = ${trendingScore.toStringAsFixed(2)}');
         return trendingScore;
       }
 
       return 0.0;
     } catch (e) {
-      log('❌ Error calculating hourly trending: $e');
+      secureLog('❌ Error calculating hourly trending: $e');
       return 0.0;
     }
   }
@@ -140,7 +140,7 @@ class RealtimeTrendingService {
           e.toString().contains('PERMISSION_DENIED')) {
         return 0;
       }
-      log('❌ Error getting engagement count: $e');
+      secureLog('❌ Error getting engagement count: $e');
       return 0;
     }
   }
@@ -158,7 +158,7 @@ class RealtimeTrendingService {
 
       return snapshot.docs.length;
     } catch (e) {
-      log('❌ Error getting views count: $e');
+      secureLog('❌ Error getting views count: $e');
       return 0;
     }
   }
@@ -213,7 +213,7 @@ class RealtimeTrendingService {
           e.toString().contains('PERMISSION_DENIED')) {
         return false;
       }
-      log('❌ Error checking geo trending: $e');
+      secureLog('❌ Error checking geo trending: $e');
       return false;
     }
   }
@@ -244,10 +244,10 @@ class RealtimeTrendingService {
       // 2. Store results in: trending_network/{userId} or public_trending/{timeWindow}
       // 3. Client reads only pre-computed results
       
-      log('⚠️ Trending in network: Feature disabled (should be server-side)');
+      secureLog('⚠️ Trending in network: Feature disabled (should be server-side)');
       return [];
     } catch (e) {
-      log('❌ Error getting trending in network: $e');
+      secureLog('❌ Error getting trending in network: $e');
       return [];
     }
   }

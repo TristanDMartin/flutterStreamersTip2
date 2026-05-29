@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/user_facing_error.dart';
 import 'dart:io';
 
 class GalleryPicker extends StatefulWidget {
@@ -237,7 +238,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
       // that prompts the user to use the camera or pick individual images
       return [];
     } catch (e) {
-      // print('Error getting gallery images: $e');
+      // appLog('Error getting gallery images: $e');
       return [];
     }
   }
@@ -358,7 +359,7 @@ class _AdvancedGalleryPickerState extends State<AdvancedGalleryPicker> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = e.toString();
+        _error = UserFacingError.message(e);
       });
     }
   }

@@ -1,4 +1,3 @@
-import 'dart:developer';
 import '../models/home_video.dart';
 import 'advanced_engagement_service.dart';
 import 'creator_growth_service.dart';
@@ -7,6 +6,7 @@ import 'network_effects_service.dart';
 import 'content_diversity_service.dart';
 import 'realtime_trending_service.dart';
 import 'velocity_scoring_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Unified Algorithm Service - Better than TikTok
 /// Orchestrates all 7 advanced engagement systems for optimal user experience
@@ -90,7 +90,7 @@ class UnifiedAlgorithmService {
   }) async {
     if (videos.isEmpty) return [];
 
-    log('🎯 Unified Algorithm: Scoring ${videos.length} videos for user $userId');
+    secureLog('🎯 Unified Algorithm: Scoring ${videos.length} videos for user $userId');
 
     final List<ScoredVideo> scoredVideos = [];
 
@@ -135,14 +135,14 @@ class UnifiedAlgorithmService {
           ),
         ));
 
-        log('📊 Scored ${video.id}: ${finalScore.toStringAsFixed(2)} '
+        secureLog('📊 Scored ${video.id}: ${finalScore.toStringAsFixed(2)} '
             '(base: ${baseScore.toStringAsFixed(1)}, '
             'creator: ${creatorBoost.toStringAsFixed(2)}x, '
             'network: ${networkBoost.toStringAsFixed(2)}x, '
             'trending: ${trendingBoost.toStringAsFixed(2)}x, '
             'velocity: ${velocityBoost.toStringAsFixed(2)}x)');
       } catch (e) {
-        log('❌ Error scoring video ${video.id}: $e');
+        secureLog('❌ Error scoring video ${video.id}: $e');
         // Add with base score if scoring fails
         scoredVideos.add(ScoredVideo(
           video: video,
@@ -202,7 +202,7 @@ class UnifiedAlgorithmService {
       return original;
     }).toList();
 
-    log('✅ Unified Algorithm: Final ranking complete - ${diversifiedScored.length} videos');
+    secureLog('✅ Unified Algorithm: Final ranking complete - ${diversifiedScored.length} videos');
 
     return diversifiedScored;
   }
@@ -214,7 +214,7 @@ class UnifiedAlgorithmService {
     String? userLocation,
     int limit = 20,
   }) async {
-    log('🎯 Unified Algorithm: Generating personalized feed for $userId');
+    secureLog('🎯 Unified Algorithm: Generating personalized feed for $userId');
 
     // 1. Score and rank all candidates
     final scoredVideos = await scoreAndRankVideos(
@@ -230,7 +230,7 @@ class UnifiedAlgorithmService {
         await _retentionPrediction.predictDailyReturn(userId);
     final churnRisk = await _retentionPrediction.calculateChurnRisk(userId);
 
-    log('📊 Retention scores: nextVideo=${nextVideoProb.toStringAsFixed(2)}, '
+    secureLog('📊 Retention scores: nextVideo=${nextVideoProb.toStringAsFixed(2)}, '
         'daily=${dailyReturnProb.toStringAsFixed(2)}, '
         'churnRisk=${churnRisk.toStringAsFixed(2)}');
 
@@ -239,11 +239,11 @@ class UnifiedAlgorithmService {
 
     if (churnRisk > 0.7) {
       // High churn risk: prioritize best content
-      log('⚠️ High churn risk - prioritizing top performers');
+      secureLog('⚠️ High churn risk - prioritizing top performers');
       adjustedFeed = scoredVideos.take(limit * 2).toList();
     } else if (nextVideoProb < 0.3) {
       // Low next-video probability: inject fresh creators
-      log('✨ Low retention - injecting fresh creators');
+      secureLog('✨ Low retention - injecting fresh creators');
       // Fresh creators already handled by diversity engine
     }
 
@@ -252,9 +252,9 @@ class UnifiedAlgorithmService {
 
     // 5. Calculate diversity score for analytics
     final diversityScore = _contentDiversity.calculateDiversityScore(finalFeed);
-    log('🎨 Feed diversity score: ${diversityScore.toStringAsFixed(2)}');
+    secureLog('🎨 Feed diversity score: ${diversityScore.toStringAsFixed(2)}');
 
-    log('✅ Personalized feed complete: ${finalFeed.length} videos');
+    secureLog('✅ Personalized feed complete: ${finalFeed.length} videos');
 
     return finalFeed;
   }
@@ -269,7 +269,7 @@ class UnifiedAlgorithmService {
     required bool isReplay,
     required bool didComplete,
   }) async {
-    log('📊 Tracking engagement: $videoId (${watchPercentage.toStringAsFixed(1)}%)');
+    secureLog('📊 Tracking engagement: $videoId (${watchPercentage.toStringAsFixed(1)}%)');
 
     // 1. Track watch time
     _advancedEngagement.trackWatchTime(
@@ -288,18 +288,18 @@ class UnifiedAlgorithmService {
       _advancedEngagement.incrementEngagementAction();
     }
 
-    log('✅ Engagement tracked successfully');
+    secureLog('✅ Engagement tracked successfully');
   }
 
   /// Start user session (initializes tracking)
   void startSession(String userId) {
-    log('🎬 Starting session for user: $userId');
+    secureLog('🎬 Starting session for user: $userId');
     _advancedEngagement.startSession();
   }
 
   /// End user session (saves retention data)
   Future<void> endSession() async {
-    log('🎬 Ending session');
+    secureLog('🎬 Ending session');
     await _advancedEngagement.endSession();
   }
 }

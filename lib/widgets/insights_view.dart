@@ -7,6 +7,7 @@ import '../models/insights_data.dart';
 import '../models/profile_video.dart';
 import '../services/insights_firebase_service.dart';
 import '../services/video_analytics_aggregation_service.dart';
+import '../utils/user_facing_error.dart';
 import 'insights_overview_tab.dart';
 import 'insights_viewers_tab.dart';
 import 'insights_engagement_tab.dart';
@@ -96,7 +97,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
         setState(() {
           debugPrint('❌ InsightsView: Error loading insights: $e');
           _insightsData = null;
-          _errorMessage = e.toString();
+          _errorMessage = UserFacingError.message(e);
           _loadState = _InsightsLoadState.error;
         });
       }
@@ -137,7 +138,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
         if (mounted) {
           setState(() {
             _loadState = _InsightsLoadState.error;
-            _errorMessage = error.toString();
+            _errorMessage = UserFacingError.message(error);
           });
         }
         debugPrint('Real-time insights error: $error');

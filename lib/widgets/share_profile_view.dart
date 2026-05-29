@@ -28,17 +28,13 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   bool _isLoadingQR = true;
 
   String _buildProfileUrl() {
-    final userId = (widget.user['id'] ?? '').toString().trim();
-    if (userId.isNotEmpty) {
-      return ProfileLinkService.webProfileUrlById(userId);
-    }
-
-    final username = (widget.user['username'] ?? '').toString().trim();
-    if (username.isNotEmpty) {
-      return ProfileLinkService.webProfileUrlByUsername(username);
-    }
-
-    return ProfileLinkService.webBaseUrl;
+    final String username =
+        (widget.user['username'] ?? '').toString().trim();
+    final String userId = (widget.user['id'] ?? '').toString().trim();
+    return ProfileLinkService.publicProfileUrl(
+      username: username,
+      userId: userId,
+    );
   }
 
   String _buildShareText() {

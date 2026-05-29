@@ -1,5 +1,5 @@
-import 'dart:developer';
 import 'package:video_player/video_player.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Centralized Video Controller Registry - Single source of truth for all video controllers
 ///
@@ -21,7 +21,7 @@ class VideoControllerRegistry {
   /// Returns true if registration successful, false if already registered
   bool register(String videoId, VideoPlayerController controller) {
     if (_isRegistered[videoId] == true) {
-      log('⚠️ VideoControllerRegistry: Controller already registered for $videoId');
+      secureLog('⚠️ VideoControllerRegistry: Controller already registered for $videoId');
       return false;
     }
 
@@ -30,37 +30,37 @@ class VideoControllerRegistry {
     _isVisible[videoId] = false; // Start as hidden
     _disposedControllers[videoId] = false;
 
-    log('✅ VideoControllerRegistry: Registered controller for $videoId');
+    secureLog('✅ VideoControllerRegistry: Registered controller for $videoId');
     return true;
   }
 
   /// Mark a video as visible (should be playing)
   void markVisible(String videoId) {
     if (_isRegistered[videoId] != true) {
-      log('❌ VideoControllerRegistry: Cannot mark visible - not registered: $videoId');
+      secureLog('❌ VideoControllerRegistry: Cannot mark visible - not registered: $videoId');
       return;
     }
 
     _isVisible[videoId] = true;
-    log('👁️ VideoControllerRegistry: Marked visible: $videoId');
+    secureLog('👁️ VideoControllerRegistry: Marked visible: $videoId');
   }
 
   /// Mark a video as hidden (should be paused)
   void markHidden(String videoId) {
     if (_isRegistered[videoId] != true) {
-      log('❌ VideoControllerRegistry: Cannot mark hidden - not registered: $videoId');
+      secureLog('❌ VideoControllerRegistry: Cannot mark hidden - not registered: $videoId');
       return;
     }
 
     _isVisible[videoId] = false;
-    log('👁️ VideoControllerRegistry: Marked hidden: $videoId');
+    secureLog('👁️ VideoControllerRegistry: Marked hidden: $videoId');
   }
 
   /// Check if controller is safe for play/pause operations
   bool isSafe(String videoId) {
     // Safety check: Prevent invalid video IDs
     if (videoId.isEmpty || videoId == '0') {
-      log('❌ VideoControllerRegistry: Invalid video ID: "$videoId"');
+      secureLog('❌ VideoControllerRegistry: Invalid video ID: "$videoId"');
       return false;
     }
 
@@ -76,7 +76,7 @@ class VideoControllerRegistry {
     final isSafe = isRegistered && isInitialized && hasNoError;
 
     if (!isSafe) {
-      log('⚠️ VideoControllerRegistry: Controller not safe for $videoId - registered: $isRegistered, initialized: $isInitialized, noError: $hasNoError');
+      secureLog('⚠️ VideoControllerRegistry: Controller not safe for $videoId - registered: $isRegistered, initialized: $isInitialized, noError: $hasNoError');
     }
 
     return isSafe;
@@ -86,7 +86,7 @@ class VideoControllerRegistry {
   VideoPlayerController? getController(String videoId) {
     // Safety check: Prevent invalid video IDs
     if (videoId.isEmpty || videoId == '0') {
-      log('❌ VideoControllerRegistry: Cannot get controller for invalid video ID: "$videoId"');
+      secureLog('❌ VideoControllerRegistry: Cannot get controller for invalid video ID: "$videoId"');
       return null;
     }
 
@@ -104,9 +104,9 @@ class VideoControllerRegistry {
     if (controller != null) {
       try {
         controller.dispose();
-        log('🗑️ VideoControllerRegistry: Disposed controller for $videoId');
+        secureLog('🗑️ VideoControllerRegistry: Disposed controller for $videoId');
       } catch (e) {
-        log('❌ VideoControllerRegistry: Error disposing controller for $videoId: $e');
+        secureLog('❌ VideoControllerRegistry: Error disposing controller for $videoId: $e');
       }
     }
 
@@ -127,7 +127,7 @@ class VideoControllerRegistry {
     _isRegistered.remove(videoId);
     _controllers.remove(videoId);
     _isVisible.remove(videoId);
-    log('🔄 VideoControllerRegistry: Reset disposed state for $videoId');
+    secureLog('🔄 VideoControllerRegistry: Reset disposed state for $videoId');
   }
 
   /// Get debug info
@@ -147,6 +147,6 @@ class VideoControllerRegistry {
     for (final videoId in videoIds) {
       dispose(videoId);
     }
-    log('🧹 VideoControllerRegistry: Cleaned up all controllers');
+    secureLog('🧹 VideoControllerRegistry: Cleaned up all controllers');
   }
 }

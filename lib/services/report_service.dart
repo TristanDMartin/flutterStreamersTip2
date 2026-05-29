@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:developer' as dev;
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service for handling video and user reports
 class ReportService {
@@ -63,10 +63,10 @@ class ReportService {
         'lastReportedAt': FieldValue.serverTimestamp(),
       });
 
-      dev.log('📋 ReportService: Video report submitted successfully',
+      secureLog('📋 ReportService: Video report submitted successfully',
           name: 'ReportService');
     } catch (e) {
-      dev.log('❌ ReportService: Error reporting video: $e',
+      secureLog('❌ ReportService: Error reporting video: $e',
           name: 'ReportService');
       rethrow;
     }
@@ -102,10 +102,10 @@ class ReportService {
         'lastReportedAt': FieldValue.serverTimestamp(),
       });
 
-      dev.log('📋 ReportService: User report submitted successfully',
+      secureLog('📋 ReportService: User report submitted successfully',
           name: 'ReportService');
     } catch (e) {
-      dev.log('❌ ReportService: Error reporting user: $e',
+      secureLog('❌ ReportService: Error reporting user: $e',
           name: 'ReportService');
       rethrow;
     }
@@ -141,7 +141,7 @@ class ReportService {
         'lastReportedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      dev.log('❌ ReportService: Error reporting comment: $e',
+      secureLog('❌ ReportService: Error reporting comment: $e',
           name: 'ReportService');
       rethrow;
     }
@@ -175,7 +175,7 @@ class ReportService {
         'lastReportedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      dev.log('❌ ReportService: Error reporting thread: $e',
+      secureLog('❌ ReportService: Error reporting thread: $e',
           name: 'ReportService');
       rethrow;
     }
@@ -211,7 +211,7 @@ class ReportService {
         'lastReportedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      dev.log('❌ ReportService: Error reporting thread comment: $e',
+      secureLog('❌ ReportService: Error reporting thread comment: $e',
           name: 'ReportService');
       rethrow;
     }
@@ -243,7 +243,7 @@ class ReportService {
             : null,
       };
     } catch (e) {
-      dev.log('❌ ReportService: Error getting video report stats: $e',
+      secureLog('❌ ReportService: Error getting video report stats: $e',
           name: 'ReportService');
       return {
         'totalReports': 0,
@@ -268,7 +268,7 @@ class ReportService {
 
       return existingReport.docs.isNotEmpty;
     } catch (e) {
-      dev.log('❌ ReportService: Error checking if user reported video: $e',
+      secureLog('❌ ReportService: Error checking if user reported video: $e',
           name: 'ReportService');
       return false;
     }
@@ -290,7 +290,7 @@ class ReportService {
           .get();
       return existingReport.docs.isNotEmpty;
     } catch (e) {
-      dev.log('❌ ReportService: Error checking comment report status: $e',
+      secureLog('❌ ReportService: Error checking comment report status: $e',
           name: 'ReportService');
       return false;
     }
@@ -308,7 +308,7 @@ class ReportService {
           .get();
       return existingReport.docs.isNotEmpty;
     } catch (e) {
-      dev.log('❌ ReportService: Error checking thread report status: $e',
+      secureLog('❌ ReportService: Error checking thread report status: $e',
           name: 'ReportService');
       return false;
     }
@@ -330,7 +330,7 @@ class ReportService {
           .get();
       return existingReport.docs.isNotEmpty;
     } catch (e) {
-      dev.log('❌ ReportService: Error checking thread comment report status: $e',
+      secureLog('❌ ReportService: Error checking thread comment report status: $e',
           name: 'ReportService');
       return false;
     }

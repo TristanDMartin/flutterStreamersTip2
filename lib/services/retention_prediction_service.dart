@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Retention prediction service - Predicts user return probability
 /// user_retention_profiles and engagement require auth and own userId.
@@ -46,7 +46,7 @@ class RetentionPredictionService {
 
       return probability.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error predicting next video watch: $e');
+      secureLog('❌ Error predicting next video watch: $e');
       return 0.5; // Default
     }
   }
@@ -85,7 +85,7 @@ class RetentionPredictionService {
 
       return probability.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error predicting daily return: $e');
+      secureLog('❌ Error predicting daily return: $e');
       return 0.3; // Default
     }
   }
@@ -119,7 +119,7 @@ class RetentionPredictionService {
 
       return probability.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error predicting weekly engagement: $e');
+      secureLog('❌ Error predicting weekly engagement: $e');
       return 0.5; // Default
     }
   }
@@ -162,7 +162,7 @@ class RetentionPredictionService {
 
       return risk.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error calculating churn risk: $e');
+      secureLog('❌ Error calculating churn risk: $e');
       return 0.5; // Default medium risk
     }
   }
@@ -189,7 +189,7 @@ class RetentionPredictionService {
           e.toString().contains('PERMISSION_DENIED')) {
         return UserRetentionProfile.createDefault(userId);
       }
-      log('⚠️ Error getting retention profile: $e');
+      secureLog('⚠️ Error getting retention profile: $e');
       return UserRetentionProfile.createDefault(userId);
     }
   }
@@ -243,7 +243,7 @@ class RetentionPredictionService {
           avgWatchPercentage: 0.0,
         );
       }
-      log('❌ Error getting recent engagement: $e');
+      secureLog('❌ Error getting recent engagement: $e');
       return RecentEngagement(
         videosWatched: 0,
         engagementActions: 0,
@@ -269,9 +269,9 @@ class RetentionPredictionService {
         'predictedAt': FieldValue.serverTimestamp(),
       });
 
-      log('✅ Retention predictions saved for $userId');
+      secureLog('✅ Retention predictions saved for $userId');
     } catch (e) {
-      log('❌ Error saving retention predictions: $e');
+      secureLog('❌ Error saving retention predictions: $e');
     }
   }
 }

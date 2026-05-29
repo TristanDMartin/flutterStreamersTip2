@@ -1,8 +1,8 @@
-import 'dart:developer';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/shared_draft_service.dart';
 import '../models/shared_draft.dart';
 import '../models/connection.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 final sharedDraftServiceProvider = Provider<SharedDraftService>((ref) {
   final service = SharedDraftService();
@@ -68,7 +68,7 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
       await _service.markAsViewed(sharedDraftId);
     } catch (e) {
       // Handle error silently for now
-      log('Error marking as viewed: $e');
+      secureLog('Error marking as viewed: $e');
     }
   }
 
@@ -77,7 +77,7 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
       await _service.declineDraft(sharedDraftId);
     } catch (e) {
       // Handle error silently for now
-      log('Error declining draft: $e');
+      secureLog('Error declining draft: $e');
     }
   }
 
@@ -86,7 +86,7 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
       await _service.deleteSharedDraft(sharedDraftId);
     } catch (e) {
       // Handle error silently for now
-      log('Error deleting shared draft: $e');
+      secureLog('Error deleting shared draft: $e');
     }
   }
 
@@ -105,7 +105,7 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
       );
     } catch (e) {
       // Handle error silently for now
-      log('Error adding connection: $e');
+      secureLog('Error adding connection: $e');
     }
   }
 
@@ -114,7 +114,7 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
       await _service.removeConnection(connectionId);
     } catch (e) {
       // Handle error silently for now
-      log('Error removing connection: $e');
+      secureLog('Error removing connection: $e');
     }
   }
 }

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// TikTok-quality camera service
 ///
@@ -44,7 +44,7 @@ class TikTokCameraService {
   /// Initialize camera with TikTok-quality settings
   Future<void> initialize() async {
     try {
-      log('🎥 TikTokCameraService: Initializing with professional settings');
+      secureLog('🎥 TikTokCameraService: Initializing with professional settings');
 
       _cameras = await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
@@ -64,9 +64,9 @@ class TikTokCameraService {
       await _applyTikTokSettings();
 
       _isInitialized = true;
-      log('✅ TikTokCameraService: Initialized successfully');
+      secureLog('✅ TikTokCameraService: Initialized successfully');
     } catch (e) {
-      log('❌ TikTokCameraService: Initialization failed: $e');
+      secureLog('❌ TikTokCameraService: Initialization failed: $e');
       rethrow;
     }
   }
@@ -87,9 +87,9 @@ class TikTokCameraService {
       // Pixel 6 specific optimizations
       await _applyPixel6Optimizations();
 
-      log('🔍 Device capabilities: 60fps=$_supports60fps, 4K=$_supports4K, OIS=$_supportsOIS, EIS=$_supportsEIS');
+      secureLog('🔍 Device capabilities: 60fps=$_supports60fps, 4K=$_supports4K, OIS=$_supportsOIS, EIS=$_supportsEIS');
     } catch (e) {
-      log('⚠️ Error detecting capabilities: $e');
+      secureLog('⚠️ Error detecting capabilities: $e');
     }
   }
 
@@ -101,13 +101,13 @@ class TikTokCameraService {
         _targetFps = 30;
         _resolutionPreset = ResolutionPreset.veryHigh;
         _targetBitrate = 12.0; // TikTok optimal 10–12 Mbps
-        log('📱 Pixel 6: 1080p30 @ 12Mbps (TikTok spec)');
+        secureLog('📱 Pixel 6: 1080p30 @ 12Mbps (TikTok spec)');
         _supports4K = true;
         _supportsEIS = true;
         _supportsOIS = false;
       }
     } catch (e) {
-      log('⚠️ Error applying Pixel 6 optimizations: $e');
+      secureLog('⚠️ Error applying Pixel 6 optimizations: $e');
     }
   }
 
@@ -203,7 +203,7 @@ class TikTokCameraService {
       // Determine optimal bitrate
       _targetBitrate = _getOptimalBitrate();
 
-      log('🎥 Initializing camera: ${camera.name}, Resolution: $_resolutionPreset, FPS: $_targetFps, Bitrate: ${_targetBitrate}Mbps');
+      secureLog('🎥 Initializing camera: ${camera.name}, Resolution: $_resolutionPreset, FPS: $_targetFps, Bitrate: ${_targetBitrate}Mbps');
 
       _controller = CameraController(
         camera,
@@ -219,22 +219,22 @@ class TikTokCameraService {
       final previewSize = _controller!.value.previewSize;
       if (previewSize != null) {
         final aspectRatio = previewSize.width / previewSize.height;
-        log('📐 Camera preview size: ${previewSize.width}x${previewSize.height} (aspect ratio: ${aspectRatio.toStringAsFixed(3)})');
-        log('📐 Camera sensor orientation: ${previewSize.width > previewSize.height ? "landscape" : "portrait"}');
+        secureLog('📐 Camera preview size: ${previewSize.width}x${previewSize.height} (aspect ratio: ${aspectRatio.toStringAsFixed(3)})');
+        secureLog('📐 Camera sensor orientation: ${previewSize.width > previewSize.height ? "landscape" : "portrait"}');
       }
 
       // 🔍 FIXED: Set zoom to 1.0 (minimum/normal zoom level)
       // This ensures we get the full sensor field of view without any zoom
       try {
         await _controller!.setZoomLevel(1.0);
-        log('🔍 Zoom set to 1.0 (full field of view)');
+        secureLog('🔍 Zoom set to 1.0 (full field of view)');
       } catch (e) {
-        log('⚠️ Could not set zoom: $e');
+        secureLog('⚠️ Could not set zoom: $e');
       }
 
-      log('✅ Camera initialized successfully');
+      secureLog('✅ Camera initialized successfully');
     } catch (e) {
-      log('❌ Camera initialization failed: $e');
+      secureLog('❌ Camera initialization failed: $e');
       rethrow;
     }
   }
@@ -262,7 +262,7 @@ class TikTokCameraService {
     if (_controller == null || !_controller!.value.isInitialized) return;
 
     try {
-      log('🎥 Applying TikTok-quality settings...');
+      secureLog('🎥 Applying TikTok-quality settings...');
 
       // 🔍 FIXED: Don't lock capture orientation - let camera use full sensor
       // Locking orientation can cause cropping and reduce field of view
@@ -284,9 +284,9 @@ class TikTokCameraService {
       // Zoom is already set to 1.0 in _initializeCamera
       // No need to set it again here
 
-      log('✅ TikTok-quality settings applied');
+      secureLog('✅ TikTok-quality settings applied');
     } catch (e) {
-      log('❌ Error applying TikTok settings: $e');
+      secureLog('❌ Error applying TikTok settings: $e');
     }
   }
 
@@ -295,7 +295,7 @@ class TikTokCameraService {
     if (_cameras == null || _cameras!.length < 2) return;
 
     try {
-      log('🔄 Switching camera...');
+      secureLog('🔄 Switching camera...');
 
       // Dispose current controller
       await _controller?.dispose();
@@ -315,9 +315,9 @@ class TikTokCameraService {
       await _initializeCamera(newCamera);
       await _applyTikTokSettings();
 
-      log('✅ Camera switched to: ${newCamera.lensDirection} with TikTok-quality settings');
+      secureLog('✅ Camera switched to: ${newCamera.lensDirection} with TikTok-quality settings');
     } catch (e) {
-      log('❌ Error switching camera: $e');
+      secureLog('❌ Error switching camera: $e');
     }
   }
 
@@ -330,7 +330,7 @@ class TikTokCameraService {
     }
 
     try {
-      log('🎬 Starting TikTok-quality video recording...');
+      secureLog('🎬 Starting TikTok-quality video recording...');
 
       // Apply recording-specific settings
       await _applyRecordingSettings();
@@ -339,9 +339,9 @@ class TikTokCameraService {
       await _controller!.startVideoRecording();
 
       _isRecording = true;
-      log('✅ Video recording started');
+      secureLog('✅ Video recording started');
     } catch (e) {
-      log('❌ Error starting recording: $e');
+      secureLog('❌ Error starting recording: $e');
       rethrow;
     }
   }
@@ -356,9 +356,9 @@ class TikTokCameraService {
       // Set optimal white balance (simplified)
       // Note: WhiteBalanceMode not available in current camera package
 
-      log('✅ Recording settings applied');
+      secureLog('✅ Recording settings applied');
     } catch (e) {
-      log('⚠️ Error applying recording settings: $e');
+      secureLog('⚠️ Error applying recording settings: $e');
     }
   }
 
@@ -369,7 +369,7 @@ class TikTokCameraService {
     }
 
     try {
-      log('🛑 Stopping video recording...');
+      secureLog('🛑 Stopping video recording...');
 
       final videoFile = await _controller!.stopVideoRecording();
       _isRecording = false;
@@ -377,10 +377,10 @@ class TikTokCameraService {
       // Restore preview settings
       await _restorePreviewSettings();
 
-      log('✅ Video recording stopped: ${videoFile.path}');
+      secureLog('✅ Video recording stopped: ${videoFile.path}');
       return videoFile;
     } catch (e) {
-      log('❌ Error stopping recording: $e');
+      secureLog('❌ Error stopping recording: $e');
       rethrow;
     }
   }
@@ -393,9 +393,9 @@ class TikTokCameraService {
       await _controller!.setExposureMode(ExposureMode.auto);
       // Note: WhiteBalanceMode not available in current camera package
 
-      log('✅ Preview settings restored');
+      secureLog('✅ Preview settings restored');
     } catch (e) {
-      log('⚠️ Error restoring preview settings: $e');
+      secureLog('⚠️ Error restoring preview settings: $e');
     }
   }
 
@@ -406,9 +406,9 @@ class TikTokCameraService {
     try {
       await _controller!.setFocusPoint(point);
       await _controller!.setExposurePoint(point);
-      log('🎯 Focus point set: $point');
+      secureLog('🎯 Focus point set: $point');
     } catch (e) {
-      log('❌ Error setting focus point: $e');
+      secureLog('❌ Error setting focus point: $e');
     }
   }
 
@@ -419,9 +419,9 @@ class TikTokCameraService {
     try {
       final clampedZoom = zoom.clamp(1.0, 4.0);
       await _controller!.setZoomLevel(clampedZoom);
-      log('🔍 Zoom set to: $clampedZoom');
+      secureLog('🔍 Zoom set to: $clampedZoom');
     } catch (e) {
-      log('❌ Error setting zoom: $e');
+      secureLog('❌ Error setting zoom: $e');
     }
   }
 
@@ -476,9 +476,9 @@ class TikTokCameraService {
       _controller = null;
       _isInitialized = false;
 
-      log('✅ TikTokCameraService disposed');
+      secureLog('✅ TikTokCameraService disposed');
     } catch (e) {
-      log('❌ Error disposing camera service: $e');
+      secureLog('❌ Error disposing camera service: $e');
     }
   }
 

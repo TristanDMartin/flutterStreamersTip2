@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../services/forum_service.dart';
+import '../../utils/user_facing_error.dart';
 import '../../services/comments_service.dart';
 import '../../models/comment.dart';
 import '../../models/forum_author.dart';
@@ -129,7 +130,7 @@ class _CreateThreadFromCommentScreenState
       }
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = UserFacingError.message(e);
         _isLoading = false;
       });
     }

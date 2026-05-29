@@ -383,10 +383,10 @@ class DeepLinkingService {
 
   /// Generate deep link for user profile
   String generateUserLink(String userIdOrUsername) {
-    if (userIdOrUsername.length >= 20) {
-      return ProfileLinkService.webProfileUrlById(userIdOrUsername);
-    }
-    return ProfileLinkService.webProfileUrlByUsername(userIdOrUsername);
+    return ProfileLinkService.publicProfileUrl(
+      username: userIdOrUsername.length < 20 ? userIdOrUsername : null,
+      userId: userIdOrUsername.length >= 20 ? userIdOrUsername : null,
+    );
   }
 
   /// Generate deep link for video

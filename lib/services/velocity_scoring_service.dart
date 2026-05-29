@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Velocity-based scoring service - Rewards fast-growing content
 /// Implements engagement velocity, viral coefficient, and comment quality
@@ -22,34 +22,34 @@ class VelocityScoringService {
       final engagementVelocity = await _calculateEngagementVelocity(videoId);
       if (engagementVelocity > 0.5) {
         multiplier *= (1.0 + engagementVelocity); // Up to 2x boost
-        log('⚡ Engagement velocity boost: ${engagementVelocity.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
+        secureLog('⚡ Engagement velocity boost: ${engagementVelocity.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
       }
 
       // 2. Viral coefficient (shares per view ratio)
       final viralCoefficient = await _calculateViralCoefficient(videoId);
       if (viralCoefficient > 0.1) {
         multiplier *= (1.0 + (viralCoefficient * 2)); // Up to 3x boost
-        log('🚀 Viral coefficient boost: ${viralCoefficient.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
+        secureLog('🚀 Viral coefficient boost: ${viralCoefficient.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
       }
 
       // 3. Comment quality score
       final commentQuality = await _calculateCommentQuality(videoId);
       if (commentQuality > 0.6) {
         multiplier *= (1.0 + (commentQuality * 0.5)); // Up to 1.5x boost
-        log('💬 Comment quality boost: ${commentQuality.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
+        secureLog('💬 Comment quality boost: ${commentQuality.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
       }
 
       // 4. Time-to-first-action (faster = better)
       final timeToAction = await _calculateTimeToFirstAction(videoId);
       if (timeToAction > 0.7) {
         multiplier *= 1.3; // Fast initial engagement
-        log('⏱️ Time-to-action boost: ${timeToAction.toStringAsFixed(2)} - 1.3x');
+        secureLog('⏱️ Time-to-action boost: ${timeToAction.toStringAsFixed(2)} - 1.3x');
       }
 
-      log('✅ Total velocity boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog('✅ Total velocity boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
-      log('❌ Error calculating velocity boost: $e');
+      secureLog('❌ Error calculating velocity boost: $e');
       return 1.0;
     }
   }
@@ -85,7 +85,7 @@ class VelocityScoringService {
       // Velocity = (engagement/hour) * engagement_rate
       final velocity = (engagementPerHour / 10) * engagementRate; // Normalize
 
-      log(
+      secureLog(
         '⚡ Engagement velocity: $videoId - '
         '$totalEngagement/$hoursSinceCreation hours = '
         '${velocity.toStringAsFixed(2)}',
@@ -93,7 +93,7 @@ class VelocityScoringService {
 
       return velocity.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error calculating engagement velocity: $e');
+      secureLog('❌ Error calculating engagement velocity: $e');
       return 0.0;
     }
   }
@@ -111,11 +111,11 @@ class VelocityScoringService {
       // Viral coefficient = shares / views
       final coefficient = sharesCount / viewsCount;
 
-      log('🚀 Viral coefficient: $videoId - $sharesCount/$viewsCount = ${coefficient.toStringAsFixed(3)}');
+      secureLog('🚀 Viral coefficient: $videoId - $sharesCount/$viewsCount = ${coefficient.toStringAsFixed(3)}');
 
       return coefficient.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error calculating viral coefficient: $e');
+      secureLog('❌ Error calculating viral coefficient: $e');
       return 0.0;
     }
   }
@@ -152,14 +152,14 @@ class VelocityScoringService {
 
       final avgQuality = totalComments > 0 ? qualityScore / totalComments : 0.0;
 
-      log(
+      secureLog(
         '💬 Comment quality: $videoId - '
         '$totalComments comments, avg: ${avgQuality.toStringAsFixed(2)}',
       );
 
       return avgQuality.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error calculating comment quality: $e');
+      secureLog('❌ Error calculating comment quality: $e');
       return 0.0;
     }
   }
@@ -199,7 +199,7 @@ class VelocityScoringService {
       // < 5 min = 1.0, 30 min = 0.5, > 60 min = 0.0
       final score = (1.0 - (minutesToFirstAction / 60)).clamp(0.0, 1.0);
 
-      log('⏱️ Time-to-first-action: $videoId - $minutesToFirstAction min, score: ${score.toStringAsFixed(2)}');
+      secureLog('⏱️ Time-to-first-action: $videoId - $minutesToFirstAction min, score: ${score.toStringAsFixed(2)}');
 
       return score;
     } catch (e) {
@@ -207,7 +207,7 @@ class VelocityScoringService {
           e.toString().contains('PERMISSION_DENIED')) {
         return 0.0;
       }
-      log('❌ Error calculating time-to-first-action: $e');
+      secureLog('❌ Error calculating time-to-first-action: $e');
       return 0.0;
     }
   }
@@ -226,11 +226,11 @@ class VelocityScoringService {
           (commentQuality * 0.20) +
           (timeToAction * 0.15);
 
-      log('🎯 Overall velocity score for $videoId: ${score.toStringAsFixed(2)}');
+      secureLog('🎯 Overall velocity score for $videoId: ${score.toStringAsFixed(2)}');
 
       return score.clamp(0.0, 1.0);
     } catch (e) {
-      log('❌ Error calculating overall velocity score: $e');
+      secureLog('❌ Error calculating overall velocity score: $e');
       return 0.0;
     }
   }

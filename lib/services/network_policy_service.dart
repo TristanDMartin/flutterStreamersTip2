@@ -1,6 +1,6 @@
-import 'dart:developer';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service for managing network policies based on connectivity, battery, and user preferences
 class NetworkPolicyService {
@@ -37,10 +37,10 @@ class NetworkPolicyService {
       });
       
       _isInitialized = true;
-      log('📡 Network policy service initialized');
-      log('📊 Policy: ${getPolicyInfo()}');
+      secureLog('📡 Network policy service initialized');
+      secureLog('📊 Policy: ${getPolicyInfo()}');
     } catch (e) {
-      log('❌ Error initializing network policy: $e');
+      secureLog('❌ Error initializing network policy: $e');
     }
   }
 
@@ -80,7 +80,7 @@ class NetworkPolicyService {
   /// Handle connectivity changes
   void _onConnectivityChanged(ConnectivityResult result) {
     _currentConnectivity = result;
-    log('📡 Connectivity changed: $result');
+    secureLog('📡 Connectivity changed: $result');
     
     // Update prefetch settings based on connectivity
     _updatePrefetchSettings();
@@ -97,7 +97,7 @@ class NetworkPolicyService {
                            !_isLowPowerMode;
     
     if (oldMediaSegments != _prefetchMediaSegments) {
-      log('🔄 Media segment prefetching: $_prefetchMediaSegments');
+      secureLog('🔄 Media segment prefetching: $_prefetchMediaSegments');
     }
   }
 
@@ -109,9 +109,9 @@ class NetworkPolicyService {
       _prefetchEnabled = prefs.getBool('prefetch_enabled') ?? true;
       _prefetchThreshold = prefs.getDouble('prefetch_threshold') ?? 0.5;
       
-      log('⚙️ Loaded preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
+      secureLog('⚙️ Loaded preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
     } catch (e) {
-      log('❌ Error loading preferences: $e');
+      secureLog('❌ Error loading preferences: $e');
     }
   }
 
@@ -133,9 +133,9 @@ class NetworkPolicyService {
         await prefs.setDouble('prefetch_threshold', prefetchThreshold);
       }
       
-      log('💾 Saved preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
+      secureLog('💾 Saved preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
     } catch (e) {
-      log('❌ Error saving preferences: $e');
+      secureLog('❌ Error saving preferences: $e');
     }
   }
 

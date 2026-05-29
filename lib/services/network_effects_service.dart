@@ -1,6 +1,6 @@
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_count_fields.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Network effects service - Amplifies content from user's network
 /// Implements viral boost from connections and trending in network
@@ -33,14 +33,14 @@ class NetworkEffectsService {
         final boost =
             1.0 + (connectionsLiked.length * 0.1); // +10% per connection
         multiplier *= boost.clamp(1.0, connectionsLikedBoost);
-        log('👥 Connections boost: ${connectionsLiked.length} connections liked - ${boost.toStringAsFixed(2)}x');
+        secureLog('👥 Connections boost: ${connectionsLiked.length} connections liked - ${boost.toStringAsFixed(2)}x');
       }
 
       // 2. Check if trending in network
       final trendingScore = await _getTrendingInNetworkScore(userId, videoId);
       if (trendingScore > 0.5) {
         multiplier *= trendingInNetworkBoost;
-        log('🔥 Trending in network boost - ${trendingInNetworkBoost}x');
+        secureLog('🔥 Trending in network boost - ${trendingInNetworkBoost}x');
       }
 
       // 3. Check similar users engagement
@@ -48,13 +48,13 @@ class NetworkEffectsService {
           await _getSimilarUsersEngagement(userId, videoId);
       if (similarUsersScore > 0.6) {
         multiplier *= similarUsersBoost;
-        log('👤 Similar users boost - ${similarUsersBoost}x');
+        secureLog('👤 Similar users boost - ${similarUsersBoost}x');
       }
 
-      log('✅ Total network boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog('✅ Total network boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
-      log('❌ Error calculating network boost: $e');
+      secureLog('❌ Error calculating network boost: $e');
       return 1.0;
     }
   }
@@ -71,7 +71,7 @@ class NetworkEffectsService {
     // 2. Store aggregated results: network_likes/{userId}/{videoId}
     // 3. Client reads only pre-computed results
     
-    log('⚠️ Connections who liked: Feature disabled (should use deterministic paths or server-side)');
+    secureLog('⚠️ Connections who liked: Feature disabled (should use deterministic paths or server-side)');
     return [];
   }
 
@@ -86,7 +86,7 @@ class NetworkEffectsService {
     // 2. Store results in: trending_network/{userId}/{videoId} or public_trending/{timeWindow}
     // 3. Client reads only pre-computed results
     
-    log('⚠️ Trending in network score: Feature disabled (should be server-side)');
+    secureLog('⚠️ Trending in network score: Feature disabled (should be server-side)');
     return 0.0;
   }
 
@@ -103,7 +103,7 @@ class NetworkEffectsService {
     // 3. Store public aggregates in: public_creator_metrics/{creatorId} or similar
     // 4. Client reads only public aggregates
     
-    log('⚠️ Similar users engagement: Feature disabled (should be server-side)');
+    secureLog('⚠️ Similar users engagement: Feature disabled (should be server-side)');
     return 0.0;
   }
 }

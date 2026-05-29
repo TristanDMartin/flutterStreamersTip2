@@ -6,6 +6,7 @@ import '../services/chat_service.dart';
 import '../services/draft_sharing_service.dart';
 import '../services/follows_service.dart';
 import '../services/user_blocking_service.dart';
+import '../utils/user_facing_error.dart';
 import '../constants/app_colors.dart';
 import 'chat_view_optimized.dart';
 import 'draft_feedback_view.dart';
@@ -133,7 +134,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
     } catch (e) {
       debugPrint('❌ ChoosePersonView: Error loading connections: $e');
       setState(() {
-        _error = 'Failed to load connections: ${e.toString()}';
+        _error = 'Failed to load connections: ${UserFacingError.message(e)}';
         _isLoading = false;
       });
     }

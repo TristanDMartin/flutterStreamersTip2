@@ -7,6 +7,8 @@ import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../services/admin_service.dart';
+import '../utils/sensitive_data_redactor.dart';
+import '../utils/user_facing_error.dart';
 
 class AdminMonitoringPanel extends StatefulWidget {
   const AdminMonitoringPanel({super.key});
@@ -2460,6 +2462,14 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     );
   }
 
+  String _displayDetailValue(String label, String value) {
+    final String lower = label.toLowerCase();
+    if (lower.contains('id') || lower == 'uid') {
+      return SensitiveDataRedactor.maskId(value);
+    }
+    return value;
+  }
+
   Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -2478,7 +2488,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
           ),
           Expanded(
             child: Text(
-              value,
+              _displayDetailValue(label, value),
               style: const TextStyle(color: Colors.white),
             ),
           ),
@@ -2601,7 +2611,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
         setState(() => _isSearching = false);
         _addLog('❌ Search failed: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Search failed: $e')),
+          SnackBar(content: Text(UserFacingError.message(e))),
         );
       }
     }
@@ -2661,7 +2671,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 if (context.mounted) {
                   _addLog('❌ Ban failed: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    SnackBar(content: Text(UserFacingError.message(e))),
                   );
                 }
               }
@@ -2745,7 +2755,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                   if (context.mounted) {
                     _addLog('❌ Suspend failed: $e');
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error: $e')),
+                      SnackBar(content: Text(UserFacingError.message(e))),
                     );
                   }
                 }
@@ -2814,7 +2824,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 if (context.mounted) {
                   _addLog('❌ Delete video failed: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    SnackBar(content: Text(UserFacingError.message(e))),
                   );
                 }
               }
@@ -2883,7 +2893,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 if (context.mounted) {
                   _addLog('❌ Broadcast failed: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    SnackBar(content: Text(UserFacingError.message(e))),
                   );
                 }
               }
@@ -2968,7 +2978,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 if (context.mounted) {
                   _addLog('❌ Notification failed: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    SnackBar(content: Text(UserFacingError.message(e))),
                   );
                 }
               }
@@ -3007,7 +3017,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
       if (mounted) {
         _addLog('❌ Export failed: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
+          SnackBar(content: Text(UserFacingError.message(e))),
         );
       }
     }
@@ -3029,7 +3039,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
       if (mounted) {
         _addLog('❌ Maintenance mode toggle failed: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(UserFacingError.message(e))),
         );
       }
     }
@@ -3051,7 +3061,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
       if (mounted) {
         _addLog('❌ Feature flag toggle failed: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(UserFacingError.message(e))),
         );
       }
     }
@@ -3098,7 +3108,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 if (context.mounted) {
                   _addLog('❌ Add feature flag failed: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    SnackBar(content: Text(UserFacingError.message(e))),
                   );
                 }
               }

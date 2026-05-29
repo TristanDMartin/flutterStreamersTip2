@@ -3,10 +3,10 @@ import 'creator_stats_sync_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:math' as math;
 import 'engagement_analytics_service.dart';
 import 'event_trigger_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Enhanced Like Service with TikTok-style persistence and analytics
 ///
@@ -47,14 +47,14 @@ class EnhancedLikeService {
     try {
       // Rate limiting check
       if (_isRateLimited(videoId)) {
-        log('⚠️ Like operation rate limited for video: $videoId');
+        secureLog('⚠️ Like operation rate limited for video: $videoId');
         return LikeResult.rateLimited;
       }
 
       final currentUser = _auth.currentUser;
       final isCurrentlyLiked = await isVideoLiked(videoId);
 
-      log('💖 Toggling like for video: $videoId, currently liked: $isCurrentlyLiked, source: $source');
+      secureLog('💖 Toggling like for video: $videoId, currently liked: $isCurrentlyLiked, source: $source');
 
       // Update rate limiting
       _lastLikeTimes[videoId] = DateTime.now();
@@ -65,7 +65,7 @@ class EnhancedLikeService {
         return await _likeVideo(currentUser?.uid, videoId, source);
       }
     } catch (e) {
-      log('❌ Error toggling like: $e');
+      secureLog('❌ Error toggling like: $e');
       return LikeResult.error;
     }
   }
@@ -75,14 +75,14 @@ class EnhancedLikeService {
     try {
       // Rate limiting check
       if (_isRateLimited(videoId)) {
-        log('⚠️ Like operation rate limited for video: $videoId');
+        secureLog('⚠️ Like operation rate limited for video: $videoId');
         return LikeResult.rateLimited;
       }
 
       final currentUser = _auth.currentUser;
       final isCurrentlyLiked = await isVideoLiked(videoId);
 
-      log('💖 Double-tap like for video: $videoId, currently liked: $isCurrentlyLiked');
+      secureLog('💖 Double-tap like for video: $videoId, currently liked: $isCurrentlyLiked');
 
       // Double-tap never unlikes - only likes if not already liked
       if (!isCurrentlyLiked) {
@@ -90,11 +90,11 @@ class EnhancedLikeService {
         _lastLikeTimes[videoId] = DateTime.now();
         return await _likeVideo(currentUser?.uid, videoId, 'double-tap');
       } else {
-        log('💖 Video already liked, double-tap does nothing');
+        secureLog('💖 Video already liked, double-tap does nothing');
         return LikeResult.alreadyLiked;
       }
     } catch (e) {
-      log('❌ Error in double-tap like: $e');
+      secureLog('❌ Error in double-tap like: $e');
       return LikeResult.error;
     }
   }
@@ -120,13 +120,13 @@ class EnhancedLikeService {
       // 3. Background Firebase sync
       if (currentUser != null) {
         _performFirebaseLike(videoId, currentUser).catchError((e) {
-          log('❌ Firebase like failed, keeping local state: $e');
+          secureLog('❌ Firebase like failed, keeping local state: $e');
         });
       }
 
       return LikeResult.success;
     } catch (e) {
-      log('❌ Error liking video: $e');
+      secureLog('❌ Error liking video: $e');
       return LikeResult.error;
     }
   }
@@ -144,13 +144,13 @@ class EnhancedLikeService {
       // 3. Background Firebase sync
       if (currentUser != null) {
         _performFirebaseUnlike(videoId, currentUser).catchError((e) {
-          log('❌ Firebase unlike failed, keeping local state: $e');
+          secureLog('❌ Firebase unlike failed, keeping local state: $e');
         });
       }
 
       return LikeResult.success;
     } catch (e) {
-      log('❌ Error unliking video: $e');
+      secureLog('❌ Error unliking video: $e');
       return LikeResult.error;
     }
   }
@@ -179,9 +179,9 @@ class EnhancedLikeService {
       timestamps[videoId] = DateTime.now().millisecondsSinceEpoch;
       await saveLikeTimestamps(timestamps);
 
-      log('✅ Local like state updated: $videoId -> $isLiked');
+      secureLog('✅ Local like state updated: $videoId -> $isLiked');
     } catch (e) {
-      log('❌ Error updating local like state: $e');
+      secureLog('❌ Error updating local like state: $e');
     }
   }
 
@@ -218,9 +218,9 @@ class EnhancedLikeService {
       // Trigger like event for notifications
       await _triggerLikeEvent(videoId, userId);
 
-      log('✅ Firebase like operation completed: $videoId');
+      secureLog('✅ Firebase like operation completed: $videoId');
     } catch (e) {
-      log('❌ Firebase like operation failed: $e');
+      secureLog('❌ Firebase like operation failed: $e');
       rethrow;
     }
   }
@@ -254,9 +254,9 @@ class EnhancedLikeService {
       // Trigger unlike event for notifications
       await _triggerUnlikeEvent(videoId, userId);
 
-      log('✅ Firebase unlike operation completed: $videoId');
+      secureLog('✅ Firebase unlike operation completed: $videoId');
     } catch (e) {
-      log('❌ Firebase unlike operation failed: $e');
+      secureLog('❌ Firebase unlike operation failed: $e');
       rethrow;
     }
   }
@@ -267,10 +267,10 @@ class EnhancedLikeService {
       // First check local storage for immediate response
       final likedVideos = await getLikedVideos();
       final isLiked = likedVideos.contains(videoId);
-      log('🔍 EnhancedLikeService: isVideoLiked($videoId) - likedVideos count: ${likedVideos.length}, isLiked: $isLiked');
+      secureLog('🔍 EnhancedLikeService: isVideoLiked($videoId) - likedVideos count: ${likedVideos.length}, isLiked: $isLiked');
       return isLiked;
     } catch (e) {
-      log('❌ Error checking if video is liked: $e');
+      secureLog('❌ Error checking if video is liked: $e');
       return false;
     }
   }
@@ -282,7 +282,7 @@ class EnhancedLikeService {
       final likeCounts = await getLikeCounts();
       return likeCounts[videoId] ?? 0;
     } catch (e) {
-      log('❌ Error getting like count: $e');
+      secureLog('❌ Error getting like count: $e');
       return 0;
     }
   }
@@ -292,18 +292,18 @@ class EnhancedLikeService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final likedVideosJson = prefs.getString(_likedVideosKey);
-      log('🔍 EnhancedLikeService: getLikedVideos() - likedVideosJson: $likedVideosJson');
+      secureLog('🔍 EnhancedLikeService: getLikedVideos() - likedVideosJson: $likedVideosJson');
 
       if (likedVideosJson != null) {
         final List<dynamic> likedVideosList = json.decode(likedVideosJson);
         final likedVideos = likedVideosList.cast<String>().toSet();
-        log('🔍 EnhancedLikeService: getLikedVideos() - parsed likedVideos: $likedVideos');
+        secureLog('🔍 EnhancedLikeService: getLikedVideos() - parsed likedVideos: $likedVideos');
         return likedVideos;
       }
-      log('🔍 EnhancedLikeService: getLikedVideos() - no cached data, returning empty set');
+      secureLog('🔍 EnhancedLikeService: getLikedVideos() - no cached data, returning empty set');
       return <String>{};
     } catch (e) {
-      log('❌ Error getting liked videos: $e');
+      secureLog('❌ Error getting liked videos: $e');
       return <String>{};
     }
   }
@@ -315,7 +315,7 @@ class EnhancedLikeService {
       final likedVideosJson = json.encode(likedVideos.toList());
       await prefs.setString(_likedVideosKey, likedVideosJson);
     } catch (e) {
-      log('❌ Error saving liked videos: $e');
+      secureLog('❌ Error saving liked videos: $e');
     }
   }
 
@@ -330,7 +330,7 @@ class EnhancedLikeService {
       }
       return <String, int>{};
     } catch (e) {
-      log('❌ Error getting like counts: $e');
+      secureLog('❌ Error getting like counts: $e');
       return <String, int>{};
     }
   }
@@ -342,7 +342,7 @@ class EnhancedLikeService {
       final likeCountsJson = json.encode(likeCounts);
       await prefs.setString(_likeCountsKey, likeCountsJson);
     } catch (e) {
-      log('❌ Error saving like counts: $e');
+      secureLog('❌ Error saving like counts: $e');
     }
   }
 
@@ -357,7 +357,7 @@ class EnhancedLikeService {
       }
       return <String, int>{};
     } catch (e) {
-      log('❌ Error getting like timestamps: $e');
+      secureLog('❌ Error getting like timestamps: $e');
       return <String, int>{};
     }
   }
@@ -369,7 +369,7 @@ class EnhancedLikeService {
       final timestampsJson = json.encode(timestamps);
       await prefs.setString(_likeTimestampsKey, timestampsJson);
     } catch (e) {
-      log('❌ Error saving like timestamps: $e');
+      secureLog('❌ Error saving like timestamps: $e');
     }
   }
 
@@ -387,9 +387,9 @@ class EnhancedLikeService {
         },
       );
 
-      log('📊 Like engagement tracked: $videoId, liked: $isLiked, source: $source');
+      secureLog('📊 Like engagement tracked: $videoId, liked: $isLiked, source: $source');
     } catch (e) {
-      log('❌ Error tracking like engagement: $e');
+      secureLog('❌ Error tracking like engagement: $e');
     }
   }
 
@@ -397,14 +397,14 @@ class EnhancedLikeService {
   Future<void> _triggerLikeEvent(String videoId, String likerId) async {
     try {
       if (_eventTriggerService == null) {
-        log('⚠️ EventTriggerService not set - skipping like notification');
+        secureLog('⚠️ EventTriggerService not set - skipping like notification');
         return;
       }
 
       // Get video owner ID
       final videoDoc = await _firestore.collection('videos').doc(videoId).get();
       if (!videoDoc.exists) {
-        log('⚠️ Video document not found: $videoId');
+        secureLog('⚠️ Video document not found: $videoId');
         return;
       }
 
@@ -418,10 +418,10 @@ class EnhancedLikeService {
           videoOwnerId: videoOwnerId,
           postThumbnailUrl: videoData['thumbnailUrl'] as String?,
         );
-        log('✅ Like event triggered: $likerId -> $videoOwnerId for video $videoId');
+        secureLog('✅ Like event triggered: $likerId -> $videoOwnerId for video $videoId');
       }
     } catch (e) {
-      log('❌ Error triggering like event: $e');
+      secureLog('❌ Error triggering like event: $e');
     }
   }
 
@@ -429,14 +429,14 @@ class EnhancedLikeService {
   Future<void> _triggerUnlikeEvent(String videoId, String likerId) async {
     try {
       if (_eventTriggerService == null) {
-        log('⚠️ EventTriggerService not set - skipping unlike notification');
+        secureLog('⚠️ EventTriggerService not set - skipping unlike notification');
         return;
       }
 
       // Get video owner ID
       final videoDoc = await _firestore.collection('videos').doc(videoId).get();
       if (!videoDoc.exists) {
-        log('⚠️ Video document not found: $videoId');
+        secureLog('⚠️ Video document not found: $videoId');
         return;
       }
 
@@ -449,10 +449,10 @@ class EnhancedLikeService {
           videoId: videoId,
           videoOwnerId: videoOwnerId,
         );
-        log('✅ Unlike event triggered: $likerId -> $videoOwnerId for video $videoId');
+        secureLog('✅ Unlike event triggered: $likerId -> $videoOwnerId for video $videoId');
       }
     } catch (e) {
-      log('❌ Error triggering unlike event: $e');
+      secureLog('❌ Error triggering unlike event: $e');
     }
   }
 
@@ -462,7 +462,7 @@ class EnhancedLikeService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
-      log('🔄 Syncing like state with server...');
+      secureLog('🔄 Syncing like state with server...');
 
       // Get user's liked videos from server
       final likedVideosSnapshot = await _firestore
@@ -477,9 +477,9 @@ class EnhancedLikeService {
       // Update local storage with server data
       await saveLikedVideos(serverLikedVideos);
 
-      log('✅ Like state synced with server: ${serverLikedVideos.length} liked videos');
+      secureLog('✅ Like state synced with server: ${serverLikedVideos.length} liked videos');
     } catch (e) {
-      log('❌ Error syncing with server: $e');
+      secureLog('❌ Error syncing with server: $e');
     }
   }
 
@@ -493,9 +493,9 @@ class EnhancedLikeService {
 
       _lastLikeTimes.clear();
 
-      log('✅ Local like data cleared');
+      secureLog('✅ Local like data cleared');
     } catch (e) {
-      log('❌ Error clearing local data: $e');
+      secureLog('❌ Error clearing local data: $e');
     }
   }
 }

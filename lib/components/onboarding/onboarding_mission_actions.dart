@@ -1,5 +1,5 @@
-import 'dart:developer';
 import 'dart:async';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
@@ -31,7 +31,7 @@ class OnboardingMissionActions {
       }
       return result;
     } catch (error) {
-      log('Onboarding mission completion failed: $missionId $error');
+      secureLog('Onboarding mission completion failed: $missionId $error');
       return null;
     }
   }

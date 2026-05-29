@@ -1,5 +1,5 @@
-import 'dart:developer';
 import 'package:video_player/video_player.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// AudioEnhancementService - TikTok-style audio processing
 ///
@@ -29,14 +29,14 @@ class AudioEnhancementService {
   /// Initialize the audio enhancement service
   Future<void> initialize() async {
     try {
-      log('🔊 AudioEnhancementService: Initializing TikTok-style audio processing');
+      secureLog('🔊 AudioEnhancementService: Initializing TikTok-style audio processing');
 
       // Request audio focus for media priority
       await _requestAudioFocus();
 
-      log('✅ AudioEnhancementService: Initialized successfully');
+      secureLog('✅ AudioEnhancementService: Initialized successfully');
     } catch (e) {
-      log('❌ AudioEnhancementService: Error during initialization: $e');
+      secureLog('❌ AudioEnhancementService: Error during initialization: $e');
     }
   }
 
@@ -45,9 +45,9 @@ class AudioEnhancementService {
     try {
       // Simulate audio focus request
       _hasAudioFocus = true;
-      log('🔊 AudioEnhancementService: Audio focus requested and granted');
+      secureLog('🔊 AudioEnhancementService: Audio focus requested and granted');
     } catch (e) {
-      log('❌ AudioEnhancementService: Error requesting audio focus: $e');
+      secureLog('❌ AudioEnhancementService: Error requesting audio focus: $e');
     }
   }
 
@@ -56,10 +56,10 @@ class AudioEnhancementService {
     try {
       if (_hasAudioFocus) {
         _hasAudioFocus = false;
-        log('🔊 AudioEnhancementService: Audio focus released');
+        secureLog('🔊 AudioEnhancementService: Audio focus released');
       }
     } catch (e) {
-      log('❌ AudioEnhancementService: Error releasing audio focus: $e');
+      secureLog('❌ AudioEnhancementService: Error releasing audio focus: $e');
     }
   }
 
@@ -69,7 +69,7 @@ class AudioEnhancementService {
     try {
       // 🔥 FIX: Validate controller is safe before accessing
       if (!_isControllerSafe(player)) {
-        log('⚠️ AudioEnhancementService: Controller is not safe, skipping enhancement');
+        secureLog('⚠️ AudioEnhancementService: Controller is not safe, skipping enhancement');
         return;
       }
 
@@ -84,9 +84,9 @@ class AudioEnhancementService {
       // Configure player for optimal audio quality
       await _configurePlayerForEnhancement(player);
 
-      log('🔊 AudioEnhancementService: Video player enhanced with TikTok-style audio');
+      secureLog('🔊 AudioEnhancementService: Video player enhanced with TikTok-style audio');
     } catch (e) {
-      log('❌ AudioEnhancementService: Error enhancing video player: $e');
+      secureLog('❌ AudioEnhancementService: Error enhancing video player: $e');
       // Don't rethrow - just log the error
     }
   }
@@ -98,7 +98,7 @@ class AudioEnhancementService {
       final value = player.value;
       return value.isInitialized && !value.hasError;
     } catch (e) {
-      log('⚠️ AudioEnhancementService: Controller is disposed or invalid: $e');
+      secureLog('⚠️ AudioEnhancementService: Controller is disposed or invalid: $e');
       return false;
     }
   }
@@ -109,7 +109,7 @@ class AudioEnhancementService {
     try {
       // 🔥 FIX: Validate controller is safe before accessing
       if (!_isControllerSafe(player)) {
-        log('⚠️ AudioEnhancementService: Controller not safe for gain boost, skipping');
+        secureLog('⚠️ AudioEnhancementService: Controller not safe for gain boost, skipping');
         return;
       }
 
@@ -118,7 +118,7 @@ class AudioEnhancementService {
       try {
         currentVolume = player.value.volume;
       } catch (e) {
-        log('⚠️ AudioEnhancementService: Error accessing player volume: $e');
+        secureLog('⚠️ AudioEnhancementService: Error accessing player volume: $e');
         return; // Exit early if we can't access volume
       }
 
@@ -127,13 +127,13 @@ class AudioEnhancementService {
       // Apply the enhanced volume
       try {
         await player.setVolume(targetVolume);
-        log('🔊 AudioEnhancementService: Applied gain boost - Original: ${currentVolume.toStringAsFixed(2)}, Enhanced: ${targetVolume.toStringAsFixed(2)}');
+        secureLog('🔊 AudioEnhancementService: Applied gain boost - Original: ${currentVolume.toStringAsFixed(2)}, Enhanced: ${targetVolume.toStringAsFixed(2)}');
       } catch (e) {
-        log('⚠️ AudioEnhancementService: Error setting volume: $e');
+        secureLog('⚠️ AudioEnhancementService: Error setting volume: $e');
         // Don't rethrow - just log
       }
     } catch (e) {
-      log('❌ AudioEnhancementService: Error applying gain boost: $e');
+      secureLog('❌ AudioEnhancementService: Error applying gain boost: $e');
       // Don't rethrow - just log
     }
   }
@@ -164,9 +164,9 @@ class AudioEnhancementService {
       // The VideoPlayerController is already configured for media playback
       // We just ensure it's set up for the best audio experience
 
-      log('🔊 AudioEnhancementService: Player configured for optimal audio quality');
+      secureLog('🔊 AudioEnhancementService: Player configured for optimal audio quality');
     } catch (e) {
-      log('❌ AudioEnhancementService: Error configuring player: $e');
+      secureLog('❌ AudioEnhancementService: Error configuring player: $e');
     }
   }
 
@@ -176,10 +176,10 @@ class AudioEnhancementService {
     try {
       // TODO: Implement actual loudness analysis using audio processing library
       // For now, return a default normalization factor
-      log('🔊 AudioEnhancementService: Loudness normalization (placeholder)');
+      secureLog('🔊 AudioEnhancementService: Loudness normalization (placeholder)');
       return 1.0; // No normalization applied yet
     } catch (e) {
-      log('❌ AudioEnhancementService: Error in loudness normalization: $e');
+      secureLog('❌ AudioEnhancementService: Error in loudness normalization: $e');
       return 1.0;
     }
   }
@@ -200,9 +200,9 @@ class AudioEnhancementService {
     try {
       await releaseAudioFocus();
       _hasAudioFocus = false;
-      log('🔊 AudioEnhancementService: Reset completed');
+      secureLog('🔊 AudioEnhancementService: Reset completed');
     } catch (e) {
-      log('❌ AudioEnhancementService: Error during reset: $e');
+      secureLog('❌ AudioEnhancementService: Error during reset: $e');
     }
   }
 }

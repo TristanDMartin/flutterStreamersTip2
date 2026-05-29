@@ -1,6 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'analytics_service.dart';
+import '../utils/sensitive_data_redactor.dart';
 import 'network_error_handler.dart';
 
 class ErrorHandlerService {
@@ -16,15 +18,18 @@ class ErrorHandlerService {
         error.code == 'permission-denied';
   }
 
-  // Initialize error handling
+  // Initialize error handling (chains with Crashlytics handlers from main).
   void initialize() {
-    // Handle Flutter framework errors
+    final FlutterExceptionHandler? priorFlutter = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
+      priorFlutter?.call(details);
       _handleFlutterError(details);
     };
 
-    // Handle platform errors
-    PlatformDispatcher.instance.onError = (error, stack) {
+    final bool Function(Object, StackTrace)? priorPlatform =
+        PlatformDispatcher.instance.onError;
+    PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+      priorPlatform?.call(error, stack);
       _handlePlatformError(error, stack);
       return true;
     };
@@ -332,13 +337,13 @@ class ErrorHandlerService {
   // ✅ FIX: Safe error tracking that only works if Firebase is initialized
   void _safeTrackError(String error, StackTrace? stackTrace,
       {bool fatal = false}) {
-    try {
-      // For now, just log the error without Firebase tracking during startup
-      // This prevents the Firebase initialization error
-      debugPrint(
-          '📊 Error logged (Firebase tracking disabled during startup): $error');
-    } catch (e) {
-      debugPrint('📊 Failed to log error: $e');
+    final String safeError = kReleaseMode
+        ? SensitiveDataRedactor.redact(error)
+        : error;
+    if (!AnalyticsService.isReady) {
+      debugPrint('📊 Error (Crashlytics not ready): $safeError');
+      return;
     }
+    AnalyticsService.instance.trackError(safeError, stackTrace, fatal: fatal);
   }
 }

@@ -168,8 +168,11 @@ class ProfileQRCodeDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Generate profile share URL
-    final profileUrl =
-        shareUrl ?? ProfileLinkService.webProfileUrlById(userId);
+    final profileUrl = shareUrl ??
+        ProfileLinkService.publicProfileUrl(
+          username: username,
+          userId: userId,
+        );
 
     return Dialog(
       backgroundColor: Colors.transparent,

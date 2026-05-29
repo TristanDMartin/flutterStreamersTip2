@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/home_video.dart';
 import 'creator_growth_service.dart';
@@ -8,6 +7,7 @@ import 'content_diversity_service.dart';
 import 'realtime_trending_service.dart';
 import 'velocity_scoring_service.dart';
 import 'dart:math' as math;
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Enhanced Algorithm Service - Perfect Feed Algorithm
 /// Combines ML recommendations, negative signals, watch history, and real-time learning
@@ -39,7 +39,7 @@ class EnhancedAlgorithmService {
     String? userLocation,
     int limit = 20,
   }) async {
-    log('🚀 Enhanced Algorithm: Generating perfect feed for $userId');
+    secureLog('🚀 Enhanced Algorithm: Generating perfect feed for $userId');
 
     // 1. Load user preferences and watch history (with caching)
     final userCache = await _getUserCache(userId);
@@ -52,7 +52,7 @@ class EnhancedAlgorithmService {
     );
 
     if (filteredVideos.isEmpty) {
-      log('⚠️ Enhanced Algorithm: No videos after filtering, returning original candidates');
+      secureLog('⚠️ Enhanced Algorithm: No videos after filtering, returning original candidates');
       // Return first candidates if filtering removed everything
       final fallback = candidateVideos.take(limit).toList();
       return fallback;
@@ -81,7 +81,7 @@ class EnhancedAlgorithmService {
       limit,
     );
 
-    log('✅ Enhanced Algorithm: Perfect feed generated - ${finalScored.length} videos');
+    secureLog('✅ Enhanced Algorithm: Perfect feed generated - ${finalScored.length} videos');
 
     return finalScored.take(limit).map((sv) => sv.video).toList();
   }
@@ -103,7 +103,7 @@ class EnhancedAlgorithmService {
       // Skip if user skipped this video multiple times
       final skipCount = cache.skippedVideos[video.id] ?? 0;
       if (skipCount >= 2) {
-        log('⏭️ Filtered out ${video.id} - skipped $skipCount times');
+        secureLog('⏭️ Filtered out ${video.id} - skipped $skipCount times');
         continue;
       }
 
@@ -120,7 +120,7 @@ class EnhancedAlgorithmService {
       filtered.add(video);
     }
 
-    log('🎯 Enhanced Algorithm: Filtered ${videos.length} → ${filtered.length} videos');
+    secureLog('🎯 Enhanced Algorithm: Filtered ${videos.length} → ${filtered.length} videos');
     return filtered;
   }
 
@@ -131,7 +131,7 @@ class EnhancedAlgorithmService {
     String? userLocation,
     UserPreferenceCache cache,
   ) async {
-    log('🎯 Enhanced Algorithm: Scoring ${videos.length} videos');
+    secureLog('🎯 Enhanced Algorithm: Scoring ${videos.length} videos');
 
     // Use parallel processing for better performance
     final scoredVideos = await Future.wait(
@@ -257,7 +257,7 @@ class EnhancedAlgorithmService {
         ),
       );
     } catch (e) {
-      log('❌ Enhanced Algorithm: Error scoring video ${video.id}: $e');
+      secureLog('❌ Enhanced Algorithm: Error scoring video ${video.id}: $e');
       return EnhancedScoredVideo(
         video: video,
         score: video.mlScore,
@@ -342,7 +342,7 @@ class EnhancedAlgorithmService {
 
       return mlScore.clamp(0.0, 1.0);
     } catch (e) {
-      log('⚠️ Enhanced Algorithm: Error calculating ML score, using default: $e');
+      secureLog('⚠️ Enhanced Algorithm: Error calculating ML score, using default: $e');
       return video.mlScore > 0 ? video.mlScore : 0.5;
     }
   }
@@ -497,7 +497,7 @@ class EnhancedAlgorithmService {
 
     // Adjust for cold start users (users with < 10 watched videos)
     if (cache.totalVideosWatched < 10) {
-      log('🌱 Enhanced Algorithm: Cold start user - boosting trending content');
+      secureLog('🌱 Enhanced Algorithm: Cold start user - boosting trending content');
       // Boost trending/velocity for new users
       for (int i = 0; i < finalScored.length; i++) {
         final sv = finalScored[i];
@@ -666,7 +666,7 @@ class EnhancedAlgorithmService {
           e.toString().contains('PERMISSION_DENIED')) {
         return UserPreferenceCache.empty(userId);
       }
-      log('❌ Enhanced Algorithm: Error loading user cache: $e');
+      secureLog('❌ Enhanced Algorithm: Error loading user cache: $e');
       return UserPreferenceCache.empty(userId);
     }
   }
@@ -692,9 +692,9 @@ class EnhancedAlgorithmService {
       _userCaches.remove(userId);
       _lastCacheUpdate.remove(userId);
 
-      log('⏭️ Enhanced Algorithm: Tracked skip for video $videoId (watched ${watchPercentage.toStringAsFixed(1)}%)');
+      secureLog('⏭️ Enhanced Algorithm: Tracked skip for video $videoId (watched ${watchPercentage.toStringAsFixed(1)}%)');
     } catch (e) {
-      log('❌ Enhanced Algorithm: Error tracking skip: $e');
+      secureLog('❌ Enhanced Algorithm: Error tracking skip: $e');
     }
   }
 
@@ -719,9 +719,9 @@ class EnhancedAlgorithmService {
       _userCaches.remove(userId);
       _lastCacheUpdate.remove(userId);
 
-      log('👁️ Enhanced Algorithm: Tracked watch for video $videoId (${watchPercentage.toStringAsFixed(1)}%)');
+      secureLog('👁️ Enhanced Algorithm: Tracked watch for video $videoId (${watchPercentage.toStringAsFixed(1)}%)');
     } catch (e) {
-      log('❌ Enhanced Algorithm: Error tracking watch: $e');
+      secureLog('❌ Enhanced Algorithm: Error tracking watch: $e');
     }
   }
 
@@ -768,9 +768,9 @@ class EnhancedAlgorithmService {
       _userCaches.remove(userId);
       _lastCacheUpdate.remove(userId);
 
-      log('🎯 Enhanced Algorithm: Updated preferences for user $userId');
+      secureLog('🎯 Enhanced Algorithm: Updated preferences for user $userId');
     } catch (e) {
-      log('❌ Enhanced Algorithm: Error updating preferences: $e');
+      secureLog('❌ Enhanced Algorithm: Error updating preferences: $e');
     }
   }
 }

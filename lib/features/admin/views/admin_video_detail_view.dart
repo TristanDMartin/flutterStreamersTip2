@@ -2,6 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../utils/sensitive_data_redactor.dart';
+import '../../../utils/user_facing_error.dart';
 import '../admin_backend_service.dart';
 import '../widgets/admin_action_confirm_sheet.dart';
 
@@ -71,7 +73,9 @@ class AdminVideoDetailView extends StatelessWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('$e')),
+                          SnackBar(
+                            content: Text(UserFacingError.message(e)),
+                          ),
                         );
                       }
                     }
@@ -89,7 +93,9 @@ class AdminVideoDetailView extends StatelessWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('$e')),
+                          SnackBar(
+                            content: Text(UserFacingError.message(e)),
+                          ),
                         );
                       }
                     }

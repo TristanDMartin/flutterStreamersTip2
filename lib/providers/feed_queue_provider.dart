@@ -1,8 +1,8 @@
-import 'dart:developer';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/home_video.dart';
 import '../services/feed_bootstrap_service.dart';
 import '../services/video_prefetch_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Provider for the feed queue state
 final feedQueueProvider = StateNotifierProvider<FeedQueue, FeedState>((ref) {
@@ -25,7 +25,7 @@ class FeedQueue extends StateNotifier<FeedState> {
     state = state.copyWith(isBootstrapping: true);
     
     try {
-      log('🚀 Starting feed bootstrap...');
+      secureLog('🚀 Starting feed bootstrap...');
       final startTime = DateTime.now();
       
       // Bootstrap the feed
@@ -48,10 +48,10 @@ class FeedQueue extends StateNotifier<FeedState> {
       }
       
       final totalTime = DateTime.now().difference(startTime).inMilliseconds;
-      log('✅ Feed bootstrap completed in ${totalTime}ms (warm start: ${result.isWarmStart})');
+      secureLog('✅ Feed bootstrap completed in ${totalTime}ms (warm start: ${result.isWarmStart})');
       
     } catch (e) {
-      log('❌ Feed bootstrap failed: $e');
+      secureLog('❌ Feed bootstrap failed: $e');
       state = state.copyWith(
         isBootstrapping: false,
         hasError: true,
@@ -67,7 +67,7 @@ class FeedQueue extends StateNotifier<FeedState> {
     final oldIndex = state.currentIndex;
     state = state.copyWith(currentIndex: newIndex);
     
-    log('📱 Index changed: $oldIndex -> $newIndex');
+    secureLog('📱 Index changed: $oldIndex -> $newIndex');
     
     // Prefetch window around new index
     _prefetchWindow(newIndex);
@@ -96,7 +96,7 @@ class FeedQueue extends StateNotifier<FeedState> {
       );
       
     } catch (e) {
-      log('❌ Error prefetching window: $e');
+      secureLog('❌ Error prefetching window: $e');
     }
   }
 
@@ -126,13 +126,13 @@ class FeedQueue extends StateNotifier<FeedState> {
       // Load more logic - fetch next batch of videos using cursor
       // This would typically call a service to get more videos
       
-      log('📥 Loading more videos...');
+      secureLog('📥 Loading more videos...');
       await Future.delayed(const Duration(milliseconds: 500)); // Simulate network
       
       state = state.copyWith(isLoadingMore: false);
       
     } catch (e) {
-      log('❌ Error loading more videos: $e');
+      secureLog('❌ Error loading more videos: $e');
       state = state.copyWith(isLoadingMore: false);
     }
   }
@@ -144,7 +144,7 @@ class FeedQueue extends StateNotifier<FeedState> {
     state = state.copyWith(isRefreshing: true);
     
     try {
-      log('🔄 Refreshing feed...');
+      secureLog('🔄 Refreshing feed...');
       
       // Clear current state
       state = state.copyWith(
@@ -160,7 +160,7 @@ class FeedQueue extends StateNotifier<FeedState> {
       state = state.copyWith(isRefreshing: false);
       
     } catch (e) {
-      log('❌ Error refreshing feed: $e');
+      secureLog('❌ Error refreshing feed: $e');
       state = state.copyWith(isRefreshing: false);
     }
   }

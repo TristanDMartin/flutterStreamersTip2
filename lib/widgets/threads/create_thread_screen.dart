@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../services/forum_service.dart';
+import '../../utils/user_facing_error.dart';
 import '../../models/forum_author.dart';
 import '../../models/forum_category.dart';
 import '../../constants/app_colors.dart';
@@ -8,7 +9,16 @@ import '../../core/theme/support_shell_style.dart';
 
 /// Screen for creating a new thread
 class CreateThreadScreen extends StatefulWidget {
-  const CreateThreadScreen({super.key});
+  const CreateThreadScreen({
+    super.key,
+    this.attachedVideoId,
+    this.initialTitle,
+    this.initialContent,
+  });
+
+  final String? attachedVideoId;
+  final String? initialTitle;
+  final String? initialContent;
 
   @override
   State<CreateThreadScreen> createState() => _CreateThreadScreenState();
@@ -26,6 +36,8 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
   @override
   void initState() {
     super.initState();
+    _titleController.text = widget.initialTitle ?? '';
+    _contentController.text = widget.initialContent ?? '';
     _loadCategories();
   }
 
@@ -85,8 +97,11 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
         title: title,
         content: content,
         categoryId: _selectedCategory!,
-        tags: [],
+        tags: widget.attachedVideoId == null
+            ? <String>[]
+            : <String>['video-discussion'],
         author: author,
+        linkedVideoId: widget.attachedVideoId,
       );
 
       if (mounted) {
@@ -94,7 +109,7 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = UserFacingError.message(e);
         _isLoading = false;
       });
     }

@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
+import '../utils/sensitive_data_redactor.dart';
+
 class StorageDiagnosticService {
   static final FirebaseStorage _storage = FirebaseStorage.instance;
   static final firebase_auth.FirebaseAuth _auth =
@@ -23,7 +25,9 @@ class StorageDiagnosticService {
       // Test 2: Check authentication
       final user = _auth.currentUser;
       results['user_authenticated'] = user != null;
-      results['user_id'] = user?.uid;
+      if (kDebugMode && user != null) {
+        results['user_id'] = user.uid;
+      }
       if (user != null) {
         debugPrint('✅ User authenticated: ${user.uid}');
       } else {
@@ -123,7 +127,10 @@ class StorageDiagnosticService {
         // This is actually expected for the test file
         recommendations.add('• Storage access is working correctly.');
       } else {
-        recommendations.add('• Storage access failed: $error');
+        recommendations.add(
+          '• Storage access failed: '
+          '${SensitiveDataRedactor.redact(error)}',
+        );
       }
     }
 
@@ -136,7 +143,10 @@ class StorageDiagnosticService {
         recommendations.add(
             '• Storage quota exceeded. Please check your Firebase project limits.');
       } else {
-        recommendations.add('• Storage write failed: $error');
+        recommendations.add(
+          '• Storage write failed: '
+          '${SensitiveDataRedactor.redact(error)}',
+        );
       }
     }
 

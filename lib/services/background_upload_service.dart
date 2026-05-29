@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/upload_job.dart';
 import 'upload_job_storage_service.dart';
 import 'video_upload_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 class BackgroundUploadService {
   static final BackgroundUploadService _instance =
@@ -22,11 +22,11 @@ class BackgroundUploadService {
   Future<void> startUpload(String localId) async {
     final job = await _jobStorage.loadJob(localId);
     if (job == null) {
-      log('❌ Upload job not found: $localId');
+      secureLog('❌ Upload job not found: $localId');
       return;
     }
     if (job.state != UploadJobState.queued) {
-      log('❌ Job is not in queued state: ${job.state}');
+      secureLog('❌ Job is not in queued state: ${job.state}');
       return;
     }
     try {
@@ -35,7 +35,7 @@ class BackgroundUploadService {
       _resultControllers[localId] = StreamController<UploadResult>.broadcast();
       await _performUpload(job);
     } catch (e) {
-      log('❌ Error starting upload for job $localId: $e');
+      secureLog('❌ Error starting upload for job $localId: $e');
       await _jobStorage.updateJobState(
         localId,
         UploadJobState.failed,
@@ -56,10 +56,10 @@ class BackgroundUploadService {
       throw Exception('User not authenticated');
     }
     try {
-      log('📤 Starting Mux upload for job $localId');
+      secureLog('📤 Starting Mux upload for job $localId');
       void onProgress(double p) {
         _progressControllers[localId]?.add(p);
-        log('📊 Upload progress for $localId: ${(p * 100).toStringAsFixed(1)}%');
+        secureLog('📊 Upload progress for $localId: ${(p * 100).toStringAsFixed(1)}%');
       }
       final result = await _uploadService.uploadVideo(
         videoFile: file,
@@ -78,9 +78,9 @@ class BackgroundUploadService {
       _resultControllers[localId]?.add(
         UploadResult.success(placeholderUrl, placeholderUrl),
       );
-      log('✅ Upload completed successfully for job $localId');
+      secureLog('✅ Upload completed successfully for job $localId');
     } catch (e) {
-      log('❌ Upload failed for job $localId: $e');
+      secureLog('❌ Upload failed for job $localId: $e');
       await _jobStorage.updateJobState(
         localId,
         UploadJobState.failed,

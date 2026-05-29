@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
-import 'dart:developer';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -107,7 +107,7 @@ class TippyChatService {
     required List<TippyChatMessage> messages,
   }) async {
     final Stopwatch stopwatch = Stopwatch()..start();
-    log('frontend_send_click', name: 'TippyLatency');
+    secureLog('frontend_send_click', name: 'TippyLatency');
     final Map<String, dynamic> payload = <String, dynamic>{
       'messages': messages
           .take(20)
@@ -123,7 +123,7 @@ class TippyChatService {
       '/tippy/chat',
       payload,
     );
-    log(
+    secureLog(
       'ai_complete requestId=${envelope.requestId} elapsedMs=${stopwatch.elapsedMilliseconds}',
       name: 'TippyLatency',
     );
@@ -301,7 +301,7 @@ class TippyChatService {
     final int status = _readInt(error['status']) ?? response.statusCode;
     final bool retryable = error['retryable'] == true;
     if (!isKnownCode) {
-      log(
+      secureLog(
         'Unknown Tippy backend error code: $rawCode, requestId=$requestId',
         name: 'TippyChatService',
       );

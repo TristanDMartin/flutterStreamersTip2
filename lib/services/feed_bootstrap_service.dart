@@ -1,4 +1,3 @@
-import 'dart:developer';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/video_url_resolver.dart';
@@ -7,6 +6,7 @@ import '../models/user.dart' as app_user;
 import 'video_cache_service.dart';
 import 'video_prefetch_service.dart';
 import 'network_policy_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service responsible for warm/cold start handling and feed initialization
 class FeedBootstrapService {
@@ -25,7 +25,7 @@ class FeedBootstrapService {
   /// Returns cached data immediately, then fetches fresh data
   Future<BootstrapResult> bootstrap() async {
     final startTime = DateTime.now();
-    log('🚀 Starting optimized feed bootstrap...');
+    secureLog('🚀 Starting optimized feed bootstrap...');
 
     try {
       // Initialize only critical services
@@ -33,18 +33,18 @@ class FeedBootstrapService {
 
       // Initialize network policy in background (non-blocking)
       _networkPolicy.initialize().catchError((e) {
-        log('⚠️ Network policy init failed (non-critical): $e');
+        secureLog('⚠️ Network policy init failed (non-critical): $e');
       });
 
       // Try to load cached feed first (warm start)
       final cachedFeed = await _loadCachedFeed();
 
       if (cachedFeed != null && cachedFeed.items.isNotEmpty) {
-        log('✅ Warm start: Found ${cachedFeed.items.length} cached items');
+        secureLog('✅ Warm start: Found ${cachedFeed.items.length} cached items');
 
         // Prime the first video in background (non-blocking)
         _primeWarmStartCandidate(cachedFeed.items.first).catchError((e) {
-          log('⚠️ Failed to prime warm start candidate: $e');
+          secureLog('⚠️ Failed to prime warm start candidate: $e');
         });
 
         // Return cached data immediately
@@ -61,11 +61,11 @@ class FeedBootstrapService {
 
         return result;
       } else {
-        log('❄️ Cold start: No cached feed found');
+        secureLog('❄️ Cold start: No cached feed found');
         return await _coldStart();
       }
     } catch (e) {
-      log('❌ Bootstrap error: $e');
+      secureLog('❌ Bootstrap error: $e');
       return await _coldStart();
     }
   }
@@ -77,7 +77,7 @@ class FeedBootstrapService {
       // For now, return null to simulate cold start
       return null;
     } catch (e) {
-      log('Error loading cached feed: $e');
+      secureLog('Error loading cached feed: $e');
       return null;
     }
   }
@@ -92,9 +92,9 @@ class FeedBootstrapService {
         videoUrl: video.videoURL,
       );
 
-      log('✅ Primed warm start candidate: ${video.id}');
+      secureLog('✅ Primed warm start candidate: ${video.id}');
     } catch (e) {
-      log('❌ Error priming warm start candidate: $e');
+      secureLog('❌ Error priming warm start candidate: $e');
     }
   }
 
@@ -118,7 +118,7 @@ class FeedBootstrapService {
             DateTime.now().difference(DateTime.now()).inMilliseconds,
       );
     } catch (e) {
-      log('❌ Cold start error: $e');
+      secureLog('❌ Cold start error: $e');
       return BootstrapResult(
         items: [],
         cursor: null,
@@ -179,7 +179,7 @@ class FeedBootstrapService {
         etag: etag,
       );
     } catch (e) {
-      log('❌ Error fetching fresh feed: $e');
+      secureLog('❌ Error fetching fresh feed: $e');
       rethrow;
     }
   }
@@ -191,12 +191,12 @@ class FeedBootstrapService {
 
       // Only update if ETag changed
       if (freshFeed.etag != currentETag) {
-        log('🔄 Fresh feed available, ETag changed');
+        secureLog('🔄 Fresh feed available, ETag changed');
         // This would trigger a state update in your provider
         // await _updateFeedState(freshFeed);
       }
     } catch (e) {
-      log('❌ Background fetch error: $e');
+      secureLog('❌ Background fetch error: $e');
     }
   }
 
