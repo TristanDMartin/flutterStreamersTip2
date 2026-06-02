@@ -11,7 +11,7 @@ import '../models/calendar_event.dart';
 import '../providers/status_provider.dart';
 import '../models/user_status.dart';
 import '../widgets/profile_video_feed_view.dart';
-import '../services/enhanced_bookmark_service.dart';
+import '../services/unified_bookmark_service.dart';
 import 'streamer_share_sheet.dart';
 import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
@@ -28,10 +28,14 @@ import '../services/global_playback_manager.dart';
 import '../routing/app_navigator.dart';
 import '../constants/app_colors.dart';
 import '../core/theme/support_shell_style.dart';
+import '../features/creator_score/creator_score.dart';
+import '../features/creator_score/creator_score_service.dart';
+import '../features/creator_score/creator_score_widgets.dart';
 import '../models/user.dart' as app_models;
 import 'streamer_card_profile_controller.dart';
 import 'streamer_card_relationship_controller.dart';
 import 'streamer_card_sections.dart';
+import 'connected_user_options_sheet.dart';
 
 enum _StreamerSnackKind {
   success,
@@ -112,15 +116,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   List<Map<String, dynamic>> _platforms = [];
   List<CalendarEvent> _calendarEvents = [];
 
-  // Gradient for selected hashtag
-  final LinearGradient _selectedHashtagGradient = const LinearGradient(
-    colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileBackView
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
-
   // Bookmark service
-  late final EnhancedBookmarkService _bookmarkService;
+  final UnifiedBookmarkService _bookmarkService =
+      UnifiedBookmarkService.instance;
 
   // Blocking service
   late final UserBlockingService _blockingService;
@@ -152,7 +150,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _playbackManager = GlobalPlaybackManager.instance;
     _playbackManager.pauseAll();
 
-    _bookmarkService = EnhancedBookmarkService();
     _blockingService = UserBlockingService();
     _relationshipController = StreamerCardRelationshipController(
       followsService: ref.read(followsServiceProvider),
@@ -248,7 +245,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Future<void> _initializeBookmarks() async {
     try {
-      await _bookmarkService.initialize();
+      await _bookmarkService.initializeCalendarEventBookmarks();
       await _fetchBookmarkedEventIds();
     } catch (e) {
       if (kDebugMode) {
@@ -262,7 +259,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       if (kDebugMode) {
         // debugPrint('📚 StreamerCardView: Fetching bookmarked event IDs...');
       }
-      final bookmarkedIds = await _bookmarkService.fetchBookmarkedEventIds();
+      final bookmarkedIds =
+          await _bookmarkService.fetchBookmarkedCalendarEventIds();
       if (kDebugMode) {
         // debugPrint('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
       }
@@ -419,13 +417,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
       if (isBookmarked) {
         // Remove bookmark
-        success = await _bookmarkService.deleteBookmark(eventId: event.id);
+        success = await _bookmarkService.deleteCalendarEventBookmark(
+          eventId: event.id,
+        );
         message = success
             ? 'Event removed from bookmarks!'
             : 'Failed to remove bookmark';
       } else {
         // Add bookmark
-        success = await _bookmarkService.bookmarkEvent(
+        success = await _bookmarkService.bookmarkCalendarEvent(
           eventId: event.id,
           creatorId: widget.userId,
           title: event.title,
@@ -453,9 +453,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _streamerSnackBar(
             context,
             message,
-            kind: success
-                ? _StreamerSnackKind.success
-                : _StreamerSnackKind.error,
+            kind:
+                success ? _StreamerSnackKind.success : _StreamerSnackKind.error,
           ),
         );
       }
@@ -819,14 +818,32 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildProfileSection() {
-    return Column(
-      children: [
-        const SizedBox(height: 14),
-        _buildAvatarWithOnlineIndicator(),
-        const SizedBox(height: 14),
-        _buildProfileTextInfo(),
-        const SizedBox(height: 8),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Center(
+            child: Column(
+              children: [
+                const SizedBox(height: 14),
+                _buildAvatarWithOnlineIndicator(),
+                const SizedBox(height: 14),
+                _buildProfileTextInfo(),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 10,
+            right: 0,
+            child: CreatorScoreBadge(
+              userId: _effectiveUserId,
+              compact: true,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -905,11 +922,22 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     // Following → Immediately unfollow (removes from Following)
     // Follow → Follow user (adds to Following, or Connections if they follow back)
 
-    if (_isConnected || _isFollowing) {
-      // Both "Connected" and "Following" → Immediate unfollow
+    if (_isConnected) {
+      final String name = _userData?['displayName'] as String? ??
+          _userData?['username'] as String? ??
+          'Connected';
+      ConnectedUserOptionsSheet.show(
+        context,
+        displayName: name,
+        onMessage: _handleMessage,
+        onUnfollow: _handleUnfollowWithOptimisticUpdate,
+        onReport: _showReportOptions,
+      );
+      return;
+    }
+    if (_isFollowing) {
       _handleUnfollowWithOptimisticUpdate();
     } else {
-      // "Follow" → Follow the user
       _handleFollow();
     }
   }
@@ -1257,8 +1285,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Future<void> _copyStreamerProfileLink() async {
-    final String profileUrl = ProfileLinkService.webProfileUrlById(
-      widget.userId,
+    final String profileUrl = ProfileLinkService.publicProfileUrl(
+      username: _userData?['username'] as String?,
+      userId: widget.userId,
     );
     await Clipboard.setData(ClipboardData(text: profileUrl));
     if (!mounted) return;
@@ -1973,14 +2002,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         Container(
           width: 112,
           height: 112,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: SweepGradient(
-              colors: [
-                Color(0xFFFF6CAB),
-                Color(0xFF8E54E9),
-                Color(0xFF3D99F7),
-                Color(0xFFFF6CAB),
+              colors: <Color>[
+                scheme.primary,
+                scheme.secondary,
+                scheme.primary,
+                scheme.secondary,
               ],
             ),
           ),
@@ -2076,6 +2105,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       onFlip: _flipCard,
       identity: _buildIdentity(),
       tags: _buildTags(),
+      creatorScoreBreakdown: _buildCreatorScoreBreakdown(),
       showBio: _showBio,
       onToggleBio: () => setState(() => _showBio = !_showBio),
       bioBody: _buildBioBody(),
@@ -2123,7 +2153,77 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               ],
             ),
           ),
+          const SizedBox(width: 12),
+          CreatorScoreBadge(
+            userId: _effectiveUserId,
+            compact: true,
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCreatorScoreBreakdown() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final AsyncValue<CreatorScore> scoreAsync =
+        ref.watch(creatorScoreProvider(_effectiveUserId));
+    final CreatorScore score = scoreAsync.value ?? CreatorScore.fallback;
+    if (!score.isAvailable) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: shell.surfaceCard,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: shell.surfaceCardBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'Creator Score Breakdown',
+                    style: TextStyle(
+                      color: shell.onChrome,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (scoreAsync.isLoading)
+                  SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            CreatorScoreBreakdownRow(
+              label: 'Consistency',
+              value: score.consistencyScore,
+            ),
+            CreatorScoreBreakdownRow(
+              label: 'Content',
+              value: score.contentScore,
+            ),
+            CreatorScoreBreakdownRow(
+              label: 'Networking',
+              value: score.networkingScore,
+            ),
+            CreatorScoreBreakdownRow(
+              label: 'Engagement',
+              value: score.engagementScore,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2146,6 +2246,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
     if (hashtags.isEmpty) return const SizedBox.shrink();
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final LinearGradient selectedGradient = LinearGradient(
+      colors: <Color>[scheme.primary, scheme.secondary],
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Wrap(
@@ -2162,7 +2268,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                gradient: isSelected ? _selectedHashtagGradient : null,
+                gradient: isSelected ? selectedGradient : null,
                 color: isSelected ? null : shell.chipUnselectedBg,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
@@ -2701,6 +2807,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.55),
       builder: (context) => StreamerShareSheet(
         userId: widget.userId,
+        username: _userData?['username'] as String?,
         displayName: _userData?['displayName'] as String?,
         profileImageUrl: avatarURL,
         onDismiss: () {
@@ -3031,14 +3138,14 @@ class _SmallAvatar extends StatelessWidget {
     return Container(
       width: 64,
       height: 64,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(
-          colors: [
-            Color(0xFFFF6CAB),
-            Color(0xFF8E54E9),
-            Color(0xFF3D99F7),
-            Color(0xFFFF6CAB)
+          colors: <Color>[
+            scheme.primary,
+            scheme.secondary,
+            scheme.primary,
+            scheme.secondary,
           ],
         ),
       ),

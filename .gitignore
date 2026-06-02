@@ -53,6 +53,9 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 
+# Local QA credentials for Flutter integration tests (never commit)
+.env.qa.local
+
 # Cloud Functions secrets (never commit)
 cloud_functions/.env
 cloud_functions/.env.*

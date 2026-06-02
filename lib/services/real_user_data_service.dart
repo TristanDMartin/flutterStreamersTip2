@@ -9,6 +9,7 @@ import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/trending_creator.dart';
 import '../services/logging_service.dart';
+import 'creator_follower_count_service.dart';
 import 'follows_service.dart';
 
 /// Helper class to track trending scores for creators
@@ -64,7 +65,72 @@ class RealUserDataService {
   RealUserDataService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final CreatorFollowerCountService _followerCountService =
+      CreatorFollowerCountService.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+
+  Future<List<TrendingCreator>> _mergeTrendingCreatorFollowerCounts(
+    List<TrendingCreator> creators,
+    Map<String, Map<String, dynamic>> userDataByCreatorId,
+  ) async {
+    if (creators.isEmpty) {
+      return creators;
+    }
+    final List<TrendingCreator> merged = await Future.wait(
+      creators.map((TrendingCreator c) async {
+        final Map<String, dynamic>? fallback = userDataByCreatorId[c.id];
+        final int n = await _followerCountService.resolveCreatorFollowerCount(
+          c.id,
+          fallback,
+        );
+        return c.copyWith(followerCount: n);
+      }),
+    );
+    return merged;
+  }
+
+  int _readTrendingCreatorLevel(Map<String, dynamic> data) {
+    const List<String> keys = <String>[
+      'level',
+      'creatorLevel',
+      'gamificationLevel',
+    ];
+    for (final String k in keys) {
+      final Object? v = data[k];
+      if (v is int) {
+        return v.clamp(0, 999999).toInt();
+      }
+      if (v is num) {
+        return v.toInt().clamp(0, 999999).toInt();
+      }
+    }
+    return 0;
+  }
+
+  String? _readTrendingTierStatusLabel(Map<String, dynamic> data) {
+    final Object? title = data['tierStatusLabel'] ??
+        data['rankTitle'] ??
+        data['creatorRankTitle'];
+    if (title is String && title.trim().isNotEmpty) {
+      return title.trim();
+    }
+    final String? raw = (data['subscriptionPlan'] ??
+            data['effectivePlan'] ??
+            data['plan'] ??
+            data['tier'])
+        ?.toString();
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    final String p = raw.toLowerCase();
+    if (p.contains('studio')) {
+      return 'Pro Creator';
+    }
+    if (p.contains('pro')) {
+      return 'Pro Creator';
+    }
+    return null;
+  }
 
   /// Get current user data from Firestore
   Future<User?> getCurrentUser() async {
@@ -181,41 +247,55 @@ class RealUserDataService {
         ..sort((a, b) => b.getFinalScore().compareTo(a.getFinalScore()));
 
       final List<TrendingCreator> trendingCreators = [];
+      final Map<String, Map<String, dynamic>> userDataByCreatorId = {};
+      final List<TrendingCreator?> candidates = await Future.wait(
+        sortedScores.take(limit * 2).map((TrendingCreatorScore score) async {
+          try {
+            final creatorDoc =
+                await _firestore.collection('users').doc(score.creatorId).get();
 
-      for (final score in sortedScores.take(limit * 2)) {
-        // Get more to filter
-        try {
-          final creatorDoc =
-              await _firestore.collection('users').doc(score.creatorId).get();
+            if (!creatorDoc.exists) return null;
 
-          if (!creatorDoc.exists) continue;
+            final creatorData = creatorDoc.data()!;
 
-          final creatorData = creatorDoc.data()!;
+            // Only include active creators
+            if ((creatorData['onlineStatus'] ?? 'offline') != 'online') {
+              return null;
+            }
 
-          // Only include active creators
-          if ((creatorData['onlineStatus'] ?? 'offline') != 'online') continue;
-
-          trendingCreators.add(TrendingCreator(
-            id: score.creatorId,
-            username: creatorData['username'] ?? 'Unknown',
-            displayName: creatorData['displayName'] ?? creatorData['username'],
-            avatarURL: creatorData['avatarURL'],
-            followerCount: UserCountFields.readFollowersCount(creatorData),
-            isActive: true,
-          ));
-
-          if (trendingCreators.length >= limit) break;
-        } catch (e) {
-          LoggingService.instance.warning(
-              'Error loading creator ${score.creatorId}: $e',
-              tag: 'RealUserDataService');
-        }
+            userDataByCreatorId[score.creatorId] = creatorData;
+            return TrendingCreator(
+              id: score.creatorId,
+              username: creatorData['username'] ?? 'Unknown',
+              displayName:
+                  creatorData['displayName'] ?? creatorData['username'],
+              avatarURL: creatorData['avatarURL'],
+              followerCount: UserCountFields.readFollowersCount(creatorData),
+              isActive: true,
+              creatorLevel: _readTrendingCreatorLevel(creatorData),
+              tierStatusLabel: _readTrendingTierStatusLabel(creatorData),
+            );
+          } catch (e) {
+            LoggingService.instance.warning(
+                'Error loading creator ${score.creatorId}: $e',
+                tag: 'RealUserDataService');
+            return null;
+          }
+        }),
+      );
+      for (final TrendingCreator? creator in candidates) {
+        if (creator == null) continue;
+        trendingCreators.add(creator);
+        if (trendingCreators.length >= limit) break;
       }
 
       LoggingService.instance.debug(
           '✅ Loaded ${trendingCreators.length} trending creators based on video performance',
           tag: 'RealUserDataService');
-      return trendingCreators;
+      return await _mergeTrendingCreatorFollowerCounts(
+        trendingCreators,
+        userDataByCreatorId,
+      );
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error getting trending creators',
           tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
@@ -289,7 +369,12 @@ class RealUserDataService {
           .limit(limit)
           .get();
 
-      final creators = snapshot.docs.map((doc) {
+      final Map<String, Map<String, dynamic>> userDataByCreatorId = {
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs)
+          doc.id: doc.data(),
+      };
+      final List<TrendingCreator> creators = snapshot.docs.map((doc) {
         final data = doc.data();
         return TrendingCreator(
           id: doc.id,
@@ -298,13 +383,18 @@ class RealUserDataService {
           avatarURL: resolveAvatarUrl(data),
           followerCount: UserCountFields.readFollowersCount(data),
           isActive: (data['onlineStatus'] ?? 'offline') == 'online',
+          creatorLevel: _readTrendingCreatorLevel(data),
+          tierStatusLabel: _readTrendingTierStatusLabel(data),
         );
       }).toList();
 
       LoggingService.instance.debug(
           '✅ Loaded ${creators.length} fallback trending creators',
           tag: 'RealUserDataService');
-      return creators;
+      return await _mergeTrendingCreatorFollowerCounts(
+        creators,
+        userDataByCreatorId,
+      );
     } catch (e) {
       LoggingService.instance.error('Error getting fallback trending creators',
           tag: 'RealUserDataService', error: e);
@@ -673,38 +763,7 @@ class RealUserDataService {
 
   /// Follow a user
   Future<bool> followUser(String targetUserId) async {
-    try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
-
-      final followData = {
-        'followerId': currentUser.uid,
-        'followingId': targetUserId,
-        'status': 'active',
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      await _firestore.collection('follows').add(followData);
-
-      // Update follower counts
-      await _firestore.collection('users').doc(currentUser.uid).update({
-        'followingCount': FieldValue.increment(1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _firestore.collection('users').doc(targetUserId).update({
-        'followerCount': FieldValue.increment(1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      LoggingService.instance
-          .debug('✅ User followed: $targetUserId', tag: 'RealUserDataService');
-      return true;
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error following user',
-          tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
-      return false;
-    }
+    return FollowsService().followUser(targetUserId);
   }
 
   /// Unfollow a user
@@ -719,23 +778,6 @@ class RealUserDataService {
 
   /// Check if user is following another user
   Future<bool> isFollowing(String targetUserId) async {
-    try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
-
-      final snapshot = await _firestore
-          .collection('follows')
-          .where('followerId', isEqualTo: currentUser.uid)
-          .where('followingId', isEqualTo: targetUserId)
-          .where('status', isEqualTo: 'active')
-          .limit(1)
-          .get();
-
-      return snapshot.docs.isNotEmpty;
-    } catch (e) {
-      LoggingService.instance.error('Error checking follow status',
-          tag: 'RealUserDataService', error: e);
-      return false;
-    }
+    return FollowsService().isFollowing(targetUserId);
   }
 }

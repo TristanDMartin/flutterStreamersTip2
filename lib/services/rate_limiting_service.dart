@@ -27,14 +27,15 @@ class RateLimitingService {
     try {
       final violationsStr = await _storage.read(key: _violationsKey);
       final lastViolationTimeStr = await _storage.read(key: _lastViolationKey);
-      
+
       final violations = int.tryParse(violationsStr ?? '0') ?? 0;
       final lastViolationTime = int.tryParse(lastViolationTimeStr ?? '0') ?? 0;
 
       if (violations >= _maxViolations) {
-        final lastViolation = DateTime.fromMillisecondsSinceEpoch(lastViolationTime);
+        final lastViolation =
+            DateTime.fromMillisecondsSinceEpoch(lastViolationTime);
         final timeSinceLastViolation = DateTime.now().difference(lastViolation);
-        
+
         if (timeSinceLastViolation < _cooldownPeriod) {
           return true;
         } else {
@@ -56,9 +57,12 @@ class RateLimitingService {
     try {
       final violationsStr = await _storage.read(key: _violationsKey);
       final violations = int.tryParse(violationsStr ?? '0') ?? 0;
-      
-      await _storage.write(key: _violationsKey, value: (violations + 1).toString());
-      await _storage.write(key: _lastViolationKey, value: DateTime.now().millisecondsSinceEpoch.toString());
+
+      await _storage.write(
+          key: _violationsKey, value: (violations + 1).toString());
+      await _storage.write(
+          key: _lastViolationKey,
+          value: DateTime.now().millisecondsSinceEpoch.toString());
     } catch (e) {
       debugPrint('❌ RateLimitingService: Error recording violation: $e');
       // Don't throw - rate limiting should be resilient
@@ -80,14 +84,15 @@ class RateLimitingService {
     try {
       final violationsStr = await _storage.read(key: _violationsKey);
       final lastViolationTimeStr = await _storage.read(key: _lastViolationKey);
-      
+
       final violations = int.tryParse(violationsStr ?? '0') ?? 0;
       final lastViolationTime = int.tryParse(lastViolationTimeStr ?? '0') ?? 0;
 
       if (violations >= _maxViolations) {
-        final lastViolation = DateTime.fromMillisecondsSinceEpoch(lastViolationTime);
+        final lastViolation =
+            DateTime.fromMillisecondsSinceEpoch(lastViolationTime);
         final timeSinceLastViolation = DateTime.now().difference(lastViolation);
-        
+
         if (timeSinceLastViolation < _cooldownPeriod) {
           return _cooldownPeriod - timeSinceLastViolation;
         }

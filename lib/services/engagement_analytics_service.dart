@@ -36,13 +36,13 @@ class EngagementData {
   });
 
   Map<String, dynamic> toJson() => {
-    'videoId': videoId,
-    'userId': userId,
-    'event': event.name,
-    'timestamp': timestamp.toIso8601String(),
-    'metadata': metadata,
-    'engagementScore': engagementScore,
-  };
+        'videoId': videoId,
+        'userId': userId,
+        'event': event.name,
+        'timestamp': timestamp.toIso8601String(),
+        'metadata': metadata,
+        'engagementScore': engagementScore,
+      };
 }
 
 class MLScoreUpdate {
@@ -59,15 +59,16 @@ class MLScoreUpdate {
   });
 
   Map<String, dynamic> toJson() => {
-    'videoId': videoId,
-    'newScore': newScore,
-    'reason': reason,
-    'timestamp': timestamp.toIso8601String(),
-  };
+        'videoId': videoId,
+        'newScore': newScore,
+        'reason': reason,
+        'timestamp': timestamp.toIso8601String(),
+      };
 }
 
 class EngagementAnalyticsService {
-  static final EngagementAnalyticsService _instance = EngagementAnalyticsService._internal();
+  static final EngagementAnalyticsService _instance =
+      EngagementAnalyticsService._internal();
   factory EngagementAnalyticsService() => _instance;
   EngagementAnalyticsService._internal();
 
@@ -150,16 +151,18 @@ class EngagementAnalyticsService {
         await _updateMLScore(videoId);
       }
 
-      debugPrint('📊 Tracked engagement: ${event.name} for video $videoId (score: ${engagementData.engagementScore})');
+      debugPrint(
+          '📊 Tracked engagement: ${event.name} for video $videoId (score: ${engagementData.engagementScore})');
     } catch (e) {
       debugPrint('❌ Error tracking engagement: $e');
     }
   }
 
   /// Calculate engagement score for an event
-  double _calculateEngagementScore(EngagementEvent event, Map<String, dynamic> metadata) {
+  double _calculateEngagementScore(
+      EngagementEvent event, Map<String, dynamic> metadata) {
     double baseScore = _engagementWeights[event] ?? 0.0;
-    
+
     // Apply multipliers based on metadata
     if (metadata.containsKey('watchTime')) {
       final watchTime = metadata['watchTime'] as double? ?? 0.0;
@@ -207,29 +210,31 @@ class EngagementAnalyticsService {
     try {
       final currentScore = _mlScores[videoId] ?? 0.5;
       final engagementScore = _videoEngagementScores[videoId] ?? 0.0;
-      
+
       // Calculate new ML score using weighted average
       final newScore = _calculateNewMLScore(currentScore, engagementScore);
-      
-      if ((newScore - currentScore).abs() > 0.05) { // Only update if significant change
+
+      if ((newScore - currentScore).abs() > 0.05) {
+        // Only update if significant change
         _mlScores[videoId] = newScore;
-        
+
         final update = MLScoreUpdate(
           videoId: videoId,
           newScore: newScore,
           reason: 'Engagement-based update',
           timestamp: DateTime.now(),
         );
-        
+
         _mlScoreUpdates.add(update);
-        
+
         // Update in Firestore
         await _firestore.collection('videos').doc(videoId).update({
           'mlScore': newScore,
           'lastMLUpdate': FieldValue.serverTimestamp(),
         });
-        
-        debugPrint('📊 Updated ML score for $videoId: $currentScore -> $newScore');
+
+        debugPrint(
+            '📊 Updated ML score for $videoId: $currentScore -> $newScore');
       }
     } catch (e) {
       debugPrint('❌ Error updating ML score: $e');
@@ -240,10 +245,10 @@ class EngagementAnalyticsService {
   double _calculateNewMLScore(double currentScore, double engagementScore) {
     // Normalize engagement score to 0-1 range
     final normalizedEngagement = (engagementScore / 100).clamp(0.0, 1.0);
-    
+
     // Weighted average: 70% current score, 30% new engagement
     final newScore = (currentScore * 0.7) + (normalizedEngagement * 0.3);
-    
+
     return newScore.clamp(0.0, 1.0);
   }
 
@@ -266,7 +271,7 @@ class EngagementAnalyticsService {
   List<String> getTopPerformingVideos({int limit = 10}) {
     final sortedVideos = _videoEngagementScores.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    
+
     return sortedVideos.take(limit).map((e) => e.key).toList();
   }
 
@@ -295,18 +300,17 @@ class EngagementAnalyticsService {
 
     try {
       final batch = _firestore.batch();
-      
+
       for (final engagement in _pendingEngagements) {
-        final docRef = _firestore
-            .collection('engagement_analytics')
-            .doc('${engagement.userId}_${engagement.videoId}_${engagement.timestamp.millisecondsSinceEpoch}');
-        
+        final docRef = _firestore.collection('engagement_analytics').doc(
+            '${engagement.userId}_${engagement.videoId}_${engagement.timestamp.millisecondsSinceEpoch}');
+
         batch.set(docRef, engagement.toJson());
       }
-      
+
       await batch.commit();
       _pendingEngagements.clear();
-      
+
       debugPrint('📊 Synced ${_pendingEngagements.length} engagement events');
     } catch (e) {
       debugPrint('❌ Error syncing engagement data: $e');
@@ -319,18 +323,17 @@ class EngagementAnalyticsService {
 
     try {
       final batch = _firestore.batch();
-      
+
       for (final update in _mlScoreUpdates) {
-        final docRef = _firestore
-            .collection('ml_score_updates')
-            .doc('${update.videoId}_${update.timestamp.millisecondsSinceEpoch}');
-        
+        final docRef = _firestore.collection('ml_score_updates').doc(
+            '${update.videoId}_${update.timestamp.millisecondsSinceEpoch}');
+
         batch.set(docRef, update.toJson());
       }
-      
+
       await batch.commit();
       _mlScoreUpdates.clear();
-      
+
       debugPrint('📊 Synced ${_mlScoreUpdates.length} ML score updates');
     } catch (e) {
       debugPrint('❌ Error syncing ML updates: $e');
@@ -343,7 +346,8 @@ class EngagementAnalyticsService {
       // Load recent engagement scores
       final engagementSnapshot = await _firestore
           .collection('engagement_analytics')
-          .where('timestamp', isGreaterThan: DateTime.now().subtract(const Duration(days: 7)))
+          .where('timestamp',
+              isGreaterThan: DateTime.now().subtract(const Duration(days: 7)))
           .limit(1000)
           .get();
 
@@ -351,7 +355,7 @@ class EngagementAnalyticsService {
         final data = doc.data();
         final videoId = data['videoId'] as String? ?? '';
         final score = (data['engagementScore'] as num?)?.toDouble() ?? 0.0;
-        
+
         if (videoId.isNotEmpty) {
           _updateLocalEngagementScore(videoId, score);
         }
@@ -380,8 +384,8 @@ class EngagementAnalyticsService {
   Map<String, dynamic> generateAnalyticsReport() {
     final totalEngagements = _pendingEngagements.length;
     final totalVideos = _videoEngagementScores.length;
-    final avgMLScore = _mlScores.values.isNotEmpty 
-        ? _mlScores.values.reduce((a, b) => a + b) / _mlScores.length 
+    final avgMLScore = _mlScores.values.isNotEmpty
+        ? _mlScores.values.reduce((a, b) => a + b) / _mlScores.length
         : 0.5;
 
     return {
@@ -389,7 +393,8 @@ class EngagementAnalyticsService {
       'totalVideos': totalVideos,
       'averageMLScore': avgMLScore,
       'topPerformingVideos': getTopPerformingVideos(limit: 5),
-      'recentMLUpdates': _mlScoreUpdates.take(10).map((u) => u.toJson()).toList(),
+      'recentMLUpdates':
+          _mlScoreUpdates.take(10).map((u) => u.toJson()).toList(),
     };
   }
 }

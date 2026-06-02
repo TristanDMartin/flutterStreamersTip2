@@ -8,8 +8,7 @@ import 'sensitive_data_redactor.dart';
 class UserFacingError {
   UserFacingError._();
 
-  static const String _generic =
-      'Something went wrong. Please try again.';
+  static const String _generic = 'Something went wrong. Please try again.';
 
   static String message(Object? error) {
     if (error == null) {

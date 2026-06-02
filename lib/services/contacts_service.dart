@@ -18,10 +18,12 @@ class ContactsService {
   Future<bool> requestContactsPermission() async {
     try {
       final status = await Permission.contacts.request();
-      LoggingService.instance.debug('Contacts permission status: $status', tag: 'ContactsService');
+      LoggingService.instance
+          .debug('Contacts permission status: $status', tag: 'ContactsService');
       return status == PermissionStatus.granted;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error requesting contacts permission', tag: 'ContactsService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error requesting contacts permission',
+          tag: 'ContactsService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -37,12 +39,14 @@ class ContactsService {
 
       // Simulate contacts for demonstration (since contacts_service has namespace issues)
       final contacts = _getSimulatedContacts();
-      LoggingService.instance.debug('Retrieved ${contacts.length} simulated contacts', tag: 'ContactsService');
+      LoggingService.instance.debug(
+          'Retrieved ${contacts.length} simulated contacts',
+          tag: 'ContactsService');
 
       // Process contacts with hashing
       final List<ContactHash> hashedContacts = [];
       final currentUserId = _auth.currentUser?.uid;
-      
+
       if (currentUserId == null) {
         throw Exception('User not authenticated');
       }
@@ -50,8 +54,10 @@ class ContactsService {
       for (final contact in contacts) {
         try {
           // Extract phone numbers and emails
-          final phoneNumbers = contact.phones.where((phone) => phone.isNotEmpty).toList();
-          final emails = contact.emails.where((email) => email.isNotEmpty).toList();
+          final phoneNumbers =
+              contact.phones.where((phone) => phone.isNotEmpty).toList();
+          final emails =
+              contact.emails.where((email) => email.isNotEmpty).toList();
 
           // Skip contacts without phone or email
           if (phoneNumbers.isEmpty && emails.isEmpty) continue;
@@ -60,7 +66,8 @@ class ContactsService {
           final hashedContact = ContactHash(
             id: _generateContactId(contact),
             displayName: contact.displayName ?? 'Unknown',
-            phoneHashes: phoneNumbers.map((phone) => _hashPhoneNumber(phone)).toList(),
+            phoneHashes:
+                phoneNumbers.map((phone) => _hashPhoneNumber(phone)).toList(),
             emailHashes: emails.map((email) => _hashEmail(email)).toList(),
             hasPhone: phoneNumbers.isNotEmpty,
             hasEmail: emails.isNotEmpty,
@@ -69,15 +76,21 @@ class ContactsService {
 
           hashedContacts.add(hashedContact);
         } catch (e) {
-          LoggingService.instance.warning('Error processing contact: ${contact.displayName}', tag: 'ContactsService', error: e);
+          LoggingService.instance.warning(
+              'Error processing contact: ${contact.displayName}',
+              tag: 'ContactsService',
+              error: e);
           continue;
         }
       }
 
-      LoggingService.instance.debug('Processed ${hashedContacts.length} contacts with hashing', tag: 'ContactsService');
+      LoggingService.instance.debug(
+          'Processed ${hashedContacts.length} contacts with hashing',
+          tag: 'ContactsService');
       return hashedContacts;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error getting contacts with hashing', tag: 'ContactsService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error getting contacts with hashing',
+          tag: 'ContactsService', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
@@ -91,7 +104,10 @@ class ContactsService {
       }
 
       final batch = _firestore.batch();
-      final contactsRef = _firestore.collection('users').doc(currentUserId).collection('hashedContacts');
+      final contactsRef = _firestore
+          .collection('users')
+          .doc(currentUserId)
+          .collection('hashedContacts');
 
       for (final contact in contacts) {
         final docRef = contactsRef.doc(contact.id);
@@ -99,23 +115,28 @@ class ContactsService {
       }
 
       await batch.commit();
-      LoggingService.instance.debug('Uploaded ${contacts.length} hashed contacts to Firestore', tag: 'ContactsService');
+      LoggingService.instance.debug(
+          'Uploaded ${contacts.length} hashed contacts to Firestore',
+          tag: 'ContactsService');
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error uploading hashed contacts', tag: 'ContactsService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error uploading hashed contacts',
+          tag: 'ContactsService', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
 
   /// Find matching users by hashed contact data
-  Future<List<ContactMatch>> findMatchingUsers(List<ContactHash> contacts) async {
+  Future<List<ContactMatch>> findMatchingUsers(
+      List<ContactHash> contacts) async {
     try {
       final List<ContactMatch> matches = [];
-      
+
       for (final contact in contacts) {
         try {
           // Search for users with matching phone hashes
           if (contact.phoneHashes.isNotEmpty) {
-            final phoneMatches = await _findUsersByPhoneHashes(contact.phoneHashes);
+            final phoneMatches =
+                await _findUsersByPhoneHashes(contact.phoneHashes);
             for (final match in phoneMatches) {
               matches.add(ContactMatch(
                 contactId: contact.id,
@@ -132,7 +153,8 @@ class ContactsService {
 
           // Search for users with matching email hashes
           if (contact.emailHashes.isNotEmpty) {
-            final emailMatches = await _findUsersByEmailHashes(contact.emailHashes);
+            final emailMatches =
+                await _findUsersByEmailHashes(contact.emailHashes);
             for (final match in emailMatches) {
               matches.add(ContactMatch(
                 contactId: contact.id,
@@ -147,7 +169,10 @@ class ContactsService {
             }
           }
         } catch (e) {
-          LoggingService.instance.warning('Error finding matches for contact: ${contact.displayName}', tag: 'ContactsService', error: e);
+          LoggingService.instance.warning(
+              'Error finding matches for contact: ${contact.displayName}',
+              tag: 'ContactsService',
+              error: e);
           continue;
         }
       }
@@ -158,10 +183,13 @@ class ContactsService {
         uniqueMatches[match.userId] = match;
       }
 
-      LoggingService.instance.debug('Found ${uniqueMatches.length} unique contact matches', tag: 'ContactsService');
+      LoggingService.instance.debug(
+          'Found ${uniqueMatches.length} unique contact matches',
+          tag: 'ContactsService');
       return uniqueMatches.values.toList();
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error finding matching users', tag: 'ContactsService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error finding matching users',
+          tag: 'ContactsService', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
@@ -170,7 +198,7 @@ class ContactsService {
   String _normalizePhoneNumber(String phone) {
     // Remove all non-digit characters
     final digits = phone.replaceAll(RegExp(r'[^\d]'), '');
-    
+
     // Add US country code if it looks like a US number without country code
     if (digits.length == 10) {
       return '+1$digits';
@@ -227,17 +255,20 @@ class ContactsService {
 
   /// Generate unique contact ID
   String _generateContactId(SimulatedContact contact) {
-    final identifier = contact.identifier ?? contact.displayName ?? DateTime.now().millisecondsSinceEpoch.toString();
+    final identifier = contact.identifier ??
+        contact.displayName ??
+        DateTime.now().millisecondsSinceEpoch.toString();
     final bytes = utf8.encode(identifier);
     final digest = sha256.convert(bytes);
     return digest.toString().substring(0, 16);
   }
 
   /// Find users by phone hashes
-  Future<List<Map<String, dynamic>>> _findUsersByPhoneHashes(List<String> phoneHashes) async {
+  Future<List<Map<String, dynamic>>> _findUsersByPhoneHashes(
+      List<String> phoneHashes) async {
     try {
       final List<Map<String, dynamic>> matches = [];
-      
+
       for (final phoneHash in phoneHashes) {
         final query = await _firestore
             .collection('users')
@@ -258,16 +289,18 @@ class ContactsService {
 
       return matches;
     } catch (e) {
-      LoggingService.instance.error('Error finding users by phone hashes', tag: 'ContactsService', error: e);
+      LoggingService.instance.error('Error finding users by phone hashes',
+          tag: 'ContactsService', error: e);
       return [];
     }
   }
 
   /// Find users by email hashes
-  Future<List<Map<String, dynamic>>> _findUsersByEmailHashes(List<String> emailHashes) async {
+  Future<List<Map<String, dynamic>>> _findUsersByEmailHashes(
+      List<String> emailHashes) async {
     try {
       final List<Map<String, dynamic>> matches = [];
-      
+
       for (final emailHash in emailHashes) {
         final query = await _firestore
             .collection('users')
@@ -288,7 +321,8 @@ class ContactsService {
 
       return matches;
     } catch (e) {
-      LoggingService.instance.error('Error finding users by email hashes', tag: 'ContactsService', error: e);
+      LoggingService.instance.error('Error finding users by email hashes',
+          tag: 'ContactsService', error: e);
       return [];
     }
   }
@@ -334,7 +368,8 @@ class ContactHash {
       emailHashes: List<String>.from(map['emailHashes'] ?? []),
       hasPhone: map['hasPhone'] ?? false,
       hasEmail: map['hasEmail'] ?? false,
-      lastUpdated: (map['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      lastUpdated:
+          (map['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 }

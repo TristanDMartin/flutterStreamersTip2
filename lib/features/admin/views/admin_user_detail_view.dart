@@ -30,23 +30,19 @@ class AdminUserDetailView extends StatelessWidget {
           final d = snap.data!.data()!;
           final un = (d['username'] ?? '').toString();
           final em = (d['email'] ?? '—').toString();
-          final tier =
-              (d['subscriptionTier'] ?? '—').toString();
+          final tier = (d['subscriptionTier'] ?? '—').toString();
           final role = (d['role'] ?? '—').toString();
-          final ac =
-              (d['accountStatus'] ?? 'active').toString();
-          final created =
-              (d['createdAt'] ?? d['joinedAt'])?.toString() ?? '—';
+          final ac = (d['accountStatus'] ?? 'active').toString();
+          final created = (d['createdAt'] ?? d['joinedAt'])?.toString() ?? '—';
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(un,
-                    style:
-                        Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            )),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        )),
                 const SizedBox(height: 8),
                 Text('Email: $em'),
                 Text('UID: ${SensitiveDataRedactor.maskId(userId)}'),

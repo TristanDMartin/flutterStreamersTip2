@@ -45,8 +45,9 @@ class _FollowingFeedGridWidgetState
   }
 
   void _openVideoPlayer(HomeVideo video, int index) {
-    secureLog('🎬 FollowingFeedGrid: Opening video ${video.id} at index $index');
-    
+    secureLog(
+        '🎬 FollowingFeedGrid: Opening video ${video.id} at index $index');
+
     // 🔥 DEDUPLICATE: Get unique videos list for player
     final uniqueVideos = <String, HomeVideo>{};
     final deduplicatedVideos = <HomeVideo>[];
@@ -56,11 +57,11 @@ class _FollowingFeedGridWidgetState
         deduplicatedVideos.add(v);
       }
     }
-    
+
     // Find the correct index in deduplicated list
     final correctIndex = deduplicatedVideos.indexWhere((v) => v.id == video.id);
     final finalIndex = correctIndex >= 0 ? correctIndex : index;
-    
+
     // Use callback if provided, otherwise use default navigation
     if (widget.onVideoTap != null) {
       widget.onVideoTap!(video, finalIndex);
@@ -88,8 +89,8 @@ class _FollowingFeedGridWidgetState
       return _buildFollowingStatusCard(
         icon: Icons.cloud_off_outlined,
         title: 'Following Needs A Refresh',
-        message:
-            widget.errorMessage ?? 'We could not load videos from your circle right now.',
+        message: widget.errorMessage ??
+            'We could not load videos from your circle right now.',
         showProgress: false,
         actionLabel: 'Try Again',
         onAction: widget.onRefresh,
@@ -126,15 +127,17 @@ class _FollowingFeedGridWidgetState
         deduplicatedVideos.add(video);
       }
     }
-    
+
     if (deduplicatedVideos.length != widget.videos.length) {
-      secureLog('⚠️ FollowingFeedGrid: Deduplicated ${widget.videos.length} videos to ${deduplicatedVideos.length} unique videos');
+      secureLog(
+          '⚠️ FollowingFeedGrid: Deduplicated ${widget.videos.length} videos to ${deduplicatedVideos.length} unique videos');
     }
 
     // Calculate header height: SafeArea top + FeedSelector height (50) + margins (8*2) = ~66 + SafeArea
     final mediaQuery = MediaQuery.of(context);
     final safeAreaTop = mediaQuery.padding.top;
-    final headerHeight = safeAreaTop + 50 + 16; // SafeArea + FeedSelector height + margins
+    final headerHeight =
+        safeAreaTop + 50 + 16; // SafeArea + FeedSelector height + margins
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -146,7 +149,8 @@ class _FollowingFeedGridWidgetState
       child: GridView.builder(
         controller: _scrollController,
         padding: EdgeInsets.only(
-          top: headerHeight + 8, // 🔥 RESPECT HEADER: Add header height + spacing
+          top: headerHeight +
+              8, // 🔥 RESPECT HEADER: Add header height + spacing
           left: 8,
           right: 8,
           bottom: 8,
@@ -463,10 +467,10 @@ class _FollowingFeedGridWidgetState
       } else {
         return '';
       }
-      
+
       final now = DateTime.now();
       final difference = now.difference(date);
-      
+
       if (difference.inDays == 0) {
         return 'Today';
       } else if (difference.inDays == 1) {

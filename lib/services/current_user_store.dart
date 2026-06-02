@@ -7,5 +7,3 @@ class CurrentUserStore {
     _user = data;
   }
 }
-
-

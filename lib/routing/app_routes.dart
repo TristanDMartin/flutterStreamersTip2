@@ -14,6 +14,7 @@ import '../widgets/chat_view_optimized.dart';
 import '../widgets/discover_view.dart';
 import '../widgets/inbox_view_optimized.dart';
 import '../widgets/player_screen.dart';
+import '../pages/video_unavailable_page.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/tiktok_camera_view.dart';
 import '../features/content_planning/content_planner_view.dart';
@@ -40,6 +41,7 @@ class AppRoutes {
   static const String profile = '/profile';
   static const String chat = '/chat';
   static const String tippyChat = '/tippy';
+  static const String videoUnavailable = '/video-unavailable';
 
   static Route<dynamic> onGenerateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
@@ -190,6 +192,15 @@ class AppRoutes {
           );
         }
         break;
+      case videoUnavailable:
+        final args = routeSettings.arguments;
+        if (args is VideoUnavailableRouteArgs) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => VideoUnavailablePage(videoId: args.videoId),
+          );
+        }
+        break;
       case tippyChat:
         return _buildRoute(
           settings: routeSettings,
@@ -231,6 +242,12 @@ class PlayerRouteArgs {
   final List<String> videoIds;
   final List<HomeVideo>? videos;
   final bool fullscreenDialog;
+}
+
+class VideoUnavailableRouteArgs {
+  const VideoUnavailableRouteArgs({required this.videoId});
+
+  final String videoId;
 }
 
 class ProfileRouteArgs {

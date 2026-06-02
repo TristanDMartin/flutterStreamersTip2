@@ -15,5 +15,3 @@ class AppUser {
     this.onlineStatus = OnlineStatus.invisible,
   });
 }
-
-

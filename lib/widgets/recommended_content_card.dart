@@ -48,7 +48,7 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-    // print('Cannot open URL: ${widget.content.url}');
+        // appLog('Cannot open URL: ${widget.content.url}');
       }
     }
   }
@@ -76,6 +76,10 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final foreground = isDark ? Colors.white : const Color(0xFF0F172A);
+    final muted = isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B);
     return GestureDetector(
       onTap: _onTap,
       onTapDown: _onTapDown,
@@ -87,39 +91,51 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
           return Transform.scale(
             scale: _scaleAnimation.value,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                vertical: 12,
-                horizontal: 16,
-              ),
+              height: 92,
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(16),
+                color: isDark
+                    ? const Color(0xFF0F172A).withValues(alpha: 0.72)
+                    : Colors.white.withValues(alpha: 0.94),
+                borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: Colors.purple.withValues(alpha: 0.6),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.10)
+                      : const Color(0xFF0F172A).withValues(alpha: 0.08),
                   width: 1,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.07),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
                   // Icon/Thumbnail
                   Container(
-                    width: 60,
-                    height: 60,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: Colors.cyan.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF9248D2).withValues(alpha: 0.22),
+                          const Color(0xFF4897D2).withValues(alpha: 0.22),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
                       _getIconForContent(widget.content.id),
-                      color: _getIconForContent(widget.content.id) == Icons.schedule
-                          ? Colors.white
-                          : Colors.cyan,
+                      color: const Color(0xFF4897D2),
                       size: 24,
                     ),
                   ),
-                  
+
                   const SizedBox(width: 12),
-                  
+
                   // Content info
                   Expanded(
                     child: Column(
@@ -127,22 +143,21 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
                       children: [
                         Text(
                           widget.content.title,
-                          style: const TextStyle(
-                            fontSize: 14,
+                          style: TextStyle(
+                            fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                            color: foreground,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        
                         const SizedBox(height: 4),
-                        
                         Text(
                           widget.content.description,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.8),
+                            color: muted,
+                            height: 1.25,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -150,13 +165,13 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(width: 12),
-                  
+
                   // Arrow indicator
                   const Icon(
-                    Icons.arrow_upward,
-                    color: Colors.cyan,
+                    Icons.north_east_rounded,
+                    color: Color(0xFF4897D2),
                     size: 16,
                   ),
                 ],

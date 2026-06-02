@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/theme/support_shell_style.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/user.dart' as app_user;
 import '../services/chat_service.dart';
@@ -46,21 +48,23 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
     });
 
     try {
-      final chats = await _chatService.getUserChats();
-      final currentUserId = _inboxService.auth.currentUser?.uid;
-      final blockedUserIds = (await _blockingService.getBlockedUsers()).toSet();
-      final userMap = <String, app_user.User>{};
-      final visibleChats = <app_chat.Chat>[];
+      final List<app_chat.Chat> chats = await _chatService.getUserChats();
+      final String? currentUserId = _inboxService.auth.currentUser?.uid;
+      final Set<String> blockedUserIds =
+          (await _blockingService.getBlockedUsers()).toSet();
+      final Map<String, app_user.User> userMap = <String, app_user.User>{};
+      final List<app_chat.Chat> visibleChats = <app_chat.Chat>[];
 
-      for (final chat in chats) {
-        final otherUserId = chat.participants.firstWhere(
-          (id) => id != currentUserId,
+      for (final app_chat.Chat chat in chats) {
+        final String otherUserId = chat.participants.firstWhere(
+          (String id) => id != currentUserId,
           orElse: () => '',
         );
         if (otherUserId.isEmpty) continue;
         if (blockedUserIds.contains(otherUserId)) continue;
 
-        final profile = await _inboxService.getUserProfile(otherUserId);
+        final app_user.User? profile =
+            await _inboxService.getUserProfile(otherUserId);
         if (profile != null) {
           visibleChats.add(chat);
           userMap[chat.id ?? otherUserId] = profile;
@@ -94,13 +98,13 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
       return _recentChats;
     }
 
-    final lowerQuery = _searchQuery.toLowerCase();
-    return _recentChats.where((chat) {
-      final chatId = chat.id ?? '';
-      final otherUser = _chatUsers[chatId];
-      final displayName = otherUser?.displayName.toLowerCase() ?? '';
-      final username = otherUser?.username.toLowerCase() ?? '';
-      final lastMessage = (chat.lastMessage ?? '').toLowerCase();
+    final String lowerQuery = _searchQuery.toLowerCase();
+    return _recentChats.where((app_chat.Chat chat) {
+      final String chatId = chat.id ?? '';
+      final app_user.User? otherUser = _chatUsers[chatId];
+      final String displayName = otherUser?.displayName.toLowerCase() ?? '';
+      final String username = otherUser?.username.toLowerCase() ?? '';
+      final String lastMessage = (chat.lastMessage ?? '').toLowerCase();
       return displayName.contains(lowerQuery) ||
           username.contains(lowerQuery) ||
           lastMessage.contains(lowerQuery);
@@ -109,35 +113,30 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-          ),
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: shell.pageGradient,
         ),
-        child: SafeArea(
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
           child: Column(
-            children: [
-              // Header
-              _buildHeader(),
-
-              // Search Bar
-              _buildSearchBar(),
-
-              const Divider(color: Colors.white24, height: 1),
-
-              // Primary Actions
-              _buildPrimaryActions(),
-
-              const Divider(color: Colors.white24, height: 1),
-
-              // Recent Chats (Optional)
-              Expanded(
-                child: _buildRecentChats(),
-              ),
+            children: <Widget>[
+              _buildHeader(context),
+              _buildSearchBar(context),
+              Divider(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  height: 1),
+              _buildPrimaryActions(context),
+              Divider(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  height: 1),
+              Expanded(child: _buildRecentChats(context)),
             ],
           ),
         ),
@@ -145,71 +144,68 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
+  Widget _buildHeader(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final TextTheme tt = Theme.of(context).textTheme;
+    return Padding(
       padding: const EdgeInsets.only(
         top: 16,
-        left: 16,
+        left: 8,
         right: 16,
         bottom: 16,
       ),
       child: Row(
-        children: [
+        children: <Widget>[
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(Icons.arrow_back_rounded, color: shell.onChrome),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
-          const Expanded(
+          Expanded(
             child: Text(
               'New Message',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+              style: tt.titleLarge?.copyWith(
+                color: shell.onChrome,
+                fontWeight: FontWeight.w800,
               ),
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(width: 48), // Balance the back button
+          const SizedBox(width: 48),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final TextTheme tt = Theme.of(context).textTheme;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white.withValues(alpha: 0.1),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(14),
+        color:
+            shell.panelSurface.withValues(alpha: shell.isLight ? 0.95 : 0.58),
+        border: Border.all(color: shell.panelBorder),
       ),
       child: Row(
-        children: [
-          Icon(
-            Icons.search,
-            color: Colors.white.withValues(alpha: 0.7),
-            size: 20,
-          ),
-          const SizedBox(width: 12),
+        children: <Widget>[
+          Icon(Icons.search_rounded, color: shell.iconDim, size: 20),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _searchController,
-              onChanged: (value) {
+              onChanged: (String value) {
                 setState(() {
                   _searchQuery = value;
                 });
               },
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
+              style: tt.bodyMedium?.copyWith(color: shell.onChrome),
+              decoration: InputDecoration(
                 hintText: 'Search connections...',
-                hintStyle: TextStyle(color: Colors.white70),
+                hintStyle: tt.bodyMedium?.copyWith(color: shell.muted),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
@@ -224,215 +220,136 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
                   _searchQuery = '';
                 });
               },
-              icon: Icon(
-                Icons.close,
-                color: Colors.white.withValues(alpha: 0.7),
-                size: 20,
-              ),
+              icon: Icon(Icons.close_rounded, color: shell.iconDim, size: 20),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildPrimaryActions() {
-    return Container(
+  Widget _buildPrimaryActions(BuildContext context) {
+    return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // New Message (single chat) - placed above Invite
-          _buildActionCard(
-            icon: Icons.message,
-            title: 'New Message',
-            subtitle: 'Start a direct message with a connection',
-            onTap: () => _navigateToChoosePerson(),
-          ),
-        ],
+      child: _buildActionCard(
+        context,
+        icon: Icons.message_rounded,
+        title: 'New Message',
+        subtitle: 'Start a direct message with a connection',
+        onTap: _navigateToChoosePerson,
       ),
     );
   }
 
-  Widget _buildActionCard({
+  Widget _buildActionCard(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.1),
-              Colors.white.withValues(alpha: 0.05),
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final TextTheme tt = Theme.of(context).textTheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: shell.surfaceCard,
+            border: Border.all(color: shell.surfaceCardBorder),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: shell.shadowSoft,
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
             ],
           ),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.1),
-            width: 1,
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: shell.heroGradient,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: shell.heroBorder),
+                ),
+                child: Icon(icon, color: shell.chipSelectedFg, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: tt.titleSmall?.copyWith(
+                        color: shell.onChrome,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: tt.bodySmall?.copyWith(color: shell.muted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: shell.iconDim, size: 24),
+            ],
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              color: Colors.white.withValues(alpha: 0.5),
-              size: 24,
-            ),
-          ],
         ),
       ),
     );
   }
 
-  Widget _buildRecentChats() {
+  Widget _buildRecentChats(BuildContext context) {
     if (_isLoadingRecentChats) {
-      return Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 360),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
-            ),
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Colors.white),
-              SizedBox(height: 16),
-              Text(
-                'Loading recent chats',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      return Center(child: _buildStatusCard(context, isLoading: true));
     }
 
-    final chats = _filteredRecentChats;
-    return Container(
+    final List<app_chat.Chat> chats = _filteredRecentChats;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final TextTheme tt = Theme.of(context).textTheme;
+    return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
+        children: <Widget>[
+          Text(
             'Recent Chats',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+            style: tt.titleMedium?.copyWith(
+              color: shell.onChrome,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 16),
           Expanded(
             child: chats.isEmpty
                 ? Center(
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 360),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 28),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.10),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _searchQuery.isEmpty
-                                ? Icons.forum_outlined
-                                : Icons.search_off_rounded,
-                            color: Colors.white.withValues(alpha: 0.78),
-                            size: 36,
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            _searchQuery.isEmpty
-                                ? 'No recent chats yet'
-                                : 'No chats match your search',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _searchQuery.isEmpty
-                                ? 'Start a new message and your recent conversations will show up here.'
-                                : 'Try a different name or username.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.64),
-                              fontSize: 14,
-                              height: 1.4,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
+                    child: _buildStatusCard(
+                      context,
+                      isLoading: false,
+                      isSearchEmpty: _searchQuery.isEmpty,
                     ),
                   )
                 : ListView.separated(
                     itemCount: chats.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final chat = chats[index];
-                      final otherUser = _chatUsers[chat.id ?? ''];
-                      return _buildRecentChatTile(chat, otherUser);
+                    itemBuilder: (BuildContext _, int index) {
+                      final app_chat.Chat chat = chats[index];
+                      final app_user.User? otherUser =
+                          _chatUsers[chat.id ?? ''];
+                      return _buildRecentChatTile(context, chat, otherUser);
                     },
                   ),
           ),
@@ -441,74 +358,143 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
     );
   }
 
+  Widget _buildStatusCard(
+    BuildContext context, {
+    required bool isLoading,
+    bool isSearchEmpty = true,
+  }) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final TextTheme tt = Theme.of(context).textTheme;
+    final String title = isLoading
+        ? 'Loading recent chats'
+        : isSearchEmpty
+            ? 'No recent chats yet'
+            : 'No chats match your search';
+    final String subtitle = isLoading
+        ? 'Fetching your conversations…'
+        : isSearchEmpty
+            ? 'Start a new message and your recent conversations will show up here.'
+            : 'Try a different name or username.';
+    final IconData icon = isLoading
+        ? Icons.forum_outlined
+        : isSearchEmpty
+            ? Icons.forum_outlined
+            : Icons.search_off_rounded;
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 360),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      decoration: BoxDecoration(
+        color: shell.surfaceCard,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: shell.surfaceCardBorder),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: shell.shadowSoft,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (isLoading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: CircularProgressIndicator(color: cs.primary),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Icon(icon, color: shell.iconDim, size: 36),
+            ),
+          Text(
+            title,
+            style: tt.titleMedium?.copyWith(
+              color: shell.onChrome,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: tt.bodySmall?.copyWith(
+              color: shell.muted,
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRecentChatTile(
+    BuildContext context,
     app_chat.Chat chat,
     app_user.User? otherUser,
   ) {
-    final displayName = otherUser?.displayName ?? 'Conversation';
-    final username = otherUser?.username ?? '';
-    final avatarUrl = otherUser?.avatarURL;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final TextTheme tt = Theme.of(context).textTheme;
+    final String displayName = otherUser?.displayName ?? 'Conversation';
+    final String username = otherUser?.username ?? '';
+    final String? avatarUrl = otherUser?.avatarURL;
 
-    return GestureDetector(
-      onTap: () => _openRecentChat(chat, otherUser),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: Colors.white.withValues(alpha: 0.08),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.08),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openRecentChat(chat, otherUser),
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: shell.surfaceCard,
+            border: Border.all(color: shell.surfaceCardBorder),
           ),
-        ),
-        child: Row(
-          children: [
-            _RecentChatAvatar(
-              avatarUrl: avatarUrl,
-              displayName: displayName,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (username.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+          child: Row(
+            children: <Widget>[
+              _RecentChatAvatar(
+                avatarUrl: avatarUrl,
+                displayName: displayName,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
                     Text(
-                      '@$username',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.6),
-                        fontSize: 12,
+                      displayName,
+                      style: tt.titleSmall?.copyWith(
+                        color: shell.onChrome,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
-                  const SizedBox(height: 6),
-                  Text(
-                    (chat.lastMessage ?? '').isEmpty
-                        ? 'Start the conversation'
-                        : chat.lastMessage!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 13,
+                    if (username.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 2),
+                      Text(
+                        '@$username',
+                        style: tt.labelSmall?.copyWith(color: shell.muted),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      (chat.lastMessage ?? '').isEmpty
+                          ? 'Start the conversation'
+                          : chat.lastMessage!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.bodySmall?.copyWith(color: shell.mutedStrong),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              color: Colors.white.withValues(alpha: 0.5),
-            ),
-          ],
+              Icon(Icons.chevron_right_rounded, color: shell.iconDim),
+            ],
+          ),
         ),
       ),
     );
@@ -516,33 +502,38 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
 
   void _navigateToChoosePerson() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const ChoosePersonView(),
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => const ChoosePersonView(),
         fullscreenDialog: true,
       ),
     );
   }
 
   void _openRecentChat(app_chat.Chat chat, app_user.User? otherUser) {
-    final currentUserId = _inboxService.auth.currentUser?.uid;
-    final otherUserId = chat.participants.firstWhere(
-      (id) => id != currentUserId,
+    final String? currentUserId = _inboxService.auth.currentUser?.uid;
+    final String otherUserId = chat.participants.firstWhere(
+      (String id) => id != currentUserId,
       orElse: () => '',
     );
 
     if (otherUserId.isEmpty) {
+      final ColorScheme cs = Theme.of(context).colorScheme;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to open this conversation'),
-          backgroundColor: Colors.red,
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: cs.errorContainer,
+          content: Text(
+            'Unable to open this conversation',
+            style: TextStyle(color: cs.onErrorContainer),
+          ),
         ),
       );
       return;
     }
 
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ChatViewOptimized(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => ChatViewOptimized(
           chat: chat,
           otherUserId: otherUserId,
           otherUserName: otherUser?.displayName ?? 'Conversation',
@@ -568,6 +559,7 @@ class _RecentChatAvatar extends StatelessWidget {
     final bool hasAvatar = avatarUrl != null && avatarUrl!.isNotEmpty;
     final String initial =
         displayName.isNotEmpty ? displayName[0].toUpperCase() : 'C';
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
 
     return Container(
       width: 48,
@@ -576,12 +568,15 @@ class _RecentChatAvatar extends StatelessWidget {
         shape: BoxShape.circle,
         gradient: hasAvatar
             ? null
-            : const LinearGradient(
-                colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: shell.heroGradient,
               ),
-        boxShadow: [
+        border: hasAvatar ? null : Border.all(color: shell.heroBorder),
+        boxShadow: <BoxShadow>[
           BoxShadow(
-            color: const Color(0xFF9248D2).withValues(alpha: 0.24),
+            color: shell.shadowSoft,
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -611,11 +606,12 @@ class _RecentChatAvatarFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Center(
       child: Text(
         initial,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: shell.chipSelectedFg,
           fontSize: 18,
           fontWeight: FontWeight.w700,
         ),

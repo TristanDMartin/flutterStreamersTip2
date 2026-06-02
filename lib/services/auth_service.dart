@@ -50,19 +50,19 @@ class AuthenticationService extends ChangeNotifier {
 
   // Handle user sign in and load user data from Firestore
   Future<void> _handleUserSignIn(firebase_auth.User firebaseUser) async {
-    // print("🔐 handleUserSignIn called for user: ${firebaseUser.uid}");
-    // print("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
-    // print("📧 User email: ${firebaseUser.email ?? 'nil'}");
+    // appLog("🔐 handleUserSignIn called for user: ${firebaseUser.uid}");
+    // appLog("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
+    // appLog("📧 User email: ${firebaseUser.email ?? 'nil'}");
 
     try {
       final userRef = _firestore.collection("users").doc(firebaseUser.uid);
       final snapshot = await userRef.get();
 
-      // print("📄 Firestore document fetch completed");
-      // print("🔐 Document exists: ${snapshot.exists}");
+      // appLog("📄 Firestore document fetch completed");
+      // appLog("🔐 Document exists: ${snapshot.exists}");
 
       if (snapshot.exists && snapshot.data() != null) {
-        // print("🔐 User document found in Firestore");
+        // appLog("🔐 User document found in Firestore");
         final data = snapshot.data()!;
 
         // Note: calendarEvents and platforms can be added later if needed
@@ -88,7 +88,7 @@ class AuthenticationService extends ChangeNotifier {
         _isLoggedIn = true;
         notifyListeners();
 
-        // print("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
+        // appLog("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
 
         // Set up real-time listener for user data changes
         _setupUserDataListener(firebaseUser.uid);
@@ -99,14 +99,14 @@ class AuthenticationService extends ChangeNotifier {
         // Initialize user status as online
         await setUserOnline();
       } else {
-        // print("🔐 Creating new user document in Firestore");
+        // appLog("🔐 Creating new user document in Firestore");
         await _createNewUserDocument(firebaseUser);
 
         // Initialize user status as online
         await setUserOnline();
       }
     } catch (e) {
-      // print("❌ Error handling user sign in: $e");
+      // appLog("❌ Error handling user sign in: $e");
       // Fallback to basic user data
       final user = User(
         id: firebaseUser.uid,
@@ -133,7 +133,7 @@ class AuthenticationService extends ChangeNotifier {
 
   // Create new user document in Firestore
   Future<void> _createNewUserDocument(firebase_auth.User firebaseUser) async {
-    // print("🔐 Creating new user document in Firestore for: ${firebaseUser.uid}");
+    // appLog("🔐 Creating new user document in Firestore for: ${firebaseUser.uid}");
 
     // Generate a unique username from display name
     final baseUsername =
@@ -160,7 +160,7 @@ class AuthenticationService extends ChangeNotifier {
     _isLoggedIn = true;
     notifyListeners();
 
-    // print("✅ New user signed in successfully - isLoggedIn: $_isLoggedIn");
+    // appLog("✅ New user signed in successfully - isLoggedIn: $_isLoggedIn");
 
     // Set up real-time listener for the new user
     _setupUserDataListener(firebaseUser.uid);
@@ -215,9 +215,9 @@ class AuthenticationService extends ChangeNotifier {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // print("✅ User document saved to Firestore with username mapping: ${user.username} -> ${user.id}");
+      // appLog("✅ User document saved to Firestore with username mapping: ${user.username} -> ${user.id}");
     } catch (e) {
-      // print("❌ Error saving user to Firestore: $e");
+      // appLog("❌ Error saving user to Firestore: $e");
     }
   }
 
@@ -250,7 +250,7 @@ class AuthenticationService extends ChangeNotifier {
 
         _currentUser = updatedUser;
         notifyListeners();
-        // print("🔄 User data updated from Firestore listener");
+        // appLog("🔄 User data updated from Firestore listener");
       }
     });
   }
@@ -263,18 +263,18 @@ class AuthenticationService extends ChangeNotifier {
       final snapshot = await userRef.get();
 
       if (!snapshot.exists) {
-        // print("🔐 User document doesn't exist, creating...");
+        // appLog("🔐 User document doesn't exist, creating...");
         await _createNewUserDocument(firebaseUser);
       }
     } catch (e) {
-      // print("❌ Error ensuring user document exists: $e");
+      // appLog("❌ Error ensuring user document exists: $e");
     }
   }
 
   // Sign in with Google
   Future<void> signInWithGoogle() async {
     try {
-      // print("🔐 Starting Google Sign-In process");
+      // appLog("🔐 Starting Google Sign-In process");
       setLoading(true);
 
       // First, sign out any existing Google session to avoid conflicts
@@ -282,12 +282,12 @@ class AuthenticationService extends ChangeNotifier {
 
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        // print("❌ Google Sign-In cancelled by user");
+        // appLog("❌ Google Sign-In cancelled by user");
         setLoading(false);
         return;
       }
 
-      // print("✅ Google Sign-In successful for: ${googleUser.email}");
+      // appLog("✅ Google Sign-In successful for: ${googleUser.email}");
 
       try {
         final GoogleSignInAuthentication googleAuth =
@@ -297,7 +297,7 @@ class AuthenticationService extends ChangeNotifier {
         final idToken = googleAuth.idToken;
 
         if (accessToken == null || idToken == null) {
-          // print("❌ Missing Google authentication tokens");
+          // appLog("❌ Missing Google authentication tokens");
           setLoading(false);
           throw Exception("Failed to get Google authentication tokens");
         }
@@ -307,27 +307,27 @@ class AuthenticationService extends ChangeNotifier {
           idToken: idToken,
         );
 
-        // print("🔐 Signing in to Firebase with Google credential");
+        // appLog("🔐 Signing in to Firebase with Google credential");
         final firebase_auth.UserCredential userCredential =
             await _auth.signInWithCredential(credential);
         final firebase_auth.User? user = userCredential.user;
 
         if (user != null) {
-          // print("✅ Firebase authentication successful for: ${user.email}");
+          // appLog("✅ Firebase authentication successful for: ${user.email}");
           // The auth state listener will handle the rest
         }
 
         setLoading(false);
-        // print("🎉 Google Sign-In process completed successfully");
+        // appLog("🎉 Google Sign-In process completed successfully");
       } catch (authError) {
-        // print("❌ Firebase authentication error: $authError");
+        // appLog("❌ Firebase authentication error: $authError");
         // Sign out from Google if Firebase auth fails
         await _googleSignIn.signOut();
         setLoading(false);
         rethrow;
       }
     } catch (e) {
-      // print("❌ Google Sign-In error: $e");
+      // appLog("❌ Google Sign-In error: $e");
       setLoading(false);
 
       // Provide more specific error messages
@@ -347,20 +347,20 @@ class AuthenticationService extends ChangeNotifier {
   // Sign in with email
   Future<void> signInWithEmail(String email, String password) async {
     try {
-      // print("📧 Starting email authentication for: $email");
+      // appLog("📧 Starting email authentication for: $email");
       setLoading(true);
 
       final userCredential = await _auth.signInWithEmailAndPassword(
           email: email, password: password);
 
       if (userCredential.user != null) {
-        // print("✅ Email authentication successful for: ${userCredential.user!.email}");
+        // appLog("✅ Email authentication successful for: ${userCredential.user!.email}");
         // Auth state listener will handle the rest
       }
 
       setLoading(false);
     } catch (e) {
-      // print("❌ Email sign in error: $e");
+      // appLog("❌ Email sign in error: $e");
       setLoading(false);
 
       // Provide more specific error messages
@@ -527,7 +527,7 @@ class AuthenticationService extends ChangeNotifier {
             SetOptions(merge: true),
           );
     } catch (e) {
-      // print("❌ Error creating/updating user document: $e");
+      // appLog("❌ Error creating/updating user document: $e");
     }
   }
 
@@ -565,10 +565,10 @@ class AuthenticationService extends ChangeNotifier {
       // Update password
       await user.updatePassword(newPassword);
 
-      // print("✅ Password updated successfully");
+      // appLog("✅ Password updated successfully");
       setLoading(false);
     } catch (e) {
-      // print("❌ Password change error: $e");
+      // appLog("❌ Password change error: $e");
       setLoading(false);
 
       if (e.toString().contains('wrong-password')) {
@@ -588,10 +588,10 @@ class AuthenticationService extends ChangeNotifier {
 
       await _auth.sendPasswordResetEmail(email: email);
 
-      // print("✅ Password reset email sent to: $email");
+      // appLog("✅ Password reset email sent to: $email");
       setLoading(false);
     } catch (e) {
-      // print("❌ Password reset error: $e");
+      // appLog("❌ Password reset error: $e");
       setLoading(false);
 
       if (e.toString().contains('user-not-found')) {
@@ -780,9 +780,9 @@ class AuthenticationService extends ChangeNotifier {
         _currentUserProfile!['updatedAt'] = DateTime.now().toIso8601String();
       }
 
-      // print('✅ User platforms updated successfully');
+      // appLog('✅ User platforms updated successfully');
     } catch (e) {
-      // print('❌ Error updating user platforms: $e');
+      // appLog('❌ Error updating user platforms: $e');
       throw Exception('Failed to update platforms: ${e.toString()}');
     }
   }
@@ -826,9 +826,9 @@ class AuthenticationService extends ChangeNotifier {
         _currentUserProfile!['updatedAt'] = DateTime.now().toIso8601String();
       }
 
-      // print('✅ User profile updated successfully');
+      // appLog('✅ User profile updated successfully');
     } catch (e) {
-      // print('❌ Error updating user profile: $e');
+      // appLog('❌ Error updating user profile: $e');
       throw Exception('Failed to update profile: ${e.toString()}');
     }
   }
@@ -852,9 +852,9 @@ class AuthenticationService extends ChangeNotifier {
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // print('✅ User status updated to ${status.value}');
+      // appLog('✅ User status updated to ${status.value}');
     } catch (e) {
-      // print('❌ Error updating user status: $e');
+      // appLog('❌ Error updating user status: $e');
       throw Exception('Failed to update status: ${e.toString()}');
     }
   }
@@ -896,27 +896,27 @@ class AuthenticationService extends ChangeNotifier {
       final usernameDoc =
           await _firestore.collection('usernames').doc(username).get();
       if (!usernameDoc.exists) {
-        // print('❌ Username not found: $username');
+        // appLog('❌ Username not found: $username');
         return null;
       }
 
       final uid = usernameDoc.data()?['uid'] as String?;
       if (uid == null) {
-        // print('❌ No UID found for username: $username');
+        // appLog('❌ No UID found for username: $username');
         return null;
       }
 
       // Then get the full user document
       final userDoc = await _firestore.collection('users').doc(uid).get();
       if (!userDoc.exists) {
-        // print('❌ User document not found for UID: $uid');
+        // appLog('❌ User document not found for UID: $uid');
         return null;
       }
 
       final userData = userDoc.data()!;
       return User.fromMap(userData);
     } catch (e) {
-      // print('❌ Error getting user by username: $e');
+      // appLog('❌ Error getting user by username: $e');
       return null;
     }
   }
@@ -932,7 +932,7 @@ class AuthenticationService extends ChangeNotifier {
               })
           .toList();
     } catch (e) {
-      // print('❌ Error getting all users: $e');
+      // appLog('❌ Error getting all users: $e');
       return [];
     }
   }

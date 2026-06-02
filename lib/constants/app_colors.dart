@@ -13,6 +13,7 @@ class AppColors {
 
   // MARK: - Support/Profile Palette
   static const Color supportBackground = Color(0xFF1C135D);
+
   /// Profile tab, front/back, edit, and share — solid black.
   static const Color profileViewBackground = Color(0xFF000000);
   static const Color supportTopSurface = Color(0xFF6137EB);
@@ -30,10 +31,10 @@ class AppColors {
   static const Color background = Color(0xFF0A0A0A); // Dark background
   static const Color surface = Color(0xFF1A1A1A); // Surface color
   static const Color card = Color(0xFF2A2A2A); // Card background
-  
+
   // MARK: - Xcode Color Asset (Dark Gray)
   static const Color xcodeDarkGray = Color(0xFF1A1C21); // RGB(0.10, 0.11, 0.13)
-  
+
   // MARK: - Social Platform Brand Colors
   static const Color twitch = Color(0xFF9146FF);
   static const Color youtube = Color(0xFFFF0000);
@@ -163,13 +164,17 @@ class AppColors {
   static Color darken(Color color, double amount) {
     assert(amount >= 0 && amount <= 1);
     final hsl = HSLColor.fromColor(color);
-    return hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0)).toColor();
+    return hsl
+        .withLightness((hsl.lightness - amount).clamp(0.0, 1.0))
+        .toColor();
   }
 
   static Color lighten(Color color, double amount) {
     assert(amount >= 0 && amount <= 1);
     final hsl = HSLColor.fromColor(color);
-    return hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0)).toColor();
+    return hsl
+        .withLightness((hsl.lightness + amount).clamp(0.0, 1.0))
+        .toColor();
   }
 
   // MARK: - Platform-Specific Colors
@@ -197,19 +202,19 @@ class AppColors {
 extension ColorExtensions on Color {
   /// Get a darker version of this color
   Color darken(double amount) => AppColors.darken(this, amount);
-  
+
   /// Get a lighter version of this color
   Color lighten(double amount) => AppColors.lighten(this, amount);
-  
+
   /// Get a version with opacity
   Color withAlpha(double alpha) => withValues(alpha: alpha);
-  
+
   /// Get the hex string representation
   String get hexString => '#${toARGB32().toRadixString(16).padLeft(8, '0')}';
-  
+
   /// Check if this is a dark color
   bool get isDark => computeLuminance() < 0.5;
-  
+
   /// Check if this is a light color
   bool get isLight => computeLuminance() > 0.5;
 }

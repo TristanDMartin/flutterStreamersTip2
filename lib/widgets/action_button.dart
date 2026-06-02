@@ -10,7 +10,7 @@ class ActionButton extends StatelessWidget {
   final Color? color;
   final bool useGradient;
   final Key? iconKey;
-  
+
   const ActionButton({
     super.key,
     required this.icon,
@@ -49,7 +49,7 @@ class LegacyActionButton extends StatelessWidget {
   final Color? color;
   final bool useGradient;
   final Key? iconKey;
-  
+
   const LegacyActionButton({
     super.key,
     required this.icon,
@@ -114,13 +114,16 @@ class LegacyActionButton extends StatelessWidget {
                   child: Icon(
                     icon,
                     size: 32,
-                    color: color ?? (isActive ? const Color(0xFF9248d2) : Colors.white.withValues(alpha:0.85)),
+                    color: color ??
+                        (isActive
+                            ? const Color(0xFF9248d2)
+                            : Colors.white.withValues(alpha: 0.85)),
                   ),
                 ),
             ],
-            
+
             const SizedBox(height: 4),
-            
+
             // Label
             Text(
               label,

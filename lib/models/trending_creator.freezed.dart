@@ -20,6 +20,9 @@ mixin _$TrendingCreator {
   String? get avatarURL;
   int get followerCount;
   bool get isActive;
+  int get creatorLevel;
+  String? get tierStatusLabel;
+  bool get isFollowing;
 
   /// Create a copy of TrendingCreator
   /// with the given fields replaced by the non-null parameter values.
@@ -44,16 +47,31 @@ mixin _$TrendingCreator {
             (identical(other.followerCount, followerCount) ||
                 other.followerCount == followerCount) &&
             (identical(other.isActive, isActive) ||
-                other.isActive == isActive));
+                other.isActive == isActive) &&
+            (identical(other.creatorLevel, creatorLevel) ||
+                other.creatorLevel == creatorLevel) &&
+            (identical(other.tierStatusLabel, tierStatusLabel) ||
+                other.tierStatusLabel == tierStatusLabel) &&
+            (identical(other.isFollowing, isFollowing) ||
+                other.isFollowing == isFollowing));
   }
 
   @override
-  int get hashCode => Object.hash(runtimeType, id, username, displayName,
-      avatarURL, followerCount, isActive);
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      username,
+      displayName,
+      avatarURL,
+      followerCount,
+      isActive,
+      creatorLevel,
+      tierStatusLabel,
+      isFollowing);
 
   @override
   String toString() {
-    return 'TrendingCreator(id: $id, username: $username, displayName: $displayName, avatarURL: $avatarURL, followerCount: $followerCount, isActive: $isActive)';
+    return 'TrendingCreator(id: $id, username: $username, displayName: $displayName, avatarURL: $avatarURL, followerCount: $followerCount, isActive: $isActive, creatorLevel: $creatorLevel, tierStatusLabel: $tierStatusLabel, isFollowing: $isFollowing)';
   }
 }
 
@@ -69,7 +87,10 @@ abstract mixin class $TrendingCreatorCopyWith<$Res> {
       String? displayName,
       String? avatarURL,
       int followerCount,
-      bool isActive});
+      bool isActive,
+      int creatorLevel,
+      String? tierStatusLabel,
+      bool isFollowing});
 }
 
 /// @nodoc
@@ -91,6 +112,9 @@ class _$TrendingCreatorCopyWithImpl<$Res>
     Object? avatarURL = freezed,
     Object? followerCount = null,
     Object? isActive = null,
+    Object? creatorLevel = null,
+    Object? tierStatusLabel = freezed,
+    Object? isFollowing = null,
   }) {
     return _then(_self.copyWith(
       id: null == id
@@ -116,6 +140,18 @@ class _$TrendingCreatorCopyWithImpl<$Res>
       isActive: null == isActive
           ? _self.isActive
           : isActive // ignore: cast_nullable_to_non_nullable
+              as bool,
+      creatorLevel: null == creatorLevel
+          ? _self.creatorLevel
+          : creatorLevel // ignore: cast_nullable_to_non_nullable
+              as int,
+      tierStatusLabel: freezed == tierStatusLabel
+          ? _self.tierStatusLabel
+          : tierStatusLabel // ignore: cast_nullable_to_non_nullable
+              as String?,
+      isFollowing: null == isFollowing
+          ? _self.isFollowing
+          : isFollowing // ignore: cast_nullable_to_non_nullable
               as bool,
     ));
   }
@@ -212,16 +248,32 @@ extension TrendingCreatorPatterns on TrendingCreator {
 
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
-    TResult Function(String id, String username, String? displayName,
-            String? avatarURL, int followerCount, bool isActive)?
+    TResult Function(
+            String id,
+            String username,
+            String? displayName,
+            String? avatarURL,
+            int followerCount,
+            bool isActive,
+            int creatorLevel,
+            String? tierStatusLabel,
+            bool isFollowing)?
         $default, {
     required TResult orElse(),
   }) {
     final _that = this;
     switch (_that) {
       case _TrendingCreator() when $default != null:
-        return $default(_that.id, _that.username, _that.displayName,
-            _that.avatarURL, _that.followerCount, _that.isActive);
+        return $default(
+            _that.id,
+            _that.username,
+            _that.displayName,
+            _that.avatarURL,
+            _that.followerCount,
+            _that.isActive,
+            _that.creatorLevel,
+            _that.tierStatusLabel,
+            _that.isFollowing);
       case _:
         return orElse();
     }
@@ -242,15 +294,31 @@ extension TrendingCreatorPatterns on TrendingCreator {
 
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
-    TResult Function(String id, String username, String? displayName,
-            String? avatarURL, int followerCount, bool isActive)
+    TResult Function(
+            String id,
+            String username,
+            String? displayName,
+            String? avatarURL,
+            int followerCount,
+            bool isActive,
+            int creatorLevel,
+            String? tierStatusLabel,
+            bool isFollowing)
         $default,
   ) {
     final _that = this;
     switch (_that) {
       case _TrendingCreator():
-        return $default(_that.id, _that.username, _that.displayName,
-            _that.avatarURL, _that.followerCount, _that.isActive);
+        return $default(
+            _that.id,
+            _that.username,
+            _that.displayName,
+            _that.avatarURL,
+            _that.followerCount,
+            _that.isActive,
+            _that.creatorLevel,
+            _that.tierStatusLabel,
+            _that.isFollowing);
     }
   }
 
@@ -268,15 +336,31 @@ extension TrendingCreatorPatterns on TrendingCreator {
 
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
-    TResult? Function(String id, String username, String? displayName,
-            String? avatarURL, int followerCount, bool isActive)?
+    TResult? Function(
+            String id,
+            String username,
+            String? displayName,
+            String? avatarURL,
+            int followerCount,
+            bool isActive,
+            int creatorLevel,
+            String? tierStatusLabel,
+            bool isFollowing)?
         $default,
   ) {
     final _that = this;
     switch (_that) {
       case _TrendingCreator() when $default != null:
-        return $default(_that.id, _that.username, _that.displayName,
-            _that.avatarURL, _that.followerCount, _that.isActive);
+        return $default(
+            _that.id,
+            _that.username,
+            _that.displayName,
+            _that.avatarURL,
+            _that.followerCount,
+            _that.isActive,
+            _that.creatorLevel,
+            _that.tierStatusLabel,
+            _that.isFollowing);
       case _:
         return null;
     }
@@ -292,7 +376,10 @@ class _TrendingCreator implements TrendingCreator {
       this.displayName,
       this.avatarURL,
       this.followerCount = 0,
-      this.isActive = false});
+      this.isActive = false,
+      this.creatorLevel = 0,
+      this.tierStatusLabel,
+      this.isFollowing = false});
 
   @override
   final String id;
@@ -308,6 +395,14 @@ class _TrendingCreator implements TrendingCreator {
   @override
   @JsonKey()
   final bool isActive;
+  @override
+  @JsonKey()
+  final int creatorLevel;
+  @override
+  final String? tierStatusLabel;
+  @override
+  @JsonKey()
+  final bool isFollowing;
 
   /// Create a copy of TrendingCreator
   /// with the given fields replaced by the non-null parameter values.
@@ -332,16 +427,31 @@ class _TrendingCreator implements TrendingCreator {
             (identical(other.followerCount, followerCount) ||
                 other.followerCount == followerCount) &&
             (identical(other.isActive, isActive) ||
-                other.isActive == isActive));
+                other.isActive == isActive) &&
+            (identical(other.creatorLevel, creatorLevel) ||
+                other.creatorLevel == creatorLevel) &&
+            (identical(other.tierStatusLabel, tierStatusLabel) ||
+                other.tierStatusLabel == tierStatusLabel) &&
+            (identical(other.isFollowing, isFollowing) ||
+                other.isFollowing == isFollowing));
   }
 
   @override
-  int get hashCode => Object.hash(runtimeType, id, username, displayName,
-      avatarURL, followerCount, isActive);
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      username,
+      displayName,
+      avatarURL,
+      followerCount,
+      isActive,
+      creatorLevel,
+      tierStatusLabel,
+      isFollowing);
 
   @override
   String toString() {
-    return 'TrendingCreator(id: $id, username: $username, displayName: $displayName, avatarURL: $avatarURL, followerCount: $followerCount, isActive: $isActive)';
+    return 'TrendingCreator(id: $id, username: $username, displayName: $displayName, avatarURL: $avatarURL, followerCount: $followerCount, isActive: $isActive, creatorLevel: $creatorLevel, tierStatusLabel: $tierStatusLabel, isFollowing: $isFollowing)';
   }
 }
 
@@ -359,7 +469,10 @@ abstract mixin class _$TrendingCreatorCopyWith<$Res>
       String? displayName,
       String? avatarURL,
       int followerCount,
-      bool isActive});
+      bool isActive,
+      int creatorLevel,
+      String? tierStatusLabel,
+      bool isFollowing});
 }
 
 /// @nodoc
@@ -381,6 +494,9 @@ class __$TrendingCreatorCopyWithImpl<$Res>
     Object? avatarURL = freezed,
     Object? followerCount = null,
     Object? isActive = null,
+    Object? creatorLevel = null,
+    Object? tierStatusLabel = freezed,
+    Object? isFollowing = null,
   }) {
     return _then(_TrendingCreator(
       id: null == id
@@ -406,6 +522,18 @@ class __$TrendingCreatorCopyWithImpl<$Res>
       isActive: null == isActive
           ? _self.isActive
           : isActive // ignore: cast_nullable_to_non_nullable
+              as bool,
+      creatorLevel: null == creatorLevel
+          ? _self.creatorLevel
+          : creatorLevel // ignore: cast_nullable_to_non_nullable
+              as int,
+      tierStatusLabel: freezed == tierStatusLabel
+          ? _self.tierStatusLabel
+          : tierStatusLabel // ignore: cast_nullable_to_non_nullable
+              as String?,
+      isFollowing: null == isFollowing
+          ? _self.isFollowing
+          : isFollowing // ignore: cast_nullable_to_non_nullable
               as bool,
     ));
   }

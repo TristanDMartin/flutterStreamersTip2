@@ -15,6 +15,7 @@ import '../models/user_status.dart';
 import '../services/follows_service.dart';
 import '../services/migration_service.dart';
 import '../services/performance_monitoring_service.dart';
+import '../services/user_blocking_service.dart';
 import '../widgets/status_aware_avatar.dart';
 import '../providers/status_provider.dart';
 import '../routing/app_navigator.dart';
@@ -22,6 +23,11 @@ import '../components/onboarding/product_tour_target_keys.dart';
 import '../providers/follow_refresh_provider.dart';
 import '../providers/video_service_provider.dart' as video_providers;
 import '../constants/app_colors.dart';
+import '../models/creator_activity.dart';
+import '../services/creator_activity_service.dart';
+import '../widgets/creator_activity_badge.dart';
+import '../constants/playback_owners.dart';
+import '../services/global_playback_manager.dart';
 
 class NetworkView extends ConsumerStatefulWidget {
   final String? initialTab;
@@ -104,6 +110,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   // Error state
   bool _hasShownPermissionError = false;
   DateTime? _lastFollowListenerErrorSnackAt;
+  String? _networkErrorMessage;
+  final Set<String> _swipeHapticShown = <String>{};
 
   bool get _isFirebaseReady => Firebase.apps.isNotEmpty;
 
@@ -155,6 +163,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     // Start monitoring when view initializes
     PerformanceMonitoringService().startMonitoring();
+    GlobalPlaybackManager.instance.setVisibleOwner(PlaybackOwners.network);
 
     // Initialize real-time relationship listeners
     if (_isFirebaseReady) {
@@ -259,17 +268,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         }
         _lastFollowListenerErrorSnackAt = now;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isPermissionDenied
-                ? 'Cannot load network: missing permissions.'
-                : 'Network updates failed. Check connection.',
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      setState(() {
+        _networkErrorMessage = isPermissionDenied
+            ? 'Cannot load network: missing permissions.'
+            : 'Network updates failed. Check connection.';
+      });
     }
 
     _scopedFollowsSubscription1 = FirebaseFirestore.instance
@@ -307,24 +310,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   /// Show network error message
   void _showNetworkError() {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'No internet connection. Please check your network.',
-          ),
-          backgroundColor: Colors.orange.withValues(alpha: 0.8),
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'Retry',
-            textColor: Colors.white,
-            onPressed: () {
-              _loadUsersFromFollowsService();
-            },
-          ),
-        ),
-      );
-    }
+    if (!mounted) return;
+    setState(() {
+      _networkErrorMessage =
+          'No internet connection. Please check your network.';
+    });
   }
 
   /// Load users from clean relationship service
@@ -403,6 +393,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         _followersUsers = results[1];
         _followingUsers = results[2];
         _isLoadingUsers = false;
+        _networkErrorMessage = null;
       });
 
       _logDriftIfAny(
@@ -661,6 +652,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      GlobalPlaybackManager.instance.setVisibleOwner(PlaybackOwners.network);
+    });
 
     ref.listen<int>(followRefreshProvider, (previous, next) {
       if (previous == next || !mounted) return;
@@ -677,35 +672,76 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         }
       },
       child: KeyedSubtree(
-        key: ProductTourTargetKeys.network,
+        key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.network),
         child: ColoredBox(
           color: Theme.of(context).scaffoldBackgroundColor,
           child: SafeArea(
             child: Column(
+              children: [
+                _buildTopChrome(),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  child: _isSearchVisible
+                      ? Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: _buildSearchBar(),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                _buildTabButtons(),
+                if (_networkErrorMessage != null)
+                  _buildNetworkErrorBanner(_networkErrorMessage!),
+                Expanded(
+                  child: FadeTransition(
+                    opacity: _contentFadeAnimation,
+                    child: SlideTransition(
+                      position: _contentSlideAnimation,
+                      child: _buildMainContent(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNetworkErrorBanner(String message) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: _th.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildTopChrome(),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                child: _isSearchVisible
-                    ? Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: _buildSearchBar(),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              _buildTabButtons(),
+              Icon(Icons.error_outline, color: _th.error, size: 20),
+              const SizedBox(width: 10),
               Expanded(
-                child: FadeTransition(
-                  opacity: _contentFadeAnimation,
-                  child: SlideTransition(
-                    position: _contentSlideAnimation,
-                    child: _buildMainContent(),
+                child: SelectableText.rich(
+                  TextSpan(
+                    text: message,
+                    style: TextStyle(
+                      color: _th.error,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
+              TextButton(
+                onPressed: () {
+                  setState(() => _networkErrorMessage = null);
+                  _loadUsersFromFollowsService();
+                },
+                child: const Text('Retry'),
+              ),
             ],
-          ),
           ),
         ),
       ),
@@ -766,93 +802,97 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   Widget _buildTopChrome() {
     final Color on = _th.onSurface;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _th.surface,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: on.withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your Network',
+                      style: TextStyle(
+                        color: on,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Build your creator circle.',
+                      style: TextStyle(
+                        color: on.withValues(alpha: 0.62),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              _buildIconHeaderAction(
+                icon: _isSearchVisible
+                    ? Icons.close_rounded
+                    : Icons.search_rounded,
+                isPrimary: _isSearchVisible,
+                tooltip: _isSearchVisible ? 'Close search' : 'Search network',
+                onTap: _toggleSearch,
+              ),
+              const SizedBox(width: 8),
+              _buildIconHeaderAction(
+                icon: Icons.tune_rounded,
+                tooltip: 'Sort and filter',
+                onTap: _showSortOptions,
+              ),
+              const SizedBox(width: 8),
+              _buildIconHeaderAction(
+                icon: Icons.refresh_rounded,
+                tooltip: 'Refresh network',
+                onTap: _refreshDataInstantly,
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: _th.shadow.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Your Network',
-                        style: TextStyle(
-                          color: on,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          height: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _isSearchVisible
-                            ? 'Search across your connections, followers, and following.'
-                            : 'Keep track of your people and move between lists quickly.',
-                        style: TextStyle(
-                          color: on.withValues(alpha: 0.66),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          height: 1.25,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                _buildStatusChip(),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildHeaderAction(
-                    icon: Icons.refresh_rounded,
-                    label: 'Refresh',
-                    onTap: _refreshDataInstantly,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildHeaderAction(
-                    icon: Icons.swap_vert_rounded,
-                    label: 'Sort',
-                    onTap: _showSortOptions,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildHeaderAction(
-                    icon: _isSearchVisible
-                        ? Icons.close_rounded
-                        : Icons.search_rounded,
-                    label: _isSearchVisible ? 'Close' : 'Search',
-                    isPrimary: true,
-                    onTap: _toggleSearch,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          const SizedBox(height: 14),
+          _buildNetworkEnergyRow(),
+        ],
       ),
+    );
+  }
+
+  Widget _buildNetworkEnergyRow() {
+    final int activeCreators = _getAllUsersForSearch()
+        .where(
+          (user) =>
+              user.onlineStatus == user_model.OnlineStatus.online ||
+              user.onlineStatus == user_model.OnlineStatus.streaming,
+        )
+        .length;
+    final int creatorsPosting =
+        _getAllUsersForSearch().where((user) => user.postCount > 0).length;
+    return Row(
+      children: [
+        Expanded(
+          child: _NetworkEnergyChip(
+            icon: Icons.circle,
+            label: '$activeCreators active now',
+            color: activeCreators > 0 ? Colors.greenAccent : _th.onSurface,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _NetworkEnergyChip(
+            icon: Icons.movie_creation_outlined,
+            label: '$creatorsPosting creators posted',
+            color: _th.primary,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _buildStatusChip(),
+      ],
     );
   }
 
@@ -919,58 +959,103 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     );
   }
 
-  Widget _buildHeaderAction({
+  Widget _buildIconHeaderAction({
     required IconData icon,
-    required String label,
+    required String tooltip,
     required VoidCallback onTap,
     bool isPrimary = false,
   }) {
     final Color fg = isPrimary ? _th.onPrimary : _th.onSurface;
-    final Color borderC = isPrimary
-        ? _th.onPrimary.withValues(alpha: 0.2)
-        : _th.onSurface.withValues(alpha: 0.12);
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          gradient: isPrimary
-              ? const LinearGradient(
-                  colors: AppColors.supportAccentGradient,
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                )
-              : null,
-          color: isPrimary
-              ? null
-              : _th.onSurface.withValues(
-                  alpha: 0.06,
-                ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: borderC,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: fg, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: fg,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color:
+                isPrimary ? _th.primary : _th.onSurface.withValues(alpha: 0.06),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isPrimary
+                  ? _th.primary.withValues(alpha: 0.34)
+                  : _th.onSurface.withValues(alpha: 0.12),
             ),
-          ],
+          ),
+          child: Icon(
+            icon,
+            color: fg.withValues(
+              alpha: isPrimary ? 1 : 0.72,
+            ),
+            size: 20,
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildCreatorActivityLine(user_model.User user) {
+    final CreatorActivityService activityService = CreatorActivityService();
+    final CreatorActivity activity =
+        activityService.effectiveActivity(<String, dynamic>{
+      'creatorActivity': user.creatorActivity.toMap(),
+    });
+    if (!_shouldShowCreatorActivity(user, activity)) {
+      return const SizedBox.shrink();
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: CreatorActivityBadge(
+        activity: activity,
+        compact: true,
+        showPlatform: true,
+      ),
+    );
+  }
+
+  bool _shouldShowCreatorActivity(
+    user_model.User user,
+    CreatorActivity activity,
+  ) {
+    if (activity.isNone) return false;
+    final CreatorActivityPrivacy privacy = user.activityPrivacy;
+    if (privacy.hideFromEveryone || !privacy.showCreatorActivity) {
+      return false;
+    }
+    if (privacy.connectionsOnly &&
+        !_connectionsUsers.any((user_model.User u) => u.id == user.id)) {
+      return false;
+    }
+    final CreatorActivityService svc = CreatorActivityService();
+    if (svc.isLiveType(activity.type) && !privacy.showLiveStatus) {
+      return false;
+    }
+    if (svc.isPostType(activity.type) && !privacy.showPostActivity) {
+      return false;
+    }
+    if (svc.isCollaborationType(activity.type) &&
+        !privacy.showCollaborationStatus) {
+      return false;
+    }
+    return true;
+  }
+
+  String _creatorTypeLabel(user_model.User user) {
+    if (user.hashtags.isNotEmpty) {
+      return user.hashtags.first.replaceFirst('#', '');
+    }
+    if (user.platforms.isNotEmpty) {
+      return '${user.platforms.first.type.displayName} creator';
+    }
+    if (user.bio?.trim().isNotEmpty == true) {
+      final bio = user.bio!.trim();
+      return bio.length > 36 ? '${bio.substring(0, 36)}...' : bio;
+    }
+    return '@${user.username}';
   }
 
   Widget _buildTabButtons() {
@@ -986,12 +1071,12 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         }
       },
       child: SizedBox(
-        height: 148,
+        height: 106,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
           child: Row(
-            spacing: 16,
+            spacing: 10,
             children: [
               _buildLargeNetworkButton(
                 'Connections',
@@ -1026,93 +1111,66 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   ) {
     final isSelected = _selectedTab == tab;
     final Color on = _th.onSurface;
-    final Color onP = _th.onPrimary;
-    final Color fg = isSelected ? onP : on;
+    final Color fg = isSelected ? _th.primary : on;
     return GestureDetector(
       onTap: () => _selectTab(tab),
       child: Container(
-        width: 178,
-        height: 132,
+        width: 138,
+        height: 92,
         decoration: BoxDecoration(
-          gradient: isSelected
-              ? const LinearGradient(
-                  colors: AppColors.supportAccentGradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
           color: isSelected
-              ? null
-              : on.withValues(
-                  alpha: 0.08,
-                ),
-          borderRadius: BorderRadius.circular(20),
+              ? _th.primary.withValues(alpha: 0.13)
+              : on.withValues(alpha: 0.055),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
-                ? onP.withValues(alpha: 0.3)
-                : on.withValues(alpha: 0.16),
-            width: 1.4,
+                ? _th.primary.withValues(alpha: 0.30)
+                : on.withValues(alpha: 0.12),
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: _th.shadow.withValues(alpha: 0.15),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
-              : null,
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.max,
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: fg.withValues(
-                    alpha: isSelected ? 0.2 : 0.08,
+              Row(
+                children: [
+                  Icon(
+                    icon,
+                    size: 17,
+                    color: fg.withValues(alpha: isSelected ? 1 : 0.62),
                   ),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: fg.withValues(
-                      alpha: isSelected ? 0.22 : 0.12,
+                  const Spacer(),
+                  if (isSelected)
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: _th.primary,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  size: 22,
-                  color: fg.withValues(
-                    alpha: isSelected ? 1 : 0.82,
-                  ),
-                ),
+                ],
               ),
-              const SizedBox(height: 8),
+              const Spacer(),
               Text(
                 title,
                 style: TextStyle(
-                  color: fg.withValues(
-                    alpha: isSelected ? 1 : 0.82,
-                  ),
-                  fontSize: 17,
+                  color: on.withValues(alpha: isSelected ? 0.96 : 0.68),
+                  fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  height: 1.05,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Row(
                 children: [
                   Text(
                     count.toString(),
                     style: TextStyle(
-                      color: fg,
-                      fontSize: 24,
+                      color: isSelected ? _th.primary : on,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
                       height: 1,
                     ),
@@ -1121,9 +1179,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                   Text(
                     'people',
                     style: TextStyle(
-                      color: fg.withValues(alpha: 0.72),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      color: on.withValues(alpha: 0.48),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -1251,9 +1309,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   Widget _buildUserCard(user_model.User user) {
     final Color on = _th.onSurface;
-    final subtitle = user.bio?.trim().isNotEmpty == true
-        ? user.bio!.trim()
-        : '@${user.username}';
+    final subtitle = _creatorTypeLabel(user);
     final TextStyle statsStyle = TextStyle(
       color: on.withValues(alpha: 0.5),
       fontSize: 11,
@@ -1270,35 +1326,46 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         key: ValueKey('network_user_${user.id}_${_selectedTab.name}'),
         direction: DismissDirection.endToStart,
         confirmDismiss: (_) => _handleSwipeAction(user),
+        dismissThresholds: const {
+          DismissDirection.endToStart: 0.18,
+        },
+        onUpdate: (details) {
+          final hapticKey = '${_selectedTab.name}:${user.id}';
+          if (details.direction == DismissDirection.endToStart &&
+              details.progress > 0.18 &&
+              _swipeHapticShown.add(hapticKey)) {
+            HapticFeedback.selectionClick();
+          }
+          if (details.progress < 0.04) {
+            _swipeHapticShown.remove(hapticKey);
+          }
+        },
         background: _buildSwipeBackground(),
         child: GestureDetector(
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            _showNetworkActions(user);
+          },
           onTap: () {
             HapticFeedback.lightImpact();
             _navigateToStreamerCard(user);
           },
           child: Container(
             width: double.infinity,
-            constraints: const BoxConstraints(minHeight: 76),
+            constraints: const BoxConstraints(minHeight: 82),
             decoration: BoxDecoration(
-              color: on.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: on.withValues(alpha: 0.12)),
-              boxShadow: [
-                BoxShadow(
-                  color: _th.shadow.withValues(alpha: 0.1),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              color: on.withValues(alpha: 0.045),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: on.withValues(alpha: 0.10)),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
                   StatusAwareAvatar(
                     userId: user.id,
                     avatarURL: user.avatarURL,
-                    radius: 21,
+                    radius: 22,
                     showOnlineIndicator: true,
                   ),
                   const SizedBox(width: 12),
@@ -1312,7 +1379,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                           user.displayName,
                           style: TextStyle(
                             color: on,
-                            fontSize: 16,
+                            fontSize: 15.5,
                             fontWeight: FontWeight.w800,
                           ),
                           maxLines: 1,
@@ -1322,29 +1389,37 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                         Text(
                           subtitle,
                           style: TextStyle(
-                            color: on.withValues(alpha: 0.66),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                            color: on.withValues(alpha: 0.58),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
                           ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
-                        const SizedBox(height: 4),
+                        _buildCreatorActivityLine(user),
+                        const SizedBox(height: 6),
                         statsLine,
                       ],
                     ),
                   ),
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: on.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.chevron_right_rounded,
-                      color: on.withValues(alpha: 0.5),
-                      size: 20,
+                  const SizedBox(width: 10),
+                  Tooltip(
+                    message: 'Message',
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: _th.primary.withValues(alpha: 0.11),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _th.primary.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: _th.primary,
+                        size: 17,
+                      ),
                     ),
                   ),
                 ],
@@ -1545,24 +1620,24 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   Widget _buildSwipeBackground() {
     return Container(
       alignment: Alignment.centerRight,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.red.withValues(alpha: 0.58),
-            Colors.red.withValues(alpha: 0.88),
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
+        color: _th.onSurface.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.block_rounded, color: Colors.white),
-          SizedBox(width: 8),
-          Icon(Icons.delete_forever_rounded, color: Colors.white),
+          _SwipeActionDot(
+              icon: Icons.person_search_rounded, color: _th.primary),
+          const SizedBox(width: 8),
+          _SwipeActionDot(
+            icon: Icons.person_remove_rounded,
+            color: Colors.orangeAccent,
+          ),
+          const SizedBox(width: 8),
+          const _SwipeActionDot(
+              icon: Icons.block_rounded, color: Colors.redAccent),
         ],
       ),
     );
@@ -1570,53 +1645,128 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   Future<bool> _handleSwipeAction(user_model.User user) async {
     HapticFeedback.mediumImpact();
+    await _showNetworkActions(user);
+    return false;
+  }
+
+  Future<void> _showNetworkActions(user_model.User user) async {
     final tab = _selectedTab;
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUserId == null) return false;
+    if (FirebaseAuth.instance.currentUser?.uid == null) return;
 
-    try {
-      if (tab == network_models.NetworkTab.following ||
-          tab == network_models.NetworkTab.connections) {
-        final ok = await FollowsService().unfollowUser(user.id);
-        if (ok) {
-          _refreshDataInstantly();
-          return true;
-        }
-        return false;
-      }
-
-      final batch = FirebaseFirestore.instance.batch();
-      final follows = FirebaseFirestore.instance.collection('follows');
-
-      final legacyDocs = await follows
-          .where('followerId', isEqualTo: user.id)
-          .where('followedId', isEqualTo: currentUserId)
-          .get();
-      for (final doc in legacyDocs.docs) {
-        batch.delete(doc.reference);
-      }
-
-      final primaryDocs = await follows
-          .where('targetUserId', isEqualTo: currentUserId)
-          .where('followerUserId', isEqualTo: user.id)
-          .get();
-      for (final doc in primaryDocs.docs) {
-        batch.delete(doc.reference);
-      }
-
-      if (legacyDocs.docs.isEmpty && primaryDocs.docs.isEmpty) {
-        debugPrint(
-          '⚠️ No follower docs found to remove for ${user.id}, skipping.',
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final removeLabel = tab == network_models.NetworkTab.followers
+            ? 'Remove follower'
+            : 'Unfollow';
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.person_search_rounded),
+                  title: const Text('View Profile'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _navigateToStreamerCard(user);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.person_remove_rounded),
+                  title: Text(removeLabel),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _runNetworkAction(
+                      user,
+                      tab == network_models.NetworkTab.followers
+                          ? _NetworkAction.removeFollower
+                          : _NetworkAction.unfollow,
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.block_rounded,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Block',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _runNetworkAction(user, _NetworkAction.block);
+                  },
+                ),
+              ],
+            ),
+          ),
         );
-        return false;
-      }
+      },
+    );
+  }
 
-      await batch.commit();
-      _refreshDataInstantly();
-      return true;
+  Future<void> _runNetworkAction(
+    user_model.User user,
+    _NetworkAction action,
+  ) async {
+    try {
+      bool ok = true;
+      switch (action) {
+        case _NetworkAction.unfollow:
+          ok = await FollowsService().unfollowUser(user.id);
+          break;
+        case _NetworkAction.removeFollower:
+          ok = await FollowsService().removeFollower(user.id);
+          break;
+        case _NetworkAction.block:
+          await UserBlockingService().blockUser(targetUserId: user.id);
+          ok = true;
+          break;
+      }
+      if (!mounted) return;
+      if (ok) {
+        await _refreshDataInstantly();
+        if (!mounted) return;
+        ref.read(followRefreshProvider.notifier).state++;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok
+              ? _networkActionSuccessLabel(user, action)
+              : 'Unable to update ${user.displayName}.'),
+          backgroundColor: ok ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      debugPrint('❌ Swipe action failed: $e');
-      return false;
+      debugPrint('❌ Network action failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Network action failed. Try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  String _networkActionSuccessLabel(
+    user_model.User user,
+    _NetworkAction action,
+  ) {
+    switch (action) {
+      case _NetworkAction.unfollow:
+        return 'Unfollowed @${user.username}';
+      case _NetworkAction.removeFollower:
+        return 'Removed @${user.username} from followers';
+      case _NetworkAction.block:
+        return 'Blocked @${user.username}';
     }
   }
 
@@ -1795,6 +1945,77 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       case UserStatus.streaming:
         return Icons.play_circle;
     }
+  }
+}
+
+enum _NetworkAction { unfollow, removeFollower, block }
+
+class _NetworkEnergyChip extends StatelessWidget {
+  const _NetworkEnergyChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: scheme.onSurface.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.onSurface.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color.withValues(alpha: 0.88), size: 11),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.68),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SwipeActionDot extends StatelessWidget {
+  const _SwipeActionDot({
+    required this.icon,
+    required this.color,
+  });
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.13),
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Icon(icon, color: color, size: 17),
+    );
   }
 }
 

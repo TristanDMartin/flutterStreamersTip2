@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/feature_flags.dart';
 import '../models/home_video.dart';
 import '../services/share_service_optimized.dart';
 import 'video_qr_code_dialog.dart';
@@ -182,13 +183,15 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
           ),
         ),
         const SizedBox(height: 16),
-        _buildActionButton(
-          icon: Icons.download,
-          label: 'Download Video',
-          onTap: _downloadVideo,
-          color: Colors.green,
-        ),
-        const SizedBox(height: 12),
+        if (FeatureFlags.videoDownload) ...[
+          _buildActionButton(
+            icon: Icons.download,
+            label: 'Download Video',
+            onTap: _downloadVideo,
+            color: Colors.green,
+          ),
+          const SizedBox(height: 12),
+        ],
         _buildActionButton(
           icon: Icons.qr_code,
           label: 'Generate QR Code',
@@ -275,7 +278,7 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
       await ShareServiceOptimized().shareVideo(widget.video);
       widget.onDismiss?.call();
     } catch (e) {
-      // print('Error sharing video: $e');
+      // appLog('Error sharing video: $e');
     }
   }
 
@@ -304,20 +307,12 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
       await ShareServiceOptimized().shareToPlatform(widget.video, platform);
       widget.onDismiss?.call();
     } catch (e) {
-      // print('Error sharing to platform: $e');
+      // appLog('Error sharing to platform: $e');
     }
   }
 
   void _downloadVideo() {
     HapticFeedback.lightImpact();
-    // Video download functionality - placeholder for future implementation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Download feature coming soon'),
-        backgroundColor: Color(0xFF9248D2),
-        duration: Duration(seconds: 2),
-      ),
-    );
     widget.onDismiss?.call();
   }
 

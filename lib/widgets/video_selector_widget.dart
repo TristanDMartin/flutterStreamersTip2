@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/profile_video.dart';
 import '../services/insights_firebase_service.dart';
+import 'package:streamers_tip/utils/app_log.dart';
 
 /// Widget for selecting which video to analyze in Insights
 class VideoSelectorWidget extends ConsumerStatefulWidget {
@@ -72,7 +73,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
         });
       }
       if (kDebugMode) {
-        print('Error loading videos: $error');
+        appLog('Error loading videos: $error');
       }
     });
 

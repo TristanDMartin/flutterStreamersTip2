@@ -61,10 +61,10 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
   void _onTextChanged() {
     // ContentValidationField: Text changed
     widget.onChanged(_controller.text);
-    
+
     // Cancel previous timer
     _debounceTimer?.cancel();
-    
+
     // Start new timer for debounced validation
     _debounceTimer = Timer(const Duration(milliseconds: 250), () {
       _validateContent();
@@ -73,7 +73,7 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
 
   Future<void> _validateContent() async {
     // ContentValidationField: Validating text
-    
+
     if (_controller.text.trim().isEmpty) {
       // ContentValidationField: Empty text, allowing
       setState(() {
@@ -92,16 +92,16 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
     try {
       // ContentValidationField: Calling ContentModerationService
       final result = await ContentModerationService().check(_controller.text);
-      
+
       // ContentValidationField: Result received
-      
+
       setState(() {
         _lastResult = result;
         _hasError = !result.isAllowed;
         _errorMessage = result.reason;
         _isValidating = false;
       });
-      
+
       widget.onValidationChanged(result.isAllowed);
     } catch (e) {
       // ContentValidationField: Error during validation
@@ -227,7 +227,8 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
               runSpacing: 4,
               children: _lastResult!.matchedTerms.map((term) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.red.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4),
@@ -253,7 +254,8 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
                 label: const Text('Why?'),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 ),
               ),
               const SizedBox(width: 8),
@@ -263,7 +265,8 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
                 label: const Text('Report Mistake'),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.orange,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 ),
               ),
             ],

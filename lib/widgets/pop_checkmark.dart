@@ -24,7 +24,7 @@ class _PopCheckmarkState extends State<PopCheckmark>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
+
     _scaleAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -36,7 +36,7 @@ class _PopCheckmarkState extends State<PopCheckmark>
     // Start animation when widget appears
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _animationController.forward();
-      
+
       // Call onDone after animation completes
       Future.delayed(const Duration(milliseconds: 300), () {
         widget.onDone?.call();
@@ -65,7 +65,7 @@ class _PopCheckmarkState extends State<PopCheckmark>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 2,
                   offset: const Offset(0, 1),
                 ),

@@ -109,6 +109,7 @@ void main() {
         'displayName': 'Stream Tester',
         'username': 'streamtester',
         'bio': 'Building a creator workflow.',
+        'avatarURL': 'https://example.com/avatar.jpg',
         'platforms': [
           {'type': 'twitch'},
         ],

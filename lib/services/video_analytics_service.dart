@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:streamers_tip/utils/swallow_non_fatal.dart';
 
 class VideoAnalytics {
   final String videoId;
@@ -77,7 +78,8 @@ class VideoAnalyticsService extends ChangeNotifier {
   final Map<String, VideoAnalytics> _videoAnalytics = {};
   bool _isLoading = false;
 
-  Map<String, VideoAnalytics> get videoAnalytics => Map.unmodifiable(_videoAnalytics);
+  Map<String, VideoAnalytics> get videoAnalytics =>
+      Map.unmodifiable(_videoAnalytics);
   bool get isLoading => _isLoading;
 
   Future<void> trackVideoView(String videoId, String? userId) async {
@@ -119,32 +121,36 @@ class VideoAnalyticsService extends ChangeNotifier {
         transaction.set(analyticsRef, newData);
       });
       await fetchAnalytics(videoId);
-    } catch (_) {}
+    } catch (e, st) {
+      swallowNonFatal('VideoAnalyticsService.trackVideoView', e, st);
+    }
   }
 
   Future<void> trackVideoLike(String videoId, bool isLiked) async {
     final analyticsRef = _db.collection('videoAnalytics').doc(videoId);
-    
+
     try {
       await _db.runTransaction((transaction) async {
         final analyticsDoc = await transaction.get(analyticsRef);
-        
+
         Map<String, dynamic> newData = {};
-        
+
         if (analyticsDoc.exists) {
           final data = analyticsDoc.data() ?? {};
           final currentLikes = data['likes'] ?? 0;
-          
+
           newData = Map<String, dynamic>.from(data);
-          newData['likes'] = isLiked ? currentLikes + 1 : (currentLikes - 1).clamp(0, double.infinity).toInt();
+          newData['likes'] = isLiked
+              ? currentLikes + 1
+              : (currentLikes - 1).clamp(0, double.infinity).toInt();
           newData['lastUpdated'] = Timestamp.now();
-          
+
           // Update engagement rate
           final views = data['views'] ?? 1;
           final newLikes = newData['likes'] ?? 0;
           final comments = data['comments'] ?? 0;
           final shares = data['shares'] ?? 0;
-          
+
           final engagement = (newLikes + comments + shares) / views;
           newData['engagementRate'] = engagement;
         } else {
@@ -165,40 +171,40 @@ class VideoAnalyticsService extends ChangeNotifier {
             'lastUpdated': Timestamp.now(),
           };
         }
-        
+
         transaction.set(analyticsRef, newData);
       });
-      
-    // print('✅ Successfully tracked video like for video: $videoId');
+
+      // appLog('✅ Successfully tracked video like for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-    // print('❌ Error tracking video like: $error');
+      // appLog('❌ Error tracking video like: $error');
     }
   }
-  
+
   Future<void> trackVideoComment(String videoId) async {
     final analyticsRef = _db.collection('videoAnalytics').doc(videoId);
-    
+
     try {
       await _db.runTransaction((transaction) async {
         final analyticsDoc = await transaction.get(analyticsRef);
-        
+
         Map<String, dynamic> newData = {};
-        
+
         if (analyticsDoc.exists) {
           final data = analyticsDoc.data() ?? {};
           final currentComments = data['comments'] ?? 0;
-          
+
           newData = Map<String, dynamic>.from(data);
           newData['comments'] = currentComments + 1;
           newData['lastUpdated'] = Timestamp.now();
-          
+
           // Update engagement rate
           final views = data['views'] ?? 1;
           final likes = data['likes'] ?? 0;
           final newComments = newData['comments'] ?? 0;
           final shares = data['shares'] ?? 0;
-          
+
           final engagement = (likes + newComments + shares) / views;
           newData['engagementRate'] = engagement;
         } else {
@@ -219,40 +225,40 @@ class VideoAnalyticsService extends ChangeNotifier {
             'lastUpdated': Timestamp.now(),
           };
         }
-        
+
         transaction.set(analyticsRef, newData);
       });
-      
-    // print('✅ Successfully tracked video comment for video: $videoId');
+
+      // appLog('✅ Successfully tracked video comment for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-    // print('❌ Error tracking video comment: $error');
+      // appLog('❌ Error tracking video comment: $error');
     }
   }
-  
+
   Future<void> trackVideoShare(String videoId) async {
     final analyticsRef = _db.collection('videoAnalytics').doc(videoId);
-    
+
     try {
       await _db.runTransaction((transaction) async {
         final analyticsDoc = await transaction.get(analyticsRef);
-        
+
         Map<String, dynamic> newData = {};
-        
+
         if (analyticsDoc.exists) {
           final data = analyticsDoc.data() ?? {};
           final currentShares = data['shares'] ?? 0;
-          
+
           newData = Map<String, dynamic>.from(data);
           newData['shares'] = currentShares + 1;
           newData['lastUpdated'] = Timestamp.now();
-          
+
           // Update engagement rate
           final views = data['views'] ?? 1;
           final likes = data['likes'] ?? 0;
           final comments = data['comments'] ?? 0;
           final newShares = newData['shares'] ?? 0;
-          
+
           final engagement = (likes + comments + newShares) / views;
           newData['engagementRate'] = engagement;
         } else {
@@ -273,34 +279,35 @@ class VideoAnalyticsService extends ChangeNotifier {
             'lastUpdated': Timestamp.now(),
           };
         }
-        
+
         transaction.set(analyticsRef, newData);
       });
-      
-    // print('✅ Successfully tracked video share for video: $videoId');
+
+      // appLog('✅ Successfully tracked video share for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-    // print('❌ Error tracking video share: $error');
+      // appLog('❌ Error tracking video share: $error');
     }
   }
-  
+
   Future<void> trackWatchTime(String videoId, double watchTime) async {
     final analyticsRef = _db.collection('videoAnalytics').doc(videoId);
-    
+
     try {
       await _db.runTransaction((transaction) async {
         final analyticsDoc = await transaction.get(analyticsRef);
-        
+
         Map<String, dynamic> newData = {};
-        
+
         if (analyticsDoc.exists) {
           final data = analyticsDoc.data() ?? {};
           final currentWatchTime = (data['watchTime'] ?? 0.0).toDouble();
           final currentViews = data['views'] ?? 1;
-          
+
           newData = Map<String, dynamic>.from(data);
           newData['watchTime'] = currentWatchTime + watchTime;
-          newData['averageWatchTime'] = (currentWatchTime + watchTime) / currentViews;
+          newData['averageWatchTime'] =
+              (currentWatchTime + watchTime) / currentViews;
           newData['lastUpdated'] = Timestamp.now();
         } else {
           // Create new analytics if doesn't exist
@@ -320,45 +327,46 @@ class VideoAnalyticsService extends ChangeNotifier {
             'lastUpdated': Timestamp.now(),
           };
         }
-        
+
         transaction.set(analyticsRef, newData);
       });
-      
-    // print('✅ Successfully tracked watch time for video: $videoId');
+
+      // appLog('✅ Successfully tracked watch time for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-    // print('❌ Error tracking watch time: $error');
+      // appLog('❌ Error tracking watch time: $error');
     }
   }
-  
+
   // MARK: - Analytics Fetching
-  
+
   Future<void> fetchAnalytics(String videoId) async {
     _isLoading = true;
     notifyListeners();
-    
+
     try {
-      final document = await _db.collection('videoAnalytics').doc(videoId).get();
-      
+      final document =
+          await _db.collection('videoAnalytics').doc(videoId).get();
+
       if (document.exists && document.data() != null) {
         final analytics = VideoAnalytics.fromMap(videoId, document.data()!);
         _videoAnalytics[videoId] = analytics;
-    // print('✅ Successfully fetched analytics for video: $videoId');
+        // appLog('✅ Successfully fetched analytics for video: $videoId');
       } else {
-    // print('📊 No analytics data found for video: $videoId');
+        // appLog('📊 No analytics data found for video: $videoId');
       }
     } catch (error) {
-    // print('❌ Error fetching analytics for video $videoId: $error');
+      // appLog('❌ Error fetching analytics for video $videoId: $error');
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
-  
+
   Future<void> fetchAnalyticsForVideos(List<String> videoIds) async {
     _isLoading = true;
     notifyListeners();
-    
+
     try {
       for (final videoId in videoIds) {
         await fetchAnalytics(videoId);
@@ -368,38 +376,38 @@ class VideoAnalyticsService extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   // MARK: - Real-time Listeners
-  
+
   StreamSubscription<DocumentSnapshot>? _analyticsListener;
-  
+
   void startListeningToAnalytics(String videoId) {
     _analyticsListener?.cancel();
-    
-    _analyticsListener = _db.collection('videoAnalytics').doc(videoId)
-        .snapshots()
-        .listen(
+
+    _analyticsListener =
+        _db.collection('videoAnalytics').doc(videoId).snapshots().listen(
       (documentSnapshot) {
         if (documentSnapshot.exists && documentSnapshot.data() != null) {
-          final analytics = VideoAnalytics.fromMap(videoId, documentSnapshot.data()!);
+          final analytics =
+              VideoAnalytics.fromMap(videoId, documentSnapshot.data()!);
           _videoAnalytics[videoId] = analytics;
-    // print('🔄 Real-time analytics update for video: $videoId');
+          // appLog('🔄 Real-time analytics update for video: $videoId');
           notifyListeners();
         }
       },
       onError: (error) {
-    // print('❌ Error listening to analytics for video $videoId: $error');
+        // appLog('❌ Error listening to analytics for video $videoId: $error');
       },
     );
   }
-  
+
   void stopListeningToAnalytics() {
     _analyticsListener?.cancel();
     _analyticsListener = null;
   }
-  
+
   // MARK: - Cleanup
-  
+
   @override
   void dispose() {
     stopListeningToAnalytics();

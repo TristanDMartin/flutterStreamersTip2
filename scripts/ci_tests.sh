@@ -16,6 +16,18 @@ echo "Running Firestore rules tests (follows)..."
 firebase emulators:exec --only firestore --project demo-follows-tests \
   "npm --prefix cloud_functions run test:rules:follows"
 
+echo "Running Firestore rules tests (likes)..."
+firebase emulators:exec --only firestore --project demo-likes-tests \
+  "npm --prefix cloud_functions run test:rules:likes"
+
+echo "Running Firestore rules tests (interactions + FCM tokens)..."
+firebase emulators:exec --only firestore --project demo-interactions-tests \
+  "npm --prefix cloud_functions run test:rules:interactions"
+
+echo "Running Firestore rules tests (videos publish)..."
+firebase emulators:exec --only firestore --project demo-videos-tests \
+  "npm --prefix cloud_functions run test:rules:videos"
+
 echo "Running Firestore E2E tests (follows)..."
 firebase emulators:exec --only firestore --project demo-follows-tests \
   "npm --prefix cloud_functions run test:e2e:follows"

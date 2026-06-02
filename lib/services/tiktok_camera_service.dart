@@ -44,7 +44,8 @@ class TikTokCameraService {
   /// Initialize camera with TikTok-quality settings
   Future<void> initialize() async {
     try {
-      secureLog('🎥 TikTokCameraService: Initializing with professional settings');
+      secureLog(
+          '🎥 TikTokCameraService: Initializing with professional settings');
 
       _cameras = await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
@@ -87,7 +88,8 @@ class TikTokCameraService {
       // Pixel 6 specific optimizations
       await _applyPixel6Optimizations();
 
-      secureLog('🔍 Device capabilities: 60fps=$_supports60fps, 4K=$_supports4K, OIS=$_supportsOIS, EIS=$_supportsEIS');
+      secureLog(
+          '🔍 Device capabilities: 60fps=$_supports60fps, 4K=$_supports4K, OIS=$_supportsOIS, EIS=$_supportsEIS');
     } catch (e) {
       secureLog('⚠️ Error detecting capabilities: $e');
     }
@@ -203,13 +205,16 @@ class TikTokCameraService {
       // Determine optimal bitrate
       _targetBitrate = _getOptimalBitrate();
 
-      secureLog('🎥 Initializing camera: ${camera.name}, Resolution: $_resolutionPreset, FPS: $_targetFps, Bitrate: ${_targetBitrate}Mbps');
+      secureLog(
+          '🎥 Initializing camera: ${camera.name}, Resolution: $_resolutionPreset, FPS: $_targetFps, Bitrate: ${_targetBitrate}Mbps');
 
       _controller = CameraController(
         camera,
         _resolutionPreset,
         enableAudio: true,
-        imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
+        imageFormatGroup: Platform.isIOS
+            ? ImageFormatGroup.bgra8888
+            : ImageFormatGroup.yuv420,
       );
 
       await _controller!.initialize();
@@ -219,8 +224,10 @@ class TikTokCameraService {
       final previewSize = _controller!.value.previewSize;
       if (previewSize != null) {
         final aspectRatio = previewSize.width / previewSize.height;
-        secureLog('📐 Camera preview size: ${previewSize.width}x${previewSize.height} (aspect ratio: ${aspectRatio.toStringAsFixed(3)})');
-        secureLog('📐 Camera sensor orientation: ${previewSize.width > previewSize.height ? "landscape" : "portrait"}');
+        secureLog(
+            '📐 Camera preview size: ${previewSize.width}x${previewSize.height} (aspect ratio: ${aspectRatio.toStringAsFixed(3)})');
+        secureLog(
+            '📐 Camera sensor orientation: ${previewSize.width > previewSize.height ? "landscape" : "portrait"}');
       }
 
       // 🔍 FIXED: Set zoom to 1.0 (minimum/normal zoom level)
@@ -240,7 +247,7 @@ class TikTokCameraService {
   }
 
   /// Get optimal resolution based on device capabilities
-  /// 
+  ///
   /// FIXED: Try to find a resolution preset that gives 16:9 natively
   /// Native camera apps use sensor modes that output 16:9 directly (not cropped)
   /// We'll test different presets and prefer one that gives 16:9 at high quality
@@ -248,7 +255,8 @@ class TikTokCameraService {
     // Prefer high/veryHigh presets which often support 16:9 on modern devices
     // These give best quality while potentially offering 16:9 sensor mode
     // Fallback to max if needed
-    return ResolutionPreset.high; // Often gives 16:9 at high quality (1080p/1440p)
+    return ResolutionPreset
+        .high; // Often gives 16:9 at high quality (1080p/1440p)
   }
 
   /// Get optimal frame rate (TikTok standard: 30fps)
@@ -315,7 +323,8 @@ class TikTokCameraService {
       await _initializeCamera(newCamera);
       await _applyTikTokSettings();
 
-      secureLog('✅ Camera switched to: ${newCamera.lensDirection} with TikTok-quality settings');
+      secureLog(
+          '✅ Camera switched to: ${newCamera.lensDirection} with TikTok-quality settings');
     } catch (e) {
       secureLog('❌ Error switching camera: $e');
     }
@@ -426,7 +435,7 @@ class TikTokCameraService {
   }
 
   /// Get camera preview size for proper aspect ratio
-  /// 
+  ///
   /// FIXED: Returns correct preview size based on camera orientation
   /// For portrait 9:16 video, preview size should match the sensor orientation
   Size getPreviewSize() {
@@ -456,7 +465,7 @@ class TikTokCameraService {
   }
 
   /// Get optimal aspect ratio for TikTok-style 9:16 video
-  /// 
+  ///
   /// FIXED: Always returns 9:16 (0.5625) for consistent vertical video
   /// Previously calculated from preview size which could vary and cause distortion
   double getOptimalAspectRatio() {

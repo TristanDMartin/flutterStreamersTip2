@@ -5,10 +5,10 @@ import '../models/user.dart' as app_user;
 class ConnectionService {
   static final ConnectionService _instance = ConnectionService._internal();
   static ConnectionService get shared => _instance;
-  
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final fa.FirebaseAuth _auth = fa.FirebaseAuth.instance;
-  
+
   ConnectionService._internal();
 
   // Get user's connections
@@ -20,8 +20,9 @@ class ConnectionService {
           .collection('connections')
           .get();
 
-      final connectionIds = connectionsSnapshot.docs.map((doc) => doc.id).toList();
-      
+      final connectionIds =
+          connectionsSnapshot.docs.map((doc) => doc.id).toList();
+
       if (connectionIds.isEmpty) return [];
 
       final usersSnapshot = await _firestore
@@ -34,7 +35,7 @@ class ConnectionService {
         return app_user.User.fromMap(data);
       }).toList();
     } catch (e) {
-    // print('Error getting connections: $e');
+      // appLog('Error getting connections: $e');
       return [];
     }
   }
@@ -51,7 +52,7 @@ class ConnectionService {
 
       return connectionDoc.exists;
     } catch (e) {
-    // print('Error checking connection: $e');
+      // appLog('Error checking connection: $e');
       return false;
     }
   }
@@ -62,8 +63,9 @@ class ConnectionService {
     if (currentUser == null) return false;
 
     try {
-      final inviteId = '${currentUser.uid}_${targetUserId}_${DateTime.now().millisecondsSinceEpoch}';
-      
+      final inviteId =
+          '${currentUser.uid}_${targetUserId}_${DateTime.now().millisecondsSinceEpoch}';
+
       // Add to sender's outgoing invites
       await _firestore
           .collection('users')
@@ -90,7 +92,7 @@ class ConnectionService {
 
       return true;
     } catch (e) {
-    // print('Error sending connection request: $e');
+      // appLog('Error sending connection request: $e');
       return false;
     }
   }
@@ -163,7 +165,7 @@ class ConnectionService {
       await batch.commit();
       return true;
     } catch (e) {
-    // print('Error accepting connection request: $e');
+      // appLog('Error accepting connection request: $e');
       return false;
     }
   }
@@ -211,7 +213,7 @@ class ConnectionService {
       await batch.commit();
       return true;
     } catch (e) {
-    // print('Error rejecting connection request: $e');
+      // appLog('Error rejecting connection request: $e');
       return false;
     }
   }
@@ -238,7 +240,7 @@ class ConnectionService {
         };
       }).toList();
     } catch (e) {
-    // print('Error getting pending invites: $e');
+      // appLog('Error getting pending invites: $e');
       return [];
     }
   }
@@ -265,7 +267,7 @@ class ConnectionService {
         };
       }).toList();
     } catch (e) {
-    // print('Error getting outgoing invites: $e');
+      // appLog('Error getting outgoing invites: $e');
       return [];
     }
   }
@@ -286,7 +288,7 @@ class ConnectionService {
 
       return invitesSnapshot.docs.isNotEmpty;
     } catch (e) {
-    // print('Error checking invite status: $e');
+      // appLog('Error checking invite status: $e');
       return false;
     }
   }
@@ -308,12 +310,11 @@ class ConnectionService {
       return usersSnapshot.docs
           .where((doc) => doc.id != currentUser.uid) // Exclude current user
           .map((doc) {
-            final data = doc.data();
-            return app_user.User.fromMap(data);
-          })
-          .toList();
+        final data = doc.data();
+        return app_user.User.fromMap(data);
+      }).toList();
     } catch (e) {
-    // print('Error searching users: $e');
+      // appLog('Error searching users: $e');
       return [];
     }
   }
@@ -347,7 +348,7 @@ class ConnectionService {
       await batch.commit();
       return true;
     } catch (e) {
-    // print('Error removing connection: $e');
+      // appLog('Error removing connection: $e');
       return false;
     }
   }

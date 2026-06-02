@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../constants/app_colors.dart';
 
+/// Shown on Home while the feed refreshes after a successful publish.
+const String feedPrepAfterPublishMessage = 'Getting your feed ready';
+
 /// Loading state widget for HomeView.
 class LoadingStateWidget extends StatelessWidget {
   const LoadingStateWidget({
@@ -272,11 +275,13 @@ class ErrorStateWidget extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                message,
-                style: TextStyle(
-                  color: on.withValues(alpha: 0.7),
-                  fontSize: 14,
+              SelectableText.rich(
+                TextSpan(
+                  text: message,
+                  style: TextStyle(
+                    color: c.error.withValues(alpha: 0.92),
+                    fontSize: 14,
+                  ),
                 ),
                 textAlign: TextAlign.center,
               ),

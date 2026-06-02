@@ -27,7 +27,7 @@ class _SearchBarState extends State<SearchBar> {
     super.initState();
     _focusNode = FocusNode();
     _controller = TextEditingController(text: widget.text);
-    
+
     _focusNode.addListener(() {
       if (!_focusNode.hasFocus && widget.text.isEmpty) {
         widget.onTextChanged('');
@@ -72,9 +72,7 @@ class _SearchBarState extends State<SearchBar> {
                   color: Colors.grey,
                   size: 16,
                 ),
-                
                 const SizedBox(width: 8),
-                
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -97,7 +95,6 @@ class _SearchBarState extends State<SearchBar> {
                     ),
                   ),
                 ),
-                
                 if (widget.text.isNotEmpty)
                   GestureDetector(
                     onTap: () {
@@ -114,7 +111,6 @@ class _SearchBarState extends State<SearchBar> {
             ),
           ),
         ),
-        
         if (widget.isSearching) ...[
           const SizedBox(width: 12),
           TextButton(

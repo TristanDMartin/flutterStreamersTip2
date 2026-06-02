@@ -28,13 +28,13 @@ class _AdminUsersViewState extends State<AdminUsersView> {
       return;
     }
     try {
-      final QuerySnapshot<Map<String, dynamic>> snap =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .where('username', isGreaterThanOrEqualTo: q)
-              .where('username', isLessThan: '$q\uf8ff')
-              .limit(24)
-              .get();
+      final QuerySnapshot<Map<String, dynamic>> snap = await FirebaseFirestore
+          .instance
+          .collection('users')
+          .where('username', isGreaterThanOrEqualTo: q)
+          .where('username', isLessThan: '$q\uf8ff')
+          .limit(24)
+          .get();
       setState(() {
         _hits = snap.docs;
         _loading = false;
@@ -104,14 +104,11 @@ class _AdminUsersViewState extends State<AdminUsersView> {
               itemBuilder: (context, i) {
                 final doc = _hits[i];
                 final d = doc.data();
-                final un =
-                    (d['username'] ?? doc.id).toString();
+                final un = (d['username'] ?? doc.id).toString();
                 final em = (d['email'] ?? '—').toString();
-                final tier =
-                    (d['subscriptionTier'] ?? '—').toString();
+                final tier = (d['subscriptionTier'] ?? '—').toString();
                 final role = (d['role'] ?? '—').toString();
-                final ac =
-                    (d['accountStatus'] ?? 'active').toString();
+                final ac = (d['accountStatus'] ?? 'active').toString();
                 return Card(
                   child: ListTile(
                     title: Text(un),
@@ -120,8 +117,7 @@ class _AdminUsersViewState extends State<AdminUsersView> {
                       Navigator.push<void>(
                         context,
                         MaterialPageRoute<void>(
-                          builder: (_) =>
-                              AdminUserDetailView(userId: doc.id),
+                          builder: (_) => AdminUserDetailView(userId: doc.id),
                         ),
                       );
                     },

@@ -24,5 +24,7 @@ final StreamProvider<UserProgressBundle> userProgressBundleProvider =
   if (user == null) {
     return Stream<UserProgressBundle>.value(UserProgressBundle.fallback());
   }
-  return ref.watch(gamificationRepositoryProvider).watchProgressBundle(user.uid);
+  return ref
+      .watch(gamificationRepositoryProvider)
+      .watchProgressBundle(user.uid);
 });

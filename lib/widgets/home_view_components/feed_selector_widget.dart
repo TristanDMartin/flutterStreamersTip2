@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/onboarding/product_tour_target_keys.dart';
+import '../../core/theme/st_theme_tokens.dart';
 import '../../models/feed_tab.dart';
+import '../../qa/qa_keys.dart';
 import '../../providers/product_tour_ui_provider.dart';
 import 'feed_dropdown_widget.dart';
 
@@ -14,30 +18,64 @@ class FeedSelectorWidget extends ConsumerStatefulWidget {
     required this.activeTab,
     required this.onTabSelected,
     required this.onDiscoverTap,
+    this.onDropdownOpenChanged,
   });
 
   final FeedTab activeTab;
   final ValueChanged<FeedTab> onTabSelected;
   final VoidCallback onDiscoverTap;
+  final ValueChanged<bool>? onDropdownOpenChanged;
 
   @override
   ConsumerState<FeedSelectorWidget> createState() => _FeedSelectorWidgetState();
 }
 
-class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
+class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
+    with WidgetsBindingObserver {
   bool _isDropdownOpen = false;
   OverlayEntry? _overlayEntry;
   final LayerLink _dropdownLink = LayerLink();
+  Timer? _overlayAutoCloseTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _overlayAutoCloseTimer?.cancel();
+    if (_isDropdownOpen) {
+      widget.onDropdownOpenChanged?.call(false);
+    }
     _removeOverlay();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.resumed) {
+      _closeDropdown();
+    }
+  }
+
   void _removeOverlay() {
+    _overlayAutoCloseTimer?.cancel();
+    _overlayAutoCloseTimer = null;
     _overlayEntry?.remove();
     _overlayEntry = null;
+  }
+
+  void _setDropdownOpen(bool isOpen) {
+    if (_isDropdownOpen == isOpen) return;
+    setState(() {
+      _isDropdownOpen = isOpen;
+    });
+    widget.onDropdownOpenChanged?.call(isOpen);
   }
 
   void _closeDropdown() {
@@ -47,9 +85,7 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
     }
     _removeOverlay();
     if (_isDropdownOpen) {
-      setState(() {
-        _isDropdownOpen = false;
-      });
+      _setDropdownOpen(false);
     }
   }
 
@@ -67,10 +103,11 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
                   ? FeedTab.following
                   : null;
           return Stack(
+            key: QaKeys.feedSelectorOverlay,
             children: <Widget>[
               Positioned.fill(
                 child: GestureDetector(
-                  key: const ValueKey<String>('feed-selector-overlay-barrier'),
+                  key: QaKeys.feedSelectorBarrier,
                   behavior: HitTestBehavior.translucent,
                   onTap: _closeDropdown,
                   child: const SizedBox.expand(),
@@ -104,6 +141,7 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
     );
 
     overlay.insert(_overlayEntry!);
+    _overlayAutoCloseTimer = Timer(const Duration(seconds: 8), _closeDropdown);
   }
 
   @override
@@ -117,9 +155,7 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
             if (!mounted) {
               return;
             }
-            setState(() {
-              _isDropdownOpen = true;
-            });
+            _setDropdownOpen(true);
             _showOverlay();
           });
         }
@@ -135,38 +171,18 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
       },
     );
 
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isLight = Theme.of(context).brightness == Brightness.light;
-    final Color labelColor = scheme.onSurface;
-    final List<Color> glassColors = <Color>[
-      scheme.surface.withValues(alpha: isLight ? 0.95 : 0.94),
-      scheme.surfaceContainerLow.withValues(alpha: isLight ? 0.9 : 0.88),
-    ];
-    final Color borderColor =
-        scheme.outline.withValues(alpha: isLight ? 0.4 : 0.36);
-    final List<BoxShadow> pillShadows = <BoxShadow>[
-      BoxShadow(
-        color: scheme.shadow.withValues(alpha: isLight ? 0.12 : 0.35),
-        blurRadius: 20,
-        offset: const Offset(0, 8),
-      ),
-      if (!isLight)
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.28),
-          blurRadius: 16,
-          offset: const Offset(0, 10),
-        ),
-    ];
     return SafeArea(
       top: true,
       child: Container(
-        height: 50,
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        height: 56,
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: <Widget>[
             KeyedSubtree(
-              key: ProductTourTargetKeys.progression,
+              key: ProductTourTargetKeys.maybe(
+                ProductTourTargetKeys.progression,
+              ),
               child: CompositedTransformTarget(
                 link: _dropdownLink,
                 child: Semantics(
@@ -174,12 +190,11 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
                   expanded: _isDropdownOpen,
                   label: 'Choose home feed',
                   child: GestureDetector(
+                    key: QaKeys.feedSelectorButton,
                     onTap: () {
                       HapticFeedback.lightImpact();
                       final bool shouldOpen = !_isDropdownOpen;
-                      setState(() {
-                        _isDropdownOpen = shouldOpen;
-                      });
+                      _setDropdownOpen(shouldOpen);
 
                       if (shouldOpen) {
                         _showOverlay();
@@ -189,32 +204,27 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 10,
+                        horizontal: 22,
+                        vertical: 14,
                       ),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(24),
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: glassColors,
-                        ),
+                        color:
+                            StThemeColors.darkSurface.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(28),
                         border: Border.all(
-                          color: borderColor,
-                          width: 1.2,
+                          color: Colors.white.withValues(alpha: 0.10),
                         ),
-                        boxShadow: pillShadows,
+                        boxShadow: StShadows.glass(Colors.black),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           Text(
                             widget.activeTab.displayName,
-                            style: TextStyle(
-                              color: labelColor,
+                            style: const TextStyle(
+                              color: Colors.white,
                               fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.3,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -222,7 +232,7 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
                             _isDropdownOpen
                                 ? Icons.keyboard_arrow_up
                                 : Icons.keyboard_arrow_down,
-                            color: scheme.primary,
+                            color: Colors.white.withValues(alpha: 0.9),
                             size: 20,
                           ),
                         ],
@@ -233,45 +243,29 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget> {
               ),
             ),
             KeyedSubtree(
-              key: ProductTourTargetKeys.discover,
+              key: ProductTourTargetKeys.maybe(
+                ProductTourTargetKeys.discover,
+              ),
               child: GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
                   widget.onDiscoverTap();
                 },
                 child: Container(
-                  width: 46,
-                  height: 46,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[
-                        scheme.surface.withValues(alpha: isLight ? 0.95 : 0.92),
-                        scheme.surfaceContainerLow.withValues(
-                          alpha: isLight ? 0.88 : 0.85,
-                        ),
-                      ],
-                    ),
+                    shape: BoxShape.circle,
+                    color: StThemeColors.darkSurface.withValues(alpha: 0.72),
                     border: Border.all(
-                      color: scheme.outline
-                          .withValues(alpha: isLight ? 0.4 : 0.34),
+                      color: Colors.white.withValues(alpha: 0.10),
                     ),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: scheme.shadow.withValues(
-                          alpha: isLight ? 0.1 : 0.28,
-                        ),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+                    boxShadow: StShadows.glass(Colors.black),
                   ),
                   child: Icon(
-                    Icons.explore_outlined,
-                    color: scheme.primary,
-                    size: 22,
+                    Icons.explore_rounded,
+                    color: Colors.white.withValues(alpha: 0.96),
+                    size: 24,
                   ),
                 ),
               ),

@@ -49,9 +49,8 @@ class CreatorCommandSnapshot {
 
   String get collapsedSummary {
     final String name = displayName.isNotEmpty ? displayName : username;
-    final String momentum = streakDays > 0
-        ? '🔥 ${streakDays}d streak'
-        : 'Lv$level';
+    final String momentum =
+        streakDays > 0 ? '🔥 ${streakDays}d streak' : 'Lv$level';
     final String work = scheduledQueueCount > 0
         ? ' • $scheduledQueueCount in queue'
         : (draftCount > 0

@@ -8,8 +8,7 @@ class TermsAndPrivacyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isIos =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    final bool isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final Widget scaffold = Scaffold(
       backgroundColor: shell.scaffold,
@@ -72,8 +71,7 @@ class TermsAndPrivacyView extends StatelessWidget {
     String subtitle,
     VoidCallback onTap,
   ) {
-    final bool isIos =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    final bool isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return InkWell(
       onTap: onTap,

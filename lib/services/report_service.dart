@@ -330,7 +330,8 @@ class ReportService {
           .get();
       return existingReport.docs.isNotEmpty;
     } catch (e) {
-      secureLog('❌ ReportService: Error checking thread comment report status: $e',
+      secureLog(
+          '❌ ReportService: Error checking thread comment report status: $e',
           name: 'ReportService');
       return false;
     }

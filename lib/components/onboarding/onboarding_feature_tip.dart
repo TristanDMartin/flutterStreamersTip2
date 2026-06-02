@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'onboarding_service.dart';
 import 'onboarding_style.dart';
 
 class OnboardingFeatureTip {
@@ -22,6 +26,18 @@ class OnboardingFeatureTip {
 
   static OnboardingFeatureTip? forTabIndex(int index) {
     switch (index) {
+      case 0:
+        return const OnboardingFeatureTip(
+          id: 'home',
+          icon: Icons.play_circle_rounded,
+          title: 'Your For You feed',
+          body: 'Discover creators, clips, and trending content.',
+          points: <String>[
+            'Swipe through videos',
+            'Open comments to join creator conversations',
+          ],
+          action: 'Got it',
+        );
       case 1:
         return const OnboardingFeatureTip(
           id: 'network',
@@ -83,144 +99,209 @@ Future<bool> showOnboardingFeatureTipIfNeeded({
   required BuildContext context,
   required String userId,
   required OnboardingFeatureTip tip,
+  Alignment alignment = Alignment.bottomCenter,
+  bool forceShow = false,
 }) async {
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final String prefKey = 'streamerstip.first_tap_tip.$userId.${tip.id}';
-  if (prefs.getBool(prefKey) == true) {
+  if (!forceShow && prefs.getBool(prefKey) == true) {
     return true;
   }
   if (!context.mounted) {
     return false;
   }
-  final bool? acknowledged = await showModalBottomSheet<bool>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.42),
-    isScrollControlled: true,
-    builder: (BuildContext context) => OnboardingFeatureTipSheet(tip: tip),
-  );
-  if (acknowledged == true) {
+  if (!forceShow) {
     await prefs.setBool(prefKey, true);
+  }
+  if (!context.mounted) {
     return true;
   }
-  return false;
+  if (!forceShow) {
+    unawaited(OnboardingService().markContextualTipSeen(userId, tip.id));
+  }
+  _showFloatingFeatureTip(
+    context: context,
+    tip: tip,
+    alignment: alignment,
+  );
+  return true;
 }
 
-class OnboardingFeatureTipSheet extends StatelessWidget {
-  const OnboardingFeatureTipSheet({super.key, required this.tip});
+void _showFloatingFeatureTip({
+  required BuildContext context,
+  required OnboardingFeatureTip tip,
+  required Alignment alignment,
+}) {
+  final OverlayState? overlay = Overlay.maybeOf(context);
+  if (overlay == null) return;
+  late final OverlayEntry entry;
+  Timer? timer;
+  void dismiss() {
+    timer?.cancel();
+    if (entry.mounted) {
+      entry.remove();
+    }
+  }
+
+  entry = OverlayEntry(
+    builder: (BuildContext context) {
+      final EdgeInsets safe = MediaQuery.paddingOf(context);
+      return _FloatingFeatureTipOverlay(
+        tip: tip,
+        alignment: alignment,
+        safePadding: safe,
+        onDismiss: dismiss,
+      );
+    },
+  );
+  overlay.insert(entry);
+  timer = Timer(const Duration(seconds: 7), dismiss);
+}
+
+class _FloatingFeatureTipOverlay extends StatefulWidget {
+  const _FloatingFeatureTipOverlay({
+    required this.tip,
+    required this.alignment,
+    required this.safePadding,
+    required this.onDismiss,
+  });
 
   final OnboardingFeatureTip tip;
+  final Alignment alignment;
+  final EdgeInsets safePadding;
+  final VoidCallback onDismiss;
+
+  @override
+  State<_FloatingFeatureTipOverlay> createState() =>
+      _FloatingFeatureTipOverlayState();
+}
+
+class _FloatingFeatureTipOverlayState
+    extends State<_FloatingFeatureTipOverlay> {
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() => _visible = true);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final EdgeInsets padding = MediaQuery.paddingOf(context);
     final Size size = MediaQuery.sizeOf(context);
-    final bool compact = size.height < 720 || size.width < 380;
     final Color surface = OnboardingStyle.surfaceFor(context);
     final Color textPrimary = OnboardingStyle.textPrimaryFor(context);
     final Color textSecondary = OnboardingStyle.textSecondaryFor(context);
     final Color border = OnboardingStyle.borderFor(context);
-
-    return SafeArea(
-      top: false,
-      child: Container(
-        margin: EdgeInsets.fromLTRB(compact ? 8 : 12, 0, compact ? 8 : 12, 12),
-        padding: EdgeInsets.fromLTRB(
-          compact ? 18 : 22,
-          compact ? 16 : 22,
-          compact ? 18 : 22,
-          padding.bottom + (compact ? 12 : 14),
-        ),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          border: Border.all(color: border),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Align(
-              alignment: Alignment.centerRight,
-              child: Semantics(
-                label: 'Close',
-                button: true,
-                child: IconButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  icon: Icon(Icons.close_rounded, color: textPrimary),
+    final bool bottom = widget.alignment.y >= 0;
+    return Positioned(
+      left: 16,
+      right: 16,
+      top: bottom ? null : widget.safePadding.top + 14,
+      bottom: bottom ? widget.safePadding.bottom + 92 : null,
+      child: Material(
+        color: Colors.transparent,
+        child: Align(
+          alignment: widget.alignment,
+          child: AnimatedSlide(
+            offset: _visible ? Offset.zero : Offset(0, bottom ? 0.12 : -0.12),
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: _visible ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: size.width.clamp(0, 390).toDouble(),
                 ),
-              ),
-            ),
-            Container(
-              width: compact ? 76 : 90,
-              height: compact ? 76 : 90,
-              decoration: BoxDecoration(
-                gradient: OnboardingStyle.primaryGradient,
-                borderRadius: BorderRadius.circular(compact ? 24 : 28),
-              ),
-              child:
-                  Icon(tip.icon, color: Colors.white, size: compact ? 38 : 46),
-            ),
-            SizedBox(height: compact ? 16 : 22),
-            Text(
-              tip.title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: textPrimary,
-                fontSize: compact ? 24 : 29,
-                fontWeight: FontWeight.w900,
-                height: 1.05,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              tip.body,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: textSecondary,
-                fontSize: compact ? 14 : 16,
-                height: 1.35,
-              ),
-            ),
-            SizedBox(height: compact ? 18 : 22),
-            ...tip.points.map(
-              (String point) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Padding(
-                      padding: EdgeInsets.only(top: 1),
-                      child: Icon(
-                        Icons.check_circle_rounded,
-                        color: Color(0xFF4897D2),
-                        size: 22,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: surface.withValues(alpha: 0.88),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: border),
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.22),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        point,
-                        style: TextStyle(
-                          color: textPrimary,
-                          fontSize: compact ? 14 : 16,
-                          height: 1.25,
-                          fontWeight: FontWeight.w700,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: const BoxDecoration(
+                                gradient: OnboardingStyle.primaryGradient,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                widget.tip.icon,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text(
+                                    widget.tip.title,
+                                    style: TextStyle(
+                                      color: textPrimary,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.tip.body,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: textSecondary,
+                                      fontSize: 13,
+                                      height: 1.3,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Got it',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: widget.onDismiss,
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: textSecondary,
+                                size: 20,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: GradientPillButton(
-                label: tip.action,
-                onPressed: () => Navigator.of(context).pop(true),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

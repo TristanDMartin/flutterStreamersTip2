@@ -27,13 +27,13 @@ class OnlineStatusIndicator extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(userStatusProvider(userId));
-    
+
     return statusAsync.when(
       data: (presence) {
         if (presence.status == UserStatus.offline) {
           return const SizedBox.shrink();
         }
-        
+
         return _buildIndicator(presence.status);
       },
       loading: () => const SizedBox.shrink(),
@@ -57,7 +57,7 @@ class OnlineStatusIndicator extends ConsumerWidget {
         boxShadow: showShadow
             ? [
                 BoxShadow(
-                  color: _getStatusColor(status).withValues(alpha:0.5),
+                  color: _getStatusColor(status).withValues(alpha: 0.5),
                   blurRadius: 6,
                   spreadRadius: 1,
                 ),
@@ -149,13 +149,13 @@ class OnlineStatusDot extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(userStatusProvider(userId));
-    
+
     return statusAsync.when(
       data: (presence) {
         if (presence.status == UserStatus.offline) {
           return const SizedBox.shrink();
         }
-        
+
         return Container(
           width: size,
           height: size,

@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/scheduled_post.dart';
 import '../services/cross_post_service.dart';
 import '../services/firestore_scheduled_post_service.dart';
+import '../services/progression_service.dart';
 import '../services/video_upload_service.dart';
 
 enum StreamersTipState { idle, uploading, processing, success, failed }
@@ -179,6 +182,14 @@ class PublishProvider extends ChangeNotifier {
       if (result.streamerstipSuccess) {
         if (uploadedVideoId != null && uploadedVideoId.isNotEmpty) {
           _streamerstipState = StreamersTipState.processing;
+          final String? uid = FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null) {
+            unawaited(ProgressionService.instance.markTaskCompleted(
+              uid,
+              ProgressionTaskIds.firstPostCreated,
+              source: 'videos',
+            ));
+          }
           notifyListeners();
         }
         _streamerstipState = StreamersTipState.success;
@@ -256,6 +267,14 @@ class PublishProvider extends ChangeNotifier {
 
       _scheduledPostId = scheduledPostId;
       _streamerstipState = StreamersTipState.success;
+      final String? uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        unawaited(ProgressionService.instance.markTaskCompleted(
+          uid,
+          ProgressionTaskIds.firstPostCreated,
+          source: 'videos',
+        ));
+      }
       for (final request in request.crossPostRequests) {
         _crossPostResults[request.platformName] = CrossPostState.idle;
       }

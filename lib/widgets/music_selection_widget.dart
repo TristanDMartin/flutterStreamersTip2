@@ -21,13 +21,13 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
     with TickerProviderStateMixin {
   final MusicLibraryService _musicService = MusicLibraryService();
   final TextEditingController _searchController = TextEditingController();
-  
+
   List<MusicTrack> _tracks = [];
   List<MusicTrack> _filteredTracks = [];
   bool _isLoading = false;
   String _selectedGenre = 'All';
   String _selectedMood = 'All';
-  
+
   late TabController _tabController;
 
   @override
@@ -66,19 +66,26 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
 
   void _filterTracks() {
     setState(() {
-      if (_selectedGenre == 'All' && _selectedMood == 'All' && _searchController.text.isEmpty) {
+      if (_selectedGenre == 'All' &&
+          _selectedMood == 'All' &&
+          _searchController.text.isEmpty) {
         _filteredTracks = _tracks;
       } else {
         _filteredTracks = _tracks.where((track) {
-          bool matchesGenre = _selectedGenre == 'All' || track.genre == _selectedGenre;
-          bool matchesMood = _selectedMood == 'All' || 
-              _musicService.getAvailableMoods().any((mood) => 
-                  mood.toLowerCase() == _selectedMood.toLowerCase() && 
+          bool matchesGenre =
+              _selectedGenre == 'All' || track.genre == _selectedGenre;
+          bool matchesMood = _selectedMood == 'All' ||
+              _musicService.getAvailableMoods().any((mood) =>
+                  mood.toLowerCase() == _selectedMood.toLowerCase() &&
                   _getMoodGenre(mood) == track.genre);
           bool matchesSearch = _searchController.text.isEmpty ||
-              track.title.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-              track.artist.toLowerCase().contains(_searchController.text.toLowerCase());
-          
+              track.title
+                  .toLowerCase()
+                  .contains(_searchController.text.toLowerCase()) ||
+              track.artist
+                  .toLowerCase()
+                  .contains(_searchController.text.toLowerCase());
+
           return matchesGenre && matchesMood && matchesSearch;
         }).toList();
       }
@@ -181,7 +188,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
                       itemBuilder: (context, index) {
                         final track = _filteredTracks[index];
                         final isSelected = widget.selectedTrack?.id == track.id;
-                        
+
                         return _buildTrackItem(track, isSelected);
                       },
                     ),
@@ -192,7 +199,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
 
   Widget _buildGenreFilter() {
     final genres = ['All', ..._musicService.getAvailableGenres()];
-    
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: GridView.builder(
@@ -206,7 +213,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
         itemBuilder: (context, index) {
           final genre = genres[index];
           final isSelected = _selectedGenre == genre;
-          
+
           return InstantResponseButton(
             onPressed: () {
               setState(() {
@@ -225,7 +232,8 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
                   genre,
                   style: TextStyle(
                     color: isSelected ? Colors.white : Colors.black87,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ),
@@ -238,7 +246,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
 
   Widget _buildMoodFilter() {
     final moods = ['All', ..._musicService.getAvailableMoods()];
-    
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: GridView.builder(
@@ -252,7 +260,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
         itemBuilder: (context, index) {
           final mood = moods[index];
           final isSelected = _selectedMood == mood;
-          
+
           return InstantResponseButton(
             onPressed: () {
               setState(() {
@@ -271,7 +279,8 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
                   mood,
                   style: TextStyle(
                     color: isSelected ? Colors.white : Colors.black87,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ),
@@ -298,7 +307,8 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.blue.withValues(alpha:0.1) : Colors.grey[50],
+        color:
+            isSelected ? Colors.blue.withValues(alpha: 0.1) : Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: isSelected ? Border.all(color: Colors.blue, width: 2) : null,
       ),
@@ -317,7 +327,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha:0.1),
+                  color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
@@ -326,9 +336,9 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
                   size: 24,
                 ),
               ),
-              
+
               const SizedBox(width: 16),
-              
+
               // Track Info
               Expanded(
                 child: Column(
@@ -385,7 +395,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
                   ],
                 ),
               ),
-              
+
               // Selection Indicator
               if (isSelected)
                 const Icon(

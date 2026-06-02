@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'follows_service.dart';
 
 /// Service for managing user blocking functionality
 class UserBlockingService {
@@ -45,6 +46,8 @@ class UserBlockingService {
       await _firestore.collection('users').doc(currentUserId).update({
         'blockedUsers': FieldValue.arrayUnion([targetUserId]),
       });
+
+      await FollowsService().removeRelationshipBothWays(targetUserId);
 
       _notifyBlockListChanged();
       debugPrint('✅ User blocked: $targetUserId');

@@ -33,7 +33,8 @@ class NetworkEffectsService {
         final boost =
             1.0 + (connectionsLiked.length * 0.1); // +10% per connection
         multiplier *= boost.clamp(1.0, connectionsLikedBoost);
-        secureLog('👥 Connections boost: ${connectionsLiked.length} connections liked - ${boost.toStringAsFixed(2)}x');
+        secureLog(
+            '👥 Connections boost: ${connectionsLiked.length} connections liked - ${boost.toStringAsFixed(2)}x');
       }
 
       // 2. Check if trending in network
@@ -51,7 +52,8 @@ class NetworkEffectsService {
         secureLog('👤 Similar users boost - ${similarUsersBoost}x');
       }
 
-      secureLog('✅ Total network boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog(
+          '✅ Total network boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
       secureLog('❌ Error calculating network boost: $e');
@@ -70,8 +72,9 @@ class NetworkEffectsService {
     // 1. Query likes using proper schema (videos/{videoId}/likes/{uid})
     // 2. Store aggregated results: network_likes/{userId}/{videoId}
     // 3. Client reads only pre-computed results
-    
-    secureLog('⚠️ Connections who liked: Feature disabled (should use deterministic paths or server-side)');
+
+    secureLog(
+        '⚠️ Connections who liked: Feature disabled (should use deterministic paths or server-side)');
     return [];
   }
 
@@ -85,8 +88,9 @@ class NetworkEffectsService {
     // 1. Compute trending in network (server-side only)
     // 2. Store results in: trending_network/{userId}/{videoId} or public_trending/{timeWindow}
     // 3. Client reads only pre-computed results
-    
-    secureLog('⚠️ Trending in network score: Feature disabled (should be server-side)');
+
+    secureLog(
+        '⚠️ Trending in network score: Feature disabled (should be server-side)');
     return 0.0;
   }
 
@@ -102,8 +106,9 @@ class NetworkEffectsService {
     // 2. Calculate engagement metrics (server-side only)
     // 3. Store public aggregates in: public_creator_metrics/{creatorId} or similar
     // 4. Client reads only public aggregates
-    
-    secureLog('⚠️ Similar users engagement: Feature disabled (should be server-side)');
+
+    secureLog(
+        '⚠️ Similar users engagement: Feature disabled (should be server-side)');
     return 0.0;
   }
 }

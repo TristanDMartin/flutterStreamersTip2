@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/upload_job.dart';
 import 'upload_job_storage_service.dart';
 import 'background_upload_service.dart';
+import 'video_publish_finalize_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class UploadStatusManager extends ChangeNotifier {
   static final UploadStatusManager _instance = UploadStatusManager._internal();
@@ -49,7 +51,9 @@ class UploadStatusManager extends ChangeNotifier {
       case UploadJobState.queued:
         final pct = (_currentProgress * 100).toStringAsFixed(0);
         final eta = _estimatedTimeRemaining();
-        return eta != null ? 'Uploading $pct% • $eta left' : 'Uploading $pct%...';
+        return eta != null
+            ? 'Uploading $pct% • $eta left'
+            : 'Uploading $pct%...';
       case UploadJobState.processing:
         return 'Processing your video...';
       case UploadJobState.ready:
@@ -174,7 +178,8 @@ class UploadStatusManager extends ChangeNotifier {
     _pollingTimer = Timer.periodic(pollInterval, (timer) async {
       if (DateTime.now().isAfter(deadline)) {
         timer.cancel();
-        _enterFailed(null, 'Processing timed out. Your video may still appear soon.');
+        _enterFailed(
+            null, 'Processing timed out. Your video may still appear soon.');
         return;
       }
       try {
@@ -186,17 +191,15 @@ class UploadStatusManager extends ChangeNotifier {
         final status = data['status'] as String? ?? '';
         final hasPlayableSource =
             (data['muxPlaybackId'] as String?)?.isNotEmpty == true ||
-            (data['canonicalPlaybackUrl'] as String?)?.isNotEmpty == true ||
-            (data['hlsUrl'] as String?)?.isNotEmpty == true ||
-            (data['hls_url'] as String?)?.isNotEmpty == true;
-        final thumbUrl = data['thumbnailUrl'] as String? ??
-            data['thumbnail_url'] as String?;
-        final isCanonicalReady =
-            isReady &&
+                (data['canonicalPlaybackUrl'] as String?)?.isNotEmpty == true ||
+                (data['hlsUrl'] as String?)?.isNotEmpty == true ||
+                (data['hls_url'] as String?)?.isNotEmpty == true;
+        final thumbUrl =
+            data['thumbnailUrl'] as String? ?? data['thumbnail_url'] as String?;
+        final isCanonicalReady = isReady &&
             (playbackReady != false) &&
             (status == 'active' || status == 'ready');
-        final isLegacyReady =
-            hasPlayableSource &&
+        final isLegacyReady = hasPlayableSource &&
             (playbackReady != false) &&
             (status == 'active' || status == 'ready');
         if (isCanonicalReady || isLegacyReady) {
@@ -215,6 +218,17 @@ class UploadStatusManager extends ChangeNotifier {
     _thumbnailUrl = thumbUrl;
     _showStatusBar = true;
     notifyListeners();
+    final String? videoId = _currentVideoId;
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    if (videoId != null && videoId.isNotEmpty && uid != null) {
+      unawaited(
+        VideoPublishFinalizeService.instance.finalizeDiscoverability(
+          videoId: videoId,
+          userId: uid,
+          waitForMux: false,
+        ),
+      );
+    }
   }
 
   void _enterFailed(String? localId, String message) {
@@ -230,7 +244,7 @@ class UploadStatusManager extends ChangeNotifier {
   Future<void> retryUpload() async {
     final localId = _currentJobId;
     if (localId == null) return;
-    _pollingTimer?.cancel();  // Cancel any in-progress polling before retry.
+    _pollingTimer?.cancel(); // Cancel any in-progress polling before retry.
     _pollingTimer = null;
     _currentState = UploadJobState.uploading;
     _currentProgress = 0.0;

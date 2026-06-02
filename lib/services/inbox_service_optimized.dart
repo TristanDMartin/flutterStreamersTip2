@@ -9,13 +9,14 @@ import '../utils/avatar_url_resolver.dart';
 import 'logging_service.dart';
 
 class InboxServiceOptimized {
-  static final InboxServiceOptimized _instance = InboxServiceOptimized._internal();
+  static final InboxServiceOptimized _instance =
+      InboxServiceOptimized._internal();
   factory InboxServiceOptimized() => _instance;
   InboxServiceOptimized._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
-  
+
   // Expose auth for external access
   firebase_auth.FirebaseAuth get auth => _auth;
 
@@ -24,7 +25,7 @@ class InboxServiceOptimized {
   final Map<String, SharedDraft> _draftCache = {};
   final Map<String, app_user.User> _userCache = {};
   final Map<String, int> _unreadCounts = {};
-  
+
   // Real-time listeners
   StreamSubscription<List<app_chat.Chat>>? _chatsSubscription;
   StreamSubscription<List<SharedDraft>>? _draftsSubscription;
@@ -78,7 +79,7 @@ class InboxServiceOptimized {
           .get();
 
       final drafts = <SharedDraft>[];
-      
+
       // Process received drafts
       for (final doc in receivedQuery.docs) {
         final data = doc.data();
@@ -138,9 +139,9 @@ class InboxServiceOptimized {
         final lastMessage = chat.lastMessage?.toLowerCase() ?? '';
         final participants = chat.participants.join(' ').toLowerCase();
         final searchQuery = query.toLowerCase();
-        
-        return lastMessage.contains(searchQuery) || 
-               participants.contains(searchQuery);
+
+        return lastMessage.contains(searchQuery) ||
+            participants.contains(searchQuery);
       }).toList();
     } catch (e) {
       LoggingService.instance.error('Error searching chats: $e');
@@ -158,9 +159,8 @@ class InboxServiceOptimized {
         final title = draft.draftTitle.toLowerCase();
         final message = draft.message?.toLowerCase() ?? '';
         final searchQuery = query.toLowerCase();
-        
-        return title.contains(searchQuery) || 
-               message.contains(searchQuery);
+
+        return title.contains(searchQuery) || message.contains(searchQuery);
       }).toList();
     } catch (e) {
       LoggingService.instance.error('Error searching shared drafts: $e');
@@ -237,7 +237,7 @@ class InboxServiceOptimized {
       for (final doc in query.docs) {
         final messageData = doc.data();
         final readBy = List<String>.from(messageData['readBy'] ?? []);
-        
+
         // Only update if user is not already in readBy
         if (!readBy.contains(currentUser.uid)) {
           batch.update(doc.reference, {
@@ -317,12 +317,12 @@ class InboxServiceOptimized {
   Future<bool> deleteMultipleChats(List<String> chatIds) async {
     try {
       final batch = _firestore.batch();
-      
+
       for (final chatId in chatIds) {
         batch.delete(_firestore.collection('chats').doc(chatId));
         _chatCache.remove(chatId);
       }
-      
+
       await batch.commit();
       return true;
     } catch (e) {
@@ -347,13 +347,13 @@ class InboxServiceOptimized {
   Future<bool> markChatAsRead(String chatId) async {
     try {
       await markAsRead(chatId);
-      
+
       // Update cache
       if (_chatCache.containsKey(chatId)) {
         final chat = _chatCache[chatId]!;
         _chatCache[chatId] = chat;
       }
-      
+
       return true;
     } catch (e) {
       LoggingService.instance.error('Error marking chat as read: $e');
@@ -381,20 +381,19 @@ class InboxServiceOptimized {
       }
 
       await batch.commit();
-      
+
       // Update cache
       for (final chatId in _chatCache.keys) {
         final chat = _chatCache[chatId]!;
         _chatCache[chatId] = chat;
       }
-      
+
       return true;
     } catch (e) {
       LoggingService.instance.error('Error marking all chats as read: $e');
       return false;
     }
   }
-
 
   /// Create a new chat
   Future<app_chat.Chat?> createChat(String otherUserId) async {
@@ -409,7 +408,8 @@ class InboxServiceOptimized {
           .get();
 
       for (final doc in existingQuery.docs) {
-        final participants = List<String>.from(doc.data()['participants'] ?? []);
+        final participants =
+            List<String>.from(doc.data()['participants'] ?? []);
         if (participants.contains(otherUserId)) {
           return _mapChat(doc.id, doc.data());
         }
@@ -426,13 +426,13 @@ class InboxServiceOptimized {
 
       final docRef = await _firestore.collection('chats').add(data);
       final snapshot = await docRef.get();
-      
+
       if (snapshot.exists) {
         final chat = _mapChat(docRef.id, snapshot.data()!);
         _chatCache[docRef.id] = chat;
         return chat;
       }
-      
+
       return null;
     } catch (e) {
       LoggingService.instance.error('Error creating chat: $e');
@@ -450,9 +450,8 @@ class InboxServiceOptimized {
       final unreadField = 'unreadCount_${currentUser.uid}';
       final dynamic unreadValue = data[unreadField];
       if (unreadValue != null) {
-        unreadCount = unreadValue is int
-            ? unreadValue
-            : (unreadValue as num).toInt();
+        unreadCount =
+            unreadValue is int ? unreadValue : (unreadValue as num).toInt();
       }
       // Cache the unread count
       _unreadCounts[id] = unreadCount;
@@ -462,7 +461,8 @@ class InboxServiceOptimized {
       id: id,
       participants: List<String>.from(data['participants'] ?? []),
       lastMessage: data['lastMessage'] ?? '',
-      lastTimestamp: (data['lastTimestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      lastTimestamp:
+          (data['lastTimestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       chatType: data['chatType'] ?? 'direct',
     );
   }
@@ -478,15 +478,19 @@ class InboxServiceOptimized {
     final receiverId = data['receiverId'] ?? '';
     final draftId = data['draftId'] ?? data['originalDraftId'] ?? '';
     final caption = data['caption'] ?? '';
-    final draftTitle = ((data['draftTitle'] as String?)?.trim().isNotEmpty == true)
-        ? data['draftTitle'] as String
-        : (caption.isNotEmpty ? caption : 'Draft');
-    final draftThumbnailUrl =
-        data['draftThumbnailUrl'] ?? data['thumbnailUrl'] ?? data['thumbnailPath'] ?? '';
-    final draftDuration = data['draftDuration'] ?? (data['metadata']?['duration'] ?? 0);
-    final sharedAt = (data['sharedAt'] as Timestamp?)?.toDate() ?? 
-                     (data['createdAt'] as Timestamp?)?.toDate() ?? 
-                     DateTime.now();
+    final draftTitle =
+        ((data['draftTitle'] as String?)?.trim().isNotEmpty == true)
+            ? data['draftTitle'] as String
+            : (caption.isNotEmpty ? caption : 'Draft');
+    final draftThumbnailUrl = data['draftThumbnailUrl'] ??
+        data['thumbnailUrl'] ??
+        data['thumbnailPath'] ??
+        '';
+    final draftDuration =
+        data['draftDuration'] ?? (data['metadata']?['duration'] ?? 0);
+    final sharedAt = (data['sharedAt'] as Timestamp?)?.toDate() ??
+        (data['createdAt'] as Timestamp?)?.toDate() ??
+        DateTime.now();
     final status = _deriveSharedDraftStatus(
       data: data,
       currentUserId: currentUserId,
@@ -502,7 +506,8 @@ class InboxServiceOptimized {
       senderAvatar: senderAvatar,
       draftTitle: draftTitle,
       draftThumbnailUrl: draftThumbnailUrl,
-      draftDuration: draftDuration is int ? draftDuration : (draftDuration as num).toInt(),
+      draftDuration:
+          draftDuration is int ? draftDuration : (draftDuration as num).toInt(),
       sharedAt: sharedAt,
       status: status,
       message: data['message'],
@@ -521,7 +526,8 @@ class InboxServiceOptimized {
         List<String>.from(data['acceptedBy'] as List<dynamic>? ?? const []);
     final viewedBy =
         List<String>.from(data['viewedBy'] as List<dynamic>? ?? const []);
-    final targetUserId = currentUserId == receiverId ? currentUserId : receiverId;
+    final targetUserId =
+        currentUserId == receiverId ? currentUserId : receiverId;
 
     if (declinedBy.contains(targetUserId)) {
       return SharedDraftStatus.declined;
@@ -544,7 +550,8 @@ class InboxServiceOptimized {
       bio: data['bio'],
       avatarURL: resolveAvatarUrl(data),
       onlineStatus: data['onlineStatus'] ?? 'offline',
-      hashtags: data['hashtags'] is List ? List<String>.from(data['hashtags']) : [],
+      hashtags:
+          data['hashtags'] is List ? List<String>.from(data['hashtags']) : [],
       aiSelf: data['aiSelf'] ?? '',
       postCount: data['postCount'] ?? 0,
       followerCount: UserCountFields.readFollowersCount(data),
@@ -604,9 +611,9 @@ class InboxServiceOptimized {
             .where('status', isEqualTo: 'shared')
             .snapshots()
             .listen(
-          (_) => emitDrafts(),
-          onError: controller.addError,
-        );
+              (_) => emitDrafts(),
+              onError: controller.addError,
+            );
 
         sentSub = _firestore
             .collection('shared_drafts')
@@ -614,9 +621,9 @@ class InboxServiceOptimized {
             .where('status', isEqualTo: 'shared')
             .snapshots()
             .listen(
-          (_) => emitDrafts(),
-          onError: controller.addError,
-        );
+              (_) => emitDrafts(),
+              onError: controller.addError,
+            );
       },
       onCancel: () async {
         await receivedSub?.cancel();
@@ -650,11 +657,7 @@ class InboxServiceOptimized {
 
   /// Stream online status for a user
   Stream<bool> streamUserOnlineStatus(String userId) {
-    return _firestore
-        .collection('users')
-        .doc(userId)
-        .snapshots()
-        .map((doc) {
+    return _firestore.collection('users').doc(userId).snapshots().map((doc) {
       if (doc.exists) {
         final data = doc.data()!;
         final lastSeen = data['lastSeen'] as Timestamp?;

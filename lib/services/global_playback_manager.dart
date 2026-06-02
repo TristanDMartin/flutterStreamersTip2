@@ -1,11 +1,36 @@
 import 'dart:async';
-import 'dart:developer';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/material.dart';
+import 'playback_focus_coordinator.dart';
+import 'playback_controller_pool.dart';
+import 'playback_pool_policy.dart';
+import 'playback_preload_order.dart';
+import 'playback_feed_index_tracker.dart';
+import 'playback_tab_lifecycle_coordinator.dart';
+import 'playback_startup_warm_coordinator.dart';
+import 'playback_eviction_coordinator.dart';
+import 'playback_home_lifecycle_coordinator.dart';
+import 'playback_controller_factory.dart';
+import 'playback_pending_focus_coordinator.dart';
+import 'playback_controller_registration_coordinator.dart';
+import 'playback_focus_activation_coordinator.dart';
+import 'playback_pause_all_coordinator.dart';
+import 'playback_blocking_coordinator.dart';
+import 'playback_visible_index_coordinator.dart';
+import 'playback_active_owner_coordinator.dart';
+import 'playback_dispose_pool_coordinator.dart';
+import 'playback_app_resume_coordinator.dart';
+import 'playback_ensure_ready_coordinator.dart';
+import 'playback_volume_coordinator.dart';
+import 'playback_recover_controller_coordinator.dart';
+import 'playback_telemetry_coordinator.dart';
 import '../models/home_video.dart';
 import '../constants/playback_owners.dart';
+import '../utils/playback_teardown.dart';
 import '../utils/video_health_gate.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Enhanced Global Playback Manager - Single source of truth for video playback
 ///
@@ -31,60 +56,79 @@ class GlobalPlaybackManager {
   // STATE MANAGEMENT
   // ============================================
 
-  /// Currently active video ID
-  String? _activeVideoId;
+  /// Focus, blocking, and active-owner state.
+  final PlaybackFocusCoordinator _focus = PlaybackFocusCoordinator();
 
-  /// Currently active owner (tab ID, view name, etc.)
-  String? _activeOwner;
+  /// Controller pool — maps, attachment, cooldown, and eviction metadata.
+  final PlaybackControllerPool _pool = PlaybackControllerPool();
 
-  /// Pool of video controllers keyed by video ID
-  final Map<String, VideoPlayerController> _controllerPool = {};
+  Map<String, VideoPlayerController> get _controllerPool => _pool.controllers;
+  Map<String, String> get _controllerOwners => _pool.owners;
+  Map<String, bool> get _disposedControllers => _pool.disposed;
+  Set<String> get _initializingControllers => _pool.initializing;
+  Map<String, DateTime> get _cooldownUntil => _pool.cooldownUntil;
+  Set<String> get _pinnedVideoIds => _pool.pinnedVideoIds;
 
-  /// Owner tracking: videoId -> owner mapping
-  final Map<String, String> _controllerOwners = {};
+  /// Cooldown period before hard disposal — see [PlaybackPoolPolicy].
+  static const int cooldownSeconds = PlaybackPoolPolicy.cooldownSeconds;
+
+  /// Minimum controller age before disposal — see [PlaybackPoolPolicy].
+  static const int disposalEligibilityTtlSeconds =
+      PlaybackPoolPolicy.disposalEligibilityTtlSeconds;
 
   /// Mute state tracking: videoId -> isMuted
   final Map<String, bool> _muteStates = {};
 
-  /// Disposal tracking: videoId -> isDisposed
-  final Map<String, bool> _disposedControllers = {};
-
-  /// 🔥 CRITICAL FIX: Track controllers currently being initialized to prevent disposal during init
-  final Set<String> _initializingControllers = {};
-
-  /// 🔥 PHASE 1 FIX: Cooldown tracking for two-stage eviction (videoId -> expiration time)
-  final Map<String, DateTime> _cooldownUntil = {};
-
-  /// 🔥 PHASE 1 FIX: Pin set for previous/current/next videos protected from disposal.
-  final Set<String> _pinnedVideoIds = {};
-
-  /// Cooldown period before hard disposal (seconds)
-  static const int cooldownSeconds = 3;
-
-  /// 🔥 PHASE 2.3: Controllers currently attached to a VideoPlayerViewOptimized (videoId -> controller hashCode)
-  final Map<String, int> _attachedControllers = {};
-
-  /// 🔥 PHASE 2.3: When each controller was registered (videoId -> creation time)
-  final Map<String, DateTime> _controllerCreatedAt = {};
-
-  /// 🔥 PHASE 2.3: Don't dispose a controller until this many seconds after registration
-  static const int disposalEligibilityTtlSeconds = 5;
-
   /// 🔥 PRODUCTION-GRADE: Pending focus requests (videoId -> owner)
   /// Used for TikTok-style first video autoplay - queues focus requests before controller is ready
-  final Map<String, String> _pendingFocusRequests = {};
+  Map<String, String> get _pendingFocusRequests => _focus.pendingFocusRequests;
 
-  /// Last preload request center index to avoid redundant churn during rebuilds.
-  int? _lastPreloadCenterIndex;
+  final PlaybackPreloadBurstGuard _preloadBurstGuard =
+      PlaybackPreloadBurstGuard();
 
-  /// Last preload request video id at the center index.
-  String? _lastPreloadCenterVideoId;
+  final PlaybackFeedIndexTracker _feedIndex = PlaybackFeedIndexTracker();
+  final PlaybackTabLifecycleCoordinator _tabLifecycle =
+      PlaybackTabLifecycleCoordinator();
+  final PlaybackStartupWarmCoordinator _startupWarm =
+      PlaybackStartupWarmCoordinator();
+  final PlaybackEvictionCoordinator _eviction =
+      const PlaybackEvictionCoordinator();
+  final PlaybackHomeLifecycleCoordinator _homeLifecycle =
+      const PlaybackHomeLifecycleCoordinator();
+  static const PlaybackControllerFactory _controllerFactory =
+      PlaybackControllerFactory();
+  static const PlaybackPendingFocusCoordinator _pendingFocus =
+      PlaybackPendingFocusCoordinator();
+  static const PlaybackFocusActivationCoordinator _focusActivation =
+      PlaybackFocusActivationCoordinator();
+  static const PlaybackControllerRegistrationCoordinator _registration =
+      PlaybackControllerRegistrationCoordinator();
+  static const PlaybackPauseAllCoordinator _pauseAllCoordinator =
+      PlaybackPauseAllCoordinator();
+  static const PlaybackBlockingCoordinator _blockingCoordinator =
+      PlaybackBlockingCoordinator();
+  static const PlaybackVisibleIndexCoordinator _visibleIndexCoordinator =
+      PlaybackVisibleIndexCoordinator();
+  static const PlaybackActiveOwnerCoordinator _activeOwnerCoordinator =
+      PlaybackActiveOwnerCoordinator();
+  static const PlaybackDisposePoolCoordinator _disposePoolCoordinator =
+      PlaybackDisposePoolCoordinator();
+  static const PlaybackAppResumeCoordinator _appResumeCoordinator =
+      PlaybackAppResumeCoordinator();
+  static const PlaybackEnsureReadyCoordinator _ensureReadyCoordinator =
+      PlaybackEnsureReadyCoordinator();
+  static const PlaybackVolumeCoordinator _volumeCoordinator =
+      PlaybackVolumeCoordinator();
+  static const PlaybackRecoverControllerCoordinator _recoverCoordinator =
+      PlaybackRecoverControllerCoordinator();
+  static const PlaybackTelemetryCoordinator _telemetryCoordinator =
+      PlaybackTelemetryCoordinator();
 
-  /// Timestamp of the last preload request.
-  DateTime? _lastPreloadRequestedAt;
+  int? get _currentFeedIndex => _feedIndex.currentFeedIndex;
 
-  /// Monotonic token for cancelling stale startup warmup jobs.
-  int _startupWarmGeneration = 0;
+  Map<int, String> get _indexToVideoId => _feedIndex.indexToVideoId;
+  Map<String, int> get _videoIdToIndex => _feedIndex.videoIdToIndex;
+  Map<int, Duration> get _lastKnownPositions => _feedIndex.lastKnownPositions;
 
   /// Timing marks used to measure perceived playback readiness.
   final Map<String, DateTime> _controllerWarmStartedAt = {};
@@ -93,99 +137,97 @@ class GlobalPlaybackManager {
 
   /// 🔥 INSTANT PLAYBACK: Mark a controller as initializing
   void markControllerInitializing(String videoId) {
-    _initializingControllers.add(videoId);
-    log('🔄 PlaybackManager: Marked controller as initializing: $videoId');
+    _pool.markInitializing(videoId);
+    secureLog(
+        '🔄 PlaybackManager: Marked controller as initializing: $videoId');
+  }
+
+  /// Clear an initialization marker when a widget-level warmup exits before
+  /// registration. Registration also clears this; this method is a safe no-op
+  /// for the normal successful path.
+  void clearControllerInitializing(String videoId) {
+    if (_pool.initializing.remove(videoId)) {
+      secureLog('✅ PlaybackManager: Cleared initializing marker: $videoId');
+    }
+  }
+
+  /// Adjust the active video's volume without changing focus. Used by overlays
+  /// such as comments that should keep video motion alive while ducking audio.
+  Future<void> setActiveVideoVolume(double volume) {
+    return _volumeCoordinator.setActiveVideoVolume(
+      volume: volume,
+      focus: _focus,
+      controllerPool: _controllerPool,
+      controllerOwners: _controllerOwners,
+      muteStates: _muteStates,
+      isControllerSafe: _isControllerSafe,
+      onTelemetry: logTelemetry,
+      log: secureLog,
+    );
   }
 
   /// 🔥 PHASE 2.3: Mark controller as attached to a view (protects from disposal)
   void markControllerAttached(String videoId, int controllerId) {
-    _attachedControllers[videoId] = controllerId;
-    log('📌 PlaybackManager: Controller attached videoId=$videoId controllerId=$controllerId');
+    _pool.markAttached(videoId, controllerId);
+    secureLog(
+        '📌 PlaybackManager: Controller attached videoId=$videoId controllerId=$controllerId');
   }
 
   /// 🔥 PHASE 2.3: Mark controller as detached from view (eligible for disposal after cooldown)
   void markControllerDetached(String videoId) {
-    if (_attachedControllers.remove(videoId) != null) {
-      log('📌 PlaybackManager: Controller detached videoId=$videoId');
+    if (_pool.attached.remove(videoId) != null) {
+      secureLog('📌 PlaybackManager: Controller detached videoId=$videoId');
     }
   }
 
-  /// Whether we're in a paused state (tab switching, etc.)
-  bool _isPaused = false;
-
   /// Activation epoch to cancel stale async work
   int _activationEpoch = 0;
+  String? _inFlightFocusKey;
+  Future<void>? _inFlightFocusFuture;
+  String? _inFlightSwitchKey;
+  Future<void>? _inFlightSwitchFuture;
 
   /// 🔥 FIX: Track which controller is currently being played to prevent double audio
   VideoPlayerController? _currentlyPlayingController;
 
-  // ============================================
-  // TIKTOK-STYLE INDEX-BASED TRACKING
-  // ============================================
-
-  /// Current feed index (for TikTok-style vertical feed)
-  int? _currentFeedIndex;
-
-  /// Last known playback positions per index
-  final Map<int, Duration> _lastKnownPositions = {};
-
-  /// Index to videoId mapping
-  final Map<int, String> _indexToVideoId = {};
-
-  /// VideoId to index mapping
-  final Map<String, int> _videoIdToIndex = {};
-
   /// Configuration
-  // 🔥 TIKTOK-STYLE: Keep current + next 2 + previous 1 hot, with a little
-  // transient headroom while async initialization and cooldown cleanup settle.
-  static const int poolRadius = 2;
+  // TikTok-style: keep current + one previous + one next warm.
+  static const int poolRadius = 1;
   static const int recoveryTimeoutMs = 5000;
-  static const int maxControllerPoolSize = 6;
+  static const int maxControllerPoolSize = 3;
 
   // ============================================
-  // BLOCKING SYSTEM (from Coordinator)
+  // STREAMS
   // ============================================
 
-  /// Block level for nestable blocking (0 = unblocked, >0 = blocked)
-  int _blockLevel = 0;
+  /// Stream of active video ID changes
+  Stream<String?> get activeVideoStream => _focus.activeVideoStream;
 
-  /// Reason for current block
-  String? _blockReason;
+  /// Stream of active owner changes
+  Stream<String?> get activeOwnerStream => _focus.activeOwnerStream;
 
-  // ============================================
-  // STREAMS (from Coordinator)
-  // ============================================
-
-  /// Stream controller for active video changes
-  final StreamController<String?> _activeVideoController =
-      StreamController<String?>.broadcast();
-
-  /// Stream controller for active owner changes
-  final StreamController<String?> _activeOwnerController =
-      StreamController<String?>.broadcast();
-
-  /// Stream controller for blocked state changes
-  final StreamController<bool> _playbackBlockedController =
-      StreamController<bool>.broadcast();
+  /// Stream of blocked state changes
+  Stream<bool> get playbackBlockedStream => _focus.playbackBlockedStream;
 
   // ============================================
   // GETTERS
   // ============================================
 
   /// Get the currently active video ID
-  String? get activeVideoId => _activeVideoId;
+  String? get activeVideoId => _focus.activeVideoId;
 
   /// Get the currently active owner
-  String? get activeOwner => _activeOwner;
+  String? get activeOwner => _focus.activeOwner;
+  String? get visibleOwner => _focus.visibleOwner;
 
   /// Check if a video ID is currently active
-  bool isActive(String videoId) => _activeVideoId == videoId;
+  bool isActive(String videoId) => _focus.isActive(videoId);
 
   /// 🔥 FIX: Extra protection check to ensure active video is never disposed
   /// This prevents auto-pause after many playbacks
   bool _isActiveVideo(String videoId) {
     // Check if this is the active video
-    if (_activeVideoId == videoId) return true;
+    if (_focus.activeVideoId == videoId) return true;
 
     // Check if this video's controller is currently playing
     final controller = _controllerPool[videoId];
@@ -198,7 +240,7 @@ class GlobalPlaybackManager {
         }
       } catch (e) {
         // If we can't check, err on the side of caution - don't dispose
-        log('⚠️ PlaybackManager: Error checking if video is active: $e');
+        secureLog('⚠️ PlaybackManager: Error checking if video is active: $e');
         return true; // Don't dispose if we can't verify
       }
     }
@@ -207,16 +249,16 @@ class GlobalPlaybackManager {
   }
 
   /// Check if we're in a paused state
-  bool get isPaused => _isPaused;
+  bool get isPaused => _tabLifecycle.isPaused;
 
   /// Check if playback is blocked
-  bool get isPlaybackBlocked => _blockLevel > 0;
+  bool get isPlaybackBlocked => _focus.blockLevel > 0;
 
   /// Get current block level
-  int get blockLevel => _blockLevel;
+  int get blockLevel => _focus.blockLevel;
 
   /// Get current block reason
-  String? get blockReason => _blockReason;
+  String? get blockReason => _focus.blockReason;
 
   /// Check if a controller is safe to use (not disposed and valid)
   ///
@@ -245,50 +287,18 @@ class GlobalPlaybackManager {
   /// **Usage:**
   /// Always call this before accessing controller.value or calling controller methods.
   bool _isControllerSafe(String videoId, VideoPlayerController controller) {
-    // Check if already marked as disposed
-    if (_disposedControllers[videoId] == true) {
-      return false;
-    }
-
-    // 🔒 SAFETY: Try to access controller value - if it throws, controller is disposed
-    try {
-      // Check if controller is valid
-      final value = controller.value;
-      return value.isInitialized && !value.hasError;
-    } catch (e) {
-      // Controller is disposed - mark it and return false
-      log('⚠️ PlaybackManager: Controller for video $videoId is disposed: $e');
-      _disposedControllers[videoId] = true;
-      return false;
-    }
+    return _pool.isControllerSafe(videoId, controller);
   }
 
   /// No evict active, no evict attached, only past TTL. No exceptions.
   bool _canEvict(String id, VideoPlayerController controller, DateTime now) {
-    if (id == _activeVideoId) return false;
-    if (_attachedControllers[id] == controller.hashCode) return false;
-    if (_initializingControllers.contains(id)) return false;
-    final createdAt = _controllerCreatedAt[id];
-    if (createdAt != null &&
-        now.difference(createdAt) <
-            Duration(seconds: disposalEligibilityTtlSeconds)) {
-      return false;
-    }
-    return true;
+    return _pool.canEvict(
+      id: id,
+      controller: controller,
+      now: now,
+      activeVideoId: _focus.activeVideoId,
+    );
   }
-
-  // ============================================
-  // STREAMS
-  // ============================================
-
-  /// Stream of active video ID changes
-  Stream<String?> get activeVideoStream => _activeVideoController.stream;
-
-  /// Stream of active owner changes
-  Stream<String?> get activeOwnerStream => _activeOwnerController.stream;
-
-  /// Stream of blocked state changes
-  Stream<bool> get playbackBlockedStream => _playbackBlockedController.stream;
 
   // ============================================
   // SINGLE ACTIVE OWNER MODEL
@@ -309,61 +319,49 @@ class GlobalPlaybackManager {
   /// **Parameters:**
   /// - [owner]: The owner key (e.g., 'home', 'discover', 'player', 'profile')
   void setActiveOwner(String owner) {
-    log('🎯 PlaybackManager: Setting active owner to: $owner');
+    _activeOwnerCoordinator.setActiveOwner(
+      owner: owner,
+      focus: _focus,
+      controllerPool: _controllerPool,
+      controllerOwners: _controllerOwners,
+      muteStates: _muteStates,
+      isControllerSafe: _isControllerSafe,
+      log: secureLog,
+    );
+  }
 
-    // 🧹 Clear any stale global blocks when explicitly switching owners
-    if (_blockLevel > 0) {
-      log('🎯 PlaybackManager: Clearing stale block (level: $_blockLevel, reason: $_blockReason) when switching owner to $owner');
-      _blockLevel = 0;
-      _blockReason = null;
-      _playbackBlockedController.add(false);
-    }
-
-    // Pause and mute all videos from non-active owners
-    final entries = List<MapEntry<String, VideoPlayerController>>.from(
-        _controllerPool.entries);
-    for (final entry in entries) {
-      final videoId = entry.key;
-      final controllerOwner = _controllerOwners[videoId];
-
-      // 🔥 SINGLE ACTIVE OWNER: Check if this video belongs to a different owner
-      // Use hierarchical matching: 'home/forYou' matches 'home', but 'discover' doesn't match 'home'
-      final belongsToActiveOwner = controllerOwner != null &&
-          (controllerOwner == owner || controllerOwner.startsWith('$owner/'));
-
-      if (!belongsToActiveOwner) {
-        try {
-          if (_isControllerSafe(videoId, entry.value)) {
-            entry.value.setVolume(0.0);
-            _muteStates[videoId] = true;
-            if (entry.value.value.isInitialized) {
-              entry.value.pause();
-            }
-            log('⏸️ PlaybackManager: Paused and muted video $videoId (owner: $controllerOwner, activeOwner: $owner)');
-          }
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error pausing non-active owner video: $e');
-        }
-      }
-    }
-
-    // Set new active owner
-    _activeOwner = owner;
-    _activeOwnerController.add(_activeOwner);
-
-    log('✅ PlaybackManager: Active owner set to: $owner (blockLevel: $_blockLevel)');
+  void setVisibleOwner(String owner) {
+    _focus.setVisibleOwner(owner);
+    secureLog('👁️ PlaybackManager: Visible owner set to: $owner');
+    setActiveOwner(owner);
   }
 
   /// Force unblock completely (sets block level to 0)
   /// Use this when you need to ensure playback is unblocked (e.g., PlayerScreen opening)
   void forceUnblock() {
-    if (_blockLevel > 0) {
-      log('🔓 PlaybackManager: FORCE UNBLOCKING (was level: $_blockLevel, reason: $_blockReason)');
-      _blockLevel = 0;
-      _blockReason = null;
-      _playbackBlockedController.add(false);
-      log('✅ PlaybackManager: FORCE UNBLOCKED - ready for playback');
+    if (_focus.forceUnblock()) {
+      secureLog(
+          '🔓 PlaybackManager: FORCE UNBLOCKING (was blocked, reason cleared)');
+      secureLog('✅ PlaybackManager: FORCE UNBLOCKED - ready for playback');
     }
+  }
+
+  Future<void> recoverInteractionOnAppResume({
+    String fallbackOwner = PlaybackOwners.home,
+  }) {
+    _tabLifecycle.isPaused = false;
+    return _appResumeCoordinator.recoverInteractionOnAppResume(
+      focus: _focus,
+      controllerPool: _controllerPool,
+      controllerOwners: _controllerOwners,
+      forceUnblock: forceUnblock,
+      setActiveOwner: setActiveOwner,
+      pauseAllExcept: pauseAllExcept,
+      requestFocus: requestFocus,
+      isControllerSafe: _isControllerSafe,
+      fallbackOwner: fallbackOwner,
+      log: secureLog,
+    );
   }
 
   /// Check if a specific owner can play audio
@@ -383,24 +381,33 @@ class GlobalPlaybackManager {
   /// - `true` if owner matches active owner (or is a sub-owner) and playback is not blocked
   /// - `false` if owner doesn't match or playback is blocked
   bool canPlay(String owner) {
-    if (_blockLevel > 0) {
-      log('🚫 PlaybackManager: Owner $owner cannot play (blocked, level: $_blockLevel)');
+    if (_focus.blockLevel > 0) {
+      secureLog(
+          '🚫 PlaybackManager: Owner $owner cannot play (blocked, level: $_focus.blockLevel)');
+      return false;
+    }
+
+    if (!_focus.ownerMatchesVisibleOwner(owner)) {
+      secureLog(
+          '🚫 PlaybackManager: Owner $owner cannot play (visibleOwner: $_focus.visibleOwner)');
       return false;
     }
 
     // 🔥 INSTANT PLAYBACK: Auto-set active owner if null (instead of blocking)
     // This prevents canPlay() from blocking playback unnecessarily
-    if (_activeOwner == null) {
-      log('🔧 PlaybackManager: Active owner is null, auto-setting to $owner for instant playback');
+    if (_focus.activeOwner == null) {
+      secureLog(
+          '🔧 PlaybackManager: Active owner is null, auto-setting to $owner for instant playback');
       setActiveOwner(owner);
       return true; // Now can play after auto-setting
     }
 
     // Check exact match or hierarchical match (e.g., 'home/forYou' matches 'home')
     final ownerMatches =
-        owner == _activeOwner || owner.startsWith('$_activeOwner/');
+        owner == _focus.activeOwner || owner.startsWith('$_focus.activeOwner/');
     if (!ownerMatches) {
-      log('🚫 PlaybackManager: Owner $owner cannot play (activeOwner: $_activeOwner)');
+      secureLog(
+          '🚫 PlaybackManager: Owner $owner cannot play (activeOwner: $_focus.activeOwner)');
       return false;
     }
 
@@ -416,13 +423,14 @@ class GlobalPlaybackManager {
   /// Routes to switchActiveTo for atomic focus switching.
   void activate(String videoId, {String? owner}) {
     // Schedule async work without blocking
-    switchActiveTo(videoId, owner ?? _activeOwner ?? 'home').catchError((e) {
-      log('⚠️ PlaybackManager: Error in activate: $e');
+    switchActiveTo(videoId, owner ?? _focus.activeOwner ?? 'home')
+        .catchError((e) {
+      secureLog('⚠️ PlaybackManager: Error in activate: $e');
     });
   }
 
   Future<void> _ensurePlayingUnmuted(VideoPlayerController controller) async {
-    final targetVideoId = _activeVideoId;
+    final targetVideoId = _focus.activeVideoId;
     if (targetVideoId == null || _controllerPool[targetVideoId] != controller) {
       return;
     }
@@ -436,17 +444,19 @@ class GlobalPlaybackManager {
       final bool initialized = value.isInitialized;
       final bool hasError = value.hasError;
       final bool isPlayingBefore = value.isPlaying;
-      log('GPM PLAY id=$targetVideoId initialized=$initialized hasError=$hasError '
+      secureLog(
+          'GPM PLAY id=$targetVideoId initialized=$initialized hasError=$hasError '
           'isPlayingBefore=$isPlayingBefore');
       if (!initialized || hasError) return;
       _currentlyPlayingController = controller;
       _focusRequestedAt[targetVideoId] = DateTime.now();
       _firstFrameLoggedForActivation.remove(targetVideoId);
       if (value.isPlaying && value.position > Duration.zero) {
-        if (_activeVideoId == targetVideoId &&
+        if (_focus.activeVideoId == targetVideoId &&
             _controllerPool[targetVideoId] == controller) {
           await controller.setVolume(1.0);
-          log('🔊 PlaybackManager: Video already playing - unmuted immediately');
+          secureLog(
+              '🔊 PlaybackManager: Video already playing - unmuted immediately');
         }
         return;
       }
@@ -454,17 +464,28 @@ class GlobalPlaybackManager {
         await controller.play();
         try {
           final isPlayingAfter = controller.value.isPlaying;
-          log('GPM PLAY id=$targetVideoId isPlayingAfter=$isPlayingAfter');
-        } catch (_) {}
-        log('▶️ PlaybackManager: Started playing video');
+          secureLog(
+              'GPM PLAY id=$targetVideoId isPlayingAfter=$isPlayingAfter');
+        } catch (e, st) {
+          ignorePlaybackTeardownError('global_playback', e, st);
+        }
+        secureLog('▶️ PlaybackManager: Started playing video');
       }
+      final bool isAndroid = defaultTargetPlatform == TargetPlatform.android;
+      final Duration probeDelay1 = Duration(milliseconds: isAndroid ? 75 : 50);
+      final Duration probeDelay2 = Duration(milliseconds: isAndroid ? 100 : 50);
+      final Duration minPositionForUnmute =
+          Duration(milliseconds: isAndroid ? 16 : 30);
+
       await controller.setVolume(0.0);
-      await Future.delayed(const Duration(milliseconds: 50));
-      if (_activeVideoId != targetVideoId ||
+      await Future.delayed(probeDelay1);
+      if (_focus.activeVideoId != targetVideoId ||
           _controllerPool[targetVideoId] != controller) {
         try {
           await controller.setVolume(0.0);
-        } catch (_) {}
+        } catch (e, st) {
+          ignorePlaybackTeardownError('global_playback', e, st);
+        }
         return;
       }
       var probe = controller.value;
@@ -472,18 +493,21 @@ class GlobalPlaybackManager {
           !probe.hasError &&
           probe.isPlaying &&
           !probe.isBuffering &&
-          probe.position >= const Duration(milliseconds: 30);
+          probe.position >= minPositionForUnmute;
       if (ready) {
         await controller.setVolume(1.0);
-        log('🔊 PlaybackManager: Unmuted video after 50ms (instant)');
+        secureLog(
+            '🔊 PlaybackManager: Unmuted video after ${probeDelay1.inMilliseconds}ms');
         return;
       }
-      await Future.delayed(const Duration(milliseconds: 50));
-      if (_activeVideoId != targetVideoId ||
+      await Future.delayed(probeDelay2);
+      if (_focus.activeVideoId != targetVideoId ||
           _controllerPool[targetVideoId] != controller) {
         try {
           await controller.setVolume(0.0);
-        } catch (_) {}
+        } catch (e, st) {
+          ignorePlaybackTeardownError('global_playback', e, st);
+        }
         return;
       }
       probe = controller.value;
@@ -493,18 +517,36 @@ class GlobalPlaybackManager {
           !probe.isBuffering;
       if (ready) {
         await controller.setVolume(1.0);
-        log('🔊 PlaybackManager: Unmuted video after 100ms (fast)');
+        secureLog(
+          '🔊 PlaybackManager: Unmuted video after '
+          '${probeDelay1.inMilliseconds + probeDelay2.inMilliseconds}ms',
+        );
         return;
+      }
+      if (isAndroid) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (_focus.activeVideoId == targetVideoId &&
+            _controllerPool[targetVideoId] == controller) {
+          final androidProbe = controller.value;
+          if (androidProbe.isInitialized &&
+              !androidProbe.hasError &&
+              androidProbe.isPlaying) {
+            await controller.setVolume(1.0);
+            secureLog(
+                '🔊 PlaybackManager: Unmuted video after Android extended probe');
+            return;
+          }
+        }
       }
       final finalProbe = controller.value;
       if (finalProbe.isInitialized &&
           !finalProbe.hasError &&
           finalProbe.isPlaying) {
         await controller.setVolume(1.0);
-        log('🔊 PlaybackManager: Unmuted video after 100ms (optimistic)');
+        secureLog('🔊 PlaybackManager: Unmuted video (optimistic)');
       }
     } catch (e) {
-      log('⚠️ PlaybackManager: Error ensuring play/unmute: $e');
+      secureLog('⚠️ PlaybackManager: Error ensuring play/unmute: $e');
       if (_currentlyPlayingController == controller) {
         _currentlyPlayingController = null;
       }
@@ -514,10 +556,14 @@ class GlobalPlaybackManager {
   Future<void> _safePauseAndMute(VideoPlayerController controller) async {
     try {
       await controller.pause();
-    } catch (_) {}
+    } catch (e, st) {
+      ignorePlaybackTeardownError('global_playback', e, st);
+    }
     try {
       await controller.setVolume(0.0);
-    } catch (_) {}
+    } catch (e, st) {
+      ignorePlaybackTeardownError('global_playback', e, st);
+    }
   }
 
   Future<void> _muteAllExcept(String keepVideoId) async {
@@ -534,7 +580,9 @@ class GlobalPlaybackManager {
         // to prevent unnecessary restarts.
         try {
           await controller.setVolume(0.0);
-        } catch (_) {}
+        } catch (e, st) {
+          ignorePlaybackTeardownError('global_playback', e, st);
+        }
         _muteStates[id] = true;
         continue;
       }
@@ -545,126 +593,110 @@ class GlobalPlaybackManager {
   }
 
   /// Atomic switch: pause/mute old, ensure new, dispose old (throttled), play new.
-  Future<void> switchActiveTo(String newVideoId, String owner) async {
-    final int myEpoch = ++_activationEpoch;
-    log('GPM switch start id=$newVideoId owner=$owner epoch=$myEpoch');
-
-    if (_blockLevel == 0 && _activeOwner != owner) {
-      log('🎯 PlaybackManager: Switching active owner from $_activeOwner to $owner');
-      setActiveOwner(owner);
+  Future<void> switchActiveTo(String newVideoId, String owner) {
+    final String requestKey = '$owner::$newVideoId';
+    final VideoPlayerController? controller = _controllerPool[newVideoId];
+    if (_focus.activeVideoId == newVideoId &&
+        _focus.activeOwner == owner &&
+        controller != null &&
+        identical(_currentlyPlayingController, controller) &&
+        _isControllerSafe(newVideoId, controller)) {
+      secureLog(
+          'GPM switch ignored id=$newVideoId owner=$owner already active');
+      return Future<void>.value();
+    }
+    if (_inFlightSwitchKey == requestKey && _inFlightSwitchFuture != null) {
+      secureLog('GPM switch joined id=$newVideoId owner=$owner');
+      return _inFlightSwitchFuture!;
     }
 
-    if (!canPlay(owner)) {
-      final c = _controllerPool[newVideoId];
-      if (c != null && _isControllerSafe(newVideoId, c)) {
-        try {
-          await c.setVolume(0.0);
-          await c.pause();
-          _muteStates[newVideoId] = true;
-        } catch (_) {}
+    late final Future<void> future;
+    future = _focusActivation
+        .switchActiveTo(
+      newVideoId: newVideoId,
+      owner: owner,
+      activationEpoch: _activationEpoch,
+      bumpActivationEpoch: () => ++_activationEpoch,
+      isStaleEpoch: (int epoch) => epoch != _activationEpoch,
+      focus: _focus,
+      pool: _pool,
+      controllerOwners: _controllerOwners,
+      muteStates: _muteStates,
+      getCurrentlyPlayingController: () => _currentlyPlayingController,
+      setCurrentlyPlayingController: (VideoPlayerController? c) {
+        _currentlyPlayingController = c;
+      },
+      ownerMatchesVisible: _focus.ownerMatchesVisibleOwner,
+      setActiveOwner: setActiveOwner,
+      canPlay: canPlay,
+      muteAllExcept: _muteAllExcept,
+      safePauseAndMute: _safePauseAndMute,
+      ensurePlayingUnmuted: _ensurePlayingUnmuted,
+      isControllerSafe: _isControllerSafe,
+      log: secureLog,
+    )
+        .whenComplete(() {
+      _alignCurrentFeedIndexWithActiveVideo();
+      if (_inFlightSwitchKey == requestKey &&
+          identical(_inFlightSwitchFuture, future)) {
+        _inFlightSwitchKey = null;
+        _inFlightSwitchFuture = null;
       }
-      log('🚫 PlaybackManager: switchActiveTo denied for owner $owner');
-      return;
-    }
-
-    final controller = _controllerPool[newVideoId];
-    if (controller == null || !_isControllerSafe(newVideoId, controller)) {
-      _activeVideoId = newVideoId;
-      _controllerOwners[newVideoId] = owner;
-      if (_activeOwner != owner) {
-        _activeOwner = owner;
-        _activeOwnerController.add(_activeOwner);
-      }
-      _activeVideoController.add(_activeVideoId);
-      log('GPM focus-queued id=$newVideoId (missing/unsafe in switchActiveTo)');
-      _pendingFocusRequests[newVideoId] = owner;
-      return;
-    }
-
-    if (_activeVideoId == newVideoId &&
-        _controllerOwners[newVideoId] == owner) {
-      await _muteAllExcept(newVideoId);
-      if (myEpoch != _activationEpoch) {
-        log('GPM switch abort id=$newVideoId epoch=$myEpoch (stale after mute)');
-        return;
-      }
-      await _ensurePlayingUnmuted(controller);
-      return;
-    }
-
-    await _muteAllExcept(newVideoId);
-    if (myEpoch != _activationEpoch) {
-      log('GPM switch abort id=$newVideoId epoch=$myEpoch (stale after muteAll)');
-      return;
-    }
-
-    final previousPlaying = _currentlyPlayingController;
-    if (previousPlaying != null && !identical(previousPlaying, controller)) {
-      await _safePauseAndMute(previousPlaying);
-      _currentlyPlayingController = null;
-    } else {
-      _currentlyPlayingController = null;
-    }
-    await Future.delayed(const Duration(milliseconds: 80));
-
-    if (myEpoch != _activationEpoch) {
-      log('GPM switch abort id=$newVideoId epoch=$myEpoch (stale after 80ms)');
-      return;
-    }
-
-    _activeVideoId = newVideoId;
-    _controllerOwners[newVideoId] = owner;
-    _activeVideoController.add(_activeVideoId);
-
-    if (!_isControllerSafe(newVideoId, controller)) {
-      log('⚠️ PlaybackManager: Controller became unsafe for $newVideoId after mute-all');
-      return;
-    }
-
-    await _ensurePlayingUnmuted(controller);
-    log('GPM switch end id=$newVideoId epoch=$myEpoch');
+    });
+    _inFlightSwitchKey = requestKey;
+    _inFlightSwitchFuture = future;
+    return future;
   }
 
   /// Request focus for a specific video (pause all others)
-  /// Alias for activate() with owner tracking
-  /// 🔥 INSTANT PLAYBACK: Auto-sets active owner if null to prevent blocking
-  Future<void> requestFocus(String videoId, String owner) async {
-    log('🎯 PlaybackManager: Requesting focus for $videoId from $owner');
-
-    // 🔥 INSTANT PLAYBACK: Auto-set active owner if null (prevents canPlay() blocking)
-    if (_activeOwner == null) {
-      log('🔧 PlaybackManager: Active owner is null, auto-setting to $owner for instant playback');
-      setActiveOwner(owner);
-    } else if (_blockLevel == 0 && _activeOwner != owner) {
-      log('🎯 PlaybackManager: requestFocus switching owner from $_activeOwner to $owner');
-      setActiveOwner(owner);
+  Future<void> requestFocus(String videoId, String owner) {
+    final String requestKey = '$owner::$videoId';
+    final VideoPlayerController? controller = _controllerPool[videoId];
+    if (_focus.activeVideoId == videoId &&
+        _focus.activeOwner == owner &&
+        controller != null &&
+        identical(_currentlyPlayingController, controller) &&
+        _isControllerSafe(videoId, controller)) {
+      secureLog('GPM focus ignored id=$videoId owner=$owner already active');
+      return Future<void>.value();
+    }
+    if (_inFlightFocusKey == requestKey && _inFlightFocusFuture != null) {
+      secureLog('GPM focus joined id=$videoId owner=$owner');
+      return _inFlightFocusFuture!;
     }
 
-    // 🔥 SINGLE ACTIVE OWNER: Check if owner can play before requesting focus
-    if (!canPlay(owner)) {
-      log('🚫 PlaybackManager: Owner $owner cannot play, not requesting focus (activeOwner: $_activeOwner, blockLevel: $_blockLevel)');
-      // Still pause all videos to prevent audio bleeding
-      pauseAll();
-      return;
-    }
-
-    final controller = _controllerPool[videoId];
-    if (controller == null || !_isControllerSafe(videoId, controller)) {
-      _activeVideoId = videoId;
-      _controllerOwners[videoId] = owner;
-      if (_activeOwner != owner) {
-        _activeOwner = owner;
-        _activeOwnerController.add(_activeOwner);
+    late final Future<void> future;
+    future = _focusActivation
+        .requestFocus(
+      videoId: videoId,
+      owner: owner,
+      focus: _focus,
+      pendingFocusRequests: _pendingFocusRequests,
+      pool: _pool,
+      controllerOwners: _controllerOwners,
+      muteStates: _muteStates,
+      getCurrentlyPlayingController: () => _currentlyPlayingController,
+      ownerMatchesVisible: _focus.ownerMatchesVisibleOwner,
+      setActiveOwner: setActiveOwner,
+      canPlay: canPlay,
+      pauseAll: pauseAll,
+      muteAllExcept: _muteAllExcept,
+      switchActiveTo: switchActiveTo,
+      safePauseAndMute: _safePauseAndMute,
+      isControllerSafe: _isControllerSafe,
+      log: secureLog,
+    )
+        .whenComplete(() {
+      _alignCurrentFeedIndexWithActiveVideo();
+      if (_inFlightFocusKey == requestKey &&
+          identical(_inFlightFocusFuture, future)) {
+        _inFlightFocusKey = null;
+        _inFlightFocusFuture = null;
       }
-      _activeVideoController.add(_activeVideoId);
-      log('GPM focus-queued id=$videoId owner=$owner (pooled? false safe? false)');
-      _pendingFocusRequests[videoId] = owner;
-      return;
-    }
-
-    log('GPM focus id=$videoId owner=$owner pooled? true safe? true');
-    await _muteAllExcept(videoId);
-    await switchActiveTo(videoId, owner);
+    });
+    _inFlightFocusKey = requestKey;
+    _inFlightFocusFuture = future;
+    return future;
   }
 
   /// Pause all videos and mute them
@@ -693,49 +725,20 @@ class GlobalPlaybackManager {
   /// **Usage:**
   /// Called before activating a new video, during tab switches, or when blocking playback.
   void pauseAll() {
-    log('⏸️ PlaybackManager: Pausing and muting ALL videos');
     logTelemetry('pause_all', reason: 'pauseAll');
-    _currentlyPlayingController = null;
-
-    int pausedCount = 0;
-    int mutedCount = 0;
-
-    // 🔥 AUDIO FIX: Create a copy of entries to avoid modification during iteration
-    final entries = List<MapEntry<String, VideoPlayerController>>.from(
-        _controllerPool.entries);
-
-    for (final entry in entries) {
-      final controller = entry.value;
-      try {
-        // 🔒 SAFETY: Check if controller is safe to use
-        if (_isControllerSafe(entry.key, controller)) {
-          try {
-            // 🔊 AUDIO FIX: Mute FIRST to prevent audio bleeding (critical!)
-            controller.setVolume(0.0);
-            _muteStates[entry.key] = true;
-            mutedCount++;
-
-            // Then pause
-            if (controller.value.isInitialized) {
-              controller.pause();
-              pausedCount++;
-            }
-
-            log('⏸️ PlaybackManager: Paused and muted video ${entry.key}');
-          } catch (e) {
-            log('❌ PlaybackManager: Error pausing video ${entry.key} (controller disposed): $e');
-            _disposedControllers[entry.key] = true;
-            _controllerPool.remove(entry.key);
-          }
-        } else {
-          log('⚠️ PlaybackManager: Controller for video ${entry.key} is not safe to use');
-        }
-      } catch (e) {
-        log('❌ PlaybackManager: Error pausing video ${entry.key}: $e');
-      }
-    }
-
-    log('✅ PlaybackManager: Paused $pausedCount videos, muted $mutedCount videos');
+    _pauseAllCoordinator.pauseAll(
+      controllerPool: _controllerPool,
+      muteStates: _muteStates,
+      onControllerUnsafeRemove: (String videoId) {
+        _disposedControllers[videoId] = true;
+        _controllerPool.remove(videoId);
+      },
+      isControllerSafe: _isControllerSafe,
+      setCurrentlyPlayingController: (VideoPlayerController? c) {
+        _currentlyPlayingController = c;
+      },
+      log: secureLog,
+    );
   }
 
   // ============================================
@@ -774,17 +777,13 @@ class GlobalPlaybackManager {
   /// playbackManager.unblock();               // Level 0 (unblocked)
   /// ```
   void block({String? reason}) {
-    _blockLevel++;
-    _blockReason = reason ?? 'manual_block';
-
-    log('🚫 PlaybackManager: BLOCKED (level: $_blockLevel) - reason: $_blockReason');
-    logTelemetry('block', reason: _blockReason);
-
-    // Pause all videos when blocking
-    pauseAll();
-
-    // Notify listeners
-    _playbackBlockedController.add(true);
+    _blockingCoordinator.block(
+      focus: _focus,
+      pauseAll: pauseAll,
+      onTelemetry: logTelemetry,
+      reason: reason,
+      log: secureLog,
+    );
   }
 
   /// Unblock playback (nestable)
@@ -814,20 +813,11 @@ class GlobalPlaybackManager {
   /// playbackManager.unblock();                // Level 0 (unblocked, playback can resume)
   /// ```
   void unblock() {
-    if (_blockLevel > 0) {
-      _blockLevel--;
-
-      log('✅ PlaybackManager: UNBLOCKED (level: $_blockLevel)');
-      logTelemetry('unblock');
-
-      if (_blockLevel == 0) {
-        _blockReason = null;
-        _playbackBlockedController.add(false);
-        log('🎯 PlaybackManager: FULLY UNBLOCKED - ready for playback');
-      }
-    } else {
-      log('⚠️ PlaybackManager: unblock() called but blockLevel is already 0');
-    }
+    _blockingCoordinator.unblock(
+      focus: _focus,
+      onTelemetry: logTelemetry,
+      log: secureLog,
+    );
   }
 
   // ============================================
@@ -878,380 +868,166 @@ class GlobalPlaybackManager {
   /// ```
   void registerController(String videoId, VideoPlayerController controller,
       {String? owner}) {
-    _logControllerEvent('REGISTER_CONTROLLER', videoId,
-        controllerId: controller.hashCode, reason: 'explicit_register');
-
-    // 🔥 INSTANT PLAYBACK: Mark controller as no longer initializing
-    _initializingControllers.remove(videoId);
-    // Cancel any cooldown (controller is now active)
-    _cooldownUntil.remove(videoId);
-
-    // 🔥 PHASE 2.3: When view re-initializes, replace pool entry with view's new controller.
-    // Never dispose the view's controller (incoming); unregister old so pool gets the new one.
-    final oldController = _controllerPool[videoId];
-    if (oldController != null && !identical(oldController, controller)) {
-      final oldAttached =
-          _attachedControllers[videoId] == oldController.hashCode;
-      if (oldAttached) {
-        unregisterController(videoId);
-        log('📌 PlaybackManager: Replaced attached controller for $videoId with view\'s new controller');
-      } else {
-        if (_isControllerSafe(videoId, oldController)) {
-          try {
-            oldController.setVolume(0.0);
-            oldController.pause();
-          } catch (e) {
-            log('⚠️ PlaybackManager: Error pausing old controller: $e');
-          }
-        }
-        _controllerPool.remove(videoId);
-        _controllerOwners.remove(videoId);
-        _muteStates.remove(videoId);
-        _disposedControllers[videoId] = true;
-        _attachedControllers.remove(videoId);
-        _controllerCreatedAt.remove(videoId);
-        if (_currentlyPlayingController == oldController) {
-          _currentlyPlayingController = null;
-        }
-        try {
-          oldController.dispose();
-          log('🗑️ PlaybackManager: Disposed old controller for $videoId');
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error disposing old controller: $e');
-        }
-      }
-    }
-
-    // Clear stale disposal tracking when reusing an ID
-    _disposedControllers.remove(videoId);
-
-    // 🔥 CRITICAL MEMORY FIX: Enforce maximum pool size to prevent MediaCodec NO_MEMORY errors
-    // With pool size = 1, dispose ALL other controllers when adding a new one
-    if (_controllerPool.length >= maxControllerPoolSize &&
-        !_controllerPool.containsKey(videoId)) {
-      log('⚠️ PlaybackManager: Pool size limit reached ($_controllerPool.length/$maxControllerPoolSize), disposing ALL non-active controllers before adding new one');
-      // 🔥 CRITICAL: Dispose ALL non-active controllers immediately to prevent OOM
-      final controllersToDispose = <String>[];
-      final nowForRegister = DateTime.now();
-      for (final entry in _controllerPool.entries) {
-        final id = entry.key;
-        if (_canEvict(id, entry.value, nowForRegister)) {
-          controllersToDispose.add(id);
-        }
-      }
-      for (final id in controllersToDispose) {
-        log('🗑️ PlaybackManager: Evicting controller $id to prevent OOM');
-        unregisterController(id);
-      }
-    }
-
-    _controllerPool[videoId] = controller;
-    _controllerCreatedAt[videoId] = DateTime.now();
-
-    // 🔥 AUDIO FIX: Always start muted and ensure muted if blocked
-    try {
-      if (_isControllerSafe(videoId, controller)) {
-        controller.setVolume(0.0);
-        _muteStates[videoId] = true;
-        // Also pause if blocked
-        if (_blockLevel > 0) {
-          controller.pause();
-          log('🔇 PlaybackManager: Registered controller is muted and paused (blocked)');
-        } else {
-          log('🔇 PlaybackManager: Registered controller is muted (will unmute on activate)');
-        }
-      }
-    } catch (e) {
-      log('⚠️ PlaybackManager: Error muting controller during registration: $e');
-      _muteStates[videoId] = true; // Still mark as muted in state
-    }
-
-    if (owner != null) {
-      _controllerOwners[videoId] = owner;
-    }
-
-    _applyPendingFocusIfExists(videoId).catchError((e) {
-      log('⚠️ PlaybackManager: Error applying pending focus: $e');
-    });
+    _registration.registerController(
+      videoId: videoId,
+      controller: controller,
+      pool: _pool,
+      focus: _focus,
+      muteStates: _muteStates,
+      videoIdToIndex: _videoIdToIndex,
+      currentFeedIndex: _currentFeedIndex,
+      canEvict: _canEvict,
+      isControllerSafe: _isControllerSafe,
+      onLogControllerEvent: (String event, String videoId,
+              {int? controllerId, String? reason}) =>
+          _logControllerEvent(event, videoId,
+              controllerId: controllerId, reason: reason),
+      onUnregister: unregisterController,
+      onApplyPendingFocus: (String id) {
+        _applyPendingFocusIfExists(id).catchError((Object e) {
+          secureLog('⚠️ PlaybackManager: Error applying pending focus: $e');
+        });
+      },
+      getCurrentlyPlayingController: () => _currentlyPlayingController,
+      setCurrentlyPlayingController: (VideoPlayerController? c) {
+        _currentlyPlayingController = c;
+      },
+      scheduleDeferredPoolControllerDispose:
+          _registration.scheduleDeferredPoolControllerDispose,
+      owner: owner,
+      log: secureLog,
+    );
   }
 
-  /// 🔥 PRODUCTION-GRADE: Set desired focus for a video (queues if controller not ready)
-  ///
-  /// **Purpose:**
-  /// Enables TikTok-style first video autoplay by queuing focus requests before controller is ready.
-  /// When controller is registered, pending focus is automatically applied.
-  ///
-  /// **Behavior:**
-  /// - If controller exists and is ready: applies focus immediately
-  /// - If controller doesn't exist: queues as pending, applies when controller registers
-  /// - Replaces any existing pending focus for the same videoId
-  ///
-  /// **Parameters:**
-  /// - [videoId]: The video ID to focus
-  /// - [owner]: The owner key (e.g., 'home/forYou')
-  ///
-  /// **Usage:**
-  /// Call this immediately when you want a video to autoplay, even before controller exists.
-  /// Typically called from HomeView when feed loads, before first video controller is created.
-  void setDesiredFocus(String videoId, String owner) {
-    log('🎯 PlaybackManager: Setting desired focus for $videoId (owner: $owner)');
+  void unregisterController(String videoId) {
+    _registration.unregisterController(
+      videoId: videoId,
+      pool: _pool,
+      focus: _focus,
+      muteStates: _muteStates,
+      warmStartedAt: _controllerWarmStartedAt,
+      focusRequestedAt: _focusRequestedAt,
+      firstFrameLoggedKeys: _firstFrameLoggedForActivation,
+      isControllerSafe: _isControllerSafe,
+      getCurrentlyPlayingController: () => _currentlyPlayingController,
+      setCurrentlyPlayingController: (VideoPlayerController? c) {
+        _currentlyPlayingController = c;
+      },
+      disposeControllerAfterPause: _registration.disposeControllerAfterPause,
+      log: secureLog,
+    );
+  }
 
-    // Check if controller already exists and is ready
-    final controller = _controllerPool[videoId];
+  void _disposeControllerAfterPause(
+    String videoId,
+    VideoPlayerController controller,
+  ) {
+    _registration.disposeControllerAfterPause(
+      videoId: videoId,
+      controller: controller,
+      pool: _pool,
+      isControllerSafe: _isControllerSafe,
+      log: secureLog,
+    );
+  }
+
+  void setDesiredFocus(String videoId, String owner) {
+    secureLog(
+        '🎯 PlaybackManager: Setting desired focus for $videoId (owner: $owner)');
+
+    final VideoPlayerController? controller = _controllerPool[videoId];
     if (controller != null && _isControllerSafe(videoId, controller)) {
       try {
         if (controller.value.isInitialized && !controller.value.hasError) {
-          log('✅ PlaybackManager: Controller exists and is ready, applying focus immediately for $videoId');
-          // Controller is ready - apply focus immediately
-          requestFocus(videoId, owner).catchError((e) {
-            log('⚠️ PlaybackManager: Error applying immediate focus: $e');
+          secureLog(
+              '✅ PlaybackManager: Controller exists and is ready, applying focus immediately for $videoId');
+          requestFocus(videoId, owner).catchError((Object e) {
+            secureLog('⚠️ PlaybackManager: Error applying immediate focus: $e');
           });
-          // Clear any pending request (if it existed)
           _pendingFocusRequests.remove(videoId);
           return;
         }
       } catch (e) {
-        log('⚠️ PlaybackManager: Error checking controller state: $e');
-        // Controller exists but not safe - queue as pending
+        secureLog('⚠️ PlaybackManager: Error checking controller state: $e');
       }
     }
 
-    // Controller doesn't exist or isn't ready - queue as pending
     _pendingFocusRequests[videoId] = owner;
-    log('⏳ PlaybackManager: Controller not ready for $videoId, queued focus request (owner: $owner)');
-    log('📊 PlaybackManager: Pending focus requests: ${_pendingFocusRequests.length}');
+    secureLog(
+        '⏳ PlaybackManager: Controller not ready for $videoId, queued focus request (owner: $owner)');
+    secureLog(
+        '📊 PlaybackManager: Pending focus requests: ${_pendingFocusRequests.length}');
   }
 
-  /// Apply pending focus after controller is initialized (wait/retry so focus is not applied too early).
-  /// Called from registerController(); runs async so registration is not blocked.
   Future<void> _applyPendingFocusIfExists(
     String videoId, {
     int retries = 0,
-  }) async {
-    // Hard cap — a controller that never initialises should not loop forever.
-    const int maxRetries = 20;
-    if (retries >= maxRetries) {
-      log('GPM focus-apply id=$videoId gave up after $maxRetries retries');
-      _pendingFocusRequests.remove(videoId);
-      return;
-    }
-
-    final pendingOwner = _pendingFocusRequests[videoId];
-    if (pendingOwner == null) return;
-
-    final controller = _controllerPool[videoId];
-    if (controller == null) {
-      _pendingFocusRequests.remove(videoId);
-      return;
-    }
-
-    const int maxWaitMs = 1000;
-    const int stepMs = 50;
-    final int steps = maxWaitMs ~/ stepMs;
-    for (int i = 0; i < steps; i++) {
-      try {
-        if (_isControllerSafe(videoId, controller) &&
-            controller.value.isInitialized &&
-            !controller.value.hasError) {
-          break;
-        }
-      } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: stepMs));
-    }
-
-    try {
-      if (!_isControllerSafe(videoId, controller) ||
-          !controller.value.isInitialized ||
-          controller.value.hasError) {
-        log('GPM focus-apply id=$videoId deferred (not ready after ${maxWaitMs}ms), retry ${retries + 1}/$maxRetries');
-        Future.delayed(const Duration(milliseconds: 300), () {
-          _applyPendingFocusIfExists(videoId, retries: retries + 1)
-              .catchError((e) {
-            log('⚠️ PlaybackManager: Error in deferred pending focus: $e');
-          });
-        });
-        return;
-      }
-    } catch (_) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        _applyPendingFocusIfExists(videoId, retries: retries + 1)
-            .catchError((e) {
-          log('⚠️ PlaybackManager: Error in deferred pending focus: $e');
-        });
-      });
-      return;
-    }
-
-    _pendingFocusRequests.remove(videoId);
-    log('GPM focus-apply id=$videoId owner=$pendingOwner (ready after wait)');
-    await switchActiveTo(videoId, pendingOwner);
+  }) {
+    return _pendingFocus.applyPendingFocusIfExists(
+      videoId: videoId,
+      pendingFocusRequests: _pendingFocusRequests,
+      resolveController: (String id) => _controllerPool[id],
+      isControllerSafe: _isControllerSafe,
+      switchActiveTo: switchActiveTo,
+      retries: retries,
+      log: secureLog,
+    );
   }
 
-  /// Clear pending focus request for a video (e.g., when user scrolls away or tab changes)
   void clearDesiredFocus(String videoId) {
     if (_pendingFocusRequests.remove(videoId) != null) {
-      log('🗑️ PlaybackManager: Cleared pending focus request for $videoId');
+      secureLog(
+          '🗑️ PlaybackManager: Cleared pending focus request for $videoId');
     }
   }
 
   void clearDesiredFocusForOwner(String owner, {String? exceptVideoId}) {
-    final toRemove = _pendingFocusRequests.entries
-        .where((entry) => entry.value == owner && entry.key != exceptVideoId)
-        .map((entry) => entry.key)
-        .toList();
-
-    for (final videoId in toRemove) {
-      _pendingFocusRequests.remove(videoId);
-    }
-
-    if (toRemove.isNotEmpty) {
-      log('🗑️ PlaybackManager: Cleared ${toRemove.length} pending focus requests for owner $owner');
+    final int cleared = _focus.clearPendingFocusForOwner(
+      owner,
+      exceptVideoId: exceptVideoId,
+    );
+    if (cleared > 0) {
+      secureLog(
+          '🗑️ PlaybackManager: Cleared $cleared pending focus requests for owner $owner');
     }
   }
 
-  /// Clear all pending focus requests (e.g., when feed changes or tab switches)
   void clearAllDesiredFocus() {
-    final count = _pendingFocusRequests.length;
-    _pendingFocusRequests.clear();
+    final int count = _focus.clearAllPendingFocus();
     if (count > 0) {
-      log('🗑️ PlaybackManager: Cleared all pending focus requests ($count)');
-    }
-  }
-
-  /// Unregister a controller for a video ID.
-  /// 🔥 PHASE 2.3: Only disposes if controller is not attached (view may still hold reference).
-  /// 🔥 AUDIO FIX: Mute and pause before remove so off-screen controllers never bleed audio.
-  void unregisterController(String videoId) {
-    log('🗑️ PlaybackManager: Unregistering controller for video $videoId');
-    final controller = _controllerPool[videoId];
-    if (controller != null && _isControllerSafe(videoId, controller)) {
-      try {
-        controller.setVolume(0.0);
-        controller.pause();
-      } catch (_) {}
-    }
-    final isAttached = controller != null &&
-        _attachedControllers[videoId] == controller.hashCode;
-    _attachedControllers.remove(videoId);
-    _controllerCreatedAt.remove(videoId);
-    if (_activeVideoId == videoId) {
-      _activeVideoId = null;
-      _activeVideoController.add(null);
-      if (controller != null && _currentlyPlayingController == controller) {
-        _currentlyPlayingController = null;
-      }
-    }
-    _controllerPool.remove(videoId);
-    _controllerOwners.remove(videoId);
-    _muteStates.remove(videoId);
-    _controllerWarmStartedAt.remove(videoId);
-    _focusRequestedAt.remove(videoId);
-    _firstFrameLoggedForActivation
-        .removeWhere((entry) => entry.startsWith('$videoId:'));
-    if (controller != null && !isAttached) {
-      try {
-        if (_isControllerSafe(videoId, controller)) {
-          controller.dispose();
-          _disposedControllers[videoId] = true;
-          log('🗑️ PlaybackManager: Disposed controller for video $videoId');
-        } else {
-          log('⚠️ PlaybackManager: Controller for video $videoId already disposed or invalid');
-        }
-      } catch (e) {
-        log('❌ PlaybackManager: Error disposing controller for video $videoId: $e');
-      }
-    } else if (controller != null && isAttached) {
-      log('📌 PlaybackManager: Controller still attached, skipping dispose (view will dispose): $videoId');
+      secureLog(
+          '🗑️ PlaybackManager: Cleared all pending focus requests ($count)');
     }
   }
 
   /// Dispose all controllers and clear state (for tab switches).
   /// 🔥 PHASE 2.3: Skips controllers still attached (view will dispose them).
   void disposeAll() {
-    log('🚨 PlaybackManager: Disposing all controllers');
-    for (final entry in _controllerPool.entries) {
-      final videoId = entry.key;
-      final controller = entry.value;
-      final isAttached = _attachedControllers[videoId] == controller.hashCode;
-      if (isAttached) {
-        log('📌 PlaybackManager: Skipping attached controller for $videoId');
-        continue;
-      }
-      try {
-        if (_isControllerSafe(videoId, controller)) {
-          controller.dispose();
-          _disposedControllers[videoId] = true;
-          log('🗑️ PlaybackManager: Disposed controller for video $videoId');
-        } else {
-          log('⚠️ PlaybackManager: Controller for video $videoId already disposed or invalid');
-        }
-      } catch (e) {
-        log('❌ PlaybackManager: Error disposing controller for video $videoId: $e');
-      }
-    }
-    _controllerPool.clear();
-    _controllerOwners.clear();
-    _muteStates.clear();
-    _disposedControllers.clear();
-    _attachedControllers.clear();
-    _controllerCreatedAt.clear();
-    // Clear maps that grow without bound during long sessions.
-    _indexToVideoId.clear();
-    _videoIdToIndex.clear();
-    _lastKnownPositions.clear();
-    _pendingFocusRequests.clear();
-    _cooldownUntil.clear();
-    _pinnedVideoIds.clear();
-    _initializingControllers.clear();
-    _controllerWarmStartedAt.clear();
-    _focusRequestedAt.clear();
-    _firstFrameLoggedForActivation.clear();
-    _activeVideoId = null;
-    _activeOwner = null;
-    _isPaused = false;
-
-    // Notify listeners
-    _activeVideoController.add(null);
-    _activeOwnerController.add(null);
-
-    log('✅ PlaybackManager: All controllers disposed and state cleared');
+    _disposePoolCoordinator.disposeAll(
+      pool: _pool,
+      focus: _focus,
+      feedIndex: _feedIndex,
+      muteStates: _muteStates,
+      warmStartedAt: _controllerWarmStartedAt,
+      focusRequestedAt: _focusRequestedAt,
+      firstFrameLoggedKeys: _firstFrameLoggedForActivation,
+      clearTabPaused: () => _tabLifecycle.isPaused = false,
+      isControllerSafe: _isControllerSafe,
+      disposeControllerAfterPause: _disposeControllerAfterPause,
+      log: secureLog,
+    );
   }
 
   /// Dispose controllers for a specific owner (e.g., when category feed closes)
   /// 🔥 CRITICAL MEMORY FIX: Prevents MediaCodec NO_MEMORY errors
   void disposeControllersForOwner(String owner) {
-    log('🗑️ PlaybackManager: Disposing controllers for owner: $owner');
-
-    final toDispose = <String>[];
-    for (final entry in _controllerOwners.entries) {
-      if (entry.value == owner) {
-        toDispose.add(entry.key);
-      }
-    }
-
-    // 🔥 SINGLE ACTIVE OWNER: If disposing all controllers for the active owner, clear active owner
-    final isDisposingActiveOwner = _activeOwner != null &&
-        (_activeOwner == owner || owner.startsWith('$_activeOwner/'));
-
-    for (final videoId in toDispose) {
-      log('🗑️ PlaybackManager: Disposing controller for video $videoId (owner: $owner)');
-      unregisterController(videoId);
-    }
-
-    // Clear active owner if we disposed all controllers for it
-    if (isDisposingActiveOwner) {
-      // Check if there are any remaining controllers for this owner
-      final hasRemainingControllers = _controllerOwners.values
-          .any((o) => o == owner || o.startsWith('$owner/'));
-
-      if (!hasRemainingControllers) {
-        log('🗑️ PlaybackManager: All controllers for active owner $owner disposed, clearing active owner');
-        _activeOwner = null;
-        _activeOwnerController.add(null);
-      }
-    }
-
-    log('✅ PlaybackManager: Disposed ${toDispose.length} controllers for owner: $owner');
+    _disposePoolCoordinator.disposeControllersForOwner(
+      owner: owner,
+      focus: _focus,
+      controllerOwners: _controllerOwners,
+      unregisterController: unregisterController,
+      log: secureLog,
+    );
   }
 
   // ============================================
@@ -1260,46 +1036,30 @@ class GlobalPlaybackManager {
 
   /// Pause all and set paused state (for tab switching)
   void pauseAllForTabSwitch() {
-    log('🔄 PlaybackManager: Pausing all for tab switch');
-    _isPaused = true;
-    pauseAll();
+    _tabLifecycle.pauseForTabSwitch(
+      onPauseAll: pauseAll,
+      log: secureLog,
+    );
   }
 
   /// Resume playback after tab switch
   /// ⚠️ DEPRECATED: Use setActiveOwner() instead for proper single active owner model
   void resumeAfterTabSwitch() {
-    log('▶️ PlaybackManager: Resuming after tab switch');
-    _isPaused = false;
-
-    // 🔥 SINGLE ACTIVE OWNER: Check if active video's owner can play before resuming
-    if (_activeVideoId != null && _blockLevel == 0) {
-      final videoOwner = _controllerOwners[_activeVideoId];
-      if (videoOwner != null && !canPlay(videoOwner)) {
-        log('🚫 PlaybackManager: Cannot resume - owner $videoOwner is not active (activeOwner: $_activeOwner)');
-        return;
-      }
-
-      final controller = _controllerPool[_activeVideoId];
-      if (controller != null &&
-          _isControllerSafe(_activeVideoId!, controller)) {
-        try {
-          controller.setVolume(1.0);
-          _muteStates[_activeVideoId!] = false;
-          if (!controller.value.isPlaying) {
-            controller.play();
-            log('▶️ PlaybackManager: Resumed active video $_activeVideoId');
-          } else {
-            log('▶️ PlaybackManager: Active video $_activeVideoId already playing');
-          }
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error resuming active video: $e');
-        }
-      } else {
-        log('⚠️ PlaybackManager: Active video controller not available, waiting for focus request');
-      }
-    } else {
-      log('🎵 PlaybackManager: No active video or blocked, waiting for focus request');
-    }
+    _tabLifecycle.resumeAfterTabSwitch(
+      onRestoreFocus: restoreCurrentFeedFocus,
+      activeVideoId: _focus.activeVideoId,
+      blockLevel: _focus.blockLevel,
+      videoOwner: _focus.activeVideoId != null
+          ? _controllerOwners[_focus.activeVideoId]
+          : null,
+      canPlayOwner: canPlay,
+      resolveController: (String videoId) => _controllerPool[videoId],
+      isControllerSafe: _isControllerSafe,
+      onMuteStateChanged: (String videoId, bool isMuted) {
+        _muteStates[videoId] = isMuted;
+      },
+      log: secureLog,
+    );
   }
 
   /// Get a controller for a video ID (if it exists in the pool)
@@ -1314,7 +1074,8 @@ class GlobalPlaybackManager {
       if (_initializingControllers.contains(videoId)) {
         return null;
       }
-      log('⚠️ PlaybackManager: Controller for $videoId is unsafe, removing from pool');
+      secureLog(
+          '⚠️ PlaybackManager: Controller for $videoId is unsafe, removing from pool');
       _controllerPool.remove(videoId);
       _disposedControllers[videoId] = true;
       return null;
@@ -1330,27 +1091,112 @@ class GlobalPlaybackManager {
     return _isControllerSafe(videoId, controller);
   }
 
+  bool shouldRetainController(String videoId) {
+    if (videoId.isEmpty) return false;
+    if (_focus.activeVideoId == videoId) return true;
+    if (_initializingControllers.contains(videoId)) return true;
+    if (_pinnedVideoIds.contains(videoId)) return true;
+    final int? currentIndex = _currentFeedIndex;
+    final int? videoIndex = _videoIdToIndex[videoId];
+    if (currentIndex != null &&
+        videoIndex != null &&
+        (videoIndex - currentIndex).abs() <= poolRadius) {
+      return true;
+    }
+    return false;
+  }
+
+  VideoPlayerController? get activeController {
+    final videoId = _focus.activeVideoId;
+    if (videoId == null) return null;
+    final controller = _controllerPool[videoId];
+    if (controller == null || !_isControllerSafe(videoId, controller)) {
+      return null;
+    }
+    return controller;
+  }
+
+  Map<String, VideoPlayerController> get preloadedControllers =>
+      Map.unmodifiable(_controllerPool);
+
+  bool get mutedState {
+    final videoId = _focus.activeVideoId;
+    if (videoId == null) return true;
+    return _muteStates[videoId] ?? true;
+  }
+
+  Future<void> playVisibleVideo({
+    required int index,
+    required HomeVideo video,
+  }) {
+    return onVisibleIndexChanged(index, video);
+  }
+
+  Future<void> pauseAllExcept(String videoId) => _muteAllExcept(videoId);
+
+  void preloadNextVideos({
+    required int currentIndex,
+    required List<HomeVideo> videos,
+    int count = 3,
+    String controllerOwner = PlaybackOwners.home,
+  }) {
+    if (videos.isEmpty || currentIndex < 0 || currentIndex >= videos.length) {
+      return;
+    }
+    preloadAround(
+      currentIndex,
+      videos,
+      direction: 1,
+      controllerOwner: controllerOwner,
+    );
+    final int lastIndex = currentIndex + count;
+    for (int index = currentIndex + 1;
+        index <= lastIndex && index < videos.length;
+        index++) {
+      if ((index - currentIndex).abs() > poolRadius) break;
+      final video = videos[index];
+      if (video.id.isEmpty || video.videoURL.isEmpty) continue;
+      unawaited(
+        ensureControllerReady(
+          index,
+          video,
+          controllerOwner: controllerOwner,
+        ),
+      );
+    }
+  }
+
+  void disposeFarAwayVideos(int currentIndex) {
+    disposeFarControllers(currentIndex);
+  }
+
+  Future<VideoPlayerController?> recoverFailedController(
+    HomeVideo video, {
+    String owner = PlaybackOwners.home,
+  }) {
+    return _recoverCoordinator.recoverFailedController(
+      video: video,
+      unregisterController: unregisterController,
+      resolvePlayableSource: VideoHealthGate.instance.resolvePlayableSource,
+      getOrCreateController: getOrCreateController,
+      owner: owner,
+      log: secureLog,
+    );
+  }
+
   Future<VideoPlayerController?> _waitForInitializingController(
     String videoId, {
     int attempts = 40,
     Duration step = const Duration(milliseconds: 50),
-  }) async {
-    for (int i = 0; i < attempts; i++) {
-      final pooled = _controllerPool[videoId];
-      if (pooled != null && _isControllerSafe(videoId, pooled)) {
-        try {
-          if (pooled.value.isInitialized && !pooled.value.hasError) {
-            log('✅ PlaybackManager: Initialization completed while waiting: $videoId');
-            return pooled;
-          }
-        } catch (_) {}
-      }
-      if (!_initializingControllers.contains(videoId)) {
-        break;
-      }
-      await Future.delayed(step);
-    }
-    return null;
+  }) {
+    return _controllerFactory.waitForInitializingController(
+      videoId: videoId,
+      pool: _pool,
+      isControllerSafe: _isControllerSafe,
+      attempts: attempts,
+      step: step,
+      log: secureLog,
+    );
   }
 
   /// Idempotent: return existing controller if present and safe; else create, init, register.
@@ -1359,77 +1205,18 @@ class GlobalPlaybackManager {
     String videoId,
     String url, {
     String? owner,
-  }) async {
-    final existing = _controllerPool[videoId];
-    if (existing != null && _isControllerSafe(videoId, existing)) {
-      try {
-        if (existing.value.isInitialized && !existing.value.hasError) {
-          log('✅ PlaybackManager: getOrCreateController reusing existing: $videoId');
-          return existing;
-        }
-      } catch (_) {}
-    }
-
-    // A controller that is in initialize() is expected to fail _isControllerSafe
-    // because it is not initialized yet. Do not remove or dispose it here; that
-    // can kill the native texture while another async path is still awaiting it.
-    if (_initializingControllers.contains(videoId)) {
-      final pooled = await _waitForInitializingController(videoId);
-      if (pooled != null) {
-        return pooled;
-      }
-    }
-
-    if (existing != null && !_isControllerSafe(videoId, existing)) {
-      _controllerPool.remove(videoId);
-      try {
-        await existing.dispose();
-      } catch (_) {}
-    }
-    if (url.isEmpty) return null;
-    Uri uri;
-    try {
-      uri = Uri.parse(url);
-      if (!uri.hasScheme || !uri.hasAuthority) return null;
-    } catch (_) {
-      return null;
-    }
-    _initializingControllers.add(videoId);
-    _controllerWarmStartedAt[videoId] = DateTime.now();
-    VideoPlayerController? created;
-    try {
-      created = VideoPlayerController.networkUrl(
-        uri,
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: false,
-          allowBackgroundPlayback: false,
-        ),
-      );
-      _controllerPool[videoId] = created;
-      await created.initialize().timeout(
-            const Duration(seconds: 8),
-            onTimeout: () =>
-                throw TimeoutException('getOrCreateController init 8s'),
-          );
-      registerController(videoId, created, owner: owner ?? 'home/feed');
-      final warmStartedAt = _controllerWarmStartedAt[videoId];
-      final initMs = warmStartedAt == null
-          ? null
-          : DateTime.now().difference(warmStartedAt).inMilliseconds;
-      log('✅ PlaybackManager: getOrCreateController created and registered: $videoId${initMs == null ? '' : ' initMs=${initMs}ms'}');
-      return created;
-    } catch (e) {
-      log('❌ PlaybackManager: getOrCreateController failed $videoId: $e');
-      _controllerPool.remove(videoId);
-      if (created != null) {
-        try {
-          await created.dispose();
-        } catch (_) {}
-      }
-      return null;
-    } finally {
-      _initializingControllers.remove(videoId);
-    }
+  }) {
+    return _controllerFactory.getOrCreate(
+      videoId: videoId,
+      url: url,
+      pool: _pool,
+      warmStartedAt: _controllerWarmStartedAt,
+      isControllerSafe: _isControllerSafe,
+      registerController: registerController,
+      waitForInitializing: _waitForInitializingController,
+      owner: owner,
+      log: secureLog,
+    );
   }
 
   // ============================================
@@ -1439,11 +1226,8 @@ class GlobalPlaybackManager {
   /// Get current state for debugging
   Map<String, dynamic> getDebugInfo() {
     return {
-      'activeVideoId': _activeVideoId,
-      'activeOwner': _activeOwner,
-      'isPaused': _isPaused,
-      'blockLevel': _blockLevel,
-      'blockReason': _blockReason,
+      ..._focus.debugSnapshot(),
+      'isPaused': _tabLifecycle.isPaused,
       'controllerCount': _controllerPool.length,
       'controllerKeys': _controllerPool.keys.toList(),
       'owners': _controllerOwners,
@@ -1453,15 +1237,13 @@ class GlobalPlaybackManager {
   /// Log current state for debugging
   void logCurrentState() {
     final info = getDebugInfo();
-    log('🎵 PlaybackManager State: $info');
+    secureLog('🎵 PlaybackManager State: $info');
   }
 
   /// Clean up streams (call when app is closing)
   void dispose() {
-    _activeVideoController.close();
-    _activeOwnerController.close();
-    _playbackBlockedController.close();
     disposeAll();
+    _focus.dispose();
   }
 
   // ============================================
@@ -1470,10 +1252,15 @@ class GlobalPlaybackManager {
 
   void logTelemetry(String event,
       {String? videoId, String? owner, String? reason, double? volume}) {
-    log('🎧 PlaybackTelemetry: event=$event '
-        'video=$videoId owner=$owner '
-        'blocked=$_blockLevel reason=${reason ?? _blockReason} '
-        'volume=$volume');
+    _telemetryCoordinator.logTelemetry(
+      focus: _focus,
+      event: event,
+      videoId: videoId,
+      owner: owner,
+      reason: reason,
+      volume: volume,
+      log: secureLog,
+    );
   }
 
   // ============================================
@@ -1487,41 +1274,29 @@ class GlobalPlaybackManager {
     int? controllerId,
     String? reason,
   }) {
-    final controller = _controllerPool[videoId];
-    final controllerIdStr = controllerId?.toString() ??
-        controller?.hashCode.toString() ??
-        'unknown';
-    final isPinned = _pinnedVideoIds.contains(videoId) ? 'pinned' : 'unpinned';
-    final isInitializing =
-        _initializingControllers.contains(videoId) ? 'initializing' : 'ready';
-    final inCooldown =
-        _cooldownUntil.containsKey(videoId) ? 'cooldown' : 'active';
-
-    log('🎬 CONTROLLER_LIFECYCLE: event=$event videoId=$videoId '
-        'controllerId=$controllerIdStr $isPinned $isInitializing $inCooldown '
-        'reason=${reason ?? "N/A"}');
-
-    // Log pool snapshot after mutations
-    if (event.contains('CREATE') ||
-        event.contains('DISPOSE') ||
-        event.contains('ACQUIRE') ||
-        event.contains('RELEASE') ||
-        event.contains('COOLDOWN')) {
-      _logPoolSnapshot(reason: event);
-    }
+    _telemetryCoordinator.logControllerEvent(
+      event: event,
+      videoId: videoId,
+      pool: _pool,
+      pinnedVideoIds: _pinnedVideoIds,
+      initializingControllers: _initializingControllers,
+      cooldownUntil: _cooldownUntil,
+      controllerId: controllerId,
+      reason: reason,
+      onPoolSnapshot: ({String? reason}) => _logPoolSnapshot(reason: reason),
+      log: secureLog,
+    );
   }
 
-  /// Log current pool state snapshot
   void _logPoolSnapshot({String? reason}) {
-    final snapshot = _controllerPool.keys.map((videoId) {
-      final isPinned = _pinnedVideoIds.contains(videoId) ? 'P' : '-';
-      final isInit = _initializingControllers.contains(videoId) ? 'I' : '-';
-      final cooldown = _cooldownUntil.containsKey(videoId) ? 'C' : '-';
-      return '$videoId:$isPinned$isInit$cooldown';
-    }).join(', ');
-    log('📊 POOL_SNAPSHOT: size=${_controllerPool.length} pinned=${_pinnedVideoIds.length} '
-        'init=${_initializingControllers.length} cooldown=${_cooldownUntil.length} '
-        'reason=${reason ?? "periodic"} [$snapshot]');
+    _telemetryCoordinator.logPoolSnapshot(
+      pool: _pool,
+      pinnedVideoIds: _pinnedVideoIds,
+      initializingControllers: _initializingControllers,
+      cooldownUntil: _cooldownUntil,
+      reason: reason,
+      log: secureLog,
+    );
   }
 
   // ============================================
@@ -1532,19 +1307,22 @@ class GlobalPlaybackManager {
   void _updatePinSet(
     int currentIndex, {
     int backwardRadius = 1,
-    int forwardRadius = 2,
+    int forwardRadius = 1,
   }) {
-    _pinnedVideoIds.clear();
+    _pool.updatePinSet(
+      currentIndex: currentIndex,
+      indexToVideoId: _indexToVideoId,
+      backwardRadius: backwardRadius,
+      forwardRadius: forwardRadius,
+    );
     for (int offset = -backwardRadius; offset <= forwardRadius; offset++) {
-      final index = currentIndex + offset;
-      final videoId = _indexToVideoId[index];
-      if (videoId != null && _controllerPool.containsKey(videoId)) {
-        _pinnedVideoIds.add(videoId);
+      final int index = currentIndex + offset;
+      final String? videoId = _indexToVideoId[index];
+      if (videoId != null && _pool.containsKey(videoId)) {
         _logControllerEvent('PIN_SET', videoId,
             reason: 'index=$index offset=$offset');
       }
     }
-
     _logPoolSnapshot(reason: 'pin_set_update');
   }
 
@@ -1555,53 +1333,54 @@ class GlobalPlaybackManager {
   /// Called when user enters HomeView
   /// 🎯 SINGLE ACTIVE OWNER: Uses setActiveOwner instead of unblock
   void onEnterHomeView() {
-    log('🏠 PlaybackManager: Entering HomeView');
-    // 🎯 SINGLE ACTIVE OWNER: Set home as active owner (handles unblocking and pausing non-active owners)
-    setActiveOwner(PlaybackOwners.home);
-
-    restoreCurrentFeedFocus();
+    _homeLifecycle.onEnterHomeView(
+      setActiveOwner: setActiveOwner,
+      restoreCurrentFeedFocus: restoreCurrentFeedFocus,
+      log: secureLog,
+    );
   }
 
   void restoreCurrentFeedFocus() {
-    if (_currentFeedIndex != null) {
-      log('📺 PlaybackManager: Current index is $_currentFeedIndex');
-      final videoId = _indexToVideoId[_currentFeedIndex];
-      if (videoId != null) {
-        clearDesiredFocusForOwner(PlaybackOwners.home, exceptVideoId: videoId);
-        log('🎵 PlaybackManager: Restoring focus for video $videoId at index $_currentFeedIndex');
-        setDesiredFocus(videoId, PlaybackOwners.home);
-      }
-    }
+    _homeLifecycle.restoreCurrentFeedFocus(
+      currentFeedIndex: _currentFeedIndex,
+      videoIdAtIndex: (int index) => _indexToVideoId[index],
+      clearDesiredFocusForOwner: clearDesiredFocusForOwner,
+      setDesiredFocus: setDesiredFocus,
+      log: secureLog,
+    );
   }
 
   /// Called when user leaves HomeView
   /// ✅ FIX #1: Non-blocking - just pause and save position
   /// Reserve block()/unblock() for global situations like camera, heavy modals, etc.
   void onLeaveHomeView() {
-    log('🚪 PlaybackManager: Leaving HomeView');
-    _saveCurrentPosition();
-    clearDesiredFocusForOwner(PlaybackOwners.home);
-    pauseAll();
-    // ❌ REMOVED: block(reason: 'leftHomeView');
-    // We just pause when leaving HomeView; blocking is for camera/modals.
+    _homeLifecycle.onLeaveHomeView(
+      saveCurrentPosition: _saveCurrentPosition,
+      clearDesiredFocusForOwner: clearDesiredFocusForOwner,
+      pauseAll: pauseAll,
+      log: secureLog,
+    );
   }
 
   void _syncFeedIndexMapping(int index, String videoId) {
-    final previousVideoAtIndex = _indexToVideoId[index];
-    if (previousVideoAtIndex != null && previousVideoAtIndex != videoId) {
-      _videoIdToIndex.remove(previousVideoAtIndex);
-      clearDesiredFocus(previousVideoAtIndex);
-      log('🧹 PlaybackManager: Cleared stale feed mapping index=$index oldVideo=$previousVideoAtIndex');
-    }
+    _feedIndex.syncMapping(
+      index: index,
+      videoId: videoId,
+      onClearStaleFocus: clearDesiredFocus,
+      log: secureLog,
+    );
+    _alignCurrentFeedIndexWithActiveVideo();
+  }
 
-    final previousIndexForVideo = _videoIdToIndex[videoId];
-    if (previousIndexForVideo != null && previousIndexForVideo != index) {
-      _indexToVideoId.remove(previousIndexForVideo);
-      log('🧹 PlaybackManager: Removed stale reverse mapping video=$videoId oldIndex=$previousIndexForVideo');
+  void _alignCurrentFeedIndexWithActiveVideo() {
+    final String? activeId = _focus.activeVideoId;
+    if (activeId == null) {
+      return;
     }
-
-    _indexToVideoId[index] = videoId;
-    _videoIdToIndex[videoId] = index;
+    final int? mappedIndex = _videoIdToIndex[activeId];
+    if (mappedIndex != null) {
+      _feedIndex.currentFeedIndex = mappedIndex;
+    }
   }
 
   void noteFirstFrameRendered(
@@ -1621,7 +1400,7 @@ class GlobalPlaybackManager {
     final key = '$videoId:${activationStartedAt?.millisecondsSinceEpoch ?? 0}';
     if (_firstFrameLoggedForActivation.contains(key)) return;
     _firstFrameLoggedForActivation.add(key);
-    log(
+    secureLog(
       '🎞️ PlaybackManager: first_frame video=$videoId '
       'controller=${controllerId ?? 'unknown'} '
       'size=${size == null ? 'unknown' : '${size.width.toStringAsFixed(0)}x${size.height.toStringAsFixed(0)}'} '
@@ -1632,256 +1411,73 @@ class GlobalPlaybackManager {
 
   /// Called when visible index changes in vertical feed.
   /// Mutes all videos first (await) then ensures controller exists and queues focus.
-  Future<void> onVisibleIndexChanged(int newIndex, HomeVideo video) async {
-    if (newIndex < 0) {
-      log('⚠️ PlaybackManager: Invalid index $newIndex, ignoring');
-      return;
-    }
-    if (video.id.isEmpty || video.videoURL.isEmpty) {
-      log('⚠️ PlaybackManager: Invalid video object, ignoring index change');
-      return;
-    }
-    log('📺 PlaybackManager: Visible index changed to $newIndex (video: ${video.id})');
-    try {
-      final previousIndex = _currentFeedIndex;
-      final previousVideoId =
-          previousIndex != null ? _indexToVideoId[previousIndex] : null;
-      if (_currentFeedIndex != null) {
-        _savePositionForIndex(_currentFeedIndex!);
-      }
-      _currentFeedIndex = newIndex;
-      _syncFeedIndexMapping(newIndex, video.id);
-      if (previousVideoId != null && previousVideoId != video.id) {
-        clearDesiredFocus(previousVideoId);
-      }
-    } catch (e) {
-      log('❌ PlaybackManager: Error updating index mappings: $e');
-      return;
-    }
-    final String targetVideoId = video.id;
-    final int requestedIndex = newIndex;
-    clearDesiredFocusForOwner(PlaybackOwners.home,
-        exceptVideoId: targetVideoId);
-    await _muteAllExcept(targetVideoId).catchError((_) {});
-    setDesiredFocus(targetVideoId, PlaybackOwners.home);
-    final healthResult = await VideoHealthGate.instance.resolvePlayableSource(
-      targetVideoId,
-      fallbackUrl: video.videoURL.isNotEmpty ? video.videoURL : null,
+  Future<void> onVisibleIndexChanged(int newIndex, HomeVideo video) {
+    return _visibleIndexCoordinator.onVisibleIndexChanged(
+      newIndex: newIndex,
+      video: video,
+      feedIndex: _feedIndex,
+      savePositionForIndex: _savePositionForIndex,
+      syncFeedIndexMapping: _syncFeedIndexMapping,
+      clearDesiredFocus: clearDesiredFocus,
+      clearDesiredFocusForOwner: clearDesiredFocusForOwner,
+      getOrCreateController: getOrCreateController,
+      requestFocus: requestFocus,
+      resolvePlayableSource: VideoHealthGate.instance.resolvePlayableSource,
+      log: secureLog,
     );
-    if (_currentFeedIndex != requestedIndex ||
-        _indexToVideoId[requestedIndex] != targetVideoId) {
-      log('⏭️ PlaybackManager: Stale visible-index request ignored for $targetVideoId at $requestedIndex (current=$_currentFeedIndex)');
-      return;
-    }
-    if (healthResult is Unplayable) {
-      log('⚠️ PlaybackManager: Video $targetVideoId unplayable: ${healthResult.reason}');
-      return;
-    }
-    final playableUrl = (healthResult as Playable).url;
-    final controller = await getOrCreateController(
-      targetVideoId,
-      playableUrl,
-      owner: PlaybackOwners.home,
-    ).catchError((e) {
-      log('⚠️ PlaybackManager: getOrCreateController failed for $targetVideoId: $e');
-      return null;
-    });
-    if (controller == null) return;
-    if (_currentFeedIndex != requestedIndex ||
-        _indexToVideoId[requestedIndex] != targetVideoId) {
-      log('⏭️ PlaybackManager: Controller ready for stale video $targetVideoId; leaving muted');
-      try {
-        await controller.setVolume(0.0);
-        await controller.pause();
-      } catch (_) {}
-      return;
-    }
-    await requestFocus(targetVideoId, PlaybackOwners.home);
   }
 
   /// Called when app lifecycle changes
   void onAppLifecycleChanged(AppLifecycleState state) {
-    log('📱 PlaybackManager: App lifecycle changed to $state');
-
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      _saveCurrentPosition();
-      pauseAll();
-    } else if (state == AppLifecycleState.resumed) {
-      if (_currentFeedIndex != null) {
-        log('🔄 PlaybackManager: App resumed, will recover at index $_currentFeedIndex');
-      }
-    }
+    _homeLifecycle.onAppLifecycleChanged(
+      state: state,
+      saveCurrentPosition: _saveCurrentPosition,
+      pauseAll: pauseAll,
+      currentFeedIndex: _currentFeedIndex,
+      log: secureLog,
+    );
   }
 
   /// Ensure controller is ready for given index
   /// 🔥 FIX: Optimized for faster initialization - reduced timeout and better error handling
-  Future<void> ensureControllerReady(int index, HomeVideo video) async {
-    // 🔒 SAFETY: Validate inputs - return early instead of throwing to prevent crashes
-    if (index < 0) {
-      log('⚠️ PlaybackManager: Invalid index $index, returning early');
-      return;
-    }
-
-    if (video.id.isEmpty || video.videoURL.isEmpty) {
-      log('⚠️ PlaybackManager: Invalid video object: id=${video.id}, url=${video.videoURL}, returning early');
-      return;
-    }
-
-    final videoId = video.id;
-    var controller = _controllerPool[videoId];
-
-    // If controller exists and is healthy, return
-    if (controller != null && _isControllerSafe(videoId, controller)) {
-      try {
-        if (controller.value.isInitialized && !controller.value.hasError) {
-          log('✅ PlaybackManager: Controller already ready for index $index');
-          return;
-        }
-      } catch (e) {
-        log('⚠️ PlaybackManager: Error checking controller state: $e');
-        // Controller might be unhealthy, continue to create new one
-      }
-    }
-
-    // 🔥 CRITICAL FIX: Check if already initializing to prevent duplicate initialization
-    if (_initializingControllers.contains(videoId)) {
-      log('⚠️ PlaybackManager: Controller for $videoId is already being initialized, waiting...');
-      // Wait a bit and check again
-      await Future.delayed(const Duration(milliseconds: 100));
-      final existingController = _controllerPool[videoId];
-      if (existingController != null &&
-          _isControllerSafe(videoId, existingController)) {
-        try {
-          if (existingController.value.isInitialized &&
-              !existingController.value.hasError) {
-            log('✅ PlaybackManager: Controller became ready during wait');
-            return;
-          }
-        } catch (e) {
-          // Continue to create new one
-        }
-      }
-    }
-
-    // Controller missing or unhealthy - resolve playable URL first, then create
-    log('🔄 PlaybackManager: Ensuring controller for index $index, video $videoId');
-    final healthResult = await VideoHealthGate.instance.resolvePlayableSource(
-      videoId,
-      fallbackUrl: video.videoURL.isNotEmpty ? video.videoURL : null,
+  Future<void> ensureControllerReady(
+    int index,
+    HomeVideo video, {
+    String controllerOwner = PlaybackOwners.home,
+  }) {
+    return _ensureReadyCoordinator.ensureControllerReady(
+      index: index,
+      video: video,
+      pool: _pool,
+      initializingControllers: _initializingControllers,
+      lastKnownPositions: _lastKnownPositions,
+      isControllerSafe: _isControllerSafe,
+      waitForInitializing: _waitForInitializingController,
+      resolvePlayableSource: VideoHealthGate.instance.resolvePlayableSource,
+      getOrCreateController: getOrCreateController,
+      syncFeedIndexMapping: _syncFeedIndexMapping,
+      controllerOwner: controllerOwner,
+      log: secureLog,
     );
-    if (healthResult is Unplayable) {
-      log('⚠️ PlaybackManager: Video $videoId unplayable: ${healthResult.reason}');
-      return;
-    }
-    final playableUrl = (healthResult as Playable).url;
-    try {
-      controller = await getOrCreateController(
-        videoId,
-        playableUrl,
-        owner: PlaybackOwners.home,
-      );
-      if (controller == null) return;
-      _syncFeedIndexMapping(index, videoId);
-
-      // Seek to last position if available
-      final lastPos = _lastKnownPositions[index];
-      if (lastPos != null && lastPos > Duration.zero) {
-        try {
-          await controller.seekTo(lastPos).timeout(
-            const Duration(seconds: 2),
-            onTimeout: () {
-              log('⏱️ PlaybackManager: Seek timeout for $videoId');
-            },
-          );
-          log('⏪ PlaybackManager: Seeked to last position ${lastPos.inSeconds}s');
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error seeking to last position: $e');
-          // Continue anyway - video will start from beginning
-        }
-      }
-
-      log('✅ PlaybackManager: Controller ready for index $index');
-    } catch (e, stackTrace) {
-      log('❌ PlaybackManager: Error creating controller: $e');
-      log('Stack trace: $stackTrace');
-    }
   }
 
   void preloadStartupWindow(
     List<HomeVideo> videos, {
     int startIndex = 0,
+    bool requestFocusOnStart = true,
   }) {
-    if (videos.isEmpty) return;
-    final int safeIndex = startIndex.clamp(0, videos.length - 1);
-    final int generation = ++_startupWarmGeneration;
-    log(
-      '🚀 PlaybackManager: Startup warm window from index $safeIndex '
-      '(videos=${videos.length})',
+    _startupWarm.preloadStartupWindow(
+      videos: videos,
+      startIndex: startIndex,
+      requestFocusOnStart: requestFocusOnStart,
+      onSyncMapping: _syncFeedIndexMapping,
+      onUpdatePinSet: (int index) =>
+          _updatePinSet(index, backwardRadius: 1, forwardRadius: 1),
+      onEnsureReady: ensureControllerReady,
+      onRequestFocus: requestFocus,
+      onDisposeFarControllers: disposeFarControllers,
+      log: secureLog,
     );
-
-    Future<void>(() async {
-      final indices = _preloadOrder(
-        index: safeIndex,
-        videoCount: videos.length,
-        direction: 1,
-        backwardRadius: 1,
-        forwardRadius: 2,
-      );
-
-      for (final index in indices) {
-        final video = videos[index];
-        if (video.id.isNotEmpty) {
-          _syncFeedIndexMapping(index, video.id);
-        }
-      }
-      _updatePinSet(safeIndex, backwardRadius: 0, forwardRadius: 2);
-
-      await Future.wait(indices.map((index) async {
-        if (generation != _startupWarmGeneration) return;
-        final video = videos[index];
-        await ensureControllerReady(index, video);
-        if (index == safeIndex) {
-          setDesiredFocus(video.id, PlaybackOwners.home);
-        }
-      }));
-      disposeFarControllers(safeIndex);
-    }).catchError((e, stackTrace) {
-      log('⚠️ PlaybackManager: Startup warm window failed: $e');
-      log('Stack trace: $stackTrace');
-    });
-  }
-
-  List<int> _preloadOrder({
-    required int index,
-    required int videoCount,
-    required int direction,
-    required int backwardRadius,
-    required int forwardRadius,
-  }) {
-    final orderedOffsets = <int>[0];
-    if (direction < 0) {
-      for (int offset = -1; offset >= -backwardRadius; offset--) {
-        orderedOffsets.add(offset);
-      }
-      for (int offset = 1; offset <= forwardRadius; offset++) {
-        orderedOffsets.add(offset);
-      }
-    } else {
-      for (int offset = 1; offset <= forwardRadius; offset++) {
-        orderedOffsets.add(offset);
-      }
-      for (int offset = -1; offset >= -backwardRadius; offset--) {
-        orderedOffsets.add(offset);
-      }
-    }
-
-    final seen = <int>{};
-    return orderedOffsets
-        .map((offset) => index + offset)
-        .where((candidate) =>
-            candidate >= 0 && candidate < videoCount && seen.add(candidate))
-        .toList(growable: false);
   }
 
   /// Preload controllers around given index
@@ -1891,163 +1487,22 @@ class GlobalPlaybackManager {
     int index,
     List<HomeVideo> videos, {
     int direction = 0,
+    String controllerOwner = PlaybackOwners.home,
   }) {
-    // 🔒 SAFETY: Validate inputs
-    if (videos.isEmpty) {
-      log('⚠️ PlaybackManager: Videos list is empty, skipping preload');
-      return;
-    }
-    if (index < 0) {
-      log('⚠️ PlaybackManager: Invalid index $index for preloadAround');
-      return;
-    }
-    if (index >= videos.length) {
-      log('⚠️ PlaybackManager: Index $index out of bounds (videos.length: ${videos.length})');
-      return;
-    }
-
-    final centerVideoId = videos[index].id;
-    final now = DateTime.now();
-    final lastRequestAt = _lastPreloadRequestedAt;
-    final isDuplicateBurst = _lastPreloadCenterIndex == index &&
-        _lastPreloadCenterVideoId == centerVideoId &&
-        lastRequestAt != null &&
-        now.difference(lastRequestAt) < const Duration(milliseconds: 180);
-    if (isDuplicateBurst) {
-      return;
-    }
-    _lastPreloadCenterIndex = index;
-    _lastPreloadCenterVideoId = centerVideoId;
-    _lastPreloadRequestedAt = now;
-
-    final int backwardRadius;
-    final int forwardRadius;
-    if (direction > 0) {
-      backwardRadius = 1;
-      forwardRadius = 2;
-    } else if (direction < 0) {
-      backwardRadius = 2;
-      forwardRadius = 1;
-    } else {
-      backwardRadius = 1;
-      forwardRadius = 2;
-    }
-
-    // 🔥 FIX: Wrap in try-catch to prevent crashes during rapid swiping
-    try {
-      // Bias warming toward the user's swipe direction so the next likely
-      // landing video is ready without over-churning the controller pool.
-      final List<int> preloadIndices = _preloadOrder(
-        index: index,
-        videoCount: videos.length,
-        direction: direction,
-        backwardRadius: backwardRadius,
-        forwardRadius: forwardRadius,
-      );
-
-      for (final n in preloadIndices) {
-        final video = videos[n];
-        if (video.id.isNotEmpty) {
-          _syncFeedIndexMapping(n, video.id);
-        }
-      }
-
-      _updatePinSet(
-        index,
-        backwardRadius: backwardRadius,
-        forwardRadius: forwardRadius,
-      );
-
-      for (final n in preloadIndices) {
-        // 🔒 SAFETY: Double-check bounds before accessing
-        if (n >= 0 && n < videos.length) {
-          try {
-            final video = videos[n];
-
-            // 🔒 SAFETY: Validate video object before preloading
-            if (video.id.isEmpty || video.videoURL.isEmpty) {
-              log('⚠️ PlaybackManager: Invalid video at index $n, skipping preload');
-              continue;
-            }
-
-            final videoId = video.id;
-            _syncFeedIndexMapping(n, videoId);
-
-            // 🔥 FIX SLOW LOADING: All videos preload in background (fire-and-forget)
-            // VideoPlayer widget shows video immediately when controller is ready
-            if (!_controllerPool.containsKey(videoId)) {
-              // Next videos - preload in background (fire-and-forget)
-              log('🔄 PlaybackManager: Preloading next video controller for index $n (video: $videoId)');
-              ensureControllerReady(n, video).catchError((e, stackTrace) {
-                log('⚠️ PlaybackManager: Error preloading next video index $n: $e');
-                log('Stack trace: $stackTrace');
-              });
-            } else {
-              // Check if existing controller is initialized
-              final existingController = _controllerPool[videoId];
-              if (existingController != null &&
-                  _isControllerSafe(videoId, existingController)) {
-                try {
-                  if (!existingController.value.isInitialized) {
-                    // Controller exists but not initialized - ensure it's ready
-                    log('🔄 PlaybackManager: Re-initializing controller for index $n (video: $videoId)');
-                    ensureControllerReady(n, video).catchError((e, stackTrace) {
-                      log('⚠️ PlaybackManager: Error re-initializing index $n: $e');
-                    });
-                  } else {
-                    log('✅ PlaybackManager: Controller already ready for index $n');
-                  }
-                } catch (_) {
-                  // Controller might be disposed - reinitialize
-                  log('🔄 PlaybackManager: Controller unsafe, re-initializing for index $n');
-                  ensureControllerReady(n, video).catchError((e, stackTrace) {
-                    log('⚠️ PlaybackManager: Error re-initializing index $n: $e');
-                  });
-                }
-              } else {
-                log('✅ PlaybackManager: Controller already exists for index $n, skipping preload');
-              }
-            }
-          } catch (e, stackTrace) {
-            log('❌ PlaybackManager: Error processing preload index $n: $e');
-            log('Stack trace: $stackTrace');
-            // Continue with next index
-          }
-        }
-      }
-    } catch (e, stackTrace) {
-      log('❌ PlaybackManager: Critical error in preloadAround: $e');
-      log('Stack trace: $stackTrace');
-      // Don't crash - just log
-    }
-
-    // 🔥 TIKTOK-STYLE: Don't dispose controllers during preloading
-    // Wait until after controllers are fully initialized before cleanup
-    // Cleanup happens deferred to avoid disposing controllers that are still initializing
-
-    // 🔥 TIKTOK-STYLE: Only enforce pool limit AFTER preloading completes
-    // Don't dispose controllers that are in the preload window (current + next 2)
-    // This ensures instant playback when swiping
-    // Cleanup will happen deferred after initialization completes
-
-    // 🔒 SAFETY: Defer cleanup to next frame AND wait for initialization to complete
-    // This ensures preloaded controllers aren't disposed before they're ready
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 250), () {
-        try {
-          // Only dispose controllers that are:
-          // 1. Far from current index (beyond poolRadius)
-          // 2. Fully initialized (not still initializing)
-          // 3. Not active or next videos
-          if (_controllerPool.length > maxControllerPoolSize) {
-            log('⚠️ PlaybackManager: Pool size (${_controllerPool.length}) > limit ($maxControllerPoolSize), cleaning up far controllers');
-            disposeFarControllers(index);
-          }
-        } catch (e) {
-          log('❌ PlaybackManager: Error disposing far controllers (deferred): $e');
-        }
-      });
-    });
+    _eviction.preloadAround(
+      index: index,
+      videos: videos,
+      pool: _pool,
+      feedIndex: _feedIndex,
+      burstGuard: _preloadBurstGuard,
+      onSyncFeedIndexMapping: _syncFeedIndexMapping,
+      onUpdatePinSet: _updatePinSet,
+      onEnsureControllerReady: ensureControllerReady,
+      onDisposeFarControllers: disposeFarControllers,
+      direction: direction,
+      controllerOwner: controllerOwner,
+      log: secureLog,
+    );
   }
 
   /// 🔥 PHASE 1 FIX: Two-stage eviction (cooldown then disposal)
@@ -2055,282 +1510,19 @@ class GlobalPlaybackManager {
   /// 🔒 SAFETY: Only disposes controllers that are definitely not in use
   /// 🔥 CRITICAL MEMORY FIX: Also enforces maximum pool size
   void disposeFarControllers(int index) {
-    // 🔥 PHASE 1: Update pin set first (protects current + next 2)
-    _updatePinSet(index);
-
-    // 🔥 FIX: Wrap entire method in try-catch to prevent crashes
-    try {
-      final now = DateTime.now();
-      final toDispose = <String>[];
-
-      // 🔥 STEP 1: Clean up stale/disposed controllers first
-      final staleControllers = <String>[];
-      try {
-        for (final entry in _controllerPool.entries) {
-          try {
-            final videoId = entry.key;
-            final controller = entry.value;
-            if (!_isControllerSafe(videoId, controller)) {
-              staleControllers.add(videoId);
-            }
-          } catch (e) {
-            log('⚠️ PlaybackManager: Error checking controller safety: $e');
-            // Continue with next entry
-          }
-        }
-      } catch (e, stackTrace) {
-        log('❌ PlaybackManager: Error cleaning stale controllers: $e');
-        log('Stack trace: $stackTrace');
-        // Continue anyway
-      }
-
-      // Clean up stale controllers
-      for (final videoId in staleControllers) {
-        try {
-          _logControllerEvent('DISPOSE_REQUESTED', videoId,
-              reason: 'stale_controller');
-          _controllerPool.remove(videoId);
-          _controllerOwners.remove(videoId);
-          _muteStates.remove(videoId);
-          _disposedControllers[videoId] = true;
-          _pinnedVideoIds.remove(videoId);
-          _cooldownUntil.remove(videoId);
-          _attachedControllers.remove(videoId);
-          _controllerCreatedAt.remove(videoId);
-          final videoIndex = _videoIdToIndex[videoId];
-          if (videoIndex != null) {
-            _videoIdToIndex.remove(videoId);
-            _indexToVideoId.remove(videoIndex);
-            _lastKnownPositions.remove(videoIndex);
-          }
-          _logControllerEvent('DISPOSED', videoId, reason: 'stale');
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error cleaning stale controller $videoId: $e');
-        }
-      }
-
-      // 🔥 PHASE 1 FIX: STEP 2: Two-stage eviction - Stage A: Mark for cooldown
-      try {
-        for (final entry in _controllerPool.entries) {
-          try {
-            final videoId = entry.key;
-            final videoIndex = _videoIdToIndex[videoId];
-
-            // 🔥 GUARD: Never dispose pinned, active, or initializing controllers
-            if (_pinnedVideoIds.contains(videoId) ||
-                videoId == _activeVideoId ||
-                _isActiveVideo(videoId) ||
-                _initializingControllers.contains(videoId)) {
-              // Cancel cooldown if video came back into protected zone
-              if (_cooldownUntil.containsKey(videoId)) {
-                _cooldownUntil.remove(videoId);
-                _logControllerEvent('COOLDOWN_CANCELLED', videoId,
-                    reason: 'protected_zone');
-              }
-              continue;
-            }
-            // 🔥 PHASE 2.3: Never dispose controller currently attached to a view
-            final attachedId = _attachedControllers[videoId];
-            if (attachedId != null && attachedId == entry.value.hashCode) {
-              if (_cooldownUntil.containsKey(videoId)) {
-                _cooldownUntil.remove(videoId);
-                _logControllerEvent('COOLDOWN_CANCELLED', videoId,
-                    reason: 'attached');
-              }
-              continue;
-            }
-            // 🔥 PHASE 2.3: Don't dispose within TTL of registration (reduces surface churn on scroll-back)
-            final createdAt = _controllerCreatedAt[videoId];
-            if (createdAt != null &&
-                now.difference(createdAt) <
-                    Duration(seconds: disposalEligibilityTtlSeconds)) {
-              if (!_cooldownUntil.containsKey(videoId)) {
-                _cooldownUntil[videoId] = createdAt
-                    .add(Duration(seconds: disposalEligibilityTtlSeconds));
-                _logControllerEvent('START_COOLDOWN', videoId,
-                    reason: 'within_ttl');
-              }
-              continue;
-            }
-
-            // Check if outside radius
-            if (videoIndex != null && (videoIndex - index).abs() > poolRadius) {
-              final controller = entry.value;
-              if (!_isControllerSafe(videoId, controller)) continue;
-
-              try {
-                // Only mark for cooldown if controller is initialized and ready
-                if (controller.value.isInitialized &&
-                    !controller.value.hasError) {
-                  // Check if already in cooldown
-                  if (_cooldownUntil.containsKey(videoId)) {
-                    // Check if cooldown expired
-                    final cooldownExpiry = _cooldownUntil[videoId]!;
-                    if (now.isAfter(cooldownExpiry)) {
-                      // Cooldown expired - mark for disposal
-                      toDispose.add(videoId);
-                    }
-                  } else {
-                    // Start cooldown (soft eviction)
-                    _cooldownUntil[videoId] =
-                        now.add(Duration(seconds: cooldownSeconds));
-                    _logControllerEvent('START_COOLDOWN', videoId,
-                        reason:
-                            'outside_radius index=$videoIndex current=$index');
-                  }
-                }
-              } catch (_) {
-                // Skip if controller check fails
-              }
-            } else if (videoIndex == null) {
-              // No index mapping - start cooldown if initialized
-              final controller = entry.value;
-              if (_attachedControllers[videoId] == controller.hashCode) {
-                continue;
-              }
-              final createdAt = _controllerCreatedAt[videoId];
-              if (createdAt != null &&
-                  now.difference(createdAt) <
-                      Duration(seconds: disposalEligibilityTtlSeconds)) {
-                if (!_cooldownUntil.containsKey(videoId)) {
-                  _cooldownUntil[videoId] = createdAt
-                      .add(Duration(seconds: disposalEligibilityTtlSeconds));
-                  _logControllerEvent('START_COOLDOWN', videoId,
-                      reason: 'no_index_within_ttl');
-                }
-                continue;
-              }
-              if (_isControllerSafe(videoId, controller)) {
-                try {
-                  if (controller.value.isInitialized &&
-                      !controller.value.hasError) {
-                    if (!_cooldownUntil.containsKey(videoId)) {
-                      _cooldownUntil[videoId] =
-                          now.add(Duration(seconds: cooldownSeconds));
-                      _logControllerEvent('START_COOLDOWN', videoId,
-                          reason: 'no_index_mapping');
-                    } else {
-                      final cooldownExpiry = _cooldownUntil[videoId]!;
-                      if (now.isAfter(cooldownExpiry)) {
-                        toDispose.add(videoId);
-                      }
-                    }
-                  }
-                } catch (_) {
-                  // Skip if controller check fails
-                }
-              }
-            }
-          } catch (e) {
-            log('⚠️ PlaybackManager: Error processing controller entry: $e');
-            // Continue with next entry
-          }
-        }
-
-        // 🔥 PHASE 1 FIX: STEP 3: Stage B - Hard eviction (rate limited: max 1 per cycle)
-        if (toDispose.isNotEmpty &&
-            _controllerPool.length > maxControllerPoolSize) {
-          // Sort by distance (furthest first)
-          toDispose.sort((a, b) {
-            final indexA = _videoIdToIndex[a];
-            final indexB = _videoIdToIndex[b];
-            if (indexA == null) return 1;
-            if (indexB == null) return -1;
-            final distA = (indexA - index).abs();
-            final distB = (indexB - index).abs();
-            return distB.compareTo(distA); // Furthest first
-          });
-
-          // Dispose only the furthest one (rate limit to prevent spikes)
-          final videoIdToDispose = toDispose.first;
-          final controller = _controllerPool.remove(videoIdToDispose);
-          if (controller != null) {
-            final bool isAttached =
-                _attachedControllers[videoIdToDispose] == controller.hashCode;
-            final createdAt = _controllerCreatedAt[videoIdToDispose];
-            final bool withinTtl = createdAt != null &&
-                now.difference(createdAt) <
-                    Duration(seconds: disposalEligibilityTtlSeconds);
-            if (isAttached || withinTtl) {
-              _controllerPool[videoIdToDispose] = controller;
-            } else {
-              _logControllerEvent('DISPOSE_REQUESTED', videoIdToDispose,
-                  reason: 'cooldown_expired_furthest');
-              try {
-                _controllerOwners.remove(videoIdToDispose);
-                _muteStates.remove(videoIdToDispose);
-                _disposedControllers[videoIdToDispose] = true;
-                _pinnedVideoIds.remove(videoIdToDispose);
-                _cooldownUntil.remove(videoIdToDispose);
-                _attachedControllers.remove(videoIdToDispose);
-                _controllerCreatedAt.remove(videoIdToDispose);
-                final videoIndex = _videoIdToIndex[videoIdToDispose];
-                if (videoIndex != null) {
-                  _videoIdToIndex.remove(videoIdToDispose);
-                  _indexToVideoId.remove(videoIndex);
-                  _lastKnownPositions.remove(videoIndex);
-                }
-                if (_isControllerSafe(videoIdToDispose, controller)) {
-                  controller.dispose();
-                }
-                _logControllerEvent('DISPOSED', videoIdToDispose,
-                    reason: 'cooldown_expired');
-              } catch (e) {
-                log('❌ PlaybackManager: Error disposing controller $videoIdToDispose: $e');
-              }
-            }
-          }
-        }
-
-        // 🔥 PHASE 1 FIX: STEP 4: If pool still too large, mark more for cooldown
-        if (_controllerPool.length > maxControllerPoolSize) {
-          final readyEntries = _controllerPool.entries.where((e) {
-            if (_pinnedVideoIds.contains(e.key) ||
-                e.key == _activeVideoId ||
-                _isActiveVideo(e.key) ||
-                _initializingControllers.contains(e.key)) {
-              return false;
-            }
-            try {
-              return _isControllerSafe(e.key, e.value) &&
-                  e.value.value.isInitialized &&
-                  !e.value.value.hasError;
-            } catch (_) {
-              return false;
-            }
-          }).toList();
-
-          readyEntries.sort((a, b) {
-            final indexA = _videoIdToIndex[a.key];
-            final indexB = _videoIdToIndex[b.key];
-            if (indexA == null) return 1;
-            if (indexB == null) return -1;
-            final distA = (indexA - index).abs();
-            final distB = (indexB - index).abs();
-            return distB.compareTo(distA); // Furthest first
-          });
-
-          // Mark furthest ready entries for cooldown
-          final excessCount = _controllerPool.length - maxControllerPoolSize;
-          for (final entry in readyEntries.take(excessCount)) {
-            if (!_cooldownUntil.containsKey(entry.key)) {
-              _cooldownUntil[entry.key] =
-                  now.add(Duration(seconds: cooldownSeconds));
-              _logControllerEvent('START_COOLDOWN', entry.key,
-                  reason:
-                      'pool_size_limit distance=${_videoIdToIndex[entry.key] != null ? (_videoIdToIndex[entry.key]! - index).abs() : "unknown"}');
-            }
-          }
-        }
-      } catch (e, stackTrace) {
-        log('❌ PlaybackManager: Error in two-stage eviction: $e');
-        log('Stack trace: $stackTrace');
-      }
-    } catch (e, stackTrace) {
-      log('❌ PlaybackManager: Critical error in disposeFarControllers: $e');
-      log('Stack trace: $stackTrace');
-      // Don't crash - just log
-    }
+    _eviction.disposeFarControllers(
+      index: index,
+      pool: _pool,
+      feedIndex: _feedIndex,
+      muteStates: _muteStates,
+      activeVideoId: _focus.activeVideoId,
+      isActiveVideo: _isActiveVideo,
+      onUpdatePinSet: _updatePinSet,
+      onLogControllerEvent: (String event, String videoId, {String? reason}) {
+        _logControllerEvent(event, videoId, reason: reason);
+      },
+      log: secureLog,
+    );
   }
 
   /// Get controller for index
@@ -2342,42 +1534,25 @@ class GlobalPlaybackManager {
   }
 
   /// Get current feed index
-  int? get currentFeedIndex => _currentFeedIndex;
+  int? get currentFeedIndex => _feedIndex.currentFeedIndex;
 
   /// Save current position
   void _saveCurrentPosition() {
-    if (_currentFeedIndex == null) return;
-    final controller = getControllerForIndex(_currentFeedIndex!);
-    if (controller != null) {
-      final videoId = _indexToVideoId[_currentFeedIndex!];
-      if (videoId != null && _isControllerSafe(videoId, controller)) {
-        try {
-          if (controller.value.isInitialized) {
-            _lastKnownPositions[_currentFeedIndex!] = controller.value.position;
-            log('💾 PlaybackManager: Saved position ${controller.value.position.inSeconds}s for index $_currentFeedIndex');
-          }
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error saving current position: $e');
-        }
-      }
-    }
+    _feedIndex.saveCurrentPosition(
+      resolveController: getControllerForIndex,
+      isControllerSafe: _isControllerSafe,
+      log: secureLog,
+    );
   }
 
   /// Save position for specific index
   void _savePositionForIndex(int index) {
-    final controller = getControllerForIndex(index);
-    if (controller != null) {
-      final videoId = _indexToVideoId[index];
-      if (videoId != null && _isControllerSafe(videoId, controller)) {
-        try {
-          if (controller.value.isInitialized) {
-            _lastKnownPositions[index] = controller.value.position;
-          }
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error saving position for index $index: $e');
-        }
-      }
-    }
+    _feedIndex.savePositionForIndex(
+      index: index,
+      resolveController: getControllerForIndex,
+      isControllerSafe: _isControllerSafe,
+      log: secureLog,
+    );
   }
 }
 

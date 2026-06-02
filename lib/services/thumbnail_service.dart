@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/video_thumbnails.dart';
 
@@ -10,9 +11,16 @@ class ThumbnailService {
 
   // Available thumbnail sizes (width in pixels)
   static const List<int> _thumbnailSizes = [360, 540, 720, 1080, 1440];
+  static const bool _verboseLogging = false;
 
   // Cache for device pixel ratio to avoid repeated MediaQuery calls
   double? _cachedDevicePixelRatio;
+
+  void _log(String message) {
+    if (kDebugMode && _verboseLogging) {
+      debugPrint(message);
+    }
+  }
 
   /// Get the optimal thumbnail URL for a given container width and device pixel ratio
   String? getOptimalThumbnailUrl({
@@ -21,7 +29,7 @@ class ThumbnailService {
     required double devicePixelRatio,
   }) {
     if (thumbnails == null || thumbnails.urls.isEmpty) {
-      debugPrint(
+      _log(
           '🖼️ ThumbnailService: No thumbnails available (null: ${thumbnails == null}, empty: ${thumbnails?.urls.isEmpty ?? true})');
       return null;
     }
@@ -54,7 +62,7 @@ class ThumbnailService {
       }
     }
 
-    debugPrint(
+    _log(
         '🖼️ ThumbnailService: Container ${containerWidth}px, DPR $devicePixelRatio, '
         'Effective ${effectivePixels}px, Selected ${bestSize}px: ${bestUrl != null ? 'Found' : 'None'}');
 
@@ -68,7 +76,7 @@ class ThumbnailService {
     required double devicePixelRatio,
     String? fallbackUrl,
   }) {
-    debugPrint(
+    _log(
         '🖼️ ThumbnailService: getOptimalThumbnailUrlWithFallback - thumbnails: ${thumbnails != null ? "YES (${thumbnails.urls.length} sizes)" : "NO"}, fallbackUrl: "$fallbackUrl"');
 
     // Try optimal thumbnail first
@@ -79,18 +87,17 @@ class ThumbnailService {
     );
 
     if (optimalUrl != null) {
-      debugPrint('🖼️ ThumbnailService: Using optimal URL: $optimalUrl');
+      _log('🖼️ ThumbnailService: Using optimal URL: $optimalUrl');
       return optimalUrl;
     }
 
     // Fall back to legacy thumbnailURL if available
     if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
-      debugPrint('🖼️ ThumbnailService: Using fallback URL: $fallbackUrl');
+      _log('🖼️ ThumbnailService: Using fallback URL: $fallbackUrl');
       return fallbackUrl;
     }
 
-    debugPrint(
-        '🖼️ ThumbnailService: No thumbnail URL available - returning null');
+    _log('🖼️ ThumbnailService: No thumbnail URL available - returning null');
     return null;
   }
 
@@ -142,12 +149,11 @@ class ThumbnailService {
       fallbackUrl: fallbackUrl,
     );
 
-    debugPrint(
+    _log(
         '🖼️ ThumbnailService: buildResponsiveThumbnail - optimalUrl: "$optimalUrl"');
 
     if (optimalUrl == null) {
-      debugPrint(
-          '🖼️ ThumbnailService: No optimal URL, showing no-thumbnail widget');
+      _log('🖼️ ThumbnailService: No optimal URL, showing no-thumbnail widget');
       return _buildNoThumbnailWidget(
         containerWidth: containerWidth,
         containerHeight: containerHeight,
@@ -157,7 +163,7 @@ class ThumbnailService {
       );
     }
 
-    debugPrint(
+    _log(
         '🖼️ ThumbnailService: Creating CachedNetworkImage for URL: $optimalUrl');
 
     final resolvedBorderRadius = borderRadius ?? BorderRadius.circular(12);
@@ -181,16 +187,15 @@ class ThumbnailService {
               memCacheWidth: (containerWidth * devicePixelRatio).round(),
               memCacheHeight: (containerHeight * devicePixelRatio).round(),
               placeholder: (context, url) {
-                debugPrint(
-                    '🖼️ ThumbnailService: Loading placeholder for $url');
+                _log('🖼️ ThumbnailService: Loading placeholder for $url');
                 return placeholder ?? _buildAssetPlaceholder();
               },
               errorWidget: (context, url, error) {
-                debugPrint('🖼️ ThumbnailService: Error loading $url: $error');
+                _log('🖼️ ThumbnailService: Error loading $url: $error');
                 return errorWidget ?? _buildAssetPlaceholder();
               },
               imageBuilder: (context, imageProvider) {
-                debugPrint('🖼️ ThumbnailService: Image loaded successfully!');
+                _log('🖼️ ThumbnailService: Image loaded successfully!');
                 return Image(
                   image: imageProvider,
                   fit: fit,

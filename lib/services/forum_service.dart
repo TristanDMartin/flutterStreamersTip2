@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
@@ -5,8 +7,10 @@ import '../models/forum_post.dart';
 import '../models/forum_comment.dart';
 import '../models/forum_category.dart';
 import '../models/forum_author.dart';
+import '../utils/video_document_rules.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'discussion_author_service.dart';
+import 'progression_service.dart';
 
 /// Thread sort options
 enum ThreadSortBy {
@@ -66,6 +70,8 @@ class ForumService {
           followedBy: p.followedBy,
           linkedVideoId: p.linkedVideoId,
           linkedCommentId: p.linkedCommentId,
+          status: p.status,
+          deletedReason: p.deletedReason,
           sourceComment: p.sourceComment,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
@@ -74,6 +80,79 @@ class ForumService {
       }).toList();
     } catch (e) {
       debugPrint('❌ Error resolving category names: $e');
+      return posts;
+    }
+  }
+
+  ForumPost _copyPostWith({
+    required ForumPost post,
+    String? categoryDisplayName,
+    int? commentCount,
+    DateTime? updatedAt,
+  }) {
+    return ForumPost(
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      category: post.category,
+      categoryDisplayName: categoryDisplayName ?? post.categoryDisplayName,
+      tags: post.tags,
+      author: post.author,
+      visibility: post.visibility,
+      likes: post.likes,
+      commentCount: commentCount ?? post.commentCount,
+      likedBy: post.likedBy,
+      bookmarkedBy: post.bookmarkedBy,
+      followedBy: post.followedBy,
+      linkedVideoId: post.linkedVideoId,
+      linkedCommentId: post.linkedCommentId,
+      status: post.status,
+      deletedReason: post.deletedReason,
+      sourceComment: post.sourceComment,
+      createdAt: post.createdAt,
+      updatedAt: updatedAt ?? post.updatedAt,
+      deleted: post.deleted,
+    );
+  }
+
+  Future<List<ForumPost>> _attachLiveCommentCounts(
+    List<ForumPost> posts,
+  ) async {
+    if (posts.isEmpty) {
+      return posts;
+    }
+    try {
+      final List<ForumPost> updated = await Future.wait(
+        posts.map((ForumPost post) async {
+          final QuerySnapshot<Map<String, dynamic>> comments = await _firestore
+              .collection('forumPosts')
+              .doc(post.id)
+              .collection('comments')
+              .where('deleted', isEqualTo: false)
+              .get();
+          final int count = comments.docs.length;
+          if (count == post.commentCount) {
+            return post;
+          }
+          unawaited(
+            _firestore.collection('forumPosts').doc(post.id).set(
+              <String, Object?>{
+                'commentCount': count,
+                'updatedAt': FieldValue.serverTimestamp(),
+              },
+              SetOptions(merge: true),
+            ),
+          );
+          return _copyPostWith(
+            post: post,
+            commentCount: count,
+            updatedAt: DateTime.now(),
+          );
+        }),
+      );
+      return updated;
+    } catch (e) {
+      debugPrint('❌ Error resolving live thread reply counts: $e');
       return posts;
     }
   }
@@ -124,23 +203,22 @@ class ForumService {
       final List<ForumPost> posts =
           snapshot.docs.map((doc) => ForumPost.fromFirestore(doc)).toList();
 
-      // TEMPORARILY DISABLED: Avatar enrichment causes memory issues
-      // TODO: Re-enable with proper caching and pagination
-      // final enrichedPosts = await _enrichPostsWithUserAvatars(posts);
-      final List<ForumPost> enrichedPosts =
-          await _attachCategoryDisplayNames(posts);
+      final List<ForumPost> withAvatars =
+          await _enrichPostsWithUserAvatars(posts);
+      final List<ForumPost> enrichedPosts = await _attachLiveCommentCounts(
+          await _attachCategoryDisplayNames(withAvatars));
 
       // Apply search query filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
         final lowerQuery = searchQuery.toLowerCase();
-        return enrichedPosts.where((post) {
+        return enrichedPosts.where(_isThreadVisible).where((post) {
           return post.title.toLowerCase().contains(lowerQuery) ||
               post.content.toLowerCase().contains(lowerQuery) ||
               post.tags.any((tag) => tag.toLowerCase().contains(lowerQuery));
         }).toList();
       }
 
-      return enrichedPosts;
+      return enrichedPosts.where(_isThreadVisible).toList();
     } on FirebaseException catch (e) {
       if (e.code == 'failed-precondition' &&
           (sortBy == ThreadSortBy.activeNow ||
@@ -170,13 +248,15 @@ class ForumService {
   Future<ForumPost?> getPost(String postId) async {
     try {
       final doc = await _firestore.collection('forumPosts').doc(postId).get();
-      if (!doc.exists || (doc.data()?['deleted'] as bool? ?? false)) {
+      if (!doc.exists || !_isThreadDocVisible(doc.data())) {
         return null;
       }
       final ForumPost post = ForumPost.fromFirestore(doc);
       final List<ForumPost> withNames =
           await _attachCategoryDisplayNames(<ForumPost>[post]);
-      return withNames.first;
+      final List<ForumPost> withCounts =
+          await _attachLiveCommentCounts(withNames);
+      return withCounts.first;
     } catch (e) {
       debugPrint('❌ Error fetching thread: $e');
       rethrow;
@@ -191,6 +271,7 @@ class ForumService {
     required List<String> tags,
     required ForumAuthor author,
     String visibility = 'public',
+    String? linkedVideoId,
   }) async {
     try {
       final docRef = await _firestore.collection('forumPosts').add({
@@ -211,6 +292,8 @@ class ForumService {
         'likedBy': [],
         'bookmarkedBy': [],
         'followedBy': [],
+        if (linkedVideoId != null && linkedVideoId.trim().isNotEmpty)
+          'linkedVideoId': linkedVideoId.trim(),
         'contentType': 'text',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -429,16 +512,20 @@ class ForumService {
         .where('parentCommentId', isNull: true)
         .limit(50)
         .snapshots()
-        .map((snapshot) {
-      final comments = snapshot.docs
-          .where((doc) {
-            final data = doc.data();
+        .asyncMap((QuerySnapshot<Map<String, dynamic>> snapshot) async {
+      final List<ForumComment> comments = snapshot.docs
+          .where((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+            final Map<String, dynamic> data = doc.data();
             return (data['deleted'] as bool? ?? false) == false;
           })
-          .map((doc) => ForumComment.fromFirestore(doc, postId))
+          .map(
+            (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+                ForumComment.fromFirestore(doc, postId),
+          )
           .toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return comments;
+        ..sort((ForumComment a, ForumComment b) =>
+            b.createdAt.compareTo(a.createdAt));
+      return _enrichCommentsWithUserAvatars(comments);
     });
   }
 
@@ -526,6 +613,12 @@ class ForumService {
         'commentCount': FieldValue.increment(1),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        user.uid,
+        ProgressionTaskIds.firstCommentMade,
+        source: 'comments',
+      ));
 
       debugPrint('✅ Comment added to thread: $postId');
       return commentRef.id;
@@ -701,7 +794,9 @@ class ForumService {
     try {
       final doc = await _firestore.collection('videos').doc(videoId).get();
       if (!doc.exists) return null;
-      return doc.data();
+      final data = doc.data();
+      if (data == null || !isVideoVisibleInFeed(data)) return null;
+      return data;
     } catch (e) {
       debugPrint('❌ Error fetching video details: $e');
       return null;
@@ -718,34 +813,50 @@ class ForumService {
     }
   }
 
-  /// Enrich forum posts with current user avatar data from users collection
-  /// TEMPORARILY DISABLED: Commented out to prevent memory issues
-  /// TODO: Re-enable with proper caching and pagination
-  // ignore: unused_element
+  static const int _avatarCacheMaxEntries = 200;
+  final Map<String, String?> _avatarCache = <String, String?>{};
+
+  void _putAvatarInCache(String userId, String? avatarUrl) {
+    if (_avatarCache.length >= _avatarCacheMaxEntries) {
+      _avatarCache.remove(_avatarCache.keys.first);
+    }
+    _avatarCache[userId] = avatarUrl;
+  }
+
+  /// Enrich forum posts with current user avatar data (batched + cached).
   Future<List<ForumPost>> _enrichPostsWithUserAvatars(
       List<ForumPost> posts) async {
     if (posts.isEmpty) return posts;
 
     try {
-      // Collect unique author IDs
-      final authorIds = posts.map((post) => post.author.uid).toSet().toList();
-
-      // Batch fetch user data (Firestore 'in' query limit is 10)
-      final Map<String, String?> avatarMap = {};
-      for (int i = 0; i < authorIds.length; i += 10) {
-        final batch = authorIds.skip(i).take(10).toList();
-        final userDocs = await Future.wait(
+      final List<String> authorIds =
+          posts.map((ForumPost post) => post.author.uid).toSet().toList();
+      final Map<String, String?> avatarMap = <String, String?>{};
+      final List<String> missingIds = <String>[];
+      for (final String userId in authorIds) {
+        if (_avatarCache.containsKey(userId)) {
+          avatarMap[userId] = _avatarCache[userId];
+        } else {
+          missingIds.add(userId);
+        }
+      }
+      for (int i = 0; i < missingIds.length; i += 10) {
+        final List<String> batch = missingIds.skip(i).take(10).toList();
+        final List<DocumentSnapshot<Map<String, dynamic>>> userDocs =
+            await Future.wait(
           batch.map(
-              (userId) => _firestore.collection('users').doc(userId).get()),
+            (String userId) => _firestore.collection('users').doc(userId).get(),
+          ),
         );
-
-        for (var doc in userDocs) {
-          if (doc.exists && doc.data() != null) {
-            final userData = doc.data()!;
-            final avatarUrl = resolveAvatarUrl(userData);
-            if (avatarUrl != null && avatarUrl.isNotEmpty) {
-              avatarMap[doc.id] = avatarUrl;
-            }
+        for (final DocumentSnapshot<Map<String, dynamic>> doc in userDocs) {
+          if (!doc.exists || doc.data() == null) {
+            _putAvatarInCache(doc.id, null);
+            continue;
+          }
+          final String? avatarUrl = resolveAvatarUrl(doc.data()!);
+          _putAvatarInCache(doc.id, avatarUrl);
+          if (avatarUrl != null && avatarUrl.isNotEmpty) {
+            avatarMap[doc.id] = avatarUrl;
           }
         }
       }
@@ -779,6 +890,8 @@ class ForumService {
             followedBy: post.followedBy,
             linkedVideoId: post.linkedVideoId,
             linkedCommentId: post.linkedCommentId,
+            status: post.status,
+            deletedReason: post.deletedReason,
             sourceComment: post.sourceComment,
             createdAt: post.createdAt,
             updatedAt: post.updatedAt,
@@ -794,11 +907,7 @@ class ForumService {
     }
   }
 
-  /// Enriches a list of ForumComments with current user avatar URLs from the 'users' collection.
-  /// This is necessary because the 'author' field in comments might contain outdated avatar URLs.
-  /// TEMPORARILY DISABLED: Commented out to prevent memory issues
-  /// TODO: Re-enable with proper caching and pagination
-  // ignore: unused_element
+  /// Enriches comments with cached user avatar URLs.
   Future<List<ForumComment>> _enrichCommentsWithUserAvatars(
       List<ForumComment> comments) async {
     if (comments.isEmpty) return comments;
@@ -822,20 +931,28 @@ class ForumService {
         return comments;
       }
 
-      // Fetch user documents in batches (Firestore 'whereIn' limit is 10)
-      final Map<String, String> currentAvatarUrls = {};
-      final List<String> uidsList = authorUids.toList();
-
-      for (int i = 0; i < uidsList.length; i += 10) {
-        final chunk = uidsList.sublist(i, (i + 10).clamp(0, uidsList.length));
-        final usersSnapshot = await _firestore
-            .collection('users')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
-
-        for (final doc in usersSnapshot.docs) {
-          final userData = doc.data();
-          final avatarUrl = resolveAvatarUrl(userData);
+      final Map<String, String> currentAvatarUrls = <String, String>{};
+      final List<String> missingUids = <String>[];
+      for (final String uid in authorUids) {
+        final String? cached = _avatarCache[uid];
+        if (cached != null && cached.isNotEmpty) {
+          currentAvatarUrls[uid] = cached;
+        } else if (!_avatarCache.containsKey(uid)) {
+          missingUids.add(uid);
+        }
+      }
+      for (int i = 0; i < missingUids.length; i += 10) {
+        final List<String> chunk =
+            missingUids.sublist(i, (i + 10).clamp(0, missingUids.length));
+        final QuerySnapshot<Map<String, dynamic>> usersSnapshot =
+            await _firestore
+                .collection('users')
+                .where(FieldPath.documentId, whereIn: chunk)
+                .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in usersSnapshot.docs) {
+          final String? avatarUrl = resolveAvatarUrl(doc.data());
+          _putAvatarInCache(doc.id, avatarUrl);
           if (avatarUrl != null && avatarUrl.isNotEmpty) {
             currentAvatarUrls[doc.id] = avatarUrl;
           }
@@ -877,5 +994,34 @@ class ForumService {
       // Return original comments if enrichment fails
       return comments;
     }
+  }
+
+  bool _isThreadVisible(ForumPost post) {
+    if (post.deleted) {
+      return false;
+    }
+    if (post.status == 'deleted') {
+      return false;
+    }
+    if (post.deletedReason == 'source_video_deleted') {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isThreadDocVisible(Map<String, dynamic>? data) {
+    if (data == null) {
+      return false;
+    }
+    if (data['deleted'] == true) {
+      return false;
+    }
+    if (data['status'] == 'deleted') {
+      return false;
+    }
+    if (data['deletedReason'] == 'source_video_deleted') {
+      return false;
+    }
+    return true;
   }
 }

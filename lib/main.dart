@@ -19,6 +19,8 @@ import 'services/firestore_optimization_service.dart';
 import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/global_playback_manager.dart';
+import 'services/audio_enhancement_service.dart';
+import 'services/algorithm_cache_service.dart';
 import 'services/performance_emergency_service.dart';
 import 'services/navigation_observer.dart';
 import 'routing/app_routes.dart';
@@ -26,13 +28,16 @@ import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
 import 'services/robust_auth_service.dart';
 import 'components/onboarding/streamers_tip_onboarding.dart';
+import 'features/gamification/widgets/gamification_celebration_overlay.dart';
 import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_theme_mode.dart';
+import 'core/design/streamers_tip_design.dart';
 import 'features/billing/iap_billing_coordinator.dart';
-import 'utils/responsive_layout.dart';
+import 'core/firebase_app_check_startup.dart';
+import 'qa/qa_runtime.dart';
 
 void main() async {
   final appStartTime = DateTime.now();
@@ -40,45 +45,32 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('✅ WidgetsFlutterBinding: Initialized at ${DateTime.now()}');
+  STSystemUi.configureDefault();
 
-  // 🔧 GLOBAL ERROR HANDLER: Centralized error tracking
-  debugPrint('⏰ Global Error Handler: Starting at ${DateTime.now()}');
-  _initializeGlobalErrorHandler();
-  debugPrint('✅ Global Error Handler: Completed at ${DateTime.now()}');
+  // Firebase must be ready before auth/feed providers build. Native iOS may
+  // configure Firebase in AppDelegate, but Dart plugins still need this call.
+  await _initializeFirebaseForStartup();
+  await _preloadHomeFeedForInstantStart();
 
-  // 🔥 CRITICAL: Initialize Firebase BEFORE runApp to prevent "[core/no-app]" errors
-  // Firebase must be ready before any Firebase-dependent services are accessed
-  debugPrint(
-      '🔥 FIREBASE: Initializing Firebase BEFORE runApp at ${DateTime.now()}');
-  try {
-    var firebaseTimedOut = false;
-    await FirebaseIOSService.initialize().timeout(
-      const Duration(seconds: 8),
-      onTimeout: () {
-        firebaseTimedOut = true;
-        debugPrint(
-            '⚠️ FIREBASE: Initialization timed out - continuing startup in degraded mode');
-      },
-    );
-    if (!firebaseTimedOut) {
-      debugPrint(
-          '✅ FIREBASE: Firebase initialized successfully at ${DateTime.now()}');
-    }
-  } catch (e) {
-    debugPrint('❌ FIREBASE: Initialization failed: $e');
-    // Continue anyway - app will show splash screen and retry
+  if (Firebase.apps.isNotEmpty) {
+    debugPrint('⏰ Crashlytics: Installing handlers before runApp');
+    await AnalyticsService.instance.installCrashHandlers();
+    debugPrint('✅ Crashlytics: Handlers installed');
+  } else {
+    _initializeGlobalErrorHandler();
+    debugPrint('⚠️ Crashlytics: Firebase unavailable; console-only errors');
   }
 
-  // CRITICAL: Run app AFTER Firebase is initialized
   debugPrint('🏃 Running app at ${DateTime.now()}');
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
 
-  // 🚀 CONSOLIDATED INITIALIZATION: Initialize remaining services AFTER runApp
-  // This prevents blocking the first frame and triggering iOS watchdog
+  // Initialize heavier services after runApp so the first Flutter frame is not
+  // blocked by network/auth/feed work.
   scheduleMicrotask(() async {
     try {
       debugPrint(
-          '⏰ All Services: Starting initialization after runApp at ${DateTime.now()}');
+        '⏰ All Services: Starting initialization after runApp at ${DateTime.now()}',
+      );
       await _initializeAllServices();
       debugPrint(
           '✅ All Services: Initialization completed at ${DateTime.now()}');
@@ -86,12 +78,63 @@ void main() async {
       final appReadyTime = DateTime.now();
       final totalStartupTime = appReadyTime.difference(appStartTime);
       debugPrint(
-          '🎉 APP READY: Total startup time: ${totalStartupTime.inMilliseconds}ms');
+        '🎉 APP READY: Total startup time: ${totalStartupTime.inMilliseconds}ms',
+      );
     } catch (e) {
       debugPrint('❌ Service initialization failed: $e');
       // Don't crash - app is already running
     }
   });
+}
+
+Future<void> _preloadHomeFeedForInstantStart() async {
+  try {
+    String? userId;
+    if (Firebase.apps.isNotEmpty) {
+      userId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    }
+    final AlgorithmCacheService cache = AlgorithmCacheService();
+    await cache.preloadForYouFeedMemory(userId: userId);
+    final warm = cache.peekForYouWarmFeed();
+    if (warm != null && warm.videos.isNotEmpty) {
+      debugPrint(
+        '⚡ STARTUP: Pre-warming ${warm.videos.length} cached videos before runApp',
+      );
+      GlobalPlaybackManager.instance.preloadStartupWindow(warm.videos);
+    }
+  } catch (e) {
+    debugPrint('⚠️ STARTUP: Feed preload failed (non-fatal): $e');
+  }
+}
+
+Future<void> _initializeFirebaseForStartup() async {
+  if (Firebase.apps.isNotEmpty) {
+    debugPrint('✅ FIREBASE: Already initialized before startup warmup');
+    return;
+  }
+
+  debugPrint(
+      '🔥 FIREBASE: Initializing before first route at ${DateTime.now()}');
+  try {
+    var firebaseTimedOut = false;
+    await FirebaseIOSService.initialize().timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        firebaseTimedOut = true;
+        debugPrint(
+          '⚠️ FIREBASE: Initialization timed out - continuing startup in degraded mode',
+        );
+      },
+    );
+    if (!firebaseTimedOut) {
+      await activateAppCheckIfEnabled();
+      debugPrint(
+        '✅ FIREBASE: Firebase initialized successfully at ${DateTime.now()}',
+      );
+    }
+  } catch (e) {
+    debugPrint('❌ FIREBASE: Initialization failed: $e');
+  }
 }
 
 /// Initialize global error handler for the entire app
@@ -178,6 +221,10 @@ Future<void> _initializeAllServices() async {
     // PERFORMANCE OPTIMIZATIONS
     _initializePerformanceOptimizations();
 
+    await _initializeServiceSafely('AudioEnhancementService', () async {
+      await AudioEnhancementService().initialize();
+    });
+
     // StreamersTip SERVICES (needed for UI)
     // Note: Full initialization with userId happens after login in HomeView
     StreamersTipLikeService().initialize().catchError((e) {
@@ -204,42 +251,108 @@ void _initializeBackgroundServices() async {
   debugPrint(
       '🚀 ServiceManager: Starting background service initialization...');
 
-  // 🔒 INDIVIDUAL ERROR HANDLING: Each service initializes independently
-  await _initializeServiceSafely('FirestoreOptimizationService', () async {
+  final Duration serviceTimeout = QaRuntime.isMobileFeedE2e
+      ? const Duration(seconds: 25)
+      : const Duration(minutes: 2);
+
+  Future<void> initFirestoreOptimization() async {
     await FirestoreOptimizationService.initialize();
-  });
+  }
 
-  await _initializeServiceSafely('FirestoreCacheService', () async {
+  Future<void> initFirestoreCache() async {
     await FirestoreCacheService.initialize();
-  });
+  }
 
-  await _initializeServiceSafely('PushNotificationService', () async {
+  Future<void> initGoogleServices() async {
+    await GoogleServicesFix.initialize();
+  }
+
+  if (QaRuntime.isMobileFeedE2e) {
+    debugPrint(
+      '⏭️ E2E: background services run with ${serviceTimeout.inSeconds}s caps; '
+      'push skipped',
+    );
+    unawaited(
+      _initializeServiceSafely(
+        'FirestoreOptimizationService',
+        initFirestoreOptimization,
+        timeout: serviceTimeout,
+      ),
+    );
+    unawaited(
+      _initializeServiceSafely(
+        'FirestoreCacheService',
+        initFirestoreCache,
+        timeout: serviceTimeout,
+      ),
+    );
+    unawaited(
+      _initializeServiceSafely(
+        'GoogleServicesFix',
+        initGoogleServices,
+        timeout: serviceTimeout,
+      ),
+    );
+    _initializeServiceSafelyAsync('UnifiedAvatarService', () async {
+      await nav.UnifiedAvatarService().initialize();
+    });
+    await _initializeProductionServices(timeout: serviceTimeout);
+    debugPrint(
+      '✅ ServiceManager: E2E background services scheduled (non-blocking)',
+    );
+    return;
+  }
+
+  await _initializeServiceSafely(
+    'FirestoreOptimizationService',
+    initFirestoreOptimization,
+    timeout: serviceTimeout,
+  );
+
+  await _initializeServiceSafely(
+    'FirestoreCacheService',
+    initFirestoreCache,
+    timeout: serviceTimeout,
+  );
+
+  _initializeServiceSafelyAsync('PushNotificationService', () async {
     await PushNotificationService().initialize();
   });
 
-  await _initializeServiceSafely('GoogleServicesFix', () async {
-    await GoogleServicesFix.initialize();
-  });
+  await _initializeServiceSafely(
+    'GoogleServicesFix',
+    initGoogleServices,
+    timeout: serviceTimeout,
+  );
 
-  // Initialize Unified Avatar Service (non-blocking)
   _initializeServiceSafelyAsync('UnifiedAvatarService', () async {
     await nav.UnifiedAvatarService().initialize();
   });
 
-  // Initialize production services
-  await _initializeProductionServices();
+  await _initializeProductionServices(timeout: serviceTimeout);
 
   debugPrint('✅ ServiceManager: Background services initialization completed');
 }
 
 /// 🔒 SAFETY: Initialize a single service with individual error handling
 Future<void> _initializeServiceSafely(
-    String serviceName, Future<void> Function() initFunction) async {
+  String serviceName,
+  Future<void> Function() initFunction, {
+  Duration timeout = const Duration(minutes: 2),
+}) async {
   final startTime = DateTime.now();
   debugPrint('⏰ ServiceManager: Starting $serviceName at $startTime');
 
   try {
-    await initFunction();
+    await initFunction().timeout(
+      timeout,
+      onTimeout: () {
+        debugPrint(
+          '⏱️ ServiceManager: $serviceName timed out after '
+          '${timeout.inSeconds}s — continuing startup',
+        );
+      },
+    );
     final endTime = DateTime.now();
     final duration = endTime.difference(startTime);
     debugPrint(
@@ -261,13 +374,17 @@ void _initializeServiceSafelyAsync(
   });
 }
 
-Future<void> _initializeProductionServices() async {
+Future<void> _initializeProductionServices({
+  Duration timeout = const Duration(minutes: 2),
+}) async {
   debugPrint('🚀 ServiceManager: Initializing production services...');
 
   // AnalyticsService and ErrorHandlerService are now initialized in critical services after Firebase
 
   // Initialize UnifiedBookmarkService with current user
-  await _initializeServiceSafely('UnifiedBookmarkService', () async {
+  await _initializeServiceSafely(
+    'UnifiedBookmarkService',
+    () async {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       await UnifiedBookmarkService.instance.initialize(currentUser.uid);
@@ -277,7 +394,9 @@ Future<void> _initializeProductionServices() async {
       debugPrint(
           '⚠️ UnifiedBookmarkService: No user logged in, skipping initialization');
     }
-  });
+    },
+    timeout: timeout,
+  );
 
   debugPrint('✅ ServiceManager: Production services initialization completed');
 }
@@ -341,14 +460,16 @@ class MyApp extends ConsumerWidget {
       theme: StAppTheme.light,
       darkTheme: StAppTheme.dark,
       themeMode: appTheme.themeMode,
+      scrollBehavior: const STScrollBehavior(),
       navigatorKey: nav.NavigationService.navigatorKey,
       navigatorObservers: [AppNavigationObserver()],
       onGenerateRoute: AppRoutes.onGenerateRoute,
       initialRoute: AppRoutes.root,
       builder: (context, child) {
         final Widget navigatorChild = child ?? const SizedBox.shrink();
+        final MediaQueryData mq = MediaQuery.of(context);
         return MediaQuery(
-          data: AppResponsive.normalizedMediaQuery(MediaQuery.of(context)),
+          data: mq.copyWith(textScaler: TextScaler.linear(1.0)),
           child: Consumer(
             builder: (BuildContext context, WidgetRef ref, Widget? _) {
               final (String userId, String? username) = ref.watch(
@@ -362,11 +483,13 @@ class MyApp extends ConsumerWidget {
               if (userId.isEmpty) {
                 return navigatorChild;
               }
-              return StreamersTipOnboarding(
-                userId: userId,
-                email: firebase_auth.FirebaseAuth.instance.currentUser?.email,
-                username: username,
-                child: navigatorChild,
+              return GamificationCelebrationOverlay(
+                child: StreamersTipOnboarding(
+                  userId: userId,
+                  email: firebase_auth.FirebaseAuth.instance.currentUser?.email,
+                  username: username,
+                  child: navigatorChild,
+                ),
               );
             },
           ),

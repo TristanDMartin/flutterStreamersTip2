@@ -6,27 +6,31 @@ service cloud.firestore {
     // Allow unauthenticated reads for username lookups during login
     allow read: if true;
     // Block self-escalation / ban bypass; privileged fields only via Admin SDK / Functions
-    allow write: if request.auth != null && request.auth.uid == userId 
-      && (!request.resource.data.keys().hasAny(['pinnedVideoIds']) 
-          || request.resource.data.pinnedVideoIds.size() <= 3)
+    allow create: if request.auth != null && request.auth.uid == userId
       && (
-        !exists(/databases/$(database)/documents/users/$(userId))
-          ? !request.resource.data.keys().hasAny([
-              'role', 'isAdmin', 'admin', 'accountStatus',
-              'bannedAt', 'bannedBy', 'banReason', 'adminNotes'
-            ])
-          : !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-              'role', 'isAdmin', 'admin', 'accountStatus',
-              'bannedAt', 'bannedBy', 'banReason', 'adminNotes'
-            ])
-      );
+        !request.resource.data.keys().hasAny(['pinnedVideoIds'])
+        || request.resource.data.pinnedVideoIds.size() <= 3
+      )
+      && isSafeUserProfileCreate();
+    allow update: if request.auth != null && request.auth.uid == userId
+      && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pinnedVideoIds'])
+        || request.resource.data.pinnedVideoIds.size() <= 3
+      )
+      && isSafeUserProfileUpdate();
+    allow delete: if request.auth != null && request.auth.uid == userId;
+
+      // Client-side post count reconciliation (profile tab).
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['postCount', 'lastPostCountReconciliation']);
       
-      // TikTok-style: Allow any authenticated user to update follower/following counts and liked_videos array
+      // TikTok-style liked video cache. Relationship counters are server-owned.
       allow update: if request.auth != null 
-        && (request.auth.uid == userId  // Own profile
-            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'followerCount', 'connectionsCount']) // Only these fields
-                && (!('liked_videos' in request.resource.data.diff(resource.data).affectedKeys()) 
-                    || isValidBookmarkUpdate(request.resource.data.liked_videos)))); // Validate bookmark data only if liked_videos is being updated
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['liked_videos', 'updatedAt'])
+        && isValidBookmarkUpdate(request.resource.data.liked_videos);
 
       // Presence: any signed-in user can read (avatars / network); only owner writes
       match /presence/{presenceDocId} {
@@ -39,9 +43,49 @@ service cloud.firestore {
         }
       }
       
-      // Users can read and write their own subcollections
-      match /{subcollection=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Users can read and write their own non-sensitive subcollections.
+      // Progression/XP and admin subcollections are server-owned below.
+      match /contentPlans/{planId} {
+        allow read, list: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null
+          && request.auth.uid == userId
+          && request.resource.data.ownerUid == userId;
+        allow update: if request.auth != null
+          && request.auth.uid == userId
+          && resource.data.ownerUid == userId
+          && request.resource.data.ownerUid == userId;
+        allow delete: if request.auth != null
+          && request.auth.uid == userId
+          && resource.data.ownerUid == userId;
+      }
+
+      match /{subcollection}/{docId} {
+        allow read, write: if request.auth != null &&
+          request.auth.uid == userId &&
+          !isServerOwnedUserSubcollection(subcollection);
+
+        match /{nested=**} {
+          allow read, write: if request.auth != null &&
+            request.auth.uid == userId &&
+            !isServerOwnedUserSubcollection(subcollection);
+        }
+      }
+
+      match /progression/{taskId} {
+        allow read, list: if request.auth != null && request.auth.uid == userId;
+        allow create, update, delete: if false;
+      }
+
+      // Canonical gamification state — backend writes only (see docs/GAMIFICATION_ALIGNMENT.md)
+      match /gamification/{docId} {
+        allow read, list: if request.auth != null && request.auth.uid == userId;
+        allow create, update, delete: if false;
+      }
+
+      // Creator Score is a shared profile signal calculated by backend jobs.
+      match /creatorScore/{docId} {
+        allow read, list: if request.auth != null;
+        allow create, update, delete: if false;
       }
 
       // Explicit favorites rule for mobile/web bookmark persistence
@@ -57,7 +101,8 @@ service cloud.firestore {
         allow create, update: if request.auth != null
           && request.auth.uid == userId
           && request.resource.data.userId == followingId;
-        allow delete: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null &&
+          (request.auth.uid == userId || request.auth.uid == followingId);
       }
       
       match /followers/{followerId} {
@@ -134,7 +179,8 @@ service cloud.firestore {
     // Users can read public comments
     match /comments/{commentId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null;
+      allow create: if request.auth != null
+        && isCommentAuthor(request.resource.data);
       allow update, delete: if request.auth != null && 
         (isCommentAuthor(resource.data) || isUserAdmin());
     }
@@ -142,15 +188,16 @@ service cloud.firestore {
     // Users can read and write video comments
     match /videos/{videoId}/comments/{commentId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null;
+      allow create: if request.auth != null
+        && isCommentAuthor(request.resource.data);
       allow update: if request.auth != null && (
-        isCommentAuthor(resource.data) ||
-        isUserAdmin() ||
-        isVideoOwnerById(videoId) ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'likedBy', 'likeCount', 'isLiked', 'replyCount',
           'linkedThreadId', 'updatedAt'
-        ])
+        ]) ||
+        isCommentAuthor(resource.data) ||
+        isUserAdmin() ||
+        isVideoOwnerById(videoId)
       );
       allow delete: if request.auth != null && (
         isCommentAuthor(resource.data) ||
@@ -163,43 +210,65 @@ service cloud.firestore {
     match /videos/{videoId}/comments {
       allow list: if request.auth != null;
     }
+
+    // Canonical video-scoped engagement documents.
+    match /videos/{videoId}/likes/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.userId == uid
+        && request.resource.data.videoId == videoId;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /videos/{videoId}/bookmarks/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.userId == uid
+        && request.resource.data.videoId == videoId;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
     
     // Users can read public videos (Worker migration: no non-owner writes)
     match /videos/{videoId} {
       allow read: if request.auth != null;
       allow list: if request.auth != null;
       allow create: if request.auth != null
-        && isNotBannedUser()
-        && request.resource.data.userId == request.auth.uid;
+        && isVideoCreateOwnerSafe()
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow create: if request.auth != null
+        && isVideoCreateOwnerSafe()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && stringField(
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data,
+          'accountStatus'
+        ) != 'banned';
       // Owner can update metadata after upload (Worker sets muxPlaybackId/hlsUrl/status:ready)
       // Viewers may only bump favorite counters (UnifiedBookmarkService batch).
-      allow update: if request.auth != null
-        && isNotBannedUser()
+      allow update: if resource != null && isVideoLikeCountOnlyUpdate();
+      allow update: if resource != null && isBookmarkFavoriteCountOnlyUpdate();
+      allow update: if resource != null && isOwnerVideoCaptionOnlyUpdate();
+      allow update: if resource != null
+        && isOwnerVideoMetadataUpdateCore()
         && (
-          (
-            isVideoDocumentOwner()
-            && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly([
-                'caption','hashtags','privacy','visibility','allowComments',
-                'category','categoryId','category_id','categories',
-                'updatedAt','deletedAt',
-                'thumbnailUrl',
-                'thumbnails','status','moderation','metadata','videoUrl',
-                'visible','isReadyForFeed',
-                'uploadError','errorMessage',
-                'sourcePlatform','isMux','muxStatus','muxUploadId',
-                'views','likes','comments','shares','favorites',
-                'favoriteCount','id',
-                'cross_platform_sharing','watermark_applied','moderation_confidence',
-                'moderation_checked_at','duration','fileSize'
-              ])
-            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
-                || request.resource.data.status != 'ready')
+          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          || (
+            exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && stringField(
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data,
+              'accountStatus'
+            ) != 'banned'
           )
-          || isBookmarkFavoriteCountOnlyUpdate()
-          || isVideoLikeCountOnlyUpdate()
         );
-      allow delete: if request.auth != null && isVideoDocumentOwner();
+      allow delete: if resource != null
+        && request.auth != null
+        && isVideoDocumentOwner();
+    }
+
+    // Written only by Cloud Functions (Admin SDK) on soft-delete.
+    match /videoDeletionLogs/{logId} {
+      allow read, write: if false;
     }
     
     // User favorites collections
@@ -229,6 +298,46 @@ service cloud.firestore {
       }
     }
     
+    // Collection-group queries (liked videos feed) require recursive wildcards.
+    match /{path=**}/likes/{likeId} {
+      allow read: if request.auth != null
+        && (
+          resource.data.userId == request.auth.uid
+          || request.auth.uid == likeId
+          || isUserAdmin()
+        );
+      allow create, update: if request.auth != null
+        && request.auth.uid == likeId
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && request.auth.uid == likeId;
+    }
+
+    match /{path=**}/byUser/{userId} {
+      allow read: if request.auth != null
+        && (
+          resource.data.userId == request.auth.uid
+          || request.auth.uid == userId
+          || isUserAdmin()
+        );
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.userId == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /{path=**}/bookmarks/{bookmarkId} {
+      allow read: if request.auth != null
+        && (
+          resource.data.userId == request.auth.uid
+          || request.auth.uid == bookmarkId
+          || isUserAdmin()
+        );
+      allow create, update: if request.auth != null
+        && request.auth.uid == bookmarkId
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && request.auth.uid == bookmarkId;
+    }
+
     // Users can read public likes and write their own likes
     match /likes/{videoId} {
       allow read: if request.auth != null;
@@ -260,7 +369,8 @@ service cloud.firestore {
           : false);
       allow delete: if request.auth != null &&
         (exists(/databases/$(database)/documents/follows/$(followId))
-          ? request.auth.uid == existingFollowFollowerId()
+          ? (request.auth.uid == existingFollowFollowerId() ||
+             request.auth.uid == existingFollowTargetId())
           : false);
       allow list: if request.auth != null;
     }
@@ -278,6 +388,12 @@ service cloud.firestore {
       allow delete: if request.auth != null &&
         request.auth.uid == resource.data.blockerId;
     }
+
+    match /userInterests/{userId} {
+      allow read, list: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
     
     // Users can read all engagement analytics and write their own
     match /engagement_analytics/{analyticsId} {
@@ -292,6 +408,33 @@ service cloud.firestore {
       allow list: if request.auth != null;
       allow create: if isRequestOwner();
       allow update, delete: if isResourceOwner();
+    }
+
+    // Client ML/algorithm interaction events. Users may create their own
+    // events and query only their own history; moderation/admin reads use the
+    // admin path.
+    match /user_interactions/{interactionId} {
+      allow read, list: if request.auth != null &&
+        (request.auth.uid == resource.data.userId || isUserAdmin());
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'videoId', 'creatorId', 'interactionType',
+          'watchPercentage', 'timestamp', 'metadata'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /user_sessions/{sessionId} {
+      allow read, list: if request.auth != null &&
+        (request.auth.uid == resource.data.userId || isUserAdmin());
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'startTime', 'endTime', 'sessionDuration',
+          'videosWatched', 'engagementActions', 'retentionScore'
+        ]);
+      allow update, delete: if false;
     }
     
     // TikTok-style: User retention profiles for algorithm
@@ -313,8 +456,9 @@ service cloud.firestore {
       allow read, update: if request.auth != null && 
         request.auth.uid in resource.data.participants;
       
-      // Allow listing chats for authenticated users
-      allow list: if request.auth != null;
+      // Allow listing only chats where the signed-in user is a participant.
+      allow list: if request.auth != null &&
+        request.auth.uid in resource.data.participants;
       
       // Allow deleting chats if the user is a participant
       allow delete: if request.auth != null && 
@@ -443,11 +587,11 @@ service cloud.firestore {
     match /forumNotifications/{notificationId} {
       allow read, list: if request.auth != null &&
         request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null;
+      allow create: if false;
       allow update: if request.auth != null &&
         request.auth.uid == resource.data.userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'read'
+          'read', 'readAt', 'updatedAt'
         ]);
       allow delete: if false;
     }
@@ -571,9 +715,10 @@ service cloud.firestore {
     
     // Invites - user invitation system
     match /invites/{inviteId} {
-      // Allow reading all invites for authenticated users
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
+      // Invite visibility is limited to the inviter/invitee.
+      allow read, list: if request.auth != null &&
+        (request.auth.uid == resource.data.inviterId ||
+         request.auth.uid == resource.data.inviteeId);
       // Allow creating invites
       allow create: if request.auth != null && 
         request.auth.uid == request.resource.data.inviterId;
@@ -592,7 +737,7 @@ service cloud.firestore {
         request.auth.uid == resource.data.reporterId ||
         isAdmin()
       );
-      allow list: if request.auth != null;
+      allow list: if isAdmin();
       allow create: if request.auth != null &&
         request.auth.uid == request.resource.data.reporterId;
       allow update: if isAdmin()
@@ -613,9 +758,7 @@ service cloud.firestore {
     
     // Tags - user/content tagging system
     match /tags/{tagId} {
-      // Anyone can read tags
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
+      allow read, list: if request.auth != null;
       // Anyone can create tags
       allow create: if request.auth != null && 
         request.auth.uid == request.resource.data.taggerId;
@@ -669,13 +812,33 @@ service cloud.firestore {
     // Admin notifications subcollection under users
     match /users/{userId}/admin_notifications/{notificationId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null;
+      allow create: if isUserAdmin();
     }
     
-    // Device tokens subcollection (already exists but ensuring it's documented)
+    match /users/{userId}/achievements/{achievementId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'unlocked', 'seen', 'seenAt', 'updatedAt'
+        ])
+        && request.resource.data.unlocked == true
+        && request.resource.data.seen == true;
+    }
+
     match /users/{userId}/deviceTokens/{tokenId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && (
+          !request.resource.data.keys().hasAny(['token'])
+          || request.resource.data.token == tokenId
+        )
+        && request.resource.data.keys().hasOnly([
+          'token', 'platform', 'createdAt', 'updatedAt',
+          'lastUsed', 'lastSeenAt', 'source'
+        ]);
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
     
     // User favorites subcollection
@@ -699,8 +862,9 @@ service cloud.firestore {
       allow update: if request.auth != null && 
         request.auth.uid in resource.data.participants;
       
-      // Allow listing conversations for authenticated users
-      allow list: if request.auth != null;
+      // Allow listing only conversations where the signed-in user is a participant.
+      allow list: if request.auth != null &&
+        request.auth.uid in resource.data.participants;
       
       // Allow deleting conversations if user is a participant
       allow delete: if request.auth != null && 
@@ -732,8 +896,8 @@ service cloud.firestore {
     
     // Scheduled posts collection - for video scheduling
     match /scheduled_posts/{scheduledPostId} {
-      allow read, list: if request.auth != null &&
-        (isScheduledPostOwner(resource.data) || isUserAdmin());
+      allow read, list: if request.auth != null
+        && (isScheduledPostOwner(resource.data) || isUserAdmin());
       allow create: if request.auth != null &&
         isScheduledPostOwner(request.resource.data);
       allow update: if request.auth != null &&
@@ -742,42 +906,126 @@ service cloud.firestore {
       allow delete: if request.auth != null &&
         (isScheduledPostOwner(resource.data) || isUserAdmin());
     }
+
+    // Shared app + website content planner source.
+    match /contentPlans/{planId} {
+      allow read, list: if request.auth != null &&
+        (request.auth.uid == resource.data.userId || isUserAdmin());
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.userId;
+      allow update: if request.auth != null &&
+        (request.auth.uid == resource.data.userId || isUserAdmin()) &&
+        request.resource.data.userId == resource.data.userId;
+      allow delete: if request.auth != null &&
+        (request.auth.uid == resource.data.userId || isUserAdmin());
+    }
   }
   
   // Video doc: bookmark / unbookmark by non-owner (client increment only).
   function videoIntField(data, field) {
-    return field in data && data[field] is int ? data[field] : 0;
+    let value = data.get(field, 0);
+    return value is int ? value : 0;
   }
 
   // Matches VideoActionsService owner resolution (userId, creatorId, creator_id).
   function isVideoDocumentOwner() {
     return request.auth != null
-      && (
-        ('userId' in resource.data && resource.data.userId == request.auth.uid) ||
-        ('creatorId' in resource.data && resource.data.creatorId == request.auth.uid) ||
-        ('creator_id' in resource.data && resource.data.creator_id == request.auth.uid)
-      );
+      && resource != null
+      && videoOwnerMatches(resource.data, request.auth.uid);
+  }
+
+  function isVideoCreateOwner() {
+    return isVideoCreateOwnerSafe();
+  }
+
+  function isVideoCreateOwnerSafe() {
+    return request.auth != null
+      && request.resource.data.keys().hasAny(['userId'])
+      && request.resource.data.userId == request.auth.uid;
+  }
+
+  function videoOwnerMatches(data, uid) {
+    return ownerUidFieldMatches(data, 'userId', uid)
+      || ownerUidFieldMatches(data, 'creatorId', uid)
+      || ownerUidFieldMatches(data, 'creator_id', uid);
+  }
+
+  function ownerUidFieldMatches(data, field, uid) {
+    return data.keys().hasAny([field])
+      && data[field] is string
+      && data[field] == uid;
+  }
+
+  function isOwnerVideoMetadataUpdateCore() {
+    return request.auth != null
+      && resource != null
+      && isVideoDocumentOwner()
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'userId','creatorId','creator_id',
+          'caption','hashtags','privacy','visibility','allowComments',
+          'category','categoryId','category_id','categories',
+          'updatedAt','deletedAt',
+          'thumbnailUrl',
+          'thumbnails','status','moderation','metadata','videoUrl',
+          'visible','isReadyForFeed',
+          'uploadError','errorMessage',
+          'sourcePlatform','isMux','muxStatus','muxUploadId',
+          'views','likes','comments','shares','favorites',
+          'favoriteCount','id',
+          'cross_platform_sharing','watermark_applied','moderation_confidence',
+          'moderation_checked_at','duration','fileSize',
+          'thumbnailTimeSeconds','isCustomThumbnail'
+        ])
+      && videoStatusIsNotReady(request.resource.data);
+  }
+
+  function videoStatusIsNotReady(data) {
+    return !data.keys().hasAny(['status'])
+      || (data.status is string && data.status != 'ready');
+  }
+
+  function isOwnerVideoCaptionOnlyUpdate() {
+    return request.auth != null
+      && resource != null
+      && isVideoDocumentOwner()
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['caption', 'updatedAt'])
+      && request.resource.data.caption is string
+      && request.resource.data.caption.size() > 0;
   }
 
   function isBookmarkFavoriteCountOnlyUpdate() {
-    return request.auth != null
+    return resource != null
+      && resource.data != null
+      && request.auth != null
       && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['favorites', 'favoriteCount', 'updatedAt'])
+        .hasOnly(['bookmarkCount', 'favorites', 'favoriteCount', 'updatedAt'])
       && isFavoriteAndFavoriteCountStepTogether();
   }
 
   function isFavoriteAndFavoriteCountStepTogether() {
-    let beforeF = videoIntField(resource.data, 'favorites');
-    let afterF = videoIntField(request.resource.data, 'favorites');
-    let beforeFC = videoIntField(resource.data, 'favoriteCount');
-    let afterFC = videoIntField(request.resource.data, 'favoriteCount');
-    return (afterF == beforeF + 1 && afterFC == beforeFC + 1)
-      || (beforeF > 0 && beforeFC > 0 && afterF == beforeF - 1 && afterFC == beforeFC - 1)
-      || (beforeF == 0 && beforeFC == 0 && afterF == 0 && afterFC == 0);
+    let beforeCount = canonicalVideoBookmarkCount(resource.data);
+    let afterBookmarkCount = videoIntField(request.resource.data, 'bookmarkCount');
+    let afterFavorites = videoIntField(request.resource.data, 'favorites');
+    let afterFavoriteCount = videoIntField(request.resource.data, 'favoriteCount');
+    return (afterBookmarkCount == beforeCount + 1
+        && afterFavorites == beforeCount + 1
+        && afterFavoriteCount == beforeCount + 1)
+      || (beforeCount > 0
+        && afterBookmarkCount == beforeCount - 1
+        && afterFavorites == beforeCount - 1
+        && afterFavoriteCount == beforeCount - 1)
+      || (beforeCount == 0
+        && afterBookmarkCount == 0
+        && afterFavorites == 0
+        && afterFavoriteCount == 0);
   }
 
   function isVideoLikeCountOnlyUpdate() {
-    return request.auth != null
+    return resource != null
+      && resource.data != null
+      && request.auth != null
       && request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['likes', 'likeCount', 'updatedAt'])
       && isLikeAndLikeCountStepTogether();
@@ -793,9 +1041,17 @@ service cloud.firestore {
   }
 
   function canonicalVideoLikeCount(data) {
-    return videoIntField(data, 'likes') > 0
-      ? videoIntField(data, 'likes')
-      : videoIntField(data, 'likeCount');
+    let likes = videoIntField(data, 'likes');
+    let likeCount = videoIntField(data, 'likeCount');
+    return likes > likeCount ? likes : likeCount;
+  }
+
+  function canonicalVideoBookmarkCount(data) {
+    let bookmarkCount = videoIntField(data, 'bookmarkCount');
+    let favorites = videoIntField(data, 'favorites');
+    let favoriteCount = videoIntField(data, 'favoriteCount');
+    let legacyMax = favorites > favoriteCount ? favorites : favoriteCount;
+    return bookmarkCount > legacyMax ? bookmarkCount : legacyMax;
   }
 
   function isVideoOwnerById(videoId) {
@@ -852,10 +1108,28 @@ service cloud.firestore {
       : false;
   }
 
+  function isExistingUserNotBanned() {
+    let path = /databases/$(database)/documents/users/$(request.auth.uid);
+    return exists(path)
+      && stringField(get(path).data, 'accountStatus') != 'banned';
+  }
+
   function isNotBannedUser() {
-    return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-      || !('accountStatus' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
-      || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus != 'banned';
+    let path = /databases/$(database)/documents/users/$(request.auth.uid);
+    return request.auth != null
+      && (
+        !exists(path)
+        || (exists(path)
+          && stringField(get(path).data, 'accountStatus') != 'banned')
+      );
+  }
+
+  function stringField(data, field) {
+    return data != null
+      && data.keys().hasAny([field])
+      && data[field] is string
+      ? data[field]
+      : '';
   }
 
   function requestOwnerId() {
@@ -922,6 +1196,51 @@ service cloud.firestore {
       );
   }
 
+  function userServerOwnedFields() {
+    return [
+      'role', 'isAdmin', 'admin', 'accountStatus',
+      'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
+      'totalXP', 'totalXp', 'level', 'rankName', 'completedTaskCount',
+      'rankTitle', 'creatorScore', 'streakCount', 'streakDays',
+      'lastActiveDate', 'progressionSummary',
+      'gamification', 'dailyMissions', 'missions',
+      'subscriptionTier', 'subscriptionStatus', 'subscriptionPlan',
+      'subscription', 'entitlements', 'studioAccess', 'isStudio',
+      'stripeCustomerId', 'stripeSubscriptionId', 'revenueCatCustomerId'
+    ];
+  }
+
+  function isSafeUserProfileCreate() {
+    return !request.resource.data.keys().hasAny(userServerOwnedFields());
+  }
+
+  function isSafeUserProfileUpdate() {
+    return !request.resource.data.diff(resource.data).affectedKeys()
+      .hasAny(userServerOwnedFields());
+  }
+
+  function isServerOwnedUserSubcollection(subcollection) {
+    return subcollection in [
+      'progression',
+      'gamification',
+      'deviceTokens',
+      'admin_notifications',
+      'gamification_audit',
+      'creatorScore',
+      'billing',
+      'entitlements',
+      'subscription_events'
+    ];
+  }
+
+  // Trusted gamification events — clients may create; backend processes (Admin SDK / Worker)
+  match /gamification_events/{eventId} {
+    allow create: if request.auth != null
+      && request.resource.data.keys().hasAll(['uid', 'type'])
+      && request.resource.data.uid == request.auth.uid;
+    allow read, update, delete: if false;
+  }
+
   function isAnalyticsCounterWrite() {
     return request.auth != null &&
       request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -943,13 +1262,20 @@ service cloud.firestore {
   }
 
   function isScheduledPostOwner(data) {
-    return request.auth != null && (
-      ('authorId' in data && data.authorId == request.auth.uid) ||
-      ('userId' in data && data.userId == request.auth.uid) ||
-      ('uid' in data && data.uid == request.auth.uid) ||
-      ('ownerId' in data && data.ownerId == request.auth.uid) ||
-      ('creatorId' in data && data.creatorId == request.auth.uid)
-    );
+    return request.auth != null
+      && (
+        scheduledOwnerFieldMatches(data, 'authorId')
+        || scheduledOwnerFieldMatches(data, 'userId')
+        || scheduledOwnerFieldMatches(data, 'uid')
+        || scheduledOwnerFieldMatches(data, 'ownerId')
+        || scheduledOwnerFieldMatches(data, 'creatorId')
+      );
+  }
+
+  function scheduledOwnerFieldMatches(data, field) {
+    return data.keys().hasAny([field])
+      && data[field] is string
+      && data[field] == request.auth.uid;
   }
 
   function isCommentAuthor(data) {
@@ -1043,5 +1369,15 @@ service cloud.firestore {
       : ('followerId' in resource.data
         ? resource.data.followerId
         : '');
+  }
+
+  function existingFollowTargetId() {
+    return 'targetUserId' in resource.data
+      ? resource.data.targetUserId
+      : ('followingId' in resource.data
+        ? resource.data.followingId
+        : ('followedId' in resource.data
+          ? resource.data.followedId
+          : ''));
   }
 }

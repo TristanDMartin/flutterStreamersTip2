@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/chat_message.dart';
 import '../services/logging_service.dart';
+import 'progression_service.dart';
 
 class RealtimeChatService {
   static final RealtimeChatService _instance = RealtimeChatService._internal();
@@ -11,9 +12,10 @@ class RealtimeChatService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
+
   final Map<String, StreamSubscription> _activeSubscriptions = {};
-  final Map<String, StreamController<List<ChatMessage>>> _messageControllers = {};
+  final Map<String, StreamController<List<ChatMessage>>> _messageControllers =
+      {};
 
   /// Create a new chat room
   Future<ChatRoom?> createChatRoom({
@@ -24,7 +26,8 @@ class RealtimeChatService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        LoggingService.instance.error('User not authenticated', tag: 'RealtimeChatService');
+        LoggingService.instance
+            .error('User not authenticated', tag: 'RealtimeChatService');
         return null;
       }
 
@@ -47,15 +50,16 @@ class RealtimeChatService {
       };
 
       final roomRef = await _firestore.collection('chat_rooms').add(roomData);
-      
+
       // Create initial system message
       await _sendSystemMessage(
         roomId: roomRef.id,
         message: 'Chat room created',
       );
 
-      LoggingService.instance.debug('✅ Chat room created: ${roomRef.id}', tag: 'RealtimeChatService');
-      
+      LoggingService.instance.debug('✅ Chat room created: ${roomRef.id}',
+          tag: 'RealtimeChatService');
+
       return ChatRoom(
         id: roomRef.id,
         participants: participantIds,
@@ -67,7 +71,8 @@ class RealtimeChatService {
         isActive: true,
       );
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error creating chat room', tag: 'RealtimeChatService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error creating chat room',
+          tag: 'RealtimeChatService', error: e, stackTrace: stackTrace);
       return null;
     }
   }
@@ -82,7 +87,8 @@ class RealtimeChatService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        LoggingService.instance.error('User not authenticated', tag: 'RealtimeChatService');
+        LoggingService.instance
+            .error('User not authenticated', tag: 'RealtimeChatService');
         return false;
       }
 
@@ -111,11 +117,18 @@ class RealtimeChatService {
         'lastMessageAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstMessageSent,
+        source: 'messages',
+      ));
 
-      LoggingService.instance.debug('✅ Message sent to room: $roomId', tag: 'RealtimeChatService');
+      LoggingService.instance
+          .debug('✅ Message sent to room: $roomId', tag: 'RealtimeChatService');
       return true;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error sending message', tag: 'RealtimeChatService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error sending message',
+          tag: 'RealtimeChatService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -146,7 +159,8 @@ class RealtimeChatService {
 
       return true;
     } catch (e) {
-      LoggingService.instance.error('Error sending system message', tag: 'RealtimeChatService', error: e);
+      LoggingService.instance.error('Error sending system message',
+          tag: 'RealtimeChatService', error: e);
       return false;
     }
   }
@@ -168,26 +182,28 @@ class RealtimeChatService {
         .snapshots()
         .listen(
       (snapshot) {
-      final messages = snapshot.docs.map((doc) {
-        final data = doc.data();
-        return ChatMessage.fromMap({
-          'id': doc.id,
-          'roomId': data['roomId'] ?? '',
-          'senderId': data['senderId'] ?? '',
-          'content': data['content'] ?? '',
-          'messageType': data['messageType'] ?? 'text',
-          'metadata': data['metadata'] ?? {},
-          'timestamp': (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          'isRead': data['isRead'] ?? false,
-          'isEdited': data['isEdited'] ?? false,
-          'isDeleted': data['isDeleted'] ?? false,
-        });
-      }).toList();
+        final messages = snapshot.docs.map((doc) {
+          final data = doc.data();
+          return ChatMessage.fromMap({
+            'id': doc.id,
+            'roomId': data['roomId'] ?? '',
+            'senderId': data['senderId'] ?? '',
+            'content': data['content'] ?? '',
+            'messageType': data['messageType'] ?? 'text',
+            'metadata': data['metadata'] ?? {},
+            'timestamp':
+                (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            'isRead': data['isRead'] ?? false,
+            'isEdited': data['isEdited'] ?? false,
+            'isDeleted': data['isDeleted'] ?? false,
+          });
+        }).toList();
 
         controller.add(messages);
       },
       onError: (error) {
-        LoggingService.instance.error('Error listening to messages', tag: 'RealtimeChatService', error: error);
+        LoggingService.instance.error('Error listening to messages',
+            tag: 'RealtimeChatService', error: error);
         controller.addError(error);
       },
     );
@@ -201,7 +217,8 @@ class RealtimeChatService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        LoggingService.instance.error('User not authenticated', tag: 'RealtimeChatService');
+        LoggingService.instance
+            .error('User not authenticated', tag: 'RealtimeChatService');
         return [];
       }
 
@@ -219,17 +236,20 @@ class RealtimeChatService {
           'participants': data['participants'] ?? [],
           'roomName': data['roomName'] ?? 'Chat Room',
           'roomType': data['roomType'] ?? 'direct',
-          'createdAt': (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          'createdAt':
+              (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
           'lastMessage': data['lastMessage'],
           'lastMessageAt': (data['lastMessageAt'] as Timestamp?)?.toDate(),
           'isActive': data['isActive'] ?? true,
         });
       }).toList();
 
-      LoggingService.instance.debug('✅ Retrieved ${rooms.length} chat rooms', tag: 'RealtimeChatService');
+      LoggingService.instance.debug('✅ Retrieved ${rooms.length} chat rooms',
+          tag: 'RealtimeChatService');
       return rooms;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error getting user chat rooms', tag: 'RealtimeChatService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error getting user chat rooms',
+          tag: 'RealtimeChatService', error: e, stackTrace: stackTrace);
       return [];
     }
   }
@@ -242,7 +262,7 @@ class RealtimeChatService {
 
       // Update all unread messages in the room
       final batch = _firestore.batch();
-      
+
       final unreadMessages = await _firestore
           .collection('chat_rooms')
           .doc(roomId)
@@ -256,11 +276,14 @@ class RealtimeChatService {
       }
 
       await batch.commit();
-      
-      LoggingService.instance.debug('✅ Marked messages as read in room: $roomId', tag: 'RealtimeChatService');
+
+      LoggingService.instance.debug(
+          '✅ Marked messages as read in room: $roomId',
+          tag: 'RealtimeChatService');
       return true;
     } catch (e) {
-      LoggingService.instance.error('Error marking messages as read', tag: 'RealtimeChatService', error: e);
+      LoggingService.instance.error('Error marking messages as read',
+          tag: 'RealtimeChatService', error: e);
       return false;
     }
   }
@@ -286,10 +309,12 @@ class RealtimeChatService {
         'editedAt': FieldValue.serverTimestamp(),
       });
 
-      LoggingService.instance.debug('✅ Message edited: $messageId', tag: 'RealtimeChatService');
+      LoggingService.instance
+          .debug('✅ Message edited: $messageId', tag: 'RealtimeChatService');
       return true;
     } catch (e) {
-      LoggingService.instance.error('Error editing message', tag: 'RealtimeChatService', error: e);
+      LoggingService.instance
+          .error('Error editing message', tag: 'RealtimeChatService', error: e);
       return false;
     }
   }
@@ -313,10 +338,12 @@ class RealtimeChatService {
         'deletedAt': FieldValue.serverTimestamp(),
       });
 
-      LoggingService.instance.debug('✅ Message deleted: $messageId', tag: 'RealtimeChatService');
+      LoggingService.instance
+          .debug('✅ Message deleted: $messageId', tag: 'RealtimeChatService');
       return true;
     } catch (e) {
-      LoggingService.instance.error('Error deleting message', tag: 'RealtimeChatService', error: e);
+      LoggingService.instance.error('Error deleting message',
+          tag: 'RealtimeChatService', error: e);
       return false;
     }
   }
@@ -338,16 +365,17 @@ class RealtimeChatService {
         final data = doc.data();
         final participants = List<String>.from(data['participants'] ?? []);
         if (participants.contains(otherUserId) && participants.length == 2) {
-        return ChatRoom.fromMap({
-          'id': doc.id,
-          'participants': participants,
-          'roomName': data['roomName'] ?? 'Direct Message',
-          'roomType': 'direct',
-          'createdAt': (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          'lastMessage': data['lastMessage'],
-          'lastMessageAt': (data['lastMessageAt'] as Timestamp?)?.toDate(),
-          'isActive': data['isActive'] ?? true,
-        });
+          return ChatRoom.fromMap({
+            'id': doc.id,
+            'participants': participants,
+            'roomName': data['roomName'] ?? 'Direct Message',
+            'roomType': 'direct',
+            'createdAt':
+                (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            'lastMessage': data['lastMessage'],
+            'lastMessageAt': (data['lastMessageAt'] as Timestamp?)?.toDate(),
+            'isActive': data['isActive'] ?? true,
+          });
         }
       }
 
@@ -358,7 +386,11 @@ class RealtimeChatService {
         roomType: 'direct',
       );
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error getting/creating direct message room', tag: 'RealtimeChatService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error(
+          'Error getting/creating direct message room',
+          tag: 'RealtimeChatService',
+          error: e,
+          stackTrace: stackTrace);
       return null;
     }
   }
@@ -369,7 +401,7 @@ class RealtimeChatService {
       subscription.cancel();
     }
     _activeSubscriptions.clear();
-    
+
     for (final controller in _messageControllers.values) {
       controller.close();
     }
@@ -380,7 +412,7 @@ class RealtimeChatService {
   void stopListeningToRoom(String roomId) {
     _activeSubscriptions[roomId]?.cancel();
     _activeSubscriptions.remove(roomId);
-    
+
     _messageControllers[roomId]?.close();
     _messageControllers.remove(roomId);
   }

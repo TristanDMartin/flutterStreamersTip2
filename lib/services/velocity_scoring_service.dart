@@ -22,31 +22,36 @@ class VelocityScoringService {
       final engagementVelocity = await _calculateEngagementVelocity(videoId);
       if (engagementVelocity > 0.5) {
         multiplier *= (1.0 + engagementVelocity); // Up to 2x boost
-        secureLog('⚡ Engagement velocity boost: ${engagementVelocity.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
+        secureLog(
+            '⚡ Engagement velocity boost: ${engagementVelocity.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
       }
 
       // 2. Viral coefficient (shares per view ratio)
       final viralCoefficient = await _calculateViralCoefficient(videoId);
       if (viralCoefficient > 0.1) {
         multiplier *= (1.0 + (viralCoefficient * 2)); // Up to 3x boost
-        secureLog('🚀 Viral coefficient boost: ${viralCoefficient.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
+        secureLog(
+            '🚀 Viral coefficient boost: ${viralCoefficient.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
       }
 
       // 3. Comment quality score
       final commentQuality = await _calculateCommentQuality(videoId);
       if (commentQuality > 0.6) {
         multiplier *= (1.0 + (commentQuality * 0.5)); // Up to 1.5x boost
-        secureLog('💬 Comment quality boost: ${commentQuality.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
+        secureLog(
+            '💬 Comment quality boost: ${commentQuality.toStringAsFixed(2)} - ${multiplier.toStringAsFixed(2)}x');
       }
 
       // 4. Time-to-first-action (faster = better)
       final timeToAction = await _calculateTimeToFirstAction(videoId);
       if (timeToAction > 0.7) {
         multiplier *= 1.3; // Fast initial engagement
-        secureLog('⏱️ Time-to-action boost: ${timeToAction.toStringAsFixed(2)} - 1.3x');
+        secureLog(
+            '⏱️ Time-to-action boost: ${timeToAction.toStringAsFixed(2)} - 1.3x');
       }
 
-      secureLog('✅ Total velocity boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog(
+          '✅ Total velocity boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
       secureLog('❌ Error calculating velocity boost: $e');
@@ -111,7 +116,8 @@ class VelocityScoringService {
       // Viral coefficient = shares / views
       final coefficient = sharesCount / viewsCount;
 
-      secureLog('🚀 Viral coefficient: $videoId - $sharesCount/$viewsCount = ${coefficient.toStringAsFixed(3)}');
+      secureLog(
+          '🚀 Viral coefficient: $videoId - $sharesCount/$viewsCount = ${coefficient.toStringAsFixed(3)}');
 
       return coefficient.clamp(0.0, 1.0);
     } catch (e) {
@@ -199,7 +205,8 @@ class VelocityScoringService {
       // < 5 min = 1.0, 30 min = 0.5, > 60 min = 0.0
       final score = (1.0 - (minutesToFirstAction / 60)).clamp(0.0, 1.0);
 
-      secureLog('⏱️ Time-to-first-action: $videoId - $minutesToFirstAction min, score: ${score.toStringAsFixed(2)}');
+      secureLog(
+          '⏱️ Time-to-first-action: $videoId - $minutesToFirstAction min, score: ${score.toStringAsFixed(2)}');
 
       return score;
     } catch (e) {
@@ -226,7 +233,8 @@ class VelocityScoringService {
           (commentQuality * 0.20) +
           (timeToAction * 0.15);
 
-      secureLog('🎯 Overall velocity score for $videoId: ${score.toStringAsFixed(2)}');
+      secureLog(
+          '🎯 Overall velocity score for $videoId: ${score.toStringAsFixed(2)}');
 
       return score.clamp(0.0, 1.0);
     } catch (e) {

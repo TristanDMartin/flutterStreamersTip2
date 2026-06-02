@@ -43,7 +43,8 @@ abstract class AsyncImagePhase {
   const AsyncImagePhase();
   factory AsyncImagePhase.empty() = _AsyncEmpty;
   factory AsyncImagePhase.failure() = _AsyncFailure;
-  factory AsyncImagePhase.success(ImageProvider imageProvider) = AsyncImagePhaseSuccess;
+  factory AsyncImagePhase.success(ImageProvider imageProvider) =
+      AsyncImagePhaseSuccess;
 }
 
 class _AsyncEmpty extends AsyncImagePhase {

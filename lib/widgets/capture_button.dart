@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// A sleek, circular capture button with animated progress ring
-/// 
+///
 /// Features:
 /// - Tap to start/stop recording
 /// - Animated progress ring that fills clockwise
@@ -48,7 +48,7 @@ class _CaptureButtonState extends State<CaptureButton>
           _stopRecording();
         }
       });
-    
+
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: 0.98,
@@ -61,7 +61,7 @@ class _CaptureButtonState extends State<CaptureButton>
   @override
   void didUpdateWidget(CaptureButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     // Sync with external recording state
     if (widget.isRecording != oldWidget.isRecording) {
       if (widget.isRecording) {
@@ -80,16 +80,16 @@ class _CaptureButtonState extends State<CaptureButton>
 
   void _startRecording() async {
     if (widget.isRecording) return;
-    
+
     HapticFeedback.lightImpact();
     widget.onStart();
   }
 
   void _stopRecording() {
     if (!widget.isRecording) return;
-    
+
     widget.onFinish();
-    
+
     // Brief success pulse
     HapticFeedback.mediumImpact();
   }
@@ -147,11 +147,13 @@ class _CaptureButtonState extends State<CaptureButton>
                       painter: _RingPainter(
                         progress: _ctrl.value,
                         ringWidth: widget.ringWidth,
-                        ringColor: Colors.red.withValues(alpha:0.9), // Red ring when recording
-                        bgRingColor: Colors.red.withValues(alpha:0.15), // Red background ring
+                        ringColor: Colors.red
+                            .withValues(alpha: 0.9), // Red ring when recording
+                        bgRingColor: Colors.red
+                            .withValues(alpha: 0.15), // Red background ring
                       ),
                     ),
-                  
+
                   // Center button
                   Container(
                     width: size - (widget.ringWidth * 2),
@@ -205,7 +207,7 @@ class _RingPainter extends CustomPainter {
     required this.bgRingColor,
   });
 
-  final double progress;      // 0..1
+  final double progress; // 0..1
   final double ringWidth;
   final Color ringColor;
   final Color bgRingColor;
@@ -236,7 +238,7 @@ class _RingPainter extends CustomPainter {
     if (progress > 0) {
       const startAngle = -90 * (3.14159265 / 180); // Start at top
       final sweepAngle = 2 * 3.14159265 * progress; // Clockwise progress
-      
+
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         startAngle,
@@ -298,9 +300,9 @@ class _CaptureButtonExampleState extends State<CaptureButtonExample> {
                 );
               },
             ),
-            
+
             const SizedBox(height: 40),
-            
+
             // Simple tap button
             CaptureButton(
               size: 64,
@@ -317,9 +319,9 @@ class _CaptureButtonExampleState extends State<CaptureButtonExample> {
               onStart: () {}, // Required but not used
               onFinish: () {}, // Required but not used
             ),
-            
+
             const SizedBox(height: 40),
-            
+
             Text(
               'Records: $_recordCount | Taps: $_tapCount',
               style: const TextStyle(

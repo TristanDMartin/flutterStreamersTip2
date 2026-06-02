@@ -26,6 +26,12 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
   bool _tagNotifications = true;
   bool _messageNotifications = true;
   bool _liveNotifications = true;
+  bool _progressionNotifications = true;
+  bool _momentumReminders = true;
+  bool _streakProtection = true;
+  bool _missionUpdates = true;
+  bool _levelUps = true;
+  bool _weeklyRecap = true;
 
   @override
   void initState() {
@@ -62,6 +68,13 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
             _tagNotifications = data['tags'] ?? true;
             _messageNotifications = data['messages'] ?? true;
             _liveNotifications = data['live'] ?? true;
+            _progressionNotifications =
+                data['progressionNotifications'] ?? true;
+            _momentumReminders = data['momentumReminders'] ?? true;
+            _streakProtection = data['streakProtection'] ?? true;
+            _missionUpdates = data['missionUpdates'] ?? true;
+            _levelUps = data['levelUps'] ?? true;
+            _weeklyRecap = data['weeklyRecap'] ?? true;
           }
           _isLoading = false;
         });
@@ -85,7 +98,12 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
           .doc(user.uid)
           .collection('notificationSettings')
           .doc('main')
-          .set({key: value}, SetOptions(merge: true));
+          .set({
+        key: value,
+        'quietHoursStart': '22:00',
+        'quietHoursEnd': '08:00',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -254,6 +272,73 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
                   onChanged: (value) {
                     setState(() => _tagNotifications = value);
                     _updateSetting('tags', value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            _buildSection(
+              'Progression & Momentum',
+              'Creator-focused reminders for streaks, missions, and rewards',
+              [
+                _buildSwitchSetting(
+                  icon: Icons.rocket_launch,
+                  title: 'Progression Notifications',
+                  subtitle: 'Enable creator momentum notifications',
+                  value: _progressionNotifications,
+                  onChanged: (value) {
+                    setState(() => _progressionNotifications = value);
+                    _updateSetting('progressionNotifications', value);
+                  },
+                ),
+                _buildSwitchSetting(
+                  icon: Icons.bolt,
+                  title: 'Daily Momentum',
+                  subtitle: 'Smart reminders near your usual active window',
+                  value: _momentumReminders,
+                  onChanged: (value) {
+                    setState(() => _momentumReminders = value);
+                    _updateSetting('momentumReminders', value);
+                  },
+                ),
+                _buildSwitchSetting(
+                  icon: Icons.local_fire_department,
+                  title: 'Streak Protection',
+                  subtitle: 'Evening reminders when your streak needs action',
+                  value: _streakProtection,
+                  onChanged: (value) {
+                    setState(() => _streakProtection = value);
+                    _updateSetting('streakProtection', value);
+                  },
+                ),
+                _buildSwitchSetting(
+                  icon: Icons.flag,
+                  title: 'Mission Updates',
+                  subtitle: 'Reminders when you are close to mission rewards',
+                  value: _missionUpdates,
+                  onChanged: (value) {
+                    setState(() => _missionUpdates = value);
+                    _updateSetting('missionUpdates', value);
+                  },
+                ),
+                _buildSwitchSetting(
+                  icon: Icons.workspace_premium,
+                  title: 'Level Ups',
+                  subtitle: 'Instant reward notifications when your rank grows',
+                  value: _levelUps,
+                  onChanged: (value) {
+                    setState(() => _levelUps = value);
+                    _updateSetting('levelUps', value);
+                  },
+                ),
+                _buildSwitchSetting(
+                  icon: Icons.insights,
+                  title: 'Weekly Recap',
+                  subtitle: 'Weekly XP, streak, mission, and score summary',
+                  value: _weeklyRecap,
+                  onChanged: (value) {
+                    setState(() => _weeklyRecap = value);
+                    _updateSetting('weeklyRecap', value);
                   },
                 ),
               ],

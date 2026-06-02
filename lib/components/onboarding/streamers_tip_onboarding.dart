@@ -37,6 +37,7 @@ class StreamersTipOnboarding extends StatefulWidget {
 
 class _StreamersTipOnboardingState extends State<StreamersTipOnboarding> {
   bool _showChecklist = false;
+  bool _showOptionalProductTour = false;
   OnboardingMission? _celebratedMission;
   StreamSubscription<OnboardingState>? _subscription;
   StreamSubscription<OnboardingMissionResult>? _missionSubscription;
@@ -174,6 +175,18 @@ class _StreamersTipOnboardingState extends State<StreamersTipOnboarding> {
       return;
     }
 
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _state = OnboardingState.initial();
+      _showChecklist = false;
+      _showOptionalProductTour = false;
+      _localCompletedOnboarding = false;
+      _loadedLocalOnboardingState = true;
+      _receivedRemoteOnboardingState = true;
+      _levelOneChecklistUserDismissed = false;
+    });
     await _service.resetForDeveloperTesterInstall(widget.userId);
   }
 
@@ -198,13 +211,30 @@ class _StreamersTipOnboardingState extends State<StreamersTipOnboarding> {
   }
 
   Future<void> _finishProductTour() async {
-    setState(() => _showChecklist = true);
+    setState(() {
+      _showChecklist = true;
+      _showOptionalProductTour = false;
+    });
     await _service.completeProductTour(widget.userId);
   }
 
   Future<void> _skipProductTour(int step) async {
-    setState(() => _showChecklist = true);
+    setState(() {
+      _showChecklist = true;
+      _showOptionalProductTour = false;
+    });
     await _service.skipProductTour(widget.userId, step);
+  }
+
+  Future<void> _startExploring(String creatorGoal) async {
+    await _service.completeIntro(widget.userId, creatorGoal);
+    await _service.completeProductTour(widget.userId);
+  }
+
+  Future<void> _watchQuickTour(String creatorGoal) async {
+    await _service.completeIntro(widget.userId, creatorGoal);
+    if (!mounted) return;
+    setState(() => _showOptionalProductTour = true);
   }
 
   Future<void> _persistChecklistDismissed() async {
@@ -244,15 +274,25 @@ class _StreamersTipOnboardingState extends State<StreamersTipOnboarding> {
       children: <Widget>[
         widget.child,
         if (!_state.hasSeenIntro)
-          OnboardingIntroModal(
-            onComplete: (String creatorGoal) {
-              unawaited(_service.completeIntro(widget.userId, creatorGoal));
-            },
-            onSkip: () {
-              unawaited(_service.completeIntro(widget.userId, 'grow_audience'));
-            },
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: safePadding.bottom > 0 ? 8 : 14,
+            child: Center(
+              widthFactor: 1,
+              heightFactor: 1,
+              child: OnboardingIntroModal(
+                onComplete: (String creatorGoal) =>
+                    unawaited(_startExploring(creatorGoal)),
+                onWatchQuickTour: (String creatorGoal) =>
+                    unawaited(_watchQuickTour(creatorGoal)),
+                onSkip: () {
+                  unawaited(_startExploring('grow_audience'));
+                },
+              ),
+            ),
           )
-        else if (!_state.hasCompletedProductTour)
+        else if (_showOptionalProductTour)
           Positioned.fill(
             child: ProductTourOverlay(
               initialStep: _state.currentOnboardingStep,
@@ -263,68 +303,62 @@ class _StreamersTipOnboardingState extends State<StreamersTipOnboarding> {
             ),
           ),
         if (_showChecklist && _state.hasCompletedProductTour)
-          Positioned.fill(
-            child: Material(
-              color: Colors.black.withValues(alpha: 0.22),
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 430),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      compact ? 8 : 12,
-                      12,
-                      compact ? 8 : 12,
-                      safePadding.bottom + (compact ? 74 : 88),
-                    ),
-                    child: _LevelOneChecklistDragDismiss(
-                      onSwipeDismiss: _onLevelOneChecklistSwipeDismiss,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              children: <Widget>[
-                                const SizedBox(width: 40),
-                                Expanded(
-                                  child: Semantics(
-                                    label: 'Swipe down to dismiss checklist',
-                                    container: true,
-                                    child: Center(
-                                      child: Container(
-                                        width: 40,
-                                        height: 5,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.35,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
+          Positioned(
+            left: compact ? 8 : 12,
+            right: compact ? 8 : 12,
+            bottom: safePadding.bottom + (compact ? 74 : 88),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: Material(
+                  color: Colors.transparent,
+                  child: _LevelOneChecklistDragDismiss(
+                    onSwipeDismiss: _onLevelOneChecklistSwipeDismiss,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: <Widget>[
+                              const SizedBox(width: 40),
+                              Expanded(
+                                child: Semantics(
+                                  label: 'Swipe down to dismiss checklist',
+                                  container: true,
+                                  child: Center(
+                                    child: Container(
+                                      width: 40,
+                                      height: 5,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.35),
+                                        borderRadius:
+                                            BorderRadius.circular(999),
                                       ),
                                     ),
                                   ),
                                 ),
-                                Semantics(
-                                  label: 'Dismiss checklist',
-                                  button: true,
-                                  child: IconButton.filledTonal(
-                                    visualDensity: VisualDensity.compact,
-                                    icon: const Icon(Icons.close_rounded),
-                                    onPressed: _onLevelOneChecklistSwipeDismiss,
-                                  ),
+                              ),
+                              Semantics(
+                                label: 'Dismiss checklist',
+                                button: true,
+                                child: IconButton.filledTonal(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.close_rounded),
+                                  onPressed: _onLevelOneChecklistSwipeDismiss,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                          LevelOneChecklist(
-                            state: _state,
-                            onMissionTap: _openMission,
-                            compact: compact,
-                          ),
-                        ],
-                      ),
+                        ),
+                        LevelOneChecklist(
+                          state: _state,
+                          onMissionTap: _openMission,
+                          compact: compact,
+                        ),
+                      ],
                     ),
                   ),
                 ),

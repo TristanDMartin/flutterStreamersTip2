@@ -77,7 +77,8 @@ class TikTokAccountSwitcher extends ChangeNotifier {
 
         // Sort by last used (most recent first)
         _savedAccounts.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
-        debugPrint('✅ TikTokAccountSwitcher: Loaded ${_savedAccounts.length} accounts from secure storage');
+        debugPrint(
+            '✅ TikTokAccountSwitcher: Loaded ${_savedAccounts.length} accounts from secure storage');
       } else {
         debugPrint('ℹ️ TikTokAccountSwitcher: No saved accounts found');
         _savedAccounts = [];
@@ -95,7 +96,8 @@ class TikTokAccountSwitcher extends ChangeNotifier {
         _savedAccounts.map((account) => account.toJson()).toList(),
       );
       await _storage.write(key: _accountsKey, value: accountsJson);
-      debugPrint('✅ TikTokAccountSwitcher: Saved ${_savedAccounts.length} accounts to secure storage');
+      debugPrint(
+          '✅ TikTokAccountSwitcher: Saved ${_savedAccounts.length} accounts to secure storage');
     } catch (e) {
       debugPrint('❌ TikTokAccountSwitcher: Error saving accounts: $e');
       // Don't throw - account switching should be resilient

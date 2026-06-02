@@ -5,10 +5,10 @@ class VideoWatermarkService {
   static const String starterTier = 'starter';
   static const String proTier = 'pro';
   static const String studioTier = 'studio';
-  static const String defaultWatermarkAsset =
-      'assets/091225_ST_logo_white.PNG';
+  static const String defaultWatermarkAsset = 'assets/091225_ST_logo_white.PNG';
 
-  static final VideoWatermarkService _instance = VideoWatermarkService._internal();
+  static final VideoWatermarkService _instance =
+      VideoWatermarkService._internal();
   factory VideoWatermarkService() => _instance;
   VideoWatermarkService._internal();
 
@@ -54,17 +54,17 @@ class VideoWatermarkService {
     try {
       // For now, we'll return the original file
       // In a real implementation, you would use FFmpeg or similar to add watermark
-    // print('🎬 Adding watermark for platforms: ${selectedPlatforms.join(', ')}');
-      
+      // appLog('🎬 Adding watermark for platforms: ${selectedPlatforms.join(', ')}');
+
       // Placeholder - would implement video watermarking with FFmpeg
       // This would involve:
       // 1. Loading the logo image
       // 2. Using FFmpeg to overlay the logo on the video
       // 3. Saving the watermarked video to a new file
-      
+
       return videoFile;
     } catch (e) {
-    // print('❌ Error adding watermark: $e');
+      // appLog('❌ Error adding watermark: $e');
       return videoFile; // Return original file if watermarking fails
     }
   }

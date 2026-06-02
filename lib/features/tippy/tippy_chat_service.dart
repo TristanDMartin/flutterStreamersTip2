@@ -4,8 +4,9 @@ import 'dart:async';
 import 'package:streamers_tip/utils/secure_log.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
+
+import '../../core/backend/firebase_https_function_url.dart';
 
 typedef TippyTokenProvider = Future<String?> Function();
 
@@ -15,7 +16,12 @@ class TippyChatService {
     http.Client? httpClient,
     TippyTokenProvider? tokenProvider,
     Duration requestTimeout = _defaultRequestTimeout,
-  })  : _apiBase = _resolveApiBase(apiBase),
+  })  : _apiBase = resolveFirebaseHttpsFunctionUrl(
+          explicitOverride: apiBase,
+          envDefineValue: _envApiBase,
+          functionName: _tippyHttpFunctionName,
+          region: _functionsRegion,
+        ),
         _client = httpClient ?? http.Client(),
         _tokenProvider = tokenProvider,
         _requestTimeout = requestTimeout {
@@ -28,28 +34,6 @@ class TippyChatService {
     'TIPPY_API_BASE',
     defaultValue: '',
   );
-
-  static String _resolveApiBase(String? explicit) {
-    final String configured = (explicit ?? _envApiBase).trim();
-    if (configured.isNotEmpty) {
-      return configured;
-    }
-    return _defaultApiBaseFromFirebase();
-  }
-
-  static String _defaultApiBaseFromFirebase() {
-    try {
-      final FirebaseApp app = Firebase.app();
-      final String projectId = app.options.projectId;
-      if (projectId.isEmpty) {
-        return '';
-      }
-      return 'https://$_functionsRegion-$projectId'
-          '.cloudfunctions.net/$_tippyHttpFunctionName';
-    } catch (_) {
-      return '';
-    }
-  }
 
   static const Duration _defaultRequestTimeout = Duration(seconds: 35);
   static const Set<String> _knownErrorCodes = <String>{

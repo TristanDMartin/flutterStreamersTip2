@@ -91,16 +91,16 @@ class _VideoInsightsBarState extends State<VideoInsightsBar> {
               ),
             ],
           ),
-          
+
           const Spacer(),
-          
+
           // Right side - More insights button
           GestureDetector(
             onTap: widget.onInsightsTap,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha:0.3),
+                color: Colors.grey.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Row(
@@ -151,7 +151,7 @@ class VideoAnalyticsService {
     required Function(VideoAnalytics) onAnalyticsUpdate,
   }) {
     debugPrint("Started listening to analytics for video: $videoId");
-    
+
     return _firestore
         .collection('video_analytics')
         .doc(videoId)
@@ -180,12 +180,13 @@ class VideoAnalyticsService {
   Future<void> trackVideoView({required String videoId, String? userId}) async {
     try {
       debugPrint("Tracked video view: $videoId by user: $userId");
-      
-      final analyticsRef = _firestore.collection('video_analytics').doc(videoId);
-      
+
+      final analyticsRef =
+          _firestore.collection('video_analytics').doc(videoId);
+
       await _firestore.runTransaction((transaction) async {
         final snapshot = await transaction.get(analyticsRef);
-        
+
         if (snapshot.exists) {
           final currentViews = snapshot.data()?['views'] ?? 0;
           transaction.update(analyticsRef, {
@@ -262,7 +263,10 @@ class VideoInsightsBarPreview extends StatelessWidget {
     // Create a sample video for preview
     const sampleVideo = HomeVideo(
       id: "sample-video-id",
-      creator: User(id: 'current-user-id', username: 'sampleuser', displayName: 'Sample User'),
+      creator: User(
+          id: 'current-user-id',
+          username: 'sampleuser',
+          displayName: 'Sample User'),
       videoURL: "https://example.com/video.mp4",
       thumbnailURL: "https://example.com/thumbnail.jpg",
       likes: 42,
@@ -283,9 +287,9 @@ class VideoInsightsBarPreview extends StatelessWidget {
             currentUserId: "current-user-id", // Same as video.userId
             onInsightsTap: () => debugPrint("Insights tapped"),
           ),
-          
+
           const SizedBox(height: 20),
-          
+
           // Preview for non-owner (should be hidden)
           VideoInsightsBar(
             video: sampleVideo,

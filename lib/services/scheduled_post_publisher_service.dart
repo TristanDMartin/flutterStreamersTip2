@@ -25,7 +25,8 @@ class ScheduledPostPublisherService {
     }
 
     _isRunning = true;
-    secureLog('✅ Starting scheduled post publisher (checking every ${interval.inSeconds} seconds)',
+    secureLog(
+        '✅ Starting scheduled post publisher (checking every ${interval.inSeconds} seconds)',
         name: 'ScheduledPostPublisherService');
 
     // Check immediately
@@ -36,7 +37,7 @@ class ScheduledPostPublisherService {
       _checkAndPublish();
     });
   }
-  
+
   /// Stop periodic checking
   void stopPeriodicCheck() {
     _checkTimer?.cancel();
@@ -50,14 +51,15 @@ class ScheduledPostPublisherService {
   Future<void> _checkAndPublish() async {
     try {
       final readyPosts = await _scheduledPostService.getPostsReadyToPublish();
-      
+
       if (readyPosts.isEmpty) {
         secureLog('📭 No scheduled posts ready to publish',
             name: 'ScheduledPostPublisherService');
         return;
       }
 
-      secureLog('📬 Found ${readyPosts.length} scheduled posts ready to publish',
+      secureLog(
+          '📬 Found ${readyPosts.length} scheduled posts ready to publish',
           name: 'ScheduledPostPublisherService');
 
       for (final postData in readyPosts) {
@@ -99,5 +101,4 @@ class ScheduledPostPublisherService {
   Future<void> checkNow() async {
     await _checkAndPublish();
   }
-  
 }

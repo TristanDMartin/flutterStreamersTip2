@@ -62,13 +62,20 @@ class MLRecommendationService {
     try {
       final doc =
           await _firestore.collection('user_profiles').doc(userId).get();
+      final interestsDoc =
+          await _firestore.collection('userInterests').doc(userId).get();
 
       if (doc.exists) {
         final data = doc.data()!;
-        return UserBehaviorProfile.fromMap(data);
+        return UserBehaviorProfile.fromMap(
+          data,
+          interests: interestsDoc.data(),
+        );
       } else {
         // Create new profile for new user
-        return UserBehaviorProfile.createDefault();
+        return UserBehaviorProfile.createDefault(
+          interests: interestsDoc.data(),
+        );
       }
     } catch (e) {
       debugPrint('Error loading user profile: $e');
@@ -307,21 +314,110 @@ class MLRecommendationService {
     required String videoId,
     required String interactionType,
     Map<String, dynamic>? metadata,
+    String? creatorId,
+    double watchPercentage = 0,
   }) async {
+    final Map<String, dynamic> meta = metadata ?? const <String, dynamic>{};
+    final String resolvedCreatorId =
+        creatorId ?? meta['creatorId']?.toString() ?? '';
     try {
       await _firestore.collection('user_interactions').add({
         'userId': userId,
         'videoId': videoId,
+        'creatorId': resolvedCreatorId,
         'interactionType': interactionType,
+        'watchPercentage': watchPercentage,
         'timestamp': FieldValue.serverTimestamp(),
-        'metadata': metadata ?? {},
+        'metadata': meta,
       });
 
-      // Update local profile
+      await _incrementUserInterests(
+        userId: userId,
+        interactionType: interactionType,
+        metadata: meta,
+      );
+
       _userInteractionHistory.putIfAbsent(userId, () => []).add(videoId);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') return;
+      if (kDebugMode) {
+        debugPrint('Error tracking user interaction: $e');
+      }
     } catch (e) {
-      debugPrint('Error tracking user interaction: $e');
+      if (kDebugMode) {
+        debugPrint('Error tracking user interaction: $e');
+      }
     }
+  }
+
+  Future<void> _incrementUserInterests({
+    required String userId,
+    required String interactionType,
+    required Map<String, dynamic> metadata,
+  }) async {
+    final weight = _interactionWeight(interactionType);
+    if (weight <= 0) return;
+
+    final keys = _interestKeysFor(metadata);
+    if (keys.isEmpty) return;
+
+    final updates = <String, dynamic>{
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    for (final key in keys) {
+      updates[key] = FieldValue.increment(weight);
+    }
+
+    await _firestore
+        .collection('userInterests')
+        .doc(userId)
+        .set(updates, SetOptions(merge: true));
+  }
+
+  int _interactionWeight(String type) {
+    switch (type) {
+      case 'watch_3s':
+        return 1;
+      case 'rewatch':
+        return 3;
+      case 'like':
+      case 'comment_open':
+        return 4;
+      case 'save':
+      case 'share':
+        return 5;
+      case 'follow_creator':
+      case 'profile_open':
+        return 6;
+      default:
+        return 1;
+    }
+  }
+
+  Set<String> _interestKeysFor(Map<String, dynamic> metadata) {
+    final text = [
+      metadata['categoryId'],
+      metadata['category'],
+      metadata['caption'],
+    ].whereType<Object>().join(' ').toLowerCase();
+
+    final keys = <String>{};
+    void addIf(bool condition, String key) {
+      if (condition) keys.add(key);
+    }
+
+    addIf(text.contains('gaming') || text.contains('game'), 'gaming');
+    addIf(text.contains('creator') || text.contains('tool'), 'creatorTools');
+    addIf(text.contains('stream') || text.contains('setup'), 'streamingTips');
+    addIf(text.contains('edit') || text.contains('clip'), 'editing');
+    addIf(text.contains('esport') || text.contains('competitive'), 'esports');
+    addIf(text.contains('growth') || text.contains('audience'), 'growth');
+
+    final rawCategory = metadata['categoryId']?.toString().trim();
+    if (keys.isEmpty && rawCategory != null && rawCategory.isNotEmpty) {
+      keys.add(rawCategory.replaceAll(RegExp(r'[^A-Za-z0-9_]'), ''));
+    }
+    return keys;
   }
 }
 
@@ -345,31 +441,56 @@ class UserBehaviorProfile {
     required this.lastUpdated,
   });
 
-  factory UserBehaviorProfile.createDefault() {
+  factory UserBehaviorProfile.createDefault({
+    Map<String, dynamic>? interests,
+  }) {
     return UserBehaviorProfile(
       userId: '',
       followingIds: {},
       networkAffinity: {},
       preferredKeywords: {},
-      categoryPreferences: {},
+      categoryPreferences: _interestsToPreferences(interests),
       creatorPreferences: {},
       lastUpdated: DateTime.now(),
     );
   }
 
-  factory UserBehaviorProfile.fromMap(Map<String, dynamic> data) {
+  factory UserBehaviorProfile.fromMap(
+    Map<String, dynamic> data, {
+    Map<String, dynamic>? interests,
+  }) {
+    final categoryPreferences =
+        Map<String, double>.from(data['categoryPreferences'] ?? {});
+    categoryPreferences.addAll(_interestsToPreferences(interests));
     return UserBehaviorProfile(
       userId: data['userId'] ?? '',
       followingIds: Set<String>.from(data['followingIds'] ?? []),
       networkAffinity: Map<String, double>.from(data['networkAffinity'] ?? {}),
       preferredKeywords: Set<String>.from(data['preferredKeywords'] ?? []),
-      categoryPreferences:
-          Map<String, double>.from(data['categoryPreferences'] ?? {}),
+      categoryPreferences: categoryPreferences,
       creatorPreferences:
           Map<String, double>.from(data['creatorPreferences'] ?? {}),
       lastUpdated:
           (data['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
+  }
+
+  static Map<String, double> _interestsToPreferences(
+    Map<String, dynamic>? interests,
+  ) {
+    if (interests == null || interests.isEmpty) return {};
+    final numericEntries = interests.entries.where((entry) {
+      return entry.value is num && entry.key != 'updatedAt';
+    }).toList();
+    if (numericEntries.isEmpty) return {};
+    final maxScore = numericEntries
+        .map((entry) => (entry.value as num).toDouble())
+        .reduce(math.max);
+    if (maxScore <= 0) return {};
+    return {
+      for (final entry in numericEntries)
+        entry.key: ((entry.value as num).toDouble() / maxScore).clamp(0.0, 1.0),
+    };
   }
 
   Map<String, dynamic> toMap() {

@@ -12,25 +12,25 @@ final feedQueueProvider = StateNotifierProvider<FeedQueue, FeedState>((ref) {
 /// Feed queue state notifier
 class FeedQueue extends StateNotifier<FeedState> {
   FeedQueue(this.ref) : super(FeedState.initial());
-  
+
   final Ref ref;
-  
+
   final FeedBootstrapService _bootstrapService = FeedBootstrapService();
   final VideoPrefetchService _prefetchService = VideoPrefetchService();
 
   /// Bootstrap the feed for instant play
   Future<void> bootstrap() async {
     if (state.isBootstrapping) return;
-    
+
     state = state.copyWith(isBootstrapping: true);
-    
+
     try {
       secureLog('🚀 Starting feed bootstrap...');
       final startTime = DateTime.now();
-      
+
       // Bootstrap the feed
       final result = await _bootstrapService.bootstrap();
-      
+
       // Update state with bootstrap result
       state = state.copyWith(
         items: result.items,
@@ -41,15 +41,15 @@ class FeedQueue extends StateNotifier<FeedState> {
         isBootstrapping: false,
         hasError: false,
       );
-      
+
       // Start prefetching window around first video
       if (result.items.isNotEmpty) {
         await _prefetchWindow(0);
       }
-      
+
       final totalTime = DateTime.now().difference(startTime).inMilliseconds;
-      secureLog('✅ Feed bootstrap completed in ${totalTime}ms (warm start: ${result.isWarmStart})');
-      
+      secureLog(
+          '✅ Feed bootstrap completed in ${totalTime}ms (warm start: ${result.isWarmStart})');
     } catch (e) {
       secureLog('❌ Feed bootstrap failed: $e');
       state = state.copyWith(
@@ -63,15 +63,15 @@ class FeedQueue extends StateNotifier<FeedState> {
   /// Handle index change (scrolling)
   void onIndexChanged(int newIndex) {
     if (newIndex == state.currentIndex) return;
-    
+
     final oldIndex = state.currentIndex;
     state = state.copyWith(currentIndex: newIndex);
-    
+
     secureLog('📱 Index changed: $oldIndex -> $newIndex');
-    
+
     // Prefetch window around new index
     _prefetchWindow(newIndex);
-    
+
     // Playback ownership lives in the active player path; queue prefetch only
     // warms network media.
   }
@@ -80,21 +80,23 @@ class FeedQueue extends StateNotifier<FeedState> {
   Future<void> _prefetchWindow(int centerIndex) async {
     try {
       if (state.items.isEmpty) return;
-      
+
       // Convert items to prefetch items
-      final prefetchItems = state.items.map((video) => PrefetchItem(
-        videoId: video.id,
-        posterUrl: video.thumbnailURL ?? '',
-        videoUrl: video.videoURL,
-        prefetchPriority: _calculatePrefetchPriority(video, centerIndex),
-      )).toList();
-      
+      final prefetchItems = state.items
+          .map((video) => PrefetchItem(
+                videoId: video.id,
+                posterUrl: video.thumbnailURL ?? '',
+                videoUrl: video.videoURL,
+                prefetchPriority:
+                    _calculatePrefetchPriority(video, centerIndex),
+              ))
+          .toList();
+
       // Prefetch window
       await _prefetchService.prefetchWindow(
         currentIndex: centerIndex,
         items: prefetchItems,
       );
-      
     } catch (e) {
       secureLog('❌ Error prefetching window: $e');
     }
@@ -104,33 +106,33 @@ class FeedQueue extends StateNotifier<FeedState> {
   double _calculatePrefetchPriority(HomeVideo video, int centerIndex) {
     final videoIndex = state.items.indexWhere((v) => v.id == video.id);
     if (videoIndex == -1) return 0.0;
-    
+
     final distance = (videoIndex - centerIndex).abs();
-    
+
     // Higher priority for closer videos
-    if (distance == 0) return 1.0;      // Current video
-    if (distance == 1) return 0.8;      // Adjacent videos
-    if (distance == 2) return 0.6;      // Next videos
-    if (distance == 3) return 0.4;      // Further videos
-    
+    if (distance == 0) return 1.0; // Current video
+    if (distance == 1) return 0.8; // Adjacent videos
+    if (distance == 2) return 0.6; // Next videos
+    if (distance == 3) return 0.4; // Further videos
+
     return 0.2; // Low priority for distant videos
   }
 
   /// Load more videos
   Future<void> loadMore() async {
     if (state.isLoadingMore || state.cursor == null) return;
-    
+
     state = state.copyWith(isLoadingMore: true);
-    
+
     try {
       // Load more logic - fetch next batch of videos using cursor
       // This would typically call a service to get more videos
-      
+
       secureLog('📥 Loading more videos...');
-      await Future.delayed(const Duration(milliseconds: 500)); // Simulate network
-      
+      await Future.delayed(
+          const Duration(milliseconds: 500)); // Simulate network
+
       state = state.copyWith(isLoadingMore: false);
-      
     } catch (e) {
       secureLog('❌ Error loading more videos: $e');
       state = state.copyWith(isLoadingMore: false);
@@ -140,12 +142,12 @@ class FeedQueue extends StateNotifier<FeedState> {
   /// Refresh the feed
   Future<void> refresh() async {
     if (state.isRefreshing) return;
-    
+
     state = state.copyWith(isRefreshing: true);
-    
+
     try {
       secureLog('🔄 Refreshing feed...');
-      
+
       // Clear current state
       state = state.copyWith(
         items: [],
@@ -153,12 +155,11 @@ class FeedQueue extends StateNotifier<FeedState> {
         etag: null,
         currentIndex: 0,
       );
-      
+
       // Bootstrap again
       await bootstrap();
-      
+
       state = state.copyWith(isRefreshing: false);
-      
     } catch (e) {
       secureLog('❌ Error refreshing feed: $e');
       state = state.copyWith(isRefreshing: false);

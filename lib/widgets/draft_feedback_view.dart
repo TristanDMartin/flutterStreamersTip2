@@ -576,8 +576,8 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                       color: Colors.black,
                       child: FittedBox(
                         fit: shouldLetterboxNonVerticalAspectRatio(
-                              _videoController!.value.aspectRatio,
-                            )
+                          _videoController!.value.aspectRatio,
+                        )
                             ? BoxFit.contain
                             : BoxFit.cover,
                         alignment: Alignment.center,

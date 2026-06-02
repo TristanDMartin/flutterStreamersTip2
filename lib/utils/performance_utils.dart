@@ -6,7 +6,7 @@ import 'dart:async';
 class PerformanceUtils {
   static final Map<String, Timer> _debounceTimers = {};
   static final Map<String, bool> _buttonStates = {};
-  
+
   /// Instant button tap with haptic feedback
   static Future<void> instantTap({
     required VoidCallback onTap,
@@ -17,19 +17,19 @@ class PerformanceUtils {
     if (buttonId != null && _buttonStates[buttonId] == true) {
       return; // Prevent double tap
     }
-    
+
     if (buttonId != null) {
       _buttonStates[buttonId] = true;
     }
-    
+
     // Immediate haptic feedback
     if (enableHaptic) {
       HapticFeedback.lightImpact();
     }
-    
+
     // Execute callback immediately
     onTap();
-    
+
     // Reset button state after short delay
     if (buttonId != null) {
       Timer(const Duration(milliseconds: 50), () {
@@ -37,7 +37,7 @@ class PerformanceUtils {
       });
     }
   }
-  
+
   /// Debounced function call for search/input
   static void debounce(
     String key,
@@ -47,18 +47,19 @@ class PerformanceUtils {
     _debounceTimers[key]?.cancel();
     _debounceTimers[key] = Timer(delay, callback);
   }
-  
+
   /// Preload images for better performance
   static Future<void> preloadImages(List<String> imageUrls) async {
     for (final url in imageUrls) {
       try {
-        await precacheImage(NetworkImage(url), NavigationService.navigatorKey.currentContext!);
+        await precacheImage(
+            NetworkImage(url), NavigationService.navigatorKey.currentContext!);
       } catch (e) {
         // Ignore preload errors
       }
     }
   }
-  
+
   /// Optimize list performance
   static Widget optimizedListView({
     required int itemCount,
@@ -79,7 +80,7 @@ class PerformanceUtils {
       },
     );
   }
-  
+
   /// Optimize grid performance
   static Widget optimizedGridView({
     required int itemCount,
@@ -101,7 +102,7 @@ class PerformanceUtils {
       },
     );
   }
-  
+
   /// Memory cleanup
   static void cleanup() {
     for (final timer in _debounceTimers.values) {
@@ -114,7 +115,8 @@ class PerformanceUtils {
 
 /// Navigation service for global context access
 class NavigationService {
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 }
 
 /// Optimized button widget with instant response

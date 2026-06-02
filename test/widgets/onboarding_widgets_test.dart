@@ -28,10 +28,10 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('onboarding-intro-modal')), findsOneWidget);
-    expect(find.text('Welcome to StreamersTip'), findsOneWidget);
+    expect(find.text('Create. Share. Grow with creators.'), findsOneWidget);
   });
 
   testWidgets('tester user resets onboarding every login session',
@@ -67,14 +67,13 @@ void main() {
     }
 
     await pumpTesterShell(sessionKey: const Key('tester-session-1'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(service.resetCount, 1);
     expect(find.byKey(const Key('onboarding-intro-modal')), findsOneWidget);
 
     await pumpTesterShell(sessionKey: const Key('tester-session-2'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(service.resetCount, 2);
   });
@@ -157,16 +156,22 @@ void main() {
     String? selectedGoal;
     await tester.pumpWidget(
       MaterialApp(
-        home: OnboardingIntroModal(
-          onComplete: (String goal) => selectedGoal = goal,
+        home: Scaffold(
+          body: Stack(
+            children: <Widget>[
+              OnboardingIntroModal(
+                onComplete: (String goal) => selectedGoal = goal,
+              ),
+            ],
+          ),
         ),
       ),
     );
-
-    await tester.tap(find.byKey(const Key('onboarding-start-button')));
     await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const Key('creator-goal-grow-audience')));
     await tester.tap(find.byKey(const Key('onboarding-start-button')));
+    await tester.pump();
 
     expect(selectedGoal, 'grow_audience');
   });

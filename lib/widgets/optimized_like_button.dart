@@ -124,7 +124,8 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
       final currentUser = FirebaseAuth.instance.currentUser;
       final cachedState = likeService.getLikeState(widget.videoId);
       final isLiked = currentUser != null
-          ? await likeService.isVideoLikedByUser(widget.videoId, currentUser.uid)
+          ? await likeService.isVideoLikedByUser(
+              widget.videoId, currentUser.uid)
           : cachedState.isLiked;
 
       debugPrint(
@@ -273,7 +274,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
       }
     } catch (e) {
       // If floating hearts fail, just continue - not critical
-      // print('Floating hearts animation error: $e');
+      // appLog('Floating hearts animation error: $e');
     }
   }
 

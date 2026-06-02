@@ -7,7 +7,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 class VideoDownloadService {
-  static final VideoDownloadService _instance = VideoDownloadService._internal();
+  static final VideoDownloadService _instance =
+      VideoDownloadService._internal();
   factory VideoDownloadService() => _instance;
   VideoDownloadService._internal();
 

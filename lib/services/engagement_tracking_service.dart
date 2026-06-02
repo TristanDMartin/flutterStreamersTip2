@@ -39,7 +39,6 @@ class EngagementTrackingService {
 
       // Update feed algorithm data
       await _updateFeedAlgorithmData(videoId, viewerId, completionRate);
-
     } catch (e) {
       debugPrint('Error tracking video view: $e');
     }
@@ -113,7 +112,6 @@ class EngagementTrackingService {
 
       // Update feed algorithm data
       await _updateFeedAlgorithmData(videoId, commenterId, 1.0);
-
     } catch (e) {
       debugPrint('Error tracking video comment: $e');
     }
@@ -149,7 +147,6 @@ class EngagementTrackingService {
 
       // Update feed algorithm data
       await _updateFeedAlgorithmData(videoId, sharerId, 1.0);
-
     } catch (e) {
       debugPrint('Error tracking video share: $e');
     }
@@ -185,7 +182,8 @@ class EngagementTrackingService {
   }
 
   // Get video engagement metrics
-  Future<VideoEngagementMetrics> getVideoEngagementMetrics(String videoId) async {
+  Future<VideoEngagementMetrics> getVideoEngagementMetrics(
+      String videoId) async {
     try {
       final videoDoc = await FirebaseFirestore.instance
           .collection(_videosCollection)
@@ -197,27 +195,36 @@ class EngagementTrackingService {
       }
 
       final videoData = videoDoc.data()!;
-      
+
       // Get detailed engagement data
       final engagementQuery = await FirebaseFirestore.instance
           .collection(_engagementCollection)
           .where('videoId', isEqualTo: videoId)
           .get();
 
-      final engagements = engagementQuery.docs.map((doc) => doc.data()).toList();
-      
+      final engagements =
+          engagementQuery.docs.map((doc) => doc.data()).toList();
+
       // Calculate metrics
       final views = engagements.where((e) => e['type'] == 'view').length;
-      final likes = engagements.where((e) => e['type'] == 'like' && e['isLiked'] == true).length;
+      final likes = engagements
+          .where((e) => e['type'] == 'like' && e['isLiked'] == true)
+          .length;
       final comments = engagements.where((e) => e['type'] == 'comment').length;
       final shares = engagements.where((e) => e['type'] == 'share').length;
-      final favorites = engagements.where((e) => e['type'] == 'favorite' && e['isFavorited'] == true).length;
+      final favorites = engagements
+          .where((e) => e['type'] == 'favorite' && e['isFavorited'] == true)
+          .length;
 
       // Calculate average completion rate
-      final viewEngagements = engagements.where((e) => e['type'] == 'view').toList();
-      final avgCompletionRate = viewEngagements.isEmpty 
-          ? 0.0 
-          : viewEngagements.map((e) => e['completionRate'] as double).reduce((a, b) => a + b) / viewEngagements.length;
+      final viewEngagements =
+          engagements.where((e) => e['type'] == 'view').toList();
+      final avgCompletionRate = viewEngagements.isEmpty
+          ? 0.0
+          : viewEngagements
+                  .map((e) => e['completionRate'] as double)
+                  .reduce((a, b) => a + b) /
+              viewEngagements.length;
 
       // Calculate engagement rate
       final totalEngagements = likes + comments + shares + favorites;
@@ -235,7 +242,6 @@ class EngagementTrackingService {
         createdAt: videoData['createdAt'] as Timestamp?,
         updatedAt: videoData['updatedAt'] as Timestamp?,
       );
-
     } catch (e) {
       debugPrint('Error getting video engagement metrics: $e');
       rethrow;
@@ -260,12 +266,12 @@ class EngagementTrackingService {
 
       // Group by video ID and calculate engagement scores
       final videoEngagementScores = <String, double>{};
-      
+
       for (final doc in engagementQuery.docs) {
         final data = doc.data();
         final videoId = data['videoId'] as String;
         final type = data['type'] as String;
-        
+
         // Weight different engagement types
         double weight = 1.0;
         switch (type) {
@@ -287,18 +293,15 @@ class EngagementTrackingService {
             break;
         }
 
-        videoEngagementScores[videoId] = (videoEngagementScores[videoId] ?? 0.0) + weight;
+        videoEngagementScores[videoId] =
+            (videoEngagementScores[videoId] ?? 0.0) + weight;
       }
 
       // Sort by engagement score and return top video IDs
       final sortedVideos = videoEngagementScores.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
-      return sortedVideos
-          .take(limit)
-          .map((entry) => entry.key)
-          .toList();
-
+      return sortedVideos.take(limit).map((entry) => entry.key).toList();
     } catch (e) {
       debugPrint('Error getting trending videos: $e');
       return [];
@@ -322,7 +325,6 @@ class EngagementTrackingService {
       await FirebaseFirestore.instance
           .collection(_feedCollection)
           .add(algorithmData);
-
     } catch (e) {
       debugPrint('Error updating feed algorithm data: $e');
     }
@@ -338,7 +340,6 @@ class EngagementTrackingService {
           .collection(_analyticsCollection)
           .doc(videoId)
           .set(updates, SetOptions(merge: true));
-
     } catch (e) {
       debugPrint('Error updating video analytics: $e');
     }
@@ -365,7 +366,6 @@ class EngagementTrackingService {
       } else {
         await userLikesRef.delete();
       }
-
     } catch (e) {
       debugPrint('Error updating user liked videos: $e');
     }
@@ -392,7 +392,6 @@ class EngagementTrackingService {
       } else {
         await userFavoritesRef.delete();
       }
-
     } catch (e) {
       debugPrint('Error updating user favorite videos: $e');
     }
@@ -422,7 +421,6 @@ class EngagementTrackingService {
           data: data,
         );
       }).toList();
-
     } catch (e) {
       debugPrint('Error getting user engagement history: $e');
       return [];

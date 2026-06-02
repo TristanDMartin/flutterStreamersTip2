@@ -13,52 +13,10 @@ sealed class TrendingCreator with _$TrendingCreator {
     String? avatarURL,
     @Default(0) int followerCount,
     @Default(false) bool isActive,
+    @Default(0) int creatorLevel,
+    String? tierStatusLabel,
+    @Default(false) bool isFollowing,
   }) = _TrendingCreator;
-
-  static const List<TrendingCreator> samples = [
-    TrendingCreator(
-        id: "1",
-        username: "GamingPro",
-        displayName: "Gaming Pro",
-        avatarURL: null,
-        followerCount: 150000,
-        isActive: true),
-    TrendingCreator(
-        id: "2",
-        username: "ArtStreamer",
-        displayName: "Art Streamer",
-        avatarURL: null,
-        followerCount: 75000,
-        isActive: true),
-    TrendingCreator(
-        id: "3",
-        username: "MusicLive",
-        displayName: "Music Live",
-        avatarURL: null,
-        followerCount: 200000,
-        isActive: true),
-    TrendingCreator(
-        id: "4",
-        username: "TechReview",
-        displayName: "Tech Review",
-        avatarURL: null,
-        followerCount: 120000,
-        isActive: true),
-    TrendingCreator(
-        id: "5",
-        username: "SportsFan",
-        displayName: "Sports Fan",
-        avatarURL: null,
-        followerCount: 180000,
-        isActive: true),
-    TrendingCreator(
-        id: "6",
-        username: "Foodie",
-        displayName: "Foodie",
-        avatarURL: null,
-        followerCount: 95000,
-        isActive: true),
-  ];
 }
 
 extension TrendingCreatorExtension on TrendingCreator {
@@ -75,7 +33,7 @@ extension TrendingCreatorExtension on TrendingCreator {
       platforms: [],
       hashtags: ["trending", "creator"],
       socialLinks: [],
-      isConnected: false,
+      isConnected: isFollowing,
       onlineStatus: isActive ? 'online' : 'invisible',
     );
   }
@@ -106,5 +64,20 @@ extension TrendingCreatorExtension on TrendingCreator {
     } else {
       return count.toString();
     }
+  }
+
+  /// Line under @username (Live Now, tier, level, or Rising Creator).
+  String get trendingStatusLine {
+    if (isActive) {
+      return 'Live Now';
+    }
+    final String? tier = tierStatusLabel?.trim();
+    if (tier != null && tier.isNotEmpty) {
+      return tier;
+    }
+    if (creatorLevel > 0) {
+      return 'Level $creatorLevel';
+    }
+    return 'Rising Creator';
   }
 }

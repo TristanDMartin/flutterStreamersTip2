@@ -53,11 +53,11 @@ class RetentionChartPainter extends CustomPainter {
     for (int i = 0; i <= 100; i++) {
       final x = (i / 100) * size.width;
       final progress = i / 100.0;
-      
+
       // Simulate retention curve (starts high, gradually decreases)
       final retentionAtPoint = retentionRate * math.exp(-progress * 0.5);
       final y = size.height * (1 - retentionAtPoint);
-      
+
       if (i == 0) {
         path.moveTo(x, y);
         fillPath.lineTo(x, y);
@@ -73,7 +73,7 @@ class RetentionChartPainter extends CustomPainter {
 
     // Draw filled area
     canvas.drawPath(fillPath, fillPaint);
-    
+
     // Draw line
     canvas.drawPath(path, paint);
 
@@ -138,7 +138,7 @@ class TrafficSourcesChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 20;
-    
+
     final colors = [
       const Color(0xFF9248D2),
       const Color(0xFF40DCD1),
@@ -147,11 +147,11 @@ class TrafficSourcesChartPainter extends CustomPainter {
     ];
 
     double startAngle = -math.pi / 2;
-    
+
     for (int i = 0; i < sources.length; i++) {
       final source = sources[i];
       final sweepAngle = (source.percentage / 100) * 2 * math.pi;
-      
+
       final paint = Paint()
         ..color = colors[i % colors.length]
         ..style = PaintingStyle.fill;
@@ -213,7 +213,7 @@ class ViewerTypesChartPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 20;
     final total = newViewers + returningViewers;
-    
+
     if (total == 0) return;
 
     final newPercentage = newViewers / total;
@@ -287,8 +287,9 @@ class GenderBreakdownChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 20;
-    
-    final total = breakdown.male + breakdown.female + breakdown.other + breakdown.unknown;
+
+    final total =
+        breakdown.male + breakdown.female + breakdown.other + breakdown.unknown;
     if (total == 0) return;
 
     final colors = [
@@ -306,11 +307,11 @@ class GenderBreakdownChartPainter extends CustomPainter {
     ];
 
     double startAngle = -math.pi / 2;
-    
+
     for (int i = 0; i < values.length; i++) {
       final percentage = values[i];
       final sweepAngle = percentage * 2 * math.pi;
-      
+
       if (percentage > 0) {
         final paint = Paint()
           ..color = colors[i]
@@ -376,7 +377,7 @@ class AgeGroupsChartPainter extends CustomPainter {
     for (int i = 0; i < ageGroups.length; i++) {
       final ageGroup = ageGroups[i];
       final barHeight = (ageGroup.percentage / maxValue) * (size.height - 40);
-      
+
       final paint = Paint()
         ..color = const Color(0xFF9248D2).withValues(alpha: 0.8)
         ..style = PaintingStyle.fill;
@@ -430,7 +431,11 @@ class EngagementTrendsChartPainter extends CustomPainter {
     if (trends.isEmpty) return;
 
     // Calculate max value for scaling
-    final maxValue = trends.map((e) => math.max(e.likes, math.max(e.shares, math.max(e.comments, e.favorites)))).reduce(math.max).toDouble();
+    final maxValue = trends
+        .map((e) => math.max(
+            e.likes, math.max(e.shares, math.max(e.comments, e.favorites))))
+        .reduce(math.max)
+        .toDouble();
 
     // Draw grid lines
     final gridPaint = Paint()
@@ -470,7 +475,9 @@ class EngagementTrendsChartPainter extends CustomPainter {
 
       for (int i = 0; i < data[dataIndex].length; i++) {
         final x = 40 + (i / (data[dataIndex].length - 1)) * (size.width - 60);
-        final y = size.height - 20 - (data[dataIndex][i] / maxValue) * (size.height - 40);
+        final y = size.height -
+            20 -
+            (data[dataIndex][i] / maxValue) * (size.height - 40);
 
         if (i == 0) {
           path.moveTo(x, y);
@@ -510,7 +517,8 @@ class EngagementBreakdownChart extends StatelessWidget {
     return SizedBox(
       height: 180,
       child: CustomPaint(
-        painter: EngagementBreakdownChartPainter(likes, shares, comments, favorites),
+        painter:
+            EngagementBreakdownChartPainter(likes, shares, comments, favorites),
         size: Size.infinite,
       ),
     );
@@ -523,13 +531,14 @@ class EngagementBreakdownChartPainter extends CustomPainter {
   final int comments;
   final int favorites;
 
-  EngagementBreakdownChartPainter(this.likes, this.shares, this.comments, this.favorites);
+  EngagementBreakdownChartPainter(
+      this.likes, this.shares, this.comments, this.favorites);
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 20;
-    
+
     final total = likes + shares + comments + favorites;
     if (total == 0) return;
 
@@ -548,11 +557,11 @@ class EngagementBreakdownChartPainter extends CustomPainter {
     ];
 
     double startAngle = -math.pi / 2;
-    
+
     for (int i = 0; i < values.length; i++) {
       final percentage = values[i];
       final sweepAngle = percentage * 2 * math.pi;
-      
+
       if (percentage > 0) {
         final paint = Paint()
           ..color = colors[i]

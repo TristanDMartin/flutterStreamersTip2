@@ -1,42 +1,32 @@
-import 'dart:async';
+import 'create_gamification_event.dart';
 
-import 'package:flutter/foundation.dart';
-
-import 'services/gamification_event_service.dart';
-
-/// Trusted gamification events after a real product action succeeds.
-/// Prefer [scheduleGamificationEvent] from services so publish flows are not blocked.
+/// Back-compat aliases — prefer [createGamificationEvent].
 Future<void> emitGamificationEvent(
   String type, {
   String? entityType,
   String? entityId,
+  String? eventId,
   Map<String, dynamic>? metadata,
-}) async {
-  try {
-    await GamificationEventService().emitTrustedEvent(
+}) =>
+    createGamificationEvent(
       type: type,
       entityType: entityType,
       entityId: entityId,
+      eventId: eventId,
       metadata: metadata,
     );
-  } on StateError catch (e) {
-    debugPrint('emitGamificationEvent: skipped ($e)');
-  }
-}
 
-/// Fire-and-forget; logs failures inside [GamificationEventService].
 void scheduleGamificationEvent(
   String type, {
   String? entityType,
   String? entityId,
+  String? eventId,
   Map<String, dynamic>? metadata,
-}) {
-  unawaited(
-    emitGamificationEvent(
-      type,
+}) =>
+    scheduleCreateGamificationEvent(
+      type: type,
       entityType: entityType,
       entityId: entityId,
+      eventId: eventId,
       metadata: metadata,
-    ),
-  );
-}
+    );

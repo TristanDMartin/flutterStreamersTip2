@@ -2,8 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-final currentUserStreamProvider =
-    StreamProvider<Map<String, dynamic>?>((ref) {
+final currentUserStreamProvider = StreamProvider<Map<String, dynamic>?>((ref) {
   final fa.User? firebaseUser = fa.FirebaseAuth.instance.currentUser;
   if (firebaseUser == null) {
     return const Stream<Map<String, dynamic>?>.empty();
@@ -17,5 +16,3 @@ final currentUserStreamProvider =
     return <String, dynamic>{'id': uid, ...data};
   });
 });
-
-

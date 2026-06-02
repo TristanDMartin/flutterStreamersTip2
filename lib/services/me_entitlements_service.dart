@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../core/backend/firebase_https_function_url.dart';
 import '../features/entitlements/me_entitlements_models.dart';
 
 typedef MeEntitlementsTokenProvider = Future<String?> Function();
@@ -26,7 +26,12 @@ class MeEntitlementsService {
     http.Client? httpClient,
     MeEntitlementsTokenProvider? tokenProvider,
     Duration requestTimeout = _defaultTimeout,
-  })  : _apiBase = _resolveApiBase(apiBase),
+  })  : _apiBase = resolveFirebaseHttpsFunctionUrl(
+          explicitOverride: apiBase,
+          envDefineValue: _envApiBase,
+          functionName: _httpFunctionName,
+          region: _functionsRegion,
+        ),
         _client = httpClient ?? http.Client(),
         _tokenProvider = tokenProvider,
         _requestTimeout = requestTimeout;
@@ -46,33 +51,13 @@ class MeEntitlementsService {
 
   bool get hasApiBase => _apiBase.trim().isNotEmpty;
 
-  static String _resolveApiBase(String? explicit) {
-    final String c = (explicit ?? _envApiBase).trim();
-    if (c.isNotEmpty) {
-      return c;
-    }
-    return _defaultApiBaseFromFirebase();
-  }
-
-  static String _defaultApiBaseFromFirebase() {
-    try {
-      final String projectId = Firebase.app().options.projectId;
-      if (projectId.isEmpty) {
-        return '';
-      }
-      return 'https://$_functionsRegion-$projectId'
-          '.cloudfunctions.net/$_httpFunctionName';
-    } catch (_) {
-      return '';
-    }
-  }
-
   Future<MeEntitlementsData> fetchCurrentUserEntitlements() async {
     if (!hasApiBase) {
       if (kDebugMode) {
         debugPrint('MeEntitlementsService: no API base configured');
       }
-      throw const MeEntitlementsException('Entitlements API is not configured.');
+      throw const MeEntitlementsException(
+          'Entitlements API is not configured.');
     }
     final String? idToken = await _resolveIdToken();
     if (idToken == null || idToken.isEmpty) {
@@ -83,9 +68,8 @@ class MeEntitlementsService {
       'Authorization': 'Bearer $idToken',
     };
     try {
-      final http.Response response = await _client
-          .get(uri, headers: headers)
-          .timeout(_requestTimeout);
+      final http.Response response =
+          await _client.get(uri, headers: headers).timeout(_requestTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         if (kDebugMode) {
           debugPrint(

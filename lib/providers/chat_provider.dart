@@ -9,7 +9,9 @@ import 'dart:io';
 import '../models/chat.dart';
 import '../models/message.dart';
 import '../services/auth_service.dart';
+import '../services/progression_service.dart';
 import '../services/r2_media_service.dart';
+import '../utils/swallow_non_fatal.dart';
 
 class ChatNotifier extends StateNotifier<ChatState> {
   final Chat chat;
@@ -176,6 +178,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastMessage": trimmedText,
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstMessageSent,
+        source: 'messages',
+      ));
       await setTyping(false);
 
       // Mark chat as read when opening (reset unread count)
@@ -419,6 +426,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastMessage": "[Device GIF]",
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstMessageSent,
+        source: 'messages',
+      ));
 
       await setTyping(false);
 
@@ -534,7 +546,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
           .map((e) => Message.fromJson(e as Map<String, dynamic>))
           .toList();
       state = state.copyWith(messages: messages);
-    } catch (_) {}
+    } catch (e, st) {
+      swallowNonFatal('ChatNotifier._loadPersistedMessages', e, st);
+    }
   }
 
   Future<void> _saveMessages() async {
@@ -543,7 +557,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final encoded =
           jsonEncode(state.messages.map((m) => m.toJson()).toList());
       await prefs.setString(_messagesKey, encoded);
-    } catch (_) {}
+    } catch (e, st) {
+      swallowNonFatal('ChatNotifier._saveMessages', e, st);
+    }
   }
 
   Future<void> _syncMessagesWithFirebase() async {} // ignore: unused_element

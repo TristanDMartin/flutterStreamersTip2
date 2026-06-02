@@ -7,7 +7,7 @@ class GalleryPicker extends StatefulWidget {
   final Function(List<File>) onImagesSelected;
   final int maxImages;
   final bool allowMultiple;
-  
+
   const GalleryPicker({
     super.key,
     required this.selectedImages,
@@ -109,7 +109,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
             ),
             const Divider(color: Colors.white24),
           ],
-          
+
           // Gallery grid
           Expanded(
             child: FutureBuilder<List<File>>(
@@ -120,7 +120,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
                     child: CircularProgressIndicator(color: Colors.white),
                   );
                 }
-                
+
                 if (snapshot.hasError) {
                   return Center(
                     child: Column(
@@ -146,9 +146,9 @@ class _GalleryPickerState extends State<GalleryPicker> {
                     ),
                   );
                 }
-                
+
                 final images = snapshot.data ?? [];
-                
+
                 if (images.isEmpty) {
                   return const Center(
                     child: Column(
@@ -168,7 +168,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
                     ),
                   );
                 }
-                
+
                 return GridView.builder(
                   padding: const EdgeInsets.all(16),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -180,7 +180,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
                   itemBuilder: (context, index) {
                     final image = images[index];
                     final isSelected = _tempSelectedImages.contains(image);
-                    
+
                     return GestureDetector(
                       onTap: () => _toggleImageSelection(image),
                       child: Stack(
@@ -233,7 +233,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
       // - photo_manager
       // - gallery_saver
       // - or implement custom gallery access
-      
+
       // For now, we'll return an empty list and show a message
       // that prompts the user to use the camera or pick individual images
       return [];
@@ -314,7 +314,7 @@ class AdvancedGalleryPicker extends StatefulWidget {
   final List<File> selectedImages;
   final Function(List<File>) onImagesSelected;
   final int maxImages;
-  
+
   const AdvancedGalleryPicker({
     super.key,
     required this.selectedImages,
@@ -349,10 +349,10 @@ class _AdvancedGalleryPickerState extends State<AdvancedGalleryPicker> {
       // This would use photo_manager package to load actual gallery images
       // For now, we'll simulate loading
       await Future.delayed(const Duration(seconds: 1));
-      
+
       // Simulate gallery images
       _galleryImages = [];
-      
+
       setState(() {
         _isLoading = false;
       });
@@ -507,7 +507,7 @@ class _AdvancedGalleryPickerState extends State<AdvancedGalleryPicker> {
           ),
           const Divider(color: Colors.white24),
         ],
-        
+
         // Gallery grid
         Expanded(
           child: GridView.builder(
@@ -521,7 +521,7 @@ class _AdvancedGalleryPickerState extends State<AdvancedGalleryPicker> {
             itemBuilder: (context, index) {
               final image = _galleryImages[index];
               final isSelected = _tempSelectedImages.contains(image);
-              
+
               return GestureDetector(
                 onTap: () => _toggleImageSelection(image),
                 child: Stack(

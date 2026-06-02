@@ -213,7 +213,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       extendBody: true,
       extendBodyBehindAppBar: true,
       body: KeyedSubtree(
-        key: ProductTourTargetKeys.profile,
+        key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.profile),
         child: AnimatedBuilder(
           animation: _flipAnimation,
           builder: (BuildContext context, Widget? child) {

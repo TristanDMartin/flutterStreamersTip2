@@ -13,19 +13,26 @@
     "grant-admin-claims": "node scripts/grant_admin_claims.js",
     "reconcile:counters": "node reconcile_counters.js",
     "reconcile:counters:emulator": "cd .. && firebase emulators:exec --only firestore --project demo-follows-tests \"node cloud_functions/reconcile_counters.js\"",
+    "test:progression": "cd .. && JAVA_HOME=/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home PATH=/usr/local/opt/openjdk@21/bin:$PATH firebase emulators:exec --only firestore \"node cloud_functions/progression_callable_test.js\"",
+    "test:rules:likes": "node likes_rules_test.js",
+    "test:rules:interactions": "node interaction_rules_test.js",
     "test:rules:follows": "node follows_rules_test.js",
+    "test:rules:videos": "node videos_rules_test.js",
     "test:e2e:follows": "node follows_e2e_test.js"
   },
-  "engines": {"node": "22"},
+  "engines": {
+    "node": "22"
+  },
   "main": "index.js",
   "dependencies": {
+    "@apple/app-store-server-library": "^1.6.0",
     "@google-cloud/storage": "^7.7.0",
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.0.1",
     "firebase-admin": "^11.8.0",
     "firebase-functions": "^4.3.1",
-    "google-auth-library": "^9.14.0",
     "fluent-ffmpeg": "^2.1.2",
+    "google-auth-library": "^9.14.0",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {

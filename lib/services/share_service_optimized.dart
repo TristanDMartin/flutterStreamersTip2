@@ -1,4 +1,3 @@
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -8,6 +7,7 @@ import '../models/share_payload.dart';
 import '../models/connection_lite.dart';
 import 'engagement_analytics_service.dart';
 import 'connections_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 class ShareServiceOptimized {
   static final ShareServiceOptimized _instance =
@@ -63,19 +63,20 @@ class ShareServiceOptimized {
 
       // Prefetch connections for connections row (non-blocking)
       ConnectionsService().getConnectionsPreview().catchError((e) {
-        log('⚠️ ShareService: Failed to prefetch connections: $e');
+        secureLog('⚠️ ShareService: Failed to prefetch connections: $e');
         // If no connections exist, create mock connections for testing
         ConnectionsService().createMockConnections().catchError((mockError) {
-          log('⚠️ ShareService: Failed to create mock connections: $mockError');
+          secureLog(
+              '⚠️ ShareService: Failed to create mock connections: $mockError');
         });
         return <ConnectionLite>[]; // Return empty list on error
       });
 
-      log('✅ ShareService: Prefetched payload for video ${video.id}');
+      secureLog('✅ ShareService: Prefetched payload for video ${video.id}');
 
       return payload;
     } catch (e) {
-      log('❌ ShareService: Error fetching share payload: $e');
+      secureLog('❌ ShareService: Error fetching share payload: $e');
       rethrow;
     }
   }
@@ -120,7 +121,7 @@ class ShareServiceOptimized {
         ),
       );
     } catch (e) {
-      // print('Error sharing video: $e');
+      // appLog('Error sharing video: $e');
     }
   }
 
@@ -134,9 +135,9 @@ class ShareServiceOptimized {
       _trackShareSuccess(videoId, 'copylink');
       _updatePlatformUsage('copylink');
 
-      log('✅ ShareService: Link copied to clipboard');
+      secureLog('✅ ShareService: Link copied to clipboard');
     } catch (e) {
-      log('❌ ShareService: Error copying link: $e');
+      secureLog('❌ ShareService: Error copying link: $e');
     }
   }
 
@@ -187,7 +188,7 @@ class ShareServiceOptimized {
       _trackShareSuccess(payload.videoId, target.analyticsName);
       _updatePlatformUsage(target.analyticsName);
     } catch (e) {
-      log('❌ ShareService: Error sharing to ${target.displayName}: $e');
+      secureLog('❌ ShareService: Error sharing to ${target.displayName}: $e');
     }
   }
 
@@ -195,7 +196,8 @@ class ShareServiceOptimized {
   Future<void> handleAction(
       ShareAction action, String videoId, String creatorId) async {
     try {
-      log('🎬 ShareService: Handling action: ${action.displayName} for video $videoId');
+      secureLog(
+          '🎬 ShareService: Handling action: ${action.displayName} for video $videoId');
 
       // Track action
       EngagementAnalyticsService().trackEngagement(
@@ -225,7 +227,7 @@ class ShareServiceOptimized {
           break;
       }
     } catch (e) {
-      log('❌ ShareService: Error handling action: $e');
+      secureLog('❌ ShareService: Error handling action: $e');
     }
   }
 
@@ -271,7 +273,7 @@ class ShareServiceOptimized {
           break;
       }
     } catch (e) {
-      // print('Error sharing to ${platform.name}: $e');
+      // appLog('Error sharing to ${platform.name}: $e');
     }
   }
 
@@ -418,7 +420,7 @@ class ShareServiceOptimized {
 
   /// Handle in-app repost
   Future<void> _handleRepost(SharePayload payload) async {
-    log('🔄 ShareService: Repost requested for video ${payload.videoId}');
+    secureLog('🔄 ShareService: Repost requested for video ${payload.videoId}');
     // This will be handled by UI callback to show repost dialog
   }
 

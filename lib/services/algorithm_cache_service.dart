@@ -14,6 +14,31 @@ class AlgorithmCacheService {
   factory AlgorithmCacheService() => _instance;
   AlgorithmCacheService._internal();
 
+  CachedFeedResult? _memoryWarmFeed;
+
+  /// Synchronous peek at the last hydrated For You feed (memory only).
+  CachedFeedResult? peekForYouWarmFeed() => _memoryWarmFeed;
+
+  void _rememberWarmFeed(CachedFeedResult feed) {
+    if (feed.videos.isEmpty) return;
+    _memoryWarmFeed = feed;
+  }
+
+  /// Load disk cache into memory before first Home frame.
+  Future<void> preloadForYouFeedMemory({String? userId}) async {
+    if (_memoryWarmFeed != null && _memoryWarmFeed!.videos.isNotEmpty) {
+      return;
+    }
+    CachedFeedResult? feed;
+    if (userId != null && userId.isNotEmpty) {
+      feed = await getCachedForYouFeed(userId);
+    }
+    feed ??= await getLastKnownForYouFeed();
+    if (feed != null && feed.videos.isNotEmpty) {
+      _rememberWarmFeed(feed);
+    }
+  }
+
   // Cache keys
   static const String _followingFeedKey = 'following_feed_cache';
   static const String _forYouFeedKey = 'for_you_feed_cache';
@@ -113,6 +138,10 @@ class AlgorithmCacheService {
       // Clean old cache entries
       await _cleanOldCacheEntries(prefs, _forYouFeedKey);
 
+      _rememberWarmFeed(
+        CachedFeedResult(videos: videos, nextCursor: nextCursor),
+      );
+
       debugPrint(
           '✅ Cached For You feed for user $userId (${videos.length} videos)');
     } catch (e) {
@@ -135,6 +164,8 @@ class AlgorithmCacheService {
       };
 
       await prefs.setString(_lastKnownForYouFeedKey, json.encode(cacheData));
+
+      _rememberWarmFeed(CachedFeedResult(videos: videos));
 
       debugPrint('✅ Cached last-known For You feed (${videos.length} videos)');
     } catch (e) {
@@ -166,9 +197,11 @@ class AlgorithmCacheService {
           (data['videos'] as List).map((v) => _videoFromMap(v)).toList();
       final nextCursor = data['nextCursor'] as Map<String, dynamic>?;
 
+      final result = CachedFeedResult(videos: videos, nextCursor: nextCursor);
+      _rememberWarmFeed(result);
       debugPrint(
           '✅ Retrieved cached For You feed for user $userId (${videos.length} videos)');
-      return CachedFeedResult(videos: videos, nextCursor: nextCursor);
+      return result;
     } catch (e) {
       debugPrint('❌ Error retrieving cached For You feed: $e');
       return null;
@@ -196,9 +229,11 @@ class AlgorithmCacheService {
       final videos =
           (data['videos'] as List).map((v) => _videoFromMap(v)).toList();
 
+      final result = CachedFeedResult(videos: videos);
+      _rememberWarmFeed(result);
       debugPrint(
           '✅ Retrieved last-known For You feed (${videos.length} videos)');
-      return CachedFeedResult(videos: videos);
+      return result;
     } catch (e) {
       debugPrint('❌ Error retrieving last-known For You feed: $e');
       return null;

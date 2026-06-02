@@ -331,7 +331,7 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
         _isInitialized = true;
       });
     } catch (e) {
-      // print('❌ Error initializing camera: $e');
+      // appLog('❌ Error initializing camera: $e');
       widget.onCancel();
     }
   }
@@ -350,7 +350,7 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
         Navigator.pop(context);
       }
     } catch (e) {
-      // print('❌ Error capturing photo: $e');
+      // appLog('❌ Error capturing photo: $e');
       setState(() {
         _isCapturing = false;
       });

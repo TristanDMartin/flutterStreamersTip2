@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -10,8 +9,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/tiktok_camera_service.dart';
 import '../services/global_playback_manager.dart';
 import '../providers/home_provider.dart';
+import '../features/publish/pending_post.dart';
+import '../features/publish/publish_flow_tokens.dart';
 import 'video_recording_preview.dart';
 import 'video_publishing_screen.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
+
+enum _CameraCaptureMode { video, clip, photo }
 
 /// TikTok-quality camera view with professional video recording
 ///
@@ -42,6 +46,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   double _currentZoom = 1.0; // Will be updated to minZoom after initialization
   Timer? _recordingTimer;
   int _recordingDuration = 0;
+  _CameraCaptureMode _captureMode = _CameraCaptureMode.video;
 
   @override
   void initState() {
@@ -60,9 +65,10 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       try {
         final homeNotifier = ref.read(homeProvider.notifier);
         homeNotifier.pauseAllVideos();
-        log('🔇 TikTokCameraView: Paused all HomeView videos via provider');
+        secureLog(
+            '🔇 TikTokCameraView: Paused all HomeView videos via provider');
       } catch (e) {
-        log('⚠️ TikTokCameraView: Could not pause via home provider: $e');
+        secureLog('⚠️ TikTokCameraView: Could not pause via home provider: $e');
       }
     });
 
@@ -111,7 +117,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   /// Initialize camera with TikTok-quality settings
   Future<void> _initializeCamera() async {
     try {
-      log('🎥 TikTokCameraView: Initializing camera...');
+      secureLog('🎥 TikTokCameraView: Initializing camera...');
 
       await _cameraService.initialize();
 
@@ -123,15 +129,16 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
           // Try setting to 0.1 first - camera will clamp to actual minimum automatically
           await _cameraService.controller!.setZoomLevel(0.1);
           _currentZoom = 0.1; // Camera will clamp this to the actual minimum
-          log('🔍 TikTokCameraView: Zoom set to minimum (attempted 0.1, camera will clamp)');
+          secureLog(
+              '🔍 TikTokCameraView: Zoom set to minimum (attempted 0.1, camera will clamp)');
         } catch (e) {
           // Fallback to 1.0
           try {
             await _cameraService.controller!.setZoomLevel(1.0);
             _currentZoom = 1.0;
-            log('🔍 TikTokCameraView: Zoom set to 1.0 (fallback)');
+            secureLog('🔍 TikTokCameraView: Zoom set to 1.0 (fallback)');
           } catch (e2) {
-            log('⚠️ TikTokCameraView: Could not set zoom: $e2');
+            secureLog('⚠️ TikTokCameraView: Could not set zoom: $e2');
           }
         }
       }
@@ -140,10 +147,10 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
         setState(() {
           _isInitialized = true;
         });
-        log('✅ TikTokCameraView: Camera initialized successfully');
+        secureLog('✅ TikTokCameraView: Camera initialized successfully');
       }
     } catch (e) {
-      log('❌ TikTokCameraView: Camera initialization failed: $e');
+      secureLog('❌ TikTokCameraView: Camera initialization failed: $e');
       _showErrorDialog('Camera initialization failed: ${e.toString()}');
     }
   }
@@ -196,9 +203,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
       // Haptic feedback
       HapticFeedback.lightImpact();
-      log('🎯 Focus point set: ($clampedX, $clampedY)');
+      secureLog('🎯 Focus point set: ($clampedX, $clampedY)');
     } catch (e) {
-      log('❌ Error setting focus: $e');
+      secureLog('❌ Error setting focus: $e');
     }
   }
 
@@ -214,9 +221,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       });
 
       await _cameraService.setZoomLevel(newZoom);
-      log('🔍 Zoom set to: $newZoom');
+      secureLog('🔍 Zoom set to: $newZoom');
     } catch (e) {
-      log('❌ Error setting zoom: $e');
+      secureLog('❌ Error setting zoom: $e');
     }
   }
 
@@ -225,7 +232,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     if (!_isInitialized || _isRecording) return;
 
     try {
-      log('🎬 Starting TikTok-quality video recording...');
+      secureLog('🎬 Starting TikTok-quality video recording...');
 
       await _cameraService.startRecording();
 
@@ -245,9 +252,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
       // Haptic feedback
       HapticFeedback.mediumImpact();
-      log('✅ Video recording started');
+      secureLog('✅ Video recording started');
     } catch (e) {
-      log('❌ Error starting recording: $e');
+      secureLog('❌ Error starting recording: $e');
       _showErrorDialog('Failed to start recording: ${e.toString()}');
     }
   }
@@ -257,7 +264,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     if (!_isRecording) return;
 
     try {
-      log('🛑 Stopping video recording...');
+      secureLog('🛑 Stopping video recording...');
 
       final videoFile = await _cameraService.stopRecording();
 
@@ -275,9 +282,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
         await _openPreviewAndMaybePublish(File(videoFile.path));
       }
 
-      log('✅ Video recording stopped: ${videoFile.path}');
+      secureLog('✅ Video recording stopped: ${videoFile.path}');
     } catch (e) {
-      log('❌ Error stopping recording: $e');
+      secureLog('❌ Error stopping recording: $e');
       _showErrorDialog('Failed to stop recording: ${e.toString()}');
     }
   }
@@ -287,7 +294,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     if (!_isInitialized || _isRecording) return;
 
     try {
-      log('🔄 Switching camera...');
+      secureLog('🔄 Switching camera...');
 
       // Temporarily set initialized to false to show loading
       setState(() {
@@ -300,13 +307,16 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       await Future.delayed(const Duration(milliseconds: 100));
 
       // Debug camera state
-      log('🔍 Camera state after switch:');
-      log('  - Controller: ${_cameraService.controller != null}');
-      log('  - IsInitialized: ${_cameraService.isInitialized}');
-      log('  - CurrentLensDirection: ${_cameraService.currentLensDirection}');
+      secureLog('🔍 Camera state after switch:');
+      secureLog('  - Controller: ${_cameraService.controller != null}');
+      secureLog('  - IsInitialized: ${_cameraService.isInitialized}');
+      secureLog(
+          '  - CurrentLensDirection: ${_cameraService.currentLensDirection}');
       if (_cameraService.controller != null) {
-        log('  - ControllerValue.isInitialized: ${_cameraService.controller!.value.isInitialized}');
-        log('  - PreviewSize: ${_cameraService.controller!.value.previewSize}');
+        secureLog(
+            '  - ControllerValue.isInitialized: ${_cameraService.controller!.value.isInitialized}');
+        secureLog(
+            '  - PreviewSize: ${_cameraService.controller!.value.previewSize}');
       }
 
       // Update state to show the new camera
@@ -326,9 +336,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       // Haptic feedback
       HapticFeedback.lightImpact();
 
-      log('✅ Camera switched successfully');
+      secureLog('✅ Camera switched successfully');
     } catch (e) {
-      log('❌ Error switching camera: $e');
+      secureLog('❌ Error switching camera: $e');
 
       // Reset to initialized state even if there was an error
       if (mounted) {
@@ -360,15 +370,16 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     if (_showQualityInfo) {
       final qualityStatus = _cameraService.getPixel6QualityStatus();
       final qualityInfo = _cameraService.getQualityInfo();
-      log('📱 Pixel 6 Quality Status: $qualityStatus');
-      log('📱 Current Camera: ${qualityInfo['cameraType']} - ${qualityInfo['qualityLevel']}');
+      secureLog('📱 Pixel 6 Quality Status: $qualityStatus');
+      secureLog(
+          '📱 Current Camera: ${qualityInfo['cameraType']} - ${qualityInfo['qualityLevel']}');
     }
   }
 
   /// Pick video from gallery (TikTok style)
   Future<void> _pickFromGallery() async {
     try {
-      log('📱 Opening gallery picker...');
+      secureLog('📱 Opening gallery picker...');
 
       final XFile? video = await _imagePicker.pickVideo(
         source: ImageSource.gallery,
@@ -376,19 +387,18 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       );
 
       if (video != null && mounted) {
-        log('📱 Video selected from gallery: ${video.path}');
+        secureLog('📱 Video selected from gallery: ${video.path}');
         HapticFeedback.lightImpact();
         await _openPreviewAndMaybePublish(File(video.path));
       }
     } catch (e) {
-      log('❌ Error picking video from gallery: $e');
+      secureLog('❌ Error picking video from gallery: $e');
       _showErrorDialog('Error selecting video: ${e.toString()}');
     }
   }
 
   Future<void> _openPreviewAndMaybePublish(File videoFile) async {
-    final previewAction =
-        await Navigator.of(context).push<VideoRecordingPreviewAction>(
+    final Object? previewResult = await Navigator.of(context).push<Object?>(
       MaterialPageRoute(
         settings: const RouteSettings(name: '/camera/preview'),
         builder: (context) => VideoRecordingPreview(
@@ -397,15 +407,17 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       ),
     );
 
-    if (!mounted || previewAction != VideoRecordingPreviewAction.useVideo) {
+    if (!mounted || previewResult is! PendingPost) {
       return;
     }
+    final PendingPost pendingPost = previewResult;
 
     await Navigator.of(context).push(
       MaterialPageRoute(
         settings: const RouteSettings(name: '/camera/publish'),
         builder: (context) => VideoPublishingScreen(
-          videoFile: videoFile,
+          videoFile: File(pendingPost.videoPath),
+          pendingPost: pendingPost,
           caption: '',
           hashtags: const [],
           onPublish: () {
@@ -419,7 +431,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     );
 
     if (!mounted) return;
-    log('🎬 TikTokCameraView: Returned from publishing flow');
+    secureLog('🎬 TikTokCameraView: Returned from publishing flow');
   }
 
   /// Show error dialog
@@ -492,9 +504,6 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
           // Bottom controls
           _buildBottomControls(),
-
-          // Recording indicator
-          if (_isRecording) _buildRecordingIndicator(),
         ],
       ),
     );
@@ -530,8 +539,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     final double cameraAspectPortrait =
         ps.height / ps.width; // e.g., 16/9 ≈ 1.778 or 4/3 ≈ 1.333
 
-    log('📐 Camera preview size (landscape): ${ps.width}x${ps.height}');
-    log('📐 Camera aspect ratio (portrait): ${cameraAspectPortrait.toStringAsFixed(3)}');
+    secureLog('📐 Camera preview size (landscape): ${ps.width}x${ps.height}');
+    secureLog(
+        '📐 Camera aspect ratio (portrait): ${cameraAspectPortrait.toStringAsFixed(3)}');
 
     // Calculate what aspect ratio this is (16:9 = 1.778, 4:3 = 1.333, etc.)
     String aspectRatioName = 'Unknown';
@@ -546,7 +556,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     } else if ((cameraAspectPortrait - 2.0).abs() < 0.02) {
       aspectRatioName = '2:1';
     }
-    log('📐 Aspect ratio type: $aspectRatioName (${cameraAspectPortrait.toStringAsFixed(3)})');
+    secureLog(
+        '📐 Aspect ratio type: $aspectRatioName (${cameraAspectPortrait.toStringAsFixed(3)})');
 
     // Target 16:9 aspect ratio for portrait (9:16 = 0.5625, but in portrait it's height/width)
     // 16:9 in landscape becomes 9:16 in portrait = height/width = 9/16 = 0.5625
@@ -558,7 +569,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     final double displayAspectRatio =
         is16by9 ? cameraAspectPortrait : target16by9Portrait;
 
-    log('📐 Display aspect ratio: ${displayAspectRatio.toStringAsFixed(3)} (${is16by9 ? "native 16:9" : "cropped to 16:9"})');
+    secureLog(
+        '📐 Display aspect ratio: ${displayAspectRatio.toStringAsFixed(3)} (${is16by9 ? "native 16:9" : "cropped to 16:9"})');
 
     // Build camera preview
     // If native 16:9, use camera's aspect ratio
@@ -716,11 +728,18 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       left: 16,
       right: 16,
       child: Row(
-        children: [
+        children: <Widget>[
           _buildGlassIconButton(
             icon: Icons.close_rounded,
             onTap: () => Navigator.of(context).pop(),
           ),
+          if (!_isRecording) ...<Widget>[
+            const SizedBox(width: 8),
+            _buildStatusChip(
+              'Ready',
+              color: const Color(0xFF1FBF75),
+            ),
+          ],
           const Expanded(
             child: Column(
               children: [
@@ -745,17 +764,19 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
             ),
           ),
           Row(
-            children: [
-              _buildModeChip(
-                _showGrid ? 'Grid on' : 'Grid off',
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              _buildGlassIconButton(
                 icon:
                     _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
                 onTap: _toggleGrid,
+                size: 40,
               ),
               const SizedBox(width: 8),
               _buildGlassIconButton(
                 icon: Icons.info_outline_rounded,
                 onTap: _toggleQualityInfo,
+                size: 40,
               ),
             ],
           ),
@@ -766,167 +787,69 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
   /// Build bottom controls
   Widget _buildBottomControls() {
+    final double bottom = MediaQuery.of(context).padding.bottom;
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 18,
+      bottom: bottom + 12,
       left: 16,
       right: 16,
       child: Column(
-        children: [
-          Row(
-            children: [
-              _buildStatusChip(
-                _isRecording ? 'Recording' : 'Ready',
-                color: _isRecording
-                    ? const Color(0xFFFF5F57)
-                    : const Color(0xFF1FBF75),
-              ),
-              const Spacer(),
-              Text(
-                _isRecording
-                    ? _formatDuration(_recordingDuration)
-                    : 'Hold to record',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F1322).withValues(alpha: 0.90),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.24),
-                  blurRadius: 24,
-                  offset: const Offset(0, 14),
-                ),
-              ],
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _buildCaptureModeSwitch(),
+          const SizedBox(height: 10),
+          if (_isRecording)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _buildRecordingTimerChip(),
             ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: PublishFlowTokens.glassPanel(radius: 24),
             child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: _pickFromGallery,
-                    child: Container(
-                      height: 58,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.photo_library_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Gallery',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                _buildGlassIconButton(
+                  icon: Icons.photo_library_rounded,
+                  onTap: _pickFromGallery,
+                  size: 48,
                 ),
-                const SizedBox(width: 12),
                 GestureDetector(
-                  onTapDown: (_) => _startRecording(),
+                  onTapDown: (_) => _onRecordTapDown(),
                   onTapUp: (_) => _stopRecording(),
                   onTapCancel: () => _stopRecording(),
                   child: Container(
-                    width: 92,
-                    height: 92,
+                    width: 76,
+                    height: 76,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: _isRecording
                             ? const Color(0xFFFF5F57)
                             : Colors.white,
-                        width: 4,
+                        width: 3,
                       ),
-                      color: _isRecording
-                          ? const Color(0xFFFF5F57).withValues(alpha: 0.22)
-                          : Colors.transparent,
-                      boxShadow: _isRecording
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFFFF5F57)
-                                    .withValues(alpha: 0.28),
-                                blurRadius: 18,
-                                offset: const Offset(0, 8),
-                              ),
-                            ]
-                          : null,
                     ),
                     child: Center(
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 160),
-                        width: _isRecording ? 34 : 68,
-                        height: _isRecording ? 34 : 68,
+                        width: _isRecording ? 28 : 58,
+                        height: _isRecording ? 28 : 58,
                         decoration: BoxDecoration(
                           color: _isRecording
                               ? const Color(0xFFFF5F57)
                               : Colors.white,
                           borderRadius: BorderRadius.circular(
-                            _isRecording ? 12 : 34,
+                            _isRecording ? 8 : 29,
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: _switchCamera,
-                    child: Container(
-                      height: 58,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.flip_camera_ios_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Flip',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                _buildGlassIconButton(
+                  icon: Icons.flip_camera_ios_rounded,
+                  onTap: _switchCamera,
+                  size: 48,
                 ),
               ],
             ),
@@ -936,42 +859,88 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     );
   }
 
-  /// Build recording indicator
-  Widget _buildRecordingIndicator() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 84,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.red,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _formatDuration(_recordingDuration),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+  void _onRecordTapDown() {
+    if (_captureMode == _CameraCaptureMode.photo) {
+      _pickFromGallery();
+      return;
+    }
+    _startRecording();
+  }
+
+  Widget _buildCaptureModeSwitch() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        _buildModeTab('Video', _CameraCaptureMode.video),
+        const SizedBox(width: 8),
+        _buildModeTab('Clip', _CameraCaptureMode.clip),
+        const SizedBox(width: 8),
+        _buildModeTab('Photo', _CameraCaptureMode.photo),
+      ],
+    );
+  }
+
+  Widget _buildModeTab(String label, _CameraCaptureMode mode) {
+    final bool selected = _captureMode == mode;
+    return GestureDetector(
+      onTap: () => setState(() => _captureMode = mode),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? PublishFlowTokens.primaryStart.withValues(alpha: 0.28)
+              : Colors.black.withValues(alpha: 0.24),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? PublishFlowTokens.primaryStart.withValues(alpha: 0.55)
+                : PublishFlowTokens.border,
           ),
         ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : Colors.white70,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecordingTimerChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF5F57).withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: const Color(0xFFFF5F57).withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: Color(0xFFFF5F57),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _formatDuration(_recordingDuration),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -979,57 +948,18 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   Widget _buildGlassIconButton({
     required IconData icon,
     required VoidCallback onTap,
+    double size = 44,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.28),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
-          ),
-        ),
+        width: size,
+        height: size,
+        decoration: PublishFlowTokens.glassCircle(),
         child: Icon(
           icon,
           color: Colors.white,
-          size: 22,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeChip(
-    String label, {
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.28),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 16),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+          size: size * 0.48,
         ),
       ),
     );
@@ -1062,7 +992,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   // ignore: unused_element
   void _pauseAllHomeViewVideos() {
     try {
-      log('🔇 TikTokCameraView: Pausing all HomeView videos to prevent audio bleeding');
+      secureLog(
+          '🔇 TikTokCameraView: Pausing all HomeView videos to prevent audio bleeding');
 
       // 🔊 AUDIO FIX: Use GlobalPlaybackManager to block playback
       GlobalPlaybackManager.instance.block(reason: 'camera_view');
@@ -1071,9 +1002,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       final homeNotifier = ref.read(homeProvider.notifier);
       homeNotifier.pauseAllVideos();
 
-      log('✅ TikTokCameraView: All HomeView videos paused successfully');
+      secureLog('✅ TikTokCameraView: All HomeView videos paused successfully');
     } catch (e) {
-      log('❌ TikTokCameraView: Error pausing HomeView videos: $e');
+      secureLog('❌ TikTokCameraView: Error pausing HomeView videos: $e');
     }
   }
 
@@ -1081,7 +1012,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   // ignore: unused_element
   void _reactivateHomeView() {
     try {
-      log('🔄 TikTokCameraView: Reactivating HomeView for seamless return');
+      secureLog(
+          '🔄 TikTokCameraView: Reactivating HomeView for seamless return');
 
       // 🔊 AUDIO FIX: Use GlobalPlaybackManager to unblock playback
       GlobalPlaybackManager.instance.unblock();
@@ -1090,9 +1022,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       final homeNotifier = ref.read(homeProvider.notifier);
       homeNotifier.resumeCurrentVideo();
 
-      log('✅ TikTokCameraView: HomeView reactivated successfully');
+      secureLog('✅ TikTokCameraView: HomeView reactivated successfully');
     } catch (e) {
-      log('❌ TikTokCameraView: Error reactivating HomeView: $e');
+      secureLog('❌ TikTokCameraView: Error reactivating HomeView: $e');
     }
   }
 }

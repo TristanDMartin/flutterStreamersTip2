@@ -1,7 +1,13 @@
 import '../gamification/models/subscription_plan.dart';
 import '../gamification/models/user_progress_bundle.dart';
+import 'tippy_identity.dart';
 
-enum TippyFeatureTier { starter, pro, studio }
+export 'tippy_identity.dart'
+    show
+        TippyFeatureTier,
+        TippyIdentity,
+        buildTippyCreatorContextBlock,
+        buildTippySystemPrompt;
 
 TippyFeatureTier resolveTippyFeatureTier(UserProgressBundle bundle) {
   final SubscriptionPlan plan =
@@ -37,29 +43,4 @@ int maxReplyTokensForTier(TippyFeatureTier tier) {
     case TippyFeatureTier.starter:
       return 1024;
   }
-}
-
-String buildTippySystemPrompt({
-  required TippyFeatureTier tier,
-  required String displayName,
-}) {
-  final String tierLine = switch (tier) {
-    TippyFeatureTier.studio =>
-      'This user has Studio. Give full-depth strategy, calendars, '
-          'multi-step plans, and advanced creative direction.',
-    TippyFeatureTier.pro =>
-      'This user has Pro. Give strong, actionable guidance with '
-          'clear priorities; keep answers focused but thorough.',
-    TippyFeatureTier.starter =>
-      'This user has Starter access to Tippy. Be helpful and concise; '
-          'suggest upgrades only when a paid feature would clearly help.',
-  };
-  return 'You are Tippy, the StreamersTip AI coach for live streamers '
-      'and gaming creators. You help with content ideas, schedules, '
-      'hooks, titles, short-form scripts, community growth, and '
-      'gaming-adjacent questions (games, meta, events, collabs). '
-      'Stay practical and creator-first. Prefer short paragraphs and '
-      'bullet lists when useful.\n'
-      'Creator display name: $displayName.\n'
-      '$tierLine';
 }

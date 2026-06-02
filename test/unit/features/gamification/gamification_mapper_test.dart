@@ -67,7 +67,8 @@ void main() {
       expect(bundle.missions.single.missionId, 'mission-1');
     });
 
-    test('derives historical progression when gamification data is missing', () {
+    test('derives historical progression when gamification data is missing',
+        () {
       final bundle = GamificationMapper.userDocToBundle(<String, dynamic>{
         'displayName': 'Tristan',
         'bio': 'Creator and streamer',
@@ -89,7 +90,9 @@ void main() {
       );
     });
 
-    test('uses historical fallback when gamification map is present but empty in practice', () {
+    test(
+        'uses historical fallback when gamification map is present but empty in practice',
+        () {
       final bundle = GamificationMapper.userDocToBundle(<String, dynamic>{
         'gamification': <String, dynamic>{
           'level': 1,

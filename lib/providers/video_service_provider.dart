@@ -2,12 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/video_service.dart';
 
 export '../services/video_service.dart'
-    show
-        videoServiceStateProvider,
-        userVideosProvider,
-        categoryVideosProvider;
+    show videoServiceStateProvider, userVideosProvider, categoryVideosProvider;
 
 final videoServiceProvider = Provider<VideoService>((ref) {
+  ref.watch(videoServiceStateProvider);
   return ref.read(videoServiceStateProvider.notifier);
 });
 

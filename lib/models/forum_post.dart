@@ -23,6 +23,8 @@ class ForumPost {
   final List<String> followedBy;
   final String? linkedVideoId;
   final String? linkedCommentId;
+  final String? status;
+  final String? deletedReason;
   final SourceComment? sourceComment;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -44,6 +46,8 @@ class ForumPost {
     required this.followedBy,
     this.linkedVideoId,
     this.linkedCommentId,
+    this.status,
+    this.deletedReason,
     this.sourceComment,
     required this.createdAt,
     required this.updatedAt,
@@ -79,6 +83,8 @@ class ForumPost {
       followedBy: List<String>.from(data['followedBy'] ?? []),
       linkedVideoId: data['linkedVideoId'] as String?,
       linkedCommentId: data['linkedCommentId'] as String?,
+      status: data['status'] as String?,
+      deletedReason: data['deletedReason'] as String?,
       sourceComment: data['sourceComment'] != null
           ? SourceComment.fromMap(data['sourceComment'] as Map<String, dynamic>)
           : null,

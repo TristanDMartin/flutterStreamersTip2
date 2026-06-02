@@ -46,7 +46,7 @@ class PerformanceService {
       );
 
       _memoryHistory.add(snapshot);
-      
+
       // Keep only recent history
       if (_memoryHistory.length > _maxMemoryHistory) {
         _memoryHistory.removeAt(0);
@@ -95,15 +95,15 @@ class PerformanceService {
   /// Trigger aggressive memory cleanup
   void _triggerMemoryCleanup() {
     _logPerformanceInfo('Triggering aggressive memory cleanup');
-    
+
     // Clear video metrics for old videos
     _cleanupOldVideoMetrics();
-    
+
     // Clear memory history
     if (_memoryHistory.length > 10) {
       _memoryHistory.removeRange(0, _memoryHistory.length - 10);
     }
-    
+
     // Force garbage collection
     _forceGarbageCollection();
   }
@@ -111,7 +111,7 @@ class PerformanceService {
   /// Trigger light memory cleanup
   void _triggerLightCleanup() {
     _logPerformanceInfo('Triggering light memory cleanup');
-    
+
     // Clear old video metrics
     _cleanupOldVideoMetrics();
   }
@@ -119,8 +119,8 @@ class PerformanceService {
   /// Clean up old video performance metrics
   void _cleanupOldVideoMetrics() {
     final cutoffTime = DateTime.now().subtract(const Duration(minutes: 30));
-    _videoMetrics.removeWhere((key, value) => 
-      value.lastAccessed.isBefore(cutoffTime));
+    _videoMetrics
+        .removeWhere((key, value) => value.lastAccessed.isBefore(cutoffTime));
   }
 
   /// Force garbage collection
@@ -142,7 +142,7 @@ class PerformanceService {
     if (startTime == null) return;
 
     final loadDuration = DateTime.now().difference(startTime);
-    
+
     _videoMetrics[videoId] = VideoPerformanceMetrics(
       videoId: videoId,
       loadDuration: loadDuration,
@@ -150,11 +150,13 @@ class PerformanceService {
       lastAccessed: DateTime.now(),
     );
 
-    _logPerformanceInfo('Video load completed: $videoId in ${loadDuration.inMilliseconds}ms');
-    
+    _logPerformanceInfo(
+        'Video load completed: $videoId in ${loadDuration.inMilliseconds}ms');
+
     // Check for slow loading
     if (loadDuration > _videoLoadTimeout) {
-      _logPerformanceWarning('Slow video load: $videoId took ${loadDuration.inSeconds}s');
+      _logPerformanceWarning(
+          'Slow video load: $videoId took ${loadDuration.inSeconds}s');
     }
   }
 
@@ -164,7 +166,7 @@ class PerformanceService {
     if (metrics == null) return;
 
     metrics.lastAccessed = DateTime.now();
-    
+
     switch (event) {
       case PlaybackEvent.play:
         metrics.playCount++;
@@ -186,14 +188,13 @@ class PerformanceService {
     final totalVideos = _videoMetrics.length;
     final successfulLoads = _videoMetrics.values.where((m) => m.success).length;
     final averageLoadTime = _videoMetrics.values
-        .where((m) => m.success)
-        .map((m) => m.loadDuration.inMilliseconds)
-        .fold(0, (a, b) => a + b) / 
+            .where((m) => m.success)
+            .map((m) => m.loadDuration.inMilliseconds)
+            .fold(0, (a, b) => a + b) /
         (successfulLoads > 0 ? successfulLoads : 1);
 
-    final currentMemory = _memoryHistory.isNotEmpty 
-        ? _memoryHistory.last.usedMemory 
-        : 0;
+    final currentMemory =
+        _memoryHistory.isNotEmpty ? _memoryHistory.last.usedMemory : 0;
 
     return PerformanceSummary(
       totalVideos: totalVideos,
@@ -207,21 +208,21 @@ class PerformanceService {
   /// Log performance information
   void _logPerformanceInfo(String message) {
     if (kDebugMode) {
-    // print('📊 Performance: $message');
+      // appLog('📊 Performance: $message');
     }
   }
 
   /// Log performance warning
   void _logPerformanceWarning(String message) {
     if (kDebugMode) {
-    // print('⚠️ Performance Warning: $message');
+      // appLog('⚠️ Performance Warning: $message');
     }
   }
 
   /// Log performance error
   void _logPerformanceError(String message) {
     if (kDebugMode) {
-    // print('❌ Performance Error: $message');
+      // appLog('❌ Performance Error: $message');
     }
   }
 
@@ -290,6 +291,7 @@ class PerformanceSummary {
     required this.memoryHistory,
   });
 
-  double get successRate => totalVideos > 0 ? successfulLoads / totalVideos : 0.0;
+  double get successRate =>
+      totalVideos > 0 ? successfulLoads / totalVideos : 0.0;
   bool get isMemoryHealthy => currentMemoryUsage < 200;
 }

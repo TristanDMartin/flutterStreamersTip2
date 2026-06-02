@@ -1,3 +1,5 @@
+import '../../qa/qa_runtime.dart';
+
 class OnboardingTesterConfig {
   const OnboardingTesterConfig._();
 
@@ -25,10 +27,15 @@ class OnboardingTesterConfig {
     String? email,
     String? username,
   }) {
+    if (QaRuntime.isMobileFeedE2e) return false;
     if (!enableTesterInstallReset) return false;
     final Set<String> testers = testerUsers;
-    return testers.contains(userId.trim().toLowerCase()) ||
-        testers.contains((email ?? '').trim().toLowerCase()) ||
-        testers.contains((username ?? '').trim().toLowerCase());
+    final String normalizedUserId = userId.trim().toLowerCase();
+    final String normalizedEmail = (email ?? '').trim().toLowerCase();
+    final String normalizedUsername = (username ?? '').trim().toLowerCase();
+    return normalizedUsername == 'tester' ||
+        normalizedUserId == 'tester' ||
+        normalizedEmail == 'tester' ||
+        testers.contains(normalizedUsername);
   }
 }

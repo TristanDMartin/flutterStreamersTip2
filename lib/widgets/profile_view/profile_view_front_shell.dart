@@ -46,14 +46,11 @@ class ProfileViewFrontShell extends StatelessWidget {
         slivers: <Widget>[
           SliverAppBar(
             pinned: true,
+            automaticallyImplyLeading: false,
             elevation: 0,
             scrolledUnderElevation: 0,
             backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back, color: onSurface),
-              onPressed: onBack,
-            ),
             actions: <Widget>[
               IconButton(
                 icon: Icon(

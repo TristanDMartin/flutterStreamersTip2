@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'models/daily_mission_model.dart';
+import 'models/gamification_celebration_state.dart';
 import 'models/gamification_summary_model.dart';
 import 'models/usage_metrics_model.dart';
 import 'models/user_entitlements_model.dart';
@@ -15,16 +16,28 @@ class GamificationMapper {
   static UserProgressBundle userDocToBundle(
     Map<String, dynamic> data, {
     String? uid,
+    Map<String, dynamic>? gamificationState,
   }) {
+    final Map<String, dynamic>? stateMap = gamificationState;
     final Object? gam = data['gamification'];
     final Map<String, dynamic>? gamMap =
         gam is Map<String, dynamic> ? gam : null;
+    final Object? summary = data['progressionSummary'];
+    final Map<String, dynamic>? summaryMap =
+        summary is Map<String, dynamic> ? summary : null;
+    final Map<String, dynamic> topLevelProgress = _topLevelProgressMap(data);
     final GamificationSummaryModel historicalProgress =
         _deriveHistoricalSummary(data);
-    final GamificationSummaryModel progress = (gamMap == null || gamMap.isEmpty)
+    final Map<String, dynamic> progressMap = <String, dynamic>{
+      if (gamMap != null) ...gamMap,
+      ...topLevelProgress,
+      if (summaryMap != null) ...summaryMap,
+      if (stateMap != null) ..._progressFromGamificationState(stateMap),
+    };
+    final GamificationSummaryModel progress = progressMap.isEmpty
         ? historicalProgress
         : _mergeWithHistoricalFallback(
-            GamificationSummaryModel.fromFirestoreMap(gamMap),
+            GamificationSummaryModel.fromFirestoreMap(progressMap),
             historicalProgress,
           );
     final UserSubscriptionModel subscription =
@@ -43,13 +56,64 @@ class GamificationMapper {
     debugPrint(
       '🎮 ProgressionBundle: level=${progress.level} | rankTitle=${progress.rankTitle} | totalXp=${progress.totalXp} | subscriptionPlan=${subscription.plan.name} | subscriptionStatus=${subscription.status} | missions=${missions.isEmpty ? historicalMissions.length : missions.length}',
     );
+    final GamificationCelebrationState celebration =
+        GamificationCelebrationState.fromFirestoreMap(stateMap);
     return UserProgressBundle(
       progress: progress,
       subscription: subscription,
       entitlements: entitlements,
       usage: usage,
       missions: missions.isEmpty ? historicalMissions : missions,
+      celebration: celebration,
     );
+  }
+
+  /// Maps `users/{uid}/gamification/state` onto summary fields (display only).
+  static Map<String, dynamic> _progressFromGamificationState(
+    Map<String, dynamic> state,
+  ) {
+    final Map<String, dynamic> out = <String, dynamic>{};
+    final int? xp = _readInt(state, <String>['xp', 'totalXp']);
+    if (xp != null) {
+      out['totalXp'] = xp;
+    }
+    final int? level = _readInt(state, <String>['level']);
+    if (level != null) {
+      out['level'] = level;
+    }
+    final String? rank = _readString(state, <String>['rank', 'rankTitle']);
+    if (rank != null) {
+      out['rankTitle'] = rank;
+    }
+    final int? streak = _readInt(state, <String>['streakCount', 'streakDays']);
+    if (streak != null) {
+      out['streakDays'] = streak;
+    }
+    final int? score = _readInt(state, <String>['consistencyScore']);
+    if (score != null) {
+      out['creatorScore'] = score.toDouble();
+    }
+    return out;
+  }
+
+  static Map<String, dynamic> _topLevelProgressMap(Map<String, dynamic> data) {
+    final Map<String, dynamic> out = <String, dynamic>{};
+    final int? totalXp = _readInt(data, <String>['totalXP', 'totalXp']);
+    if (totalXp != null) out['totalXp'] = totalXp;
+    final int? level = _readInt(data, <String>['level']);
+    if (level != null) out['level'] = level;
+    final double? creatorScore =
+        _readDouble(data, <String>['creatorScore', 'creator_score']);
+    if (creatorScore != null) out['creatorScore'] = creatorScore;
+    final int? streakDays =
+        _readInt(data, <String>['streakCount', 'streakDays', 'streak_days']);
+    if (streakDays != null) out['streakDays'] = streakDays;
+    final String? rankName = _readString(data, <String>[
+      'rankName',
+      'rankTitle',
+    ]);
+    if (rankName != null) out['rankTitle'] = rankName;
+    return out;
   }
 
   static GamificationSummaryModel _mergeWithHistoricalFallback(
@@ -261,6 +325,17 @@ class GamificationMapper {
       if (value is double) return value.round();
       if (value is num) return value.round();
       if (value is String) return int.tryParse(value);
+    }
+    return null;
+  }
+
+  static double? _readDouble(Map<String, dynamic> raw, List<String> keys) {
+    for (final String key in keys) {
+      final Object? value = raw[key];
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value);
     }
     return null;
   }

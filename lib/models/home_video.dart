@@ -17,6 +17,7 @@ sealed class HomeVideo with _$HomeVideo {
     @Default(0) int comments,
     @Default(0) int views,
     @Default('') String caption,
+    @Default('') String overlayCaption,
     @Default(false) bool isLiked,
     @Default(false) bool isFavorited,
     @Default(false) bool isDraft,

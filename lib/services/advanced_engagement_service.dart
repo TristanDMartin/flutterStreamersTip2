@@ -1,7 +1,9 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
+
+import '../features/gamification/daily_activity_service.dart';
 
 /// Advanced engagement tracking service - Better than TikTok
 /// Tracks granular watch time, retention, velocity, and network effects
@@ -64,7 +66,8 @@ class AdvancedEngagementService {
     watchData.watchSegments[segment] =
         (watchData.watchSegments[segment] ?? 0) + 1;
 
-    log('📊 Watch time tracked: $videoId - ${watchPercentage.toStringAsFixed(1)}% (segment: $segment)');
+    secureLog(
+        '📊 Watch time tracked: $videoId - ${watchPercentage.toStringAsFixed(1)}% (segment: $segment)');
 
     // Calculate engagement score
     final score = _calculateWatchTimeScore(watchData);
@@ -127,9 +130,10 @@ class AdvancedEngagementService {
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      log('✅ Watch data saved: $videoId - score: ${score.toStringAsFixed(2)}');
+      secureLog(
+          '✅ Watch data saved: $videoId - score: ${score.toStringAsFixed(2)}');
     } catch (e) {
-      log('❌ Error saving watch data: $e');
+      secureLog('❌ Error saving watch data: $e');
     }
   }
 
@@ -147,7 +151,7 @@ class AdvancedEngagementService {
     );
 
     _userSessions[userId] = session;
-    log('📱 Session started for user: $userId');
+    secureLog('📱 Session started for user: $userId');
   }
 
   /// End user session and calculate retention signals
@@ -166,8 +170,14 @@ class AdvancedEngagementService {
 
     // Save session data
     await _saveSessionData(session, retentionScore);
+    if (session.sessionDuration.inSeconds >= 30 || session.videosWatched >= 2) {
+      DailyActivityService.instance.maybeEmitDayQualified(
+        source: 'home_session',
+      );
+    }
 
-    log('📱 Session ended: ${session.sessionDuration.inMinutes}min, ${session.videosWatched} videos, score: $retentionScore');
+    secureLog(
+        '📱 Session ended: ${session.sessionDuration.inMinutes}min, ${session.videosWatched} videos, score: $retentionScore');
 
     _userSessions.remove(userId);
   }
@@ -209,9 +219,9 @@ class AdvancedEngagementService {
         'retentionScore': retentionScore,
       });
 
-      log('✅ Session saved with retention score: $retentionScore');
+      secureLog('✅ Session saved with retention score: $retentionScore');
     } catch (e) {
-      log('❌ Error saving session data: $e');
+      secureLog('❌ Error saving session data: $e');
     }
   }
 

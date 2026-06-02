@@ -501,11 +501,26 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
       );
     }
 
+    final bool dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: shell.scaffold,
+      backgroundColor: dark ? const Color(0xFF071120) : shell.scaffold,
       resizeToAvoidBottomInset: true,
-      body: Container(
-        color: shell.scaffold,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(0, -1.05),
+            radius: 1.16,
+            colors: dark
+                ? <Color>[
+                    scheme.primary.withValues(alpha: 0.10),
+                    const Color(0xFF071120),
+                  ]
+                : <Color>[
+                    scheme.primary.withValues(alpha: 0.05),
+                    shell.scaffold,
+                  ],
+          ),
+        ),
         child: Column(
           children: [
             SafeArea(
@@ -519,7 +534,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                     onPressed: () => Navigator.pop(context),
                   ),
                   title: 'Thread',
-                  subtitle: 'Jump into the conversation',
+                  subtitle: '${_post!.commentCount} replies',
                   actions: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -555,13 +570,13 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                   16,
                   8,
                   16,
-                  _replyingToCommentId != null ? 164 : 132,
+                  _replyingToCommentId != null ? 142 : 112,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildThreadHeroCard(),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16),
                     _buildCommentsSection(),
                   ],
                 ),
@@ -571,29 +586,14 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
             SafeArea(
               top: false,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
                 decoration: BoxDecoration(
-                  color: shell.isLight ? shell.surfaceCard : null,
-                  gradient: shell.isLight
-                      ? null
-                      : const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: AppColors.supportSurfaceGradient,
-                        ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28),
+                  color: shell.surfaceCard.withValues(alpha: 0.78),
+                  border: Border(
+                    top: BorderSide(
+                      color: shell.surfaceCardBorder.withValues(alpha: 0.72),
+                    ),
                   ),
-                  border: Border.all(color: shell.surfaceCardBorder),
-                  boxShadow: shell.isLight
-                      ? <BoxShadow>[
-                          BoxShadow(
-                            color: shell.shadowSoft,
-                            blurRadius: 20,
-                            offset: const Offset(0, -6),
-                          ),
-                        ]
-                      : null,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -602,12 +602,12 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                       Container(
                         margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+                          horizontal: 10,
+                          vertical: 8,
                         ),
                         decoration: BoxDecoration(
                           color: shell.chipUnselectedBg,
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: shell.surfaceCardBorder,
                           ),
@@ -650,7 +650,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         _buildComposerAvatar(),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
                             controller: _commentController,
@@ -673,26 +673,26 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                                       .withValues(alpha: 0.55)
                                   : Colors.white.withValues(alpha: 0.08),
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(22),
+                                borderRadius: BorderRadius.circular(18),
                                 borderSide: BorderSide(
                                   color: shell.surfaceCardBorder,
                                 ),
                               ),
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(22),
+                                borderRadius: BorderRadius.circular(18),
                                 borderSide: BorderSide(
                                   color: shell.surfaceCardBorder,
                                 ),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(22),
+                                borderRadius: BorderRadius.circular(18),
                                 borderSide: BorderSide(
                                   color: scheme.primary.withValues(alpha: 0.75),
                                 ),
                               ),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16,
-                                vertical: 14,
+                                vertical: 10,
                               ),
                             ),
                           ),
@@ -705,7 +705,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                             backgroundColor: scheme.primary,
                             foregroundColor: scheme.onPrimary,
                             shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(14),
+                            padding: const EdgeInsets.all(11),
                           ),
                           child: _isSubmittingReply
                               ? SizedBox(
@@ -745,22 +745,13 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
   }) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: shell.heroGradient,
+        color: shell.surfaceCard.withValues(alpha: 0.54),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: shell.surfaceCardBorder.withValues(alpha: 0.66),
         ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: shell.heroBorder),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: shell.shadowSoft,
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
       ),
       child: Row(
         children: [
@@ -773,7 +764,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                   title,
                   style: TextStyle(
                     color: shell.onChrome,
-                    fontSize: 19,
+                    fontSize: 17,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -803,27 +794,18 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
-      width: 40,
-      height: 40,
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
         color: isActive
             ? scheme.primary.withValues(alpha: 0.16)
-            : shell.surfaceCard,
-        borderRadius: BorderRadius.circular(14),
+            : shell.onChrome.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isActive
               ? scheme.primary.withValues(alpha: 0.45)
               : shell.surfaceCardBorder,
         ),
-        boxShadow: isActive
-            ? <BoxShadow>[
-                BoxShadow(
-                  color: scheme.primary.withValues(alpha: 0.2),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : null,
       ),
       child: IconButton(
         onPressed: onPressed,
@@ -841,20 +823,13 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
       decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: shell.surfaceCardBorder,
-        ),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: shell.shadowSoft,
-            blurRadius: 28,
-            offset: const Offset(0, 14),
+        border: Border(
+          bottom: BorderSide(
+            color: shell.surfaceCardBorder.withValues(alpha: 0.64),
           ),
-        ],
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -879,18 +854,18 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
           ],
           Text(
             _post!.title,
             style: TextStyle(
               color: shell.onChrome,
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: FontWeight.w800,
               height: 1.15,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           DiscussionAuthorRow(
             displayName: _post!.author.displayName,
             username: _post!.author.username,
@@ -900,11 +875,23 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
             trailingText: _formatDate(_post!.createdAt),
             onTap: () => _openStreamerCard(_post!.author.uid),
           ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 52),
+            child: Text(
+              _creatorContext(_post!.author),
+              style: TextStyle(
+                color: scheme.primary.withValues(alpha: 0.84),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
           const SizedBox(height: 18),
           Text(
             _post!.content,
             style: TextStyle(
-              color: shell.muted,
+              color: shell.onChrome.withValues(alpha: 0.88),
               fontSize: 16,
               height: 1.45,
             ),
@@ -913,7 +900,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
             const SizedBox(height: 16),
             _buildSourceCommentCard(),
           ],
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -939,41 +926,13 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
 
   Widget _buildCommentsSection() {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-      decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: shell.surfaceCardBorder,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: <Color>[
-                      scheme.primary.withValues(alpha: 0.95),
-                      scheme.secondary.withValues(alpha: 0.9),
-                    ],
-                  ),
-                ),
-                child: Icon(
-                  Icons.forum_outlined,
-                  color: scheme.onPrimary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -982,8 +941,8 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                       'Discussion',
                       style: TextStyle(
                         color: shell.onChrome,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     Text(
@@ -998,7 +957,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           StreamBuilder<List<ForumComment>>(
             stream: _forumService.watchComments(widget.postId),
             builder: (BuildContext context, snapshot) {
@@ -1135,6 +1094,17 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
         ],
       ),
     );
+  }
+
+  String _creatorContext(ForumAuthor author) {
+    final String username = author.username.trim();
+    if (username.toLowerCase().contains('edit')) {
+      return 'Editor • Creator workflow';
+    }
+    if (username.toLowerCase().contains('fps')) {
+      return 'FPS Creator • Active today';
+    }
+    return 'Creator • Posted recently';
   }
 
   Widget _buildComposerAvatar() {

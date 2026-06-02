@@ -51,7 +51,7 @@ class StoryPreview extends StatelessWidget {
     return Column(
       children: [
         const SizedBox(height: 4),
-        
+
         // Story circle with gradient ring
         Stack(
           children: [
@@ -77,7 +77,7 @@ class StoryPreview extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // Inner circle with avatar placeholder
             Positioned(
               top: 3,
@@ -98,9 +98,9 @@ class StoryPreview extends StatelessWidget {
             ),
           ],
         ),
-        
+
         const SizedBox(height: 4),
-        
+
         // Creator name
         SizedBox(
           width: 60,

@@ -5,7 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// Service for managing authentication rate limiting and brute force protection
 /// ✅ SECURITY FIX: Uses FlutterSecureStorage for secure data storage
 class AuthRateLimitingService {
-  static final AuthRateLimitingService _instance = AuthRateLimitingService._internal();
+  static final AuthRateLimitingService _instance =
+      AuthRateLimitingService._internal();
   factory AuthRateLimitingService() => _instance;
   AuthRateLimitingService._internal();
 
@@ -29,7 +30,7 @@ class AuthRateLimitingService {
     try {
       final lockoutUntilStr = await _storage.read(key: _lockoutKey);
       if (lockoutUntilStr == null) return false;
-      
+
       final lockoutUntil = int.tryParse(lockoutUntilStr) ?? 0;
       if (lockoutUntil > 0) {
         final lockoutTime = DateTime.fromMillisecondsSinceEpoch(lockoutUntil);
@@ -40,7 +41,7 @@ class AuthRateLimitingService {
           await _resetAttempts();
         }
       }
-      
+
       return false;
     } catch (e) {
       debugPrint('❌ AuthRateLimitingService: Error checking rate limit: $e');
@@ -54,14 +55,15 @@ class AuthRateLimitingService {
       final now = DateTime.now();
       final attemptsStr = await _storage.read(key: _attemptsKey);
       final lastAttemptTimeStr = await _storage.read(key: _lastAttemptKey);
-      
+
       final attempts = int.tryParse(attemptsStr ?? '0') ?? 0;
       final lastAttemptTime = int.tryParse(lastAttemptTimeStr ?? '0') ?? 0;
-      
+
       // Reset attempts if outside the time window
       int newAttempts;
       if (lastAttemptTime > 0) {
-        final lastAttempt = DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
+        final lastAttempt =
+            DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
         if (now.difference(lastAttempt) > _attemptWindow) {
           newAttempts = 1;
         } else {
@@ -70,14 +72,17 @@ class AuthRateLimitingService {
       } else {
         newAttempts = 1;
       }
-      
+
       await _storage.write(key: _attemptsKey, value: newAttempts.toString());
-      await _storage.write(key: _lastAttemptKey, value: now.millisecondsSinceEpoch.toString());
-      
+      await _storage.write(
+          key: _lastAttemptKey, value: now.millisecondsSinceEpoch.toString());
+
       // Check if we should lockout
       if (newAttempts >= _maxAttempts) {
         final lockoutUntil = now.add(_lockoutDuration);
-        await _storage.write(key: _lockoutKey, value: lockoutUntil.millisecondsSinceEpoch.toString());
+        await _storage.write(
+            key: _lockoutKey,
+            value: lockoutUntil.millisecondsSinceEpoch.toString());
       }
     } catch (e) {
       debugPrint('❌ AuthRateLimitingService: Error recording attempt: $e');
@@ -95,7 +100,7 @@ class AuthRateLimitingService {
     try {
       final lockoutUntilStr = await _storage.read(key: _lockoutKey);
       if (lockoutUntilStr == null) return null;
-      
+
       final lockoutUntil = int.tryParse(lockoutUntilStr) ?? 0;
       if (lockoutUntil > 0) {
         final lockoutTime = DateTime.fromMillisecondsSinceEpoch(lockoutUntil);
@@ -103,7 +108,7 @@ class AuthRateLimitingService {
           return lockoutTime.difference(DateTime.now());
         }
       }
-      
+
       return null;
     } catch (e) {
       debugPrint('❌ AuthRateLimitingService: Error getting lockout: $e');
@@ -116,19 +121,20 @@ class AuthRateLimitingService {
     try {
       final attemptsStr = await _storage.read(key: _attemptsKey);
       final lastAttemptTimeStr = await _storage.read(key: _lastAttemptKey);
-      
+
       final attempts = int.tryParse(attemptsStr ?? '0') ?? 0;
       final lastAttemptTime = int.tryParse(lastAttemptTimeStr ?? '0') ?? 0;
-      
+
       // Reset if outside time window
       if (lastAttemptTime > 0) {
-        final lastAttempt = DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
+        final lastAttempt =
+            DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
         if (DateTime.now().difference(lastAttempt) > _attemptWindow) {
           await _resetAttempts();
           return 0;
         }
       }
-      
+
       return attempts;
     } catch (e) {
       debugPrint('❌ AuthRateLimitingService: Error getting attempt count: $e');
@@ -155,13 +161,13 @@ class AuthRateLimitingService {
         }
       }
     }
-    
+
     final attempts = await getAttemptCount();
     if (attempts >= (_maxAttempts * 0.6).round()) {
       final remaining = _maxAttempts - attempts;
       return 'Too many failed attempts. $remaining attempts remaining.';
     }
-    
+
     return null;
   }
 

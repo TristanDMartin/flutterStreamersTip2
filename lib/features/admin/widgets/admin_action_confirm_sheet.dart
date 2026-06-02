@@ -9,65 +9,65 @@ Future<String?> showAdminTextConfirmSheet(
 }) async {
   final TextEditingController reason = TextEditingController();
   try {
-  final String? result = await showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    barrierColor: Colors.black54,
-    builder: (ctx) {
-      final inset = MediaQuery.viewInsetsOf(ctx).bottom;
-      return Padding(
-        padding: EdgeInsets.only(bottom: inset),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(body, style: Theme.of(ctx).textTheme.bodyMedium),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: reason,
-                  decoration: InputDecoration(
-                    labelText: reasonHint,
-                    border: const OutlineInputBorder(),
+    final String? result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      barrierColor: Colors.black54,
+      builder: (ctx) {
+        final inset = MediaQuery.viewInsetsOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: inset),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Cancel'),
-                      ),
+                  const SizedBox(height: 8),
+                  Text(body, style: Theme.of(ctx).textTheme.bodyMedium),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: reason,
+                    decoration: InputDecoration(
+                      labelText: reasonHint,
+                      border: const OutlineInputBorder(),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () =>
-                            Navigator.pop(ctx, reason.text.trim()),
-                        child: Text(confirmLabel),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel'),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () =>
+                              Navigator.pop(ctx, reason.text.trim()),
+                          child: Text(confirmLabel),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
-    },
-  );
-  return result;
+        );
+      },
+    );
+    return result;
   } finally {
     reason.dispose();
   }
@@ -120,8 +120,7 @@ Future<String?> showAdminRemoveVideoSheet(BuildContext context) async {
                         isExpanded: true,
                         items: opts
                             .map(
-                              (e) =>
-                                  DropdownMenuItem(value: e, child: Text(e)),
+                              (e) => DropdownMenuItem(value: e, child: Text(e)),
                             )
                             .toList(),
                         onChanged: (String? v) =>

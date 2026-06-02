@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/st_theme_tokens.dart';
+import '../qa/qa_keys.dart';
 import '../services/robust_auth_service.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../views/terms_and_privacy_view.dart';
@@ -88,13 +89,16 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
 
     // Listen to auth state changes to navigate when user signs in
     ref.listen(robustAuthServiceProvider, (previous, next) {
-      if (next.isLoggedIn && mounted) {
-        debugPrint("✅ User authenticated, resolving post-auth destination");
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!mounted) return;
-          await navigateAfterAuthenticated(context);
-        });
+      if (previous?.isLoggedIn == true || !next.isLoggedIn || !mounted) {
+        return;
       }
+      debugPrint("✅ User authenticated, resolving post-auth destination");
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) {
+          return;
+        }
+        await navigateAfterAuthenticated(context);
+      });
     });
 
     return Material(
@@ -352,6 +356,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           ),
           const SizedBox(height: 18),
           _buildAuthButton(
+            key: QaKeys.authEmailUsernameOption,
             icon: Icons.person,
             text: "Sign in with Email/Username",
             backgroundColor: Colors.white,
@@ -382,6 +387,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildAuthButton({
+    Key? key,
     required IconData icon,
     required String text,
     required Color backgroundColor,
@@ -392,6 +398,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     return Opacity(
       opacity: disabled ? 0.5 : 1.0,
       child: _PressableAuthButton(
+        key: key,
         enabled: !disabled,
         onTap: onTap,
         child: Container(
@@ -424,10 +431,10 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
                 child: Text(
                   text,
                   style: TextStyle(
-                    fontSize: !kIsWeb &&
-                            defaultTargetPlatform == TargetPlatform.iOS
-                        ? 15.5
-                        : 17,
+                    fontSize:
+                        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
+                            ? 15.5
+                            : 17,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.1,
                     color: Colors.white,
@@ -677,6 +684,7 @@ class _PressableAuthButton extends StatefulWidget {
   final bool enabled;
 
   const _PressableAuthButton({
+    super.key,
     required this.child,
     required this.onTap,
     this.enabled = true,
@@ -703,6 +711,7 @@ class _PressableAuthButtonState extends State<_PressableAuthButton> {
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOut,
       child: GestureDetector(
+        key: widget.key,
         onTap: widget.enabled ? widget.onTap : null,
         onTapDown: (_) => _setPressed(true),
         onTapUp: (_) => _setPressed(false),

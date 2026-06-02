@@ -1,3 +1,4 @@
+import 'video_document_rules.dart';
 import 'video_health_gate.dart';
 import 'video_url_resolver.dart';
 
@@ -5,19 +6,13 @@ import 'video_url_resolver.dart';
 /// the home feed. Unplayable URLs are handled separately via
 /// [videoIsPlayableForProfileCount].
 bool videoCountsAsPublicPostForStats(Map<String, dynamic> data) {
-  if (data['deleted'] == true || data['isDeleted'] == true) {
+  if (!isVideoVisibleInFeed(data)) {
     return false;
   }
   if (data['visible'] == false) {
     return false;
   }
   if (data['isDraft'] == true) {
-    return false;
-  }
-  final String? status = data['status'] as String?;
-  final bool isActiveStatus =
-      status == 'active' || status == 'published' || status == 'ready';
-  if (!isActiveStatus) {
     return false;
   }
   if (data['isReadyForFeed'] == false) {
@@ -33,7 +28,7 @@ bool videoCountsAsPublicPostForStats(Map<String, dynamic> data) {
 }
 
 bool videoIsPublicFeedVisible(Map<String, dynamic> data) {
-  return videoCountsAsPublicPostForStats(data);
+  return isVideoEligibleForPublicFeed(data);
 }
 
 /// Owner matches [userId] using the same owner keys as [getOwnerId].

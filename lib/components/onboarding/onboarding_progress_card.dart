@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/gamification/gamification_providers.dart';
 import 'onboarding_models.dart';
 import 'onboarding_style.dart';
 
-class OnboardingProgressCard extends StatelessWidget {
+class OnboardingProgressCard extends ConsumerWidget {
   const OnboardingProgressCard({
     super.key,
     required this.state,
@@ -16,8 +18,12 @@ class OnboardingProgressCard extends StatelessWidget {
   final ValueChanged<OnboardingMission> onNextMission;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final OnboardingMission? next = state.nextMission;
+    final int displayLevel = ref.watch(userProgressBundleProvider).maybeWhen(
+          data: (bundle) => bundle.progress.level,
+          orElse: () => levelForXp(state.xp),
+        );
     final bool light = OnboardingStyle.isLight(context);
     final Color textPrimary = OnboardingStyle.textPrimaryFor(context);
     final Color textSecondary = OnboardingStyle.textSecondaryFor(context);
@@ -59,7 +65,7 @@ class OnboardingProgressCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                'Level 1 ${state.completedMissionCount}/${levelOneMissions.length}',
+                'Lv $displayLevel · ${state.completedMissionCount}/${visibleLevelOneMissions.length}',
                 style: TextStyle(
                   color: textPrimary,
                   fontWeight: FontWeight.w900,

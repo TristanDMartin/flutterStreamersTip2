@@ -78,6 +78,7 @@ class ConnectionNotifier extends StateNotifier<List<Connection>> {
   }
 }
 
-final connectionsProvider = StateNotifierProvider<ConnectionNotifier, List<Connection>>(
+final connectionsProvider =
+    StateNotifierProvider<ConnectionNotifier, List<Connection>>(
   (ref) => ConnectionNotifier(),
 );

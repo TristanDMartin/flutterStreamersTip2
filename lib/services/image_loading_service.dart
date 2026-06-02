@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 /// Image Loading Service
-/// 
+///
 /// Handles robust image loading with fallbacks and error handling
 /// to prevent image decoding errors and improve user experience.
 class ImageLoadingService {
-  
   /// Load a network image with robust error handling
   static Widget loadNetworkImage({
     required String imageUrl,
@@ -23,7 +22,7 @@ class ImageLoadingService {
     if (imageUrl.isEmpty) {
       return _buildErrorWidget(width, height, fit, borderRadius);
     }
-    
+
     final uri = Uri.tryParse(imageUrl);
     if (uri == null || !uri.hasAbsolutePath) {
       return _buildErrorWidget(width, height, fit, borderRadius);
@@ -31,7 +30,7 @@ class ImageLoadingService {
 
     // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
     return _buildErrorWidget(width, height, fit, borderRadius);
-    
+
     // DISABLED: Image loading causes buffer overflow
     // return CachedNetworkImage(
     //   imageUrl: imageUrl,
@@ -72,7 +71,7 @@ class ImageLoadingService {
     if (imageUrl.isEmpty) {
       return _buildCircularErrorWidget(radius);
     }
-    
+
     final uri = Uri.tryParse(imageUrl);
     if (uri == null || !uri.hasAbsolutePath) {
       return _buildCircularErrorWidget(radius);
@@ -80,7 +79,7 @@ class ImageLoadingService {
 
     // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
     return _buildCircularErrorWidget(radius);
-    
+
     // DISABLED: Image loading causes buffer overflow
     // return CachedNetworkImage(
     //   imageUrl: imageUrl,
@@ -119,7 +118,8 @@ class ImageLoadingService {
   // Removed unused _buildPlaceholderWidget method
 
   /// Build error widget
-  static Widget _buildErrorWidget(double? width, double? height, BoxFit fit, BorderRadius? borderRadius) {
+  static Widget _buildErrorWidget(
+      double? width, double? height, BoxFit fit, BorderRadius? borderRadius) {
     return Container(
       width: width,
       height: height,
@@ -158,7 +158,8 @@ class ImageLoadingService {
   }
 
   /// Preload images for better performance
-  static Future<void> preloadImages(List<String> imageUrls, BuildContext context) async {
+  static Future<void> preloadImages(
+      List<String> imageUrls, BuildContext context) async {
     for (final url in imageUrls) {
       if (url.isNotEmpty) {
         final uri = Uri.tryParse(url);
@@ -190,7 +191,7 @@ class ImageLoadingService {
 }
 
 /// Image Loading Widget
-/// 
+///
 /// A reusable widget that handles image loading with built-in error handling
 class ImageLoadingWidget extends StatelessWidget {
   final String imageUrl;

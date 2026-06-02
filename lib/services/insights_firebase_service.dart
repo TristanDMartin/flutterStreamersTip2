@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/profile_video.dart';
 import '../models/insights_data.dart';
 import '../models/user.dart' as app_user;
+import 'package:streamers_tip/utils/app_log.dart';
 
 /// Firebase service for handling Insights data and ProfileVideo operations
 class InsightsFirebaseService extends ChangeNotifier {
@@ -244,7 +245,7 @@ class InsightsFirebaseService extends ChangeNotifier {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Error mapping video data: $e');
+        appLog('Error mapping video data: $e');
       }
       return null;
     }

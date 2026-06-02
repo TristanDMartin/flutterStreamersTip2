@@ -1,13 +1,14 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 class ErrorHandlingService {
-  static final ErrorHandlingService _instance = ErrorHandlingService._internal();
+  static final ErrorHandlingService _instance =
+      ErrorHandlingService._internal();
   factory ErrorHandlingService() => _instance;
   ErrorHandlingService._internal();
 
@@ -24,7 +25,8 @@ class ErrorHandlingService {
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _isOnline = true;
-  final StreamController<bool> _connectivityController = StreamController<bool>.broadcast();
+  final StreamController<bool> _connectivityController =
+      StreamController<bool>.broadcast();
 
   // Error tracking
   final List<AppError> _errorHistory = [];
@@ -39,11 +41,11 @@ class ErrorHandlingService {
   Future<void> initialize() async {
     // Start connectivity monitoring
     _startConnectivityMonitoring();
-    
+
     // Load offline data
     await _loadOfflineData();
-    
-    log('🛡️ Error handling service initialized');
+
+    secureLog('🛡️ Error handling service initialized');
   }
 
   /// Start monitoring network connectivity
@@ -51,14 +53,15 @@ class ErrorHandlingService {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
       (List<ConnectivityResult> results) {
         final wasOnline = _isOnline;
-        _isOnline = results.contains(ConnectivityResult.mobile) || 
-          results.contains(ConnectivityResult.wifi) ||
-          results.contains(ConnectivityResult.ethernet);
-        
+        _isOnline = results.contains(ConnectivityResult.mobile) ||
+            results.contains(ConnectivityResult.wifi) ||
+            results.contains(ConnectivityResult.ethernet);
+
         if (wasOnline != _isOnline) {
           _connectivityController.add(_isOnline);
-          log('🌐 Connectivity changed: ${_isOnline ? "Online" : "Offline"}');
-          
+          secureLog(
+              '🌐 Connectivity changed: ${_isOnline ? "Online" : "Offline"}');
+
           if (_isOnline) {
             _handleReconnection();
           }
@@ -69,7 +72,7 @@ class ErrorHandlingService {
 
   /// Handle reconnection when coming back online
   void _handleReconnection() {
-    log('🔄 Handling reconnection...');
+    secureLog('🔄 Handling reconnection...');
     // Retry failed operations
     _retryFailedOperations();
     // Sync offline data
@@ -83,7 +86,8 @@ class ErrorHandlingService {
   Stream<bool> get connectivityStream => _connectivityController.stream;
 
   /// Handle and categorize errors
-  AppError handleError(dynamic error, {String? context, Map<String, dynamic>? metadata}) {
+  AppError handleError(dynamic error,
+      {String? context, Map<String, dynamic>? metadata}) {
     final appError = _categorizeError(error, context, metadata);
     _logError(appError);
     _addToHistory(appError);
@@ -91,7 +95,8 @@ class ErrorHandlingService {
   }
 
   /// Categorize error based on type and content
-  AppError _categorizeError(dynamic error, String? context, Map<String, dynamic>? metadata) {
+  AppError _categorizeError(
+      dynamic error, String? context, Map<String, dynamic>? metadata) {
     String type = unknownError;
     String message = 'An unexpected error occurred';
     int? statusCode;
@@ -114,11 +119,13 @@ class ErrorHandlingService {
       type = networkError;
       message = 'Request timed out. Please try again.';
       isRetryable = true;
-    } else if (error.toString().contains('auth') || error.toString().contains('permission')) {
+    } else if (error.toString().contains('auth') ||
+        error.toString().contains('permission')) {
       type = authError;
       message = 'Authentication failed. Please log in again.';
       isRetryable = false;
-    } else if (error.toString().contains('video') || error.toString().contains('player')) {
+    } else if (error.toString().contains('video') ||
+        error.toString().contains('player')) {
       type = videoError;
       message = 'Video playback error. Please try again.';
       isRetryable = true;
@@ -147,12 +154,12 @@ class ErrorHandlingService {
   /// Log error for debugging
   void _logError(AppError error) {
     if (kDebugMode) {
-    // print('❌ Error [${error.type}]: ${error.message}');
+      // appLog('❌ Error [${error.type}]: ${error.message}');
       if (error.originalError != null) {
-    // print('   Original: ${error.originalError}');
+        // appLog('   Original: ${error.originalError}');
       }
       if (error.context != null) {
-    // print('   Context: ${error.context}');
+        // appLog('   Context: ${error.context}');
       }
     }
   }
@@ -175,13 +182,13 @@ class ErrorHandlingService {
     final id = operationId ?? DateTime.now().millisecondsSinceEpoch.toString();
     final attempts = maxAttempts ?? _maxRetryAttempts;
     final retryDelay = delay ?? _retryDelay;
-    
+
     for (int attempt = 1; attempt <= attempts; attempt++) {
       try {
         if (!_isOnline && _requiresNetwork(operation)) {
           throw const SocketException('No internet connection');
         }
-        
+
         final result = await operation();
         _retryCounts.remove(id);
         return result;
@@ -191,20 +198,20 @@ class ErrorHandlingService {
           'attempt': attempt,
           'max_attempts': attempts,
         });
-        
+
         if (attempt == attempts || !error.isRetryable) {
           _retryCounts.remove(id);
           rethrow;
         }
-        
+
         if (kDebugMode) {
-    // print('🔄 Retrying operation $id (attempt $attempt/$attempts)');
+          // appLog('🔄 Retrying operation $id (attempt $attempt/$attempts)');
         }
-        
+
         await Future.delayed(retryDelay * attempt);
       }
     }
-    
+
     return null;
   }
 
@@ -219,7 +226,7 @@ class ErrorHandlingService {
   void _retryFailedOperations() {
     // This would implement retry logic for failed operations
     // stored during offline mode
-    log('🔄 Retrying failed operations...');
+    secureLog('🔄 Retrying failed operations...');
   }
 
   /// Load offline data
@@ -227,16 +234,16 @@ class ErrorHandlingService {
     try {
       await SharedPreferences.getInstance();
       // Load offline data from SharedPreferences
-      log('📱 Loading offline data...');
+      secureLog('📱 Loading offline data...');
     } catch (e) {
-      log('❌ Error loading offline data: $e');
+      secureLog('❌ Error loading offline data: $e');
     }
   }
 
   /// Sync offline data when back online
   void _syncOfflineData() {
     // This would implement sync logic for offline data
-    log('🔄 Syncing offline data...');
+    secureLog('🔄 Syncing offline data...');
   }
 
   /// Show error dialog to user
@@ -336,11 +343,11 @@ class ErrorHandlingService {
     final totalErrors = _errorHistory.length;
     final errorsByType = <String, int>{};
     final retryableErrors = _errorHistory.where((e) => e.isRetryable).length;
-    
+
     for (final error in _errorHistory) {
       errorsByType[error.type] = (errorsByType[error.type] ?? 0) + 1;
     }
-    
+
     return ErrorStatistics(
       totalErrors: totalErrors,
       errorsByType: errorsByType,
@@ -395,6 +402,6 @@ class ErrorStatistics {
     required this.isOnline,
   });
 
-  double get retryablePercentage => 
-    totalErrors > 0 ? retryableErrors / totalErrors : 0.0;
+  double get retryablePercentage =>
+      totalErrors > 0 ? retryableErrors / totalErrors : 0.0;
 }

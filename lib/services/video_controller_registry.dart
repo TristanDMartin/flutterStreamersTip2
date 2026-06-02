@@ -1,6 +1,8 @@
 import 'package:video_player/video_player.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
+import 'global_playback_manager.dart';
+
 /// Centralized Video Controller Registry - Single source of truth for all video controllers
 ///
 /// All video controllers MUST be created via this registry.
@@ -21,7 +23,8 @@ class VideoControllerRegistry {
   /// Returns true if registration successful, false if already registered
   bool register(String videoId, VideoPlayerController controller) {
     if (_isRegistered[videoId] == true) {
-      secureLog('⚠️ VideoControllerRegistry: Controller already registered for $videoId');
+      secureLog(
+          '⚠️ VideoControllerRegistry: Controller already registered for $videoId');
       return false;
     }
 
@@ -37,7 +40,8 @@ class VideoControllerRegistry {
   /// Mark a video as visible (should be playing)
   void markVisible(String videoId) {
     if (_isRegistered[videoId] != true) {
-      secureLog('❌ VideoControllerRegistry: Cannot mark visible - not registered: $videoId');
+      secureLog(
+          '❌ VideoControllerRegistry: Cannot mark visible - not registered: $videoId');
       return;
     }
 
@@ -48,7 +52,8 @@ class VideoControllerRegistry {
   /// Mark a video as hidden (should be paused)
   void markHidden(String videoId) {
     if (_isRegistered[videoId] != true) {
-      secureLog('❌ VideoControllerRegistry: Cannot mark hidden - not registered: $videoId');
+      secureLog(
+          '❌ VideoControllerRegistry: Cannot mark hidden - not registered: $videoId');
       return;
     }
 
@@ -76,7 +81,8 @@ class VideoControllerRegistry {
     final isSafe = isRegistered && isInitialized && hasNoError;
 
     if (!isSafe) {
-      secureLog('⚠️ VideoControllerRegistry: Controller not safe for $videoId - registered: $isRegistered, initialized: $isInitialized, noError: $hasNoError');
+      secureLog(
+          '⚠️ VideoControllerRegistry: Controller not safe for $videoId - registered: $isRegistered, initialized: $isInitialized, noError: $hasNoError');
     }
 
     return isSafe;
@@ -86,11 +92,23 @@ class VideoControllerRegistry {
   VideoPlayerController? getController(String videoId) {
     // Safety check: Prevent invalid video IDs
     if (videoId.isEmpty || videoId == '0') {
-      secureLog('❌ VideoControllerRegistry: Cannot get controller for invalid video ID: "$videoId"');
+      secureLog(
+          '❌ VideoControllerRegistry: Cannot get controller for invalid video ID: "$videoId"');
       return null;
     }
 
     return _isRegistered[videoId] == true ? _controllers[videoId] : null;
+  }
+
+  bool has(String videoId) {
+    return getController(videoId) != null;
+  }
+
+  void detach(String videoId) {
+    _controllers.remove(videoId);
+    _isVisible.remove(videoId);
+    _isRegistered.remove(videoId);
+    secureLog('📌 VideoControllerRegistry: Detached controller for $videoId');
   }
 
   /// Check if video is currently visible
@@ -100,13 +118,25 @@ class VideoControllerRegistry {
 
   /// Dispose controller and remove from registry
   void dispose(String videoId) {
+    if (GlobalPlaybackManager.instance.shouldRetainController(videoId)) {
+      detach(videoId);
+      _disposedControllers[videoId] = false;
+      secureLog(
+        '📌 VideoControllerRegistry: Skipped dispose for warm-window video '
+        '$videoId',
+      );
+      return;
+    }
+
     final controller = _controllers[videoId];
     if (controller != null) {
       try {
         controller.dispose();
-        secureLog('🗑️ VideoControllerRegistry: Disposed controller for $videoId');
+        secureLog(
+            '🗑️ VideoControllerRegistry: Disposed controller for $videoId');
       } catch (e) {
-        secureLog('❌ VideoControllerRegistry: Error disposing controller for $videoId: $e');
+        secureLog(
+            '❌ VideoControllerRegistry: Error disposing controller for $videoId: $e');
       }
     }
 

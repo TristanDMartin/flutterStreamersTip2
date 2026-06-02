@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import '../models/home_video.dart';
 
-final favoritesManagerProvider = ChangeNotifierProvider<FavoritesManager>((ref) {
+final favoritesManagerProvider =
+    ChangeNotifierProvider<FavoritesManager>((ref) {
   final manager = FavoritesManager();
   ref.onDispose(manager.dispose);
   return manager..initialize();
@@ -24,7 +25,7 @@ class FavoritesManager extends ChangeNotifier {
   final fb.FirebaseAuth _auth = fb.FirebaseAuth.instance;
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _favSub;
-  
+
   // Core state matching Swift architecture
   Set<String> _favoriteVideoIDs = <String>{};
   FavoriteAction? _lastAction;
@@ -37,17 +38,17 @@ class FavoritesManager extends ChangeNotifier {
 
   // Core methods matching Swift interface
   bool isFavorited(HomeVideo video) => _favoriteVideoIDs.contains(video.id);
-  
+
   List<HomeVideo> favoriteVideos(List<HomeVideo> allVideos) {
     return allVideos.where((video) => isFavorited(video)).toList();
   }
 
   Future<void> toggleFavorite(HomeVideo video) async {
     if (_isLoading) return;
-    
+
     _setLoading(true);
     _lastAction = null;
-    
+
     try {
       final fb.User? user = _auth.currentUser;
       if (user == null) {
@@ -85,7 +86,7 @@ class FavoritesManager extends ChangeNotifier {
         _favoriteVideoIDs.add(video.id);
         _lastAction = FavoriteAction.added;
       }
-      
+
       notifyListeners();
     } catch (e) {
       debugPrint('Error toggling favorite: $e');
@@ -99,10 +100,10 @@ class FavoritesManager extends ChangeNotifier {
   Future<void> initialize() async {
     final fb.User? user = _auth.currentUser;
     if (user == null) return;
-    
+
     _setLoading(true);
     _favSub?.cancel();
-    
+
     try {
       _favSub = _firestore
           .collection('users')
@@ -128,7 +129,7 @@ class FavoritesManager extends ChangeNotifier {
 
   // Legacy method for backward compatibility
   bool isFavorite(String contentId) => _favoriteVideoIDs.contains(contentId);
-  
+
   int get favoritesCount => _favoriteVideoIDs.length;
 
   @override
@@ -137,5 +138,3 @@ class FavoritesManager extends ChangeNotifier {
     super.dispose();
   }
 }
-
-

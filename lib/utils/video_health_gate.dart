@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:developer' as developer;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import '../services/analytics_service.dart';
 import '../services/device_capability_service.dart';
 import 'video_url_resolver.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Result of video health check
 sealed class VideoPlayableResult {}
@@ -59,7 +63,7 @@ class VideoHealthGate {
               .isNotEmpty ??
           false,
     };
-    developer.log(
+    secureLog(
       '🎥 VideoQuality: video=$videoId selected=$selectedSourceType/$selectedQuality '
       'available=$sourceSummary',
     );
@@ -83,7 +87,7 @@ class VideoHealthGate {
           fallbackUrl != null &&
           fallbackUrl.trim().isNotEmpty) {
         if (containsOriginalMp4(fallbackUrl)) {
-          developer.log(
+          secureLog(
               'FATAL: VideoHealthGate fallback is original.mp4 - rejecting on mobile');
           if (!kIsWeb) {
             return Unplayable(
@@ -93,9 +97,11 @@ class VideoHealthGate {
         }
         if (_isValidUrl(fallbackUrl.trim())) {
           final urlLower = fallbackUrl.toLowerCase();
-          if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
-            developer.log(
-                '✅ VideoHealthGate: Using fallback URL instantly (zero blocking)');
+          final isMuxHls =
+              urlLower.contains('stream.mux.com') && urlLower.contains('.m3u8');
+          if (isMuxHls) {
+            developer
+                .log('✅ VideoHealthGate: Using Mux fallback URL instantly');
             return _playableIfNotOriginal(
                 fallbackUrl.trim(), 'fallback', 'fallback', videoId);
           }
@@ -164,7 +170,7 @@ class VideoHealthGate {
             if (_isValidUrl(fallbackUrl.trim())) {
               final urlLower = fallbackUrl.toLowerCase();
               if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
-                developer.log(
+                secureLog(
                     '⚠️ VideoHealthGate: Firestore fetch failed, using fallback URL');
                 return _playableIfNotOriginal(
                     fallbackUrl.trim(), 'fallback', 'fallback', videoId);
@@ -184,10 +190,15 @@ class VideoHealthGate {
       }
 
       final status = data['status'] as String?;
-      final muxId = data['muxPlaybackId'] as String?;
-      final hasMux = muxId != null && muxId.trim().isNotEmpty;
+      final resolvedPlaybackUrl = resolveReadyPlaybackUrl(data);
+      final rawMuxId = data['muxPlaybackId'] ??
+          data['playbackId'] ??
+          data['mux_playback_id'];
+      final muxId = rawMuxId?.toString().trim() ?? '';
+      final hasMux = muxId.isNotEmpty;
       if (data['deleted'] == true ||
           data['isDeleted'] == true ||
+          status == 'deleted' ||
           data['visible'] == false ||
           status == 'failed') {
         return Unplayable(
@@ -199,29 +210,18 @@ class VideoHealthGate {
           },
         );
       }
-      if (status != null && status.isNotEmpty) {
-        if (status != 'ready' &&
-            status != 'published' &&
-            status != 'processing' &&
-            status != 'active') {
-          return Unplayable(
-            reason: 'not_ready',
-            debugInfo: {
-              'videoId': videoId,
-              'status': status,
-            },
-          );
-        }
-        if (status == 'processing' && !hasMux) {
-          return Unplayable(
-            reason: 'processing',
-            debugInfo: {
-              'videoId': videoId,
-              'status': status,
-              'hasMuxPlaybackId': hasMux,
-            },
-          );
-        }
+      final bool isReadyForFeed = data['isReadyForFeed'] != false;
+      if (!isReadyPlaybackStatus(status, isReadyForFeed: isReadyForFeed)) {
+        return Unplayable(
+          reason: status == 'processing' || status == 'uploading'
+              ? 'processing'
+              : 'not_ready',
+          debugInfo: {
+            'videoId': videoId,
+            'status': status,
+            'hasPlaybackUrl': resolvedPlaybackUrl != null,
+          },
+        );
       }
 
       // Check playbackReady flag if exists
@@ -242,17 +242,25 @@ class VideoHealthGate {
         );
       }
 
-      // Prefer Mux (bypasses Firebase Storage 402)
-      if (muxId != null && muxId.trim().isNotEmpty) {
-        final muxUrl = 'https://stream.mux.com/${muxId.trim()}.m3u8';
-        _logSourceDiagnostics(
-          videoId,
-          data,
-          selectedQuality: 'mux_hls',
-          selectedSourceType: 'mux',
-        );
-        return _playableIfNotOriginal(muxUrl, 'mux_hls', 'mux', videoId,
-            data: data);
+      // Prefer Mux adaptive HLS immediately. For non-Mux sources, try lighter
+      // startup variants below before canonical/high-bitrate URLs.
+      if (resolvedPlaybackUrl != null &&
+          resolvedPlaybackUrl.trim().isNotEmpty) {
+        if (hasMux) {
+          _logSourceDiagnostics(
+            videoId,
+            data,
+            selectedQuality: 'mux_hls',
+            selectedSourceType: 'mux',
+          );
+          return _playableIfNotOriginal(
+            resolvedPlaybackUrl.trim(),
+            'mux_hls',
+            'mux',
+            videoId,
+            data: data,
+          );
+        }
       }
 
       // Prefer the sharpest safe source first, then step down only if needed.
@@ -275,6 +283,46 @@ class VideoHealthGate {
         return _playableIfNotOriginal(normalizedHlsUrl, 'hls', 'hls', videoId,
             data: data);
       }
+      final startup480 = data['mp4_480_url'] as String?;
+      if (startup480 != null &&
+          startup480.trim().isNotEmpty &&
+          !containsOriginalMp4(startup480) &&
+          _isValidUrl(startup480.trim())) {
+        final normalized480 = normalizeMuxHlsUrl(startup480.trim());
+        _logSourceDiagnostics(
+          videoId,
+          data,
+          selectedQuality: '480p_startup',
+          selectedSourceType: '480p',
+        );
+        return _playableIfNotOriginal(
+          normalized480,
+          '480p_startup',
+          '480p',
+          videoId,
+          data: data,
+        );
+      }
+      final startup720 = data['mp4_720_url'] as String?;
+      if (startup720 != null &&
+          startup720.trim().isNotEmpty &&
+          !containsOriginalMp4(startup720) &&
+          _isValidUrl(startup720.trim())) {
+        final normalized720 = normalizeMuxHlsUrl(startup720.trim());
+        _logSourceDiagnostics(
+          videoId,
+          data,
+          selectedQuality: '720p_startup',
+          selectedSourceType: '720p',
+        );
+        return _playableIfNotOriginal(
+          normalized720,
+          '720p_startup',
+          '720p',
+          videoId,
+          data: data,
+        );
+      }
       final canonical = data['canonicalPlaybackUrl'] as String?;
       if (canonical != null &&
           canonical.trim().isNotEmpty &&
@@ -283,7 +331,7 @@ class VideoHealthGate {
         if (_isValidUrl(normalizedCanonical)) {
           final canonicalLower = normalizedCanonical.toLowerCase();
           if (isLowMemory && canonicalLower.contains('1080')) {
-            developer.log(
+            secureLog(
                 '⚠️ VideoHealthGate: Skipping 1080p canonical URL on low-memory device');
           } else {
             _logSourceDiagnostics(
@@ -297,6 +345,22 @@ class VideoHealthGate {
                 data: data);
           }
         }
+      }
+      if (resolvedPlaybackUrl != null &&
+          resolvedPlaybackUrl.trim().isNotEmpty) {
+        _logSourceDiagnostics(
+          videoId,
+          data,
+          selectedQuality: 'resolved',
+          selectedSourceType: 'resolved',
+        );
+        return _playableIfNotOriginal(
+          resolvedPlaybackUrl.trim(),
+          'resolved',
+          'resolved',
+          videoId,
+          data: data,
+        );
       }
 
       // 2. For low-memory devices: Prefer 720p → 480p (NEVER 1080p)
@@ -428,7 +492,7 @@ class VideoHealthGate {
           final urlLower = normalizedUrl.toLowerCase();
           if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
             if (isLowMemory && urlLower.contains('1080')) {
-              developer.log(
+              secureLog(
                   '⚠️ VideoHealthGate: Skipping 1080p legacy URL on low-memory device');
               continue;
             }
@@ -478,7 +542,7 @@ class VideoHealthGate {
         },
       );
     } catch (e, stackTrace) {
-      developer.log('❌ VideoHealthGate: Error resolving playable source: $e',
+      secureLog('❌ VideoHealthGate: Error resolving playable source: $e',
           error: e, stackTrace: stackTrace);
       return Unplayable(
         reason: 'resolver_error',
@@ -517,7 +581,7 @@ class VideoHealthGate {
     // Note: Firebase Storage URLs are allowed — playback errors (e.g. 402)
     // are handled at the player level rather than rejected here.
     if (_isImageUrl(url)) {
-      developer.log('VideoHealthGate: Rejecting image URL - $videoId');
+      secureLog('VideoHealthGate: Rejecting image URL - $videoId');
       return Unplayable(
         reason: 'image_url_not_video',
         debugInfo: {'videoId': videoId},
@@ -553,19 +617,22 @@ class VideoHealthGate {
     String reason,
     Map<String, dynamic> debugInfo,
   ) {
-    developer.log('🚫 VideoHealthGate: Unplayable video detected',
+    secureLog('🚫 VideoHealthGate: Unplayable video detected',
         name: 'video_playback_unplayable');
 
-    // TODO: Send to analytics/backend
-    // AnalyticsService.instance.logEvent('video_playback_unplayable', {
-    //   'videoId': videoId,
-    //   'reason': reason,
-    //   'debugInfo': debugInfo,
-    //   'timestamp': DateTime.now().toIso8601String(),
-    // });
+    unawaited(
+      AnalyticsService.instance.trackEvent(
+        'video_playback_unplayable',
+        parameters: <String, Object>{
+          'video_id': videoId,
+          'reason': reason,
+          'debug_info': debugInfo.toString(),
+        },
+      ),
+    );
 
-    developer.log('  VideoId: $videoId');
-    developer.log('  Reason: $reason');
-    developer.log('  Debug: $debugInfo');
+    secureLog('  VideoId: $videoId');
+    secureLog('  Reason: $reason');
+    secureLog('  Debug: $debugInfo');
   }
 }

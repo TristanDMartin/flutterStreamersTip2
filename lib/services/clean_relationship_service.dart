@@ -5,10 +5,11 @@ import '../models/follow_edge.dart';
 import '../models/user_model.dart' as user_model;
 
 /// Clean Relationship Service - Single source of truth implementation
-/// 
+///
 /// Follows the clean dev logic with FollowEdge as single source of truth
 class CleanRelationshipService {
-  static final CleanRelationshipService _instance = CleanRelationshipService._internal();
+  static final CleanRelationshipService _instance =
+      CleanRelationshipService._internal();
   factory CleanRelationshipService() => _instance;
   CleanRelationshipService._internal();
 
@@ -18,17 +19,31 @@ class CleanRelationshipService {
   // Cache for current user's relationship state
   RelationshipState? _currentState;
   String? _currentUserId;
+  bool _initializeInFlight = false;
 
   /// Get current user's relationship state
-  RelationshipState get currentState => _currentState ?? RelationshipState.empty(_currentUserId ?? '');
+  RelationshipState get currentState =>
+      _currentState ?? RelationshipState.empty(_currentUserId ?? '');
 
   /// Initialize service for current user
   Future<void> initialize() async {
     final user = _auth.currentUser;
-    if (user == null) return;
-
-    _currentUserId = user.uid;
-    await _loadRelationshipState();
+    if (user == null) {
+      return;
+    }
+    if (_initializeInFlight) {
+      return;
+    }
+    if (_currentUserId == user.uid && _currentState != null) {
+      return;
+    }
+    _initializeInFlight = true;
+    try {
+      _currentUserId = user.uid;
+      await _loadRelationshipState();
+    } finally {
+      _initializeInFlight = false;
+    }
   }
 
   /// Load relationship state from actual Firestore subcollections
@@ -36,8 +51,9 @@ class CleanRelationshipService {
     if (_currentUserId == null) return;
 
     try {
-      debugPrint('🔄 CleanRelationshipService: Loading relationship state for user $_currentUserId');
-      
+      debugPrint(
+          '🔄 CleanRelationshipService: Loading relationship state for user $_currentUserId');
+
       // Get following list from users/{userId}/following subcollection
       final followingSnapshot = await _firestore
           .collection('users')
@@ -56,14 +72,17 @@ class CleanRelationshipService {
       final following = followingSnapshot.docs.map((doc) => doc.id).toList();
       final followers = followersSnapshot.docs.map((doc) => doc.id).toList();
 
-      debugPrint('📊 CleanRelationshipService: Following: ${following.length} (IDs: $following)');
-      debugPrint('📊 CleanRelationshipService: Followers: ${followers.length} (IDs: $followers)');
+      debugPrint(
+          '📊 CleanRelationshipService: Following: ${following.length} (IDs: $following)');
+      debugPrint(
+          '📊 CleanRelationshipService: Followers: ${followers.length} (IDs: $followers)');
 
       // If no relationships found in subcollections, check legacy relationships collection
       if (following.isEmpty && followers.isEmpty) {
-        debugPrint('⚠️ CleanRelationshipService: No relationships found in subcollections, checking legacy collection...');
+        debugPrint(
+            '⚠️ CleanRelationshipService: No relationships found in subcollections, checking legacy collection...');
         await _migrateFromLegacyRelationships();
-        
+
         // Retry after migration
         final followingSnapshotRetry = await _firestore
             .collection('users')
@@ -77,22 +96,29 @@ class CleanRelationshipService {
             .collection('followers')
             .get();
 
-        final followingRetry = followingSnapshotRetry.docs.map((doc) => doc.id).toList();
-        final followersRetry = followersSnapshotRetry.docs.map((doc) => doc.id).toList();
-        
-        debugPrint('📊 CleanRelationshipService: After migration - Following: ${followingRetry.length}, Followers: ${followersRetry.length}');
-        
+        final followingRetry =
+            followingSnapshotRetry.docs.map((doc) => doc.id).toList();
+        final followersRetry =
+            followersSnapshotRetry.docs.map((doc) => doc.id).toList();
+
+        debugPrint(
+            '📊 CleanRelationshipService: After migration - Following: ${followingRetry.length}, Followers: ${followersRetry.length}');
+
         _currentState = RelationshipState(
           userId: _currentUserId!,
           following: followingRetry,
           followers: followersRetry,
-          connections: followingRetry.where((id) => followersRetry.contains(id)).toList(),
+          connections: followingRetry
+              .where((id) => followersRetry.contains(id))
+              .toList(),
         );
       } else {
         // Calculate connections (mutual follows)
-        final connections = following.where((id) => followers.contains(id)).toList();
-        
-        debugPrint('🤝 CleanRelationshipService: Connections: ${connections.length} (IDs: $connections)');
+        final connections =
+            following.where((id) => followers.contains(id)).toList();
+
+        debugPrint(
+            '🤝 CleanRelationshipService: Connections: ${connections.length} (IDs: $connections)');
 
         _currentState = RelationshipState(
           userId: _currentUserId!,
@@ -101,10 +127,12 @@ class CleanRelationshipService {
           connections: connections,
         );
       }
-      
-      debugPrint('✅ CleanRelationshipService: Relationship state loaded successfully');
+
+      debugPrint(
+          '✅ CleanRelationshipService: Relationship state loaded successfully');
     } catch (e) {
-      debugPrint('❌ CleanRelationshipService: Error loading relationship state: $e');
+      debugPrint(
+          '❌ CleanRelationshipService: Error loading relationship state: $e');
       _currentState = RelationshipState.empty(_currentUserId!);
     }
   }
@@ -112,8 +140,9 @@ class CleanRelationshipService {
   /// Migrate from legacy relationships collection to new subcollection structure
   Future<void> _migrateFromLegacyRelationships() async {
     try {
-      debugPrint('🔄 CleanRelationshipService: Starting migration from legacy relationships...');
-      
+      debugPrint(
+          '🔄 CleanRelationshipService: Starting migration from legacy relationships...');
+
       // Get relationships where current user is follower
       final followingQuery = await _firestore
           .collection('relationships')
@@ -163,7 +192,8 @@ class CleanRelationshipService {
       }
 
       await batch.commit();
-      debugPrint('✅ CleanRelationshipService: Migration completed successfully');
+      debugPrint(
+          '✅ CleanRelationshipService: Migration completed successfully');
     } catch (e) {
       debugPrint('❌ CleanRelationshipService: Error during migration: $e');
     }
@@ -178,7 +208,8 @@ class CleanRelationshipService {
   /// Get users for a specific section
   Future<List<user_model.User>> getUsersForSection(String section) async {
     if (_currentState == null) {
-      debugPrint('❌ CleanRelationshipService: No current state for section $section');
+      debugPrint(
+          '❌ CleanRelationshipService: No current state for section $section');
       return [];
     }
 
@@ -198,10 +229,12 @@ class CleanRelationshipService {
         return [];
     }
 
-    debugPrint('🔍 CleanRelationshipService: Getting $section users, found ${userIds.length} IDs');
+    debugPrint(
+        '🔍 CleanRelationshipService: Getting $section users, found ${userIds.length} IDs');
 
     if (userIds.isEmpty) {
-      debugPrint('⚠️ CleanRelationshipService: No user IDs for section $section');
+      debugPrint(
+          '⚠️ CleanRelationshipService: No user IDs for section $section');
       return [];
     }
 
@@ -211,11 +244,14 @@ class CleanRelationshipService {
           .where(FieldPath.documentId, whereIn: userIds)
           .get();
 
-      final userList = users.docs.map((doc) => user_model.User.fromMap(doc.data())).toList();
-      debugPrint('✅ CleanRelationshipService: Retrieved ${userList.length} users for section $section');
+      final userList =
+          users.docs.map((doc) => user_model.User.fromMap(doc.data())).toList();
+      debugPrint(
+          '✅ CleanRelationshipService: Retrieved ${userList.length} users for section $section');
       return userList;
     } catch (e) {
-      debugPrint('❌ CleanRelationshipService: Error fetching users for $section: $e');
+      debugPrint(
+          '❌ CleanRelationshipService: Error fetching users for $section: $e');
       return [];
     }
   }
@@ -227,23 +263,21 @@ class CleanRelationshipService {
 
   /// Create test relationships for demonstration (only if no relationships exist)
   Future<void> createTestRelationshipsIfNeeded() async {
-    if (_currentState == null || 
-        (_currentState!.following.isEmpty && _currentState!.followers.isEmpty)) {
-      
+    if (_currentState == null ||
+        (_currentState!.following.isEmpty &&
+            _currentState!.followers.isEmpty)) {
       debugPrint('🧪 CleanRelationshipService: Creating test relationships...');
-      
+
       try {
         // Get some sample user IDs from the users collection
-        final usersSnapshot = await _firestore
-            .collection('users')
-            .limit(5)
-            .get();
+        final usersSnapshot =
+            await _firestore.collection('users').limit(5).get();
 
         final userIds = usersSnapshot.docs.map((doc) => doc.id).toList();
-        
+
         if (userIds.isNotEmpty && _currentUserId != null) {
           final batch = _firestore.batch();
-          
+
           // Create mutual relationships (connections) - both users follow each other
           for (int i = 0; i < 2 && i < userIds.length; i++) {
             if (userIds[i] != _currentUserId) {
@@ -257,7 +291,7 @@ class CleanRelationshipService {
                 'userId': userIds[i],
                 'followedAt': FieldValue.serverTimestamp(),
               });
-              
+
               // They follow current user back (mutual follow = connection)
               final followersRef = _firestore
                   .collection('users')
@@ -270,7 +304,7 @@ class CleanRelationshipService {
               });
             }
           }
-          
+
           // Create some one-way followers (they follow you, but you don't follow them back)
           for (int i = 2; i < userIds.length && i < 4; i++) {
             if (userIds[i] != _currentUserId) {
@@ -285,7 +319,7 @@ class CleanRelationshipService {
               });
             }
           }
-          
+
           // Create some one-way following (you follow them, but they don't follow you back)
           for (int i = 4; i < userIds.length && i < 6; i++) {
             if (userIds[i] != _currentUserId) {
@@ -300,15 +334,16 @@ class CleanRelationshipService {
               });
             }
           }
-          
+
           await batch.commit();
           debugPrint('✅ CleanRelationshipService: Test relationships created');
-          
+
           // Reload state after creating test data
           await _loadRelationshipState();
         }
       } catch (e) {
-        debugPrint('❌ CleanRelationshipService: Error creating test relationships: $e');
+        debugPrint(
+            '❌ CleanRelationshipService: Error creating test relationships: $e');
       }
     }
   }

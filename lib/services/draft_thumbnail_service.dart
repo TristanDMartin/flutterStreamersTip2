@@ -78,7 +78,7 @@ class DraftThumbnailService {
       // Use VideoThumbnailService for high-quality thumbnail generation
       // Calculate timestamp in milliseconds (default to 1 second or 30% of video)
       int timeMs = 1000; // Default 1 second
-      
+
       if (timestamp != null) {
         timeMs = (timestamp * 1000).round();
       } else {
@@ -99,7 +99,8 @@ class DraftThumbnailService {
 
       // Generate high-quality thumbnail using VideoThumbnailService
       // Use 720x1280 for high quality (shared between app and website)
-      final thumbnailBytes = await VideoThumbnailService.generateHighQualityThumbnail(
+      final thumbnailBytes =
+          await VideoThumbnailService.generateHighQualityThumbnail(
         videoPath,
         maxWidth: 720,
         maxHeight: 1280,
@@ -156,7 +157,6 @@ class DraftThumbnailService {
     }
   }
 
-
   /// Save thumbnail to local storage as JPEG for high quality
   Future<String> _saveThumbnailToLocalStorage({
     required Uint8List thumbnailBytes,
@@ -165,14 +165,15 @@ class DraftThumbnailService {
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
       final thumbnailsDir = Directory('${documentsDir.path}/DraftThumbnails');
-      
+
       // Create thumbnails directory if it doesn't exist
       if (!await thumbnailsDir.exists()) {
         await thumbnailsDir.create(recursive: true);
       }
-      
+
       // Save as JPEG for better quality and smaller file size
-      final thumbnailFile = File('${thumbnailsDir.path}/draft_thumb_$videoId.jpg');
+      final thumbnailFile =
+          File('${thumbnailsDir.path}/draft_thumb_$videoId.jpg');
       await thumbnailFile.writeAsBytes(thumbnailBytes);
 
       LoggingService.instance.debug(

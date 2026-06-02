@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/support_shell_style.dart';
-import '../../../components/onboarding/onboarding_models.dart';
 import '../../../components/onboarding/onboarding_service.dart';
 import '../../../components/onboarding/product_tour_target_keys.dart';
+import '../../../services/progression_service.dart';
 import '../gamification_providers.dart';
 import '../models/gamification_summary_model.dart';
 import '../missions/mission_engine.dart';
@@ -16,11 +16,23 @@ import 'mission_sections_list.dart';
 import 'tier_badge_strip.dart';
 
 /// Home "Progression" tab: creator progress, plan, missions (read-only Firestore).
-class CreatorProgressionPanel extends ConsumerWidget {
+class CreatorProgressionPanel extends ConsumerStatefulWidget {
   const CreatorProgressionPanel({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CreatorProgressionPanel> createState() =>
+      _CreatorProgressionPanelState();
+}
+
+class _CreatorProgressionPanelState
+    extends ConsumerState<CreatorProgressionPanel>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -31,84 +43,151 @@ class CreatorProgressionPanel extends ConsumerWidget {
     }
     final AsyncValue<UserProgressBundle> asyncBundle =
         ref.watch(userProgressBundleProvider);
-    final Widget body = asyncBundle.when(
-      data: (UserProgressBundle bundle) => _ProgressionBody(
-        bundle: bundle,
-        uid: user.uid,
-        onRefresh: () async {
-          await OnboardingService()
-              .syncLevelOneMissionsFromAccountEvidence(user.uid);
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get(const GetOptions(source: Source.server));
-          ref.invalidate(userProgressBundleProvider);
-        },
-      ),
-      loading: () => const _LoadingOrEmpty(loading: true),
-      error: (Object e, StackTrace st) {
-        debugPrint('userProgressBundleProvider: $e\n$st');
-        return Builder(
-          builder: (BuildContext context) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: SelectableText(
-                  'Could not load progression. Pull to refresh or try again.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(
-                          alpha: 0.65,
+    final UserProgressBundle? cachedBundle = asyncBundle.valueOrNull;
+    final Widget body = cachedBundle != null
+        ? _ProgressionBody(
+            bundle: cachedBundle,
+            uid: user.uid,
+            onRefresh: () async {
+              await ProgressionService.instance.refreshUserProgress(user.uid);
+              await OnboardingService()
+                  .syncLevelOneMissionsFromAccountEvidence(user.uid);
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get(const GetOptions(source: Source.server));
+            },
+          )
+        : asyncBundle.when(
+            data: (UserProgressBundle bundle) => _ProgressionBody(
+              bundle: bundle,
+              uid: user.uid,
+              onRefresh: () async {
+                await ProgressionService.instance.refreshUserProgress(user.uid);
+                await OnboardingService()
+                    .syncLevelOneMissionsFromAccountEvidence(user.uid);
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .get(const GetOptions(source: Source.server));
+              },
+            ),
+            loading: () => const _LoadingOrEmpty(loading: true),
+            error: (Object e, StackTrace st) {
+              debugPrint('userProgressBundleProvider: $e\n$st');
+              return Builder(
+                builder: (BuildContext context) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: SelectableText(
+                        'Could not load progression. Pull to refresh or try again.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(
+                                alpha: 0.65,
+                              ),
                         ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
     return ColoredBox(color: shell.scaffold, child: body);
   }
 }
 
-class _FirstThingsToDoSection extends StatelessWidget {
+class _FirstThingsToDoSection extends StatefulWidget {
   const _FirstThingsToDoSection({required this.uid});
 
   final String uid;
 
   @override
+  State<_FirstThingsToDoSection> createState() =>
+      _FirstThingsToDoSectionState();
+}
+
+class _FirstThingsToDoSectionState extends State<_FirstThingsToDoSection> {
+  UserProgressionSnapshot? _lastProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  @override
+  void didUpdateWidget(_FirstThingsToDoSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uid != widget.uid) {
+      _lastProgress = null;
+      _refresh();
+    }
+  }
+
+  Future<void> _refresh() async {
+    final UserProgressionSnapshot progress =
+        await ProgressionService.instance.refreshUserProgress(widget.uid);
+    if (!mounted) return;
+    setState(() => _lastProgress = progress);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream:
-          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+    return StreamBuilder<UserProgressionSnapshot>(
+      stream: ProgressionService.instance.listenToProgress(widget.uid),
+      initialData: _lastProgress,
       builder: (
         BuildContext context,
-        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot,
+        AsyncSnapshot<UserProgressionSnapshot> progressSnapshot,
       ) {
-        final OnboardingState onboarding =
-            OnboardingState.fromUserMap(snapshot.data?.data());
-        return _FirstThingsToDoCard(onboarding: onboarding);
+        final UserProgressionSnapshot? progress =
+            progressSnapshot.data ?? _lastProgress;
+        return _FirstThingsToDoCard(
+          progress: progress,
+        );
       },
     );
   }
 }
 
 class _FirstThingsToDoCard extends StatelessWidget {
-  const _FirstThingsToDoCard({required this.onboarding});
+  const _FirstThingsToDoCard({required this.progress});
 
-  final OnboardingState onboarding;
+  final UserProgressionSnapshot? progress;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final int complete = onboarding.completedMissionCount;
-    return Container(
-      padding: const EdgeInsets.all(16),
+    final ProgressionService progressionService = ProgressionService.instance;
+    final bool isLoading = progress == null;
+    final List<ProgressionTask> activeTasks = isLoading
+        ? <ProgressionTask>[]
+        : progressionService.activeTasksForSnapshot(progress).take(3).toList();
+    final int completedCount = isLoading
+        ? 0
+        : progressionService.completedTasksForSnapshot(progress).length;
+    final int totalCount = ProgressionService.allTasks
+        .where((ProgressionTask task) => !task.hidden)
+        .length;
+    final bool isComplete = activeTasks.isEmpty && progress != null;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow.withValues(alpha: 0.84),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
+        color: scheme.surfaceContainerLow.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isComplete
+              ? Colors.greenAccent.withValues(alpha: 0.28)
+              : scheme.outline.withValues(alpha: 0.16),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,16 +202,20 @@ class _FirstThingsToDoCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'First things to do',
+                  isLoading
+                      ? 'Syncing onboarding'
+                      : isComplete
+                          ? 'Setup complete'
+                          : 'Onboarding progress',
                   style: TextStyle(
                     color: scheme.onSurface,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
               Text(
-                '$complete/${levelOneMissions.length}',
+                '$completedCount/$totalCount',
                 style: TextStyle(
                   color: scheme.primary,
                   fontWeight: FontWeight.w900,
@@ -140,57 +223,192 @@ class _FirstThingsToDoCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 6,
-              value: onboarding.levelOneProgress,
-              backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
-              valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+          const SizedBox(height: 9),
+          if (isLoading)
+            const _StaticFirstThingsProgress()
+          else
+            _AnimatedFirstThingsProgress(
+              value: totalCount == 0 ? 0 : completedCount / totalCount,
             ),
-          ),
-          const SizedBox(height: 12),
-          ...levelOneMissions.map((OnboardingMission mission) {
-            final bool done = onboarding.completedMissions.contains(mission.id);
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: <Widget>[
-                  Icon(
-                    done
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    color: done
-                        ? Colors.greenAccent.withValues(alpha: 0.9)
-                        : scheme.onSurface.withValues(alpha: 0.42),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
+          const SizedBox(height: 10),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 360),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              final Animation<Offset> offset = Tween<Offset>(
+                begin: const Offset(0.04, 0),
+                end: Offset.zero,
+              ).animate(animation);
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(position: offset, child: child),
+              );
+            },
+            child: isLoading
+                ? Padding(
+                    key: const ValueKey<String>('syncing-progress'),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Text(
-                      mission.title,
+                      'Checking your account activity...',
                       style: TextStyle(
-                        color: scheme.onSurface.withValues(
-                          alpha: done ? 0.92 : 0.68,
-                        ),
-                        fontWeight: done ? FontWeight.w800 : FontWeight.w600,
+                        color: scheme.onSurface.withValues(alpha: 0.64),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
-                  Text(
-                    mission.reward,
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
+                  )
+                : activeTasks.isEmpty
+                    ? Padding(
+                        key: const ValueKey<String>('all-complete'),
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(
+                              Icons.check_circle_rounded,
+                              color: Colors.greenAccent.withValues(alpha: 0.9),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'First steps are done. New missions will rotate in below.',
+                                style: TextStyle(
+                                  color:
+                                      scheme.onSurface.withValues(alpha: 0.78),
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Column(
+                        key: ValueKey<String>(
+                          activeTasks
+                              .map((ProgressionTask task) => task.id)
+                              .join('|'),
+                        ),
+                        children: activeTasks.map((ProgressionTask task) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 9,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scheme.surface.withValues(alpha: 0.34),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: scheme.outline.withValues(alpha: 0.10),
+                                ),
+                              ),
+                              child: Row(
+                                children: <Widget>[
+                                  Icon(
+                                    Icons.radio_button_unchecked_rounded,
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.42),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 9),
+                                  Expanded(
+                                    child: Text(
+                                      task.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: scheme.onSurface
+                                            .withValues(alpha: 0.72),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '+${task.xpReward} XP',
+                                    style: TextStyle(
+                                      color: scheme.primary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _AnimatedFirstThingsProgress extends StatefulWidget {
+  const _AnimatedFirstThingsProgress({required this.value});
+
+  final double value;
+
+  @override
+  State<_AnimatedFirstThingsProgress> createState() =>
+      _AnimatedFirstThingsProgressState();
+}
+
+class _StaticFirstThingsProgress extends StatelessWidget {
+  const _StaticFirstThingsProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: LinearProgressIndicator(
+        minHeight: 6,
+        value: 0,
+        backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
+        valueColor: AlwaysStoppedAnimation<Color>(
+          scheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedFirstThingsProgressState
+    extends State<_AnimatedFirstThingsProgress> {
+  late double _previousValue = widget.value;
+
+  @override
+  void didUpdateWidget(_AnimatedFirstThingsProgress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _previousValue = oldWidget.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(
+          begin: _previousValue.clamp(0, 1),
+          end: widget.value.clamp(0, 1),
+        ),
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeOutCubic,
+        builder: (BuildContext context, double value, Widget? child) {
+          return LinearProgressIndicator(
+            minHeight: 6,
+            value: value,
+            backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
+            valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+          );
+        },
       ),
     );
   }
@@ -212,8 +430,7 @@ class _ProgressionBody extends StatelessWidget {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final GamificationSummaryModel model = bundle.progress;
-    final String rankTitle =
-        GamificationConstants.rankTitleForLevel(model.level);
+    final String rankTitle = model.rankTitle;
     final bool hasMissions = bundle.missions.isNotEmpty;
     final bool hasHint =
         model.nextActionHint != null && model.nextActionHint!.isNotEmpty;
@@ -222,28 +439,31 @@ class _ProgressionBody extends StatelessWidget {
       backgroundColor: shell.refreshBackground,
       onRefresh: onRefresh,
       child: ListView(
+        key: const PageStorageKey<String>('creator_progression_scroll'),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
           20,
-          MediaQuery.of(context).padding.top + 60,
+          MediaQuery.of(context).padding.top + 88,
           20,
           120,
         ),
         children: <Widget>[
+          const _ProgressionTopBar(),
+          const SizedBox(height: 16),
           KeyedSubtree(
-            key: ProductTourTargetKeys.progressionPanel,
-            child: _HeroHeader(
-              level: model.level,
-              rankTitle: rankTitle,
-              creatorScore: model.creatorScore,
-              streakDays: model.streakDays,
+            key: ProductTourTargetKeys.maybe(
+              ProductTourTargetKeys.progressionPanel,
             ),
+            child: _HeroHeader(model: model),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+          _WeeklySnapshotCard(
+              model: model, missionCount: bundle.missions.length),
+          const SizedBox(height: 14),
           TierBadgeStrip(subscription: bundle.subscription),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           _FirstThingsToDoSection(uid: uid),
-          const SizedBox(height: 18),
+          const SizedBox(height: 22),
           _SectionTitle(
             title: 'Level progress',
             subtitle: 'Track your XP, streak, and creator momentum.',
@@ -257,36 +477,35 @@ class _ProgressionBody extends StatelessWidget {
               onTap: () => _showLevelRewardsSheet(context, model),
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _MiniStatCard(
-                  icon: Icons.local_fire_department_rounded,
-                  iconColor: Colors.orangeAccent.withValues(alpha: 0.95),
-                  title: 'Streak',
-                  value: model.streakDays > 0
-                      ? '${model.streakDays} days'
-                      : 'Start today',
-                  helper: model.streakDays > 0
-                      ? 'Keep your momentum going'
-                      : 'Complete activity to begin',
+          const SizedBox(height: 12),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Expanded(
+                  child: _MiniStatCard(
+                    icon: Icons.local_fire_department_rounded,
+                    iconColor: Colors.orangeAccent.withValues(alpha: 0.95),
+                    title: 'Streak',
+                    value: model.displayStreakValue,
+                    helper: model.displayStreakHelper,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _MiniStatCard(
-                  icon: Icons.auto_awesome_rounded,
-                  iconColor: scheme.primary.withValues(alpha: 0.95),
-                  title: 'Creator score',
-                  value: model.creatorScore.toStringAsFixed(1),
-                  helper: 'Based on your recent activity',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MiniStatCard(
+                    icon: Icons.auto_awesome_rounded,
+                    iconColor: scheme.primary.withValues(alpha: 0.95),
+                    title: 'Creator score',
+                    value: model.creatorScore.toStringAsFixed(1),
+                    helper: 'Based on your recent activity',
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           if (hasHint) ...<Widget>[
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             _NextActionCard(hint: model.nextActionHint!),
           ],
           const SizedBox(height: 24),
@@ -451,77 +670,354 @@ class _ProgressionBody extends StatelessWidget {
   }
 }
 
-class _HeroHeader extends StatelessWidget {
-  final int level;
-  final String rankTitle;
-  final double creatorScore;
-  final int streakDays;
-
-  const _HeroHeader({
-    required this.level,
-    required this.rankTitle,
-    required this.creatorScore,
-    required this.streakDays,
-  });
+class _ProgressionTopBar extends StatelessWidget {
+  const _ProgressionTopBar();
 
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Progression',
+                style: TextStyle(
+                  color: shell.onChrome,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Track creator growth and daily momentum.',
+                style: TextStyle(
+                  color: shell.mutedStrong,
+                  fontSize: 13,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow.withValues(alpha: 0.74),
+            shape: BoxShape.circle,
+            border: Border.all(color: shell.surfaceCardBorder),
+          ),
+          child: Icon(
+            Icons.explore_rounded,
+            color: scheme.primary,
+            size: 21,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroHeader extends StatelessWidget {
+  final GamificationSummaryModel model;
+
+  const _HeroHeader({required this.model});
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final int safeNeed =
+        model.xpNeededForNextLevel <= 0 ? 1 : model.xpNeededForNextLevel;
+    final int into = model.xpIntoLevel.clamp(0, safeNeed);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: shell.heroGradient,
-        ),
-        border: Border.all(color: shell.heroBorder),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: shell.shadowSoft,
-            blurRadius: 30,
-            offset: const Offset(0, 18),
-          ),
-        ],
+        color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.72),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: shell.chipUnselectedBg,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: shell.chipUnselectedBorder),
-            ),
-            child: Text(
-              'Creator Progression',
-              style: TextStyle(
-                color: shell.onChrome,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.35,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(
+                    color: scheme.primary.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    '${model.level}',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Level ${model.level}',
+                      style: TextStyle(
+                        color: shell.mutedStrong,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.45,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 320),
+                      child: Text(
+                        model.rankTitle,
+                        key: ValueKey<String>(model.rankTitle),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: shell.onChrome,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          height: 1.08,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _AnimatedXpText(
+                      value: model.totalXp,
+                      style: TextStyle(
+                        color: shell.muted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          _AnimatedLevelProgressBar(
+            value: model.progressInLevel.clamp(0, 1),
+            backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
+            foregroundColor: scheme.primary,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  '$into / $safeNeed XP to Level ${model.level + 1}',
+                  style: TextStyle(
+                    color: shell.mutedStrong,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                '${(model.progressInLevel * 100).round()}%',
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: <Widget>[
+              _HeroMetric(
+                icon: Icons.local_fire_department_rounded,
+                label: model.displayStreakValue,
+                color: Colors.orangeAccent,
+              ),
+              const SizedBox(width: 8),
+              _HeroMetric(
+                icon: Icons.auto_awesome_rounded,
+                label: '${model.creatorScore.toStringAsFixed(0)} score',
+                color: scheme.primary,
+              ),
+              const SizedBox(width: 8),
+              _HeroMetric(
+                icon: Icons.trending_up_rounded,
+                label: model.isActiveToday ? 'Active today' : 'Build momentum',
+                color: Colors.greenAccent,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow.withValues(alpha: 0.56),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.78),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeeklySnapshotCard extends StatelessWidget {
+  const _WeeklySnapshotCard({
+    required this.model,
+    required this.missionCount,
+  });
+
+  final GamificationSummaryModel model;
+  final int missionCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final int momentum = (model.creatorScore / 10).round().clamp(0, 10);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.insights_rounded, color: scheme.primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Weekly snapshot',
+                  style: TextStyle(
+                    color: shell.onChrome,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                momentum > 0 ? '+$momentum% momentum' : 'Build momentum',
+                style: TextStyle(
+                  color: momentum > 0 ? Colors.greenAccent : shell.mutedStrong,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              _SnapshotMetric(label: 'Streak', value: model.displayStreakValue),
+              _SnapshotMetric(
+                label: 'Missions',
+                value: missionCount == 0 ? 'Syncing' : '$missionCount active',
+              ),
+              _SnapshotMetric(
+                label: 'Score',
+                value: model.creatorScore.toStringAsFixed(0),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SnapshotMetric extends StatelessWidget {
+  const _SnapshotMetric({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
           Text(
-            rankTitle,
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: shell.onChrome,
-              fontSize: 26,
+              fontSize: 14,
               fontWeight: FontWeight.w900,
-              height: 1.05,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 3),
           Text(
-            'Level $level · Score ${creatorScore.toStringAsFixed(1)} · ${streakDays > 0 ? '$streakDays day streak' : 'Build your first streak'}',
+            label,
             style: TextStyle(
               color: shell.muted,
-              fontSize: 14,
-              height: 1.35,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -634,87 +1130,21 @@ class _LevelCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final String rankTitle =
-        GamificationConstants.rankTitleForLevel(model.level);
+    final String rankTitle = model.rankTitle;
     final int need = model.xpNeededForNextLevel;
     final int safeNeed = need <= 0 ? 1 : need;
     final int into = model.xpIntoLevel.clamp(0, safeNeed);
-    final BoxDecoration outerDecoration = shell.isLight
-        ? BoxDecoration(
-            color: shell.surfaceCard,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: shell.surfaceCardBorder),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: shell.shadowSoft,
-                blurRadius: 24,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          )
-        : BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                scheme.primary.withValues(alpha: 0.22),
-                scheme.surfaceContainerHighest.withValues(alpha: 0.75),
-              ],
-            ),
-            border: Border.all(
-              color: scheme.outline.withValues(alpha: 0.38),
-            ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: scheme.primary.withValues(alpha: 0.12),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          );
-    final BoxDecoration orbDecoration = shell.isLight
-        ? BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                shell.glassCircleGradientStart,
-                shell.glassCircleGradientEnd,
-              ],
-            ),
-            border: Border.all(color: shell.glassCircleBorder),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: shell.shadowSoft,
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          )
-        : BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                scheme.primary.withValues(alpha: 0.32),
-                scheme.surfaceContainerHighest.withValues(alpha: 0.85),
-              ],
-            ),
-            border: Border.all(
-              color: scheme.outline.withValues(alpha: 0.4),
-            ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: scheme.primary.withValues(alpha: 0.14),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          );
-    final Color levelTextColor = scheme.onSurface;
+    final BoxDecoration outerDecoration = BoxDecoration(
+      color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.7),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: shell.surfaceCardBorder),
+    );
+    final BoxDecoration orbDecoration = BoxDecoration(
+      color: scheme.primary.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: scheme.primary.withValues(alpha: 0.22)),
+    );
+    final Color levelTextColor = scheme.primary;
     final Color trackBg = shell.isLight
         ? scheme.surfaceContainerHighest.withValues(alpha: 0.9)
         : scheme.surfaceContainerHighest.withValues(alpha: 0.55);
@@ -723,9 +1153,9 @@ class _LevelCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(14),
           decoration: outerDecoration,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -733,16 +1163,21 @@ class _LevelCard extends StatelessWidget {
               Row(
                 children: <Widget>[
                   Container(
-                    width: 56,
-                    height: 56,
+                    width: 46,
+                    height: 46,
                     decoration: orbDecoration,
                     child: Center(
-                      child: Text(
-                        '${model.level}',
-                        style: TextStyle(
-                          color: levelTextColor,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 420),
+                        switchInCurve: Curves.easeOutBack,
+                        child: Text(
+                          '${model.level}',
+                          key: ValueKey<int>(model.level),
+                          style: TextStyle(
+                            color: levelTextColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                     ),
@@ -752,43 +1187,26 @@ class _LevelCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text(
-                          rankTitle,
-                          style: TextStyle(
-                            color: shell.onChrome,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 420),
+                          switchInCurve: Curves.easeOutCubic,
+                          child: Text(
+                            rankTitle,
+                            key: ValueKey<String>(rankTitle),
+                            style: TextStyle(
+                              color: shell.onChrome,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          '${model.totalXp} total XP',
+                        _AnimatedXpText(
+                          value: model.totalXp,
                           style: TextStyle(
                             color: shell.muted,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: shell.chipUnselectedBg,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: shell.chipUnselectedBorder,
-                            ),
-                          ),
-                          child: Text(
-                            '${(model.progressInLevel * 100).round()}% to next level',
-                            style: TextStyle(
-                              color: shell.chipUnselectedFg,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                            ),
                           ),
                         ),
                       ],
@@ -797,24 +1215,10 @@ class _LevelCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween<double>(
-                    begin: 0,
-                    end: model.progressInLevel.clamp(0, 1),
-                  ),
-                  duration: const Duration(milliseconds: 900),
-                  curve: Curves.easeOutCubic,
-                  builder: (BuildContext ctx, double value, Widget? _) {
-                    return LinearProgressIndicator(
-                      value: value,
-                      minHeight: 10,
-                      backgroundColor: trackBg,
-                      valueColor: AlwaysStoppedAnimation<Color>(trackFg),
-                    );
-                  },
-                ),
+              _AnimatedLevelProgressBar(
+                value: model.progressInLevel.clamp(0, 1),
+                backgroundColor: trackBg,
+                foregroundColor: trackFg,
               ),
               const SizedBox(height: 8),
               Row(
@@ -866,37 +1270,47 @@ class _MiniStatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(18),
+        color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.7),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(icon, color: iconColor, size: 20),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: shell.mutedStrong,
               fontSize: 11,
               fontWeight: FontWeight.w700,
+              height: 1.2,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Text(
             value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: shell.onChrome,
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w800,
+              height: 1.2,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Text(
             helper,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: shell.muted,
               fontSize: 11,
@@ -905,6 +1319,194 @@ class _MiniStatCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AnimatedXpText extends StatefulWidget {
+  const _AnimatedXpText({
+    required this.value,
+    required this.style,
+  });
+
+  final int value;
+  final TextStyle style;
+
+  @override
+  State<_AnimatedXpText> createState() => _AnimatedXpTextState();
+}
+
+class _AnimatedXpTextState extends State<_AnimatedXpText>
+    with SingleTickerProviderStateMixin {
+  late int _previousValue = widget.value;
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  late ColorScheme _scheme;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scheme = Theme.of(context).colorScheme;
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedXpText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!mounted) {
+      return;
+    }
+    _previousValue = oldWidget.value;
+    if (widget.value > oldWidget.value) {
+      _pulseController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.stop();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = _scheme;
+    final int delta = widget.value - _previousValue;
+    return SizedBox(
+      height: 22,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(
+              begin: _previousValue.toDouble(),
+              end: widget.value.toDouble(),
+            ),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOutCubic,
+            builder: (BuildContext context, double value, Widget? child) {
+              return Text(
+                '${value.round()} total XP',
+                style: widget.style,
+              );
+            },
+          ),
+          if (delta > 0)
+            Positioned(
+              right: 0,
+              top: -18,
+              child: FadeTransition(
+                opacity: ReverseAnimation(_pulseController),
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: Offset.zero,
+                    end: const Offset(0, -0.7),
+                  ).animate(
+                    CurvedAnimation(
+                      parent: _pulseController,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  ),
+                  child: Text(
+                    '+$delta XP',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnimatedLevelProgressBar extends StatefulWidget {
+  const _AnimatedLevelProgressBar({
+    required this.value,
+    required this.backgroundColor,
+    required this.foregroundColor,
+  });
+
+  final double value;
+  final Color backgroundColor;
+  final Color foregroundColor;
+
+  @override
+  State<_AnimatedLevelProgressBar> createState() =>
+      _AnimatedLevelProgressBarState();
+}
+
+class _AnimatedLevelProgressBarState extends State<_AnimatedLevelProgressBar>
+    with SingleTickerProviderStateMixin {
+  double _previousValue = 0;
+  late final AnimationController _glowController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void didUpdateWidget(_AnimatedLevelProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _previousValue = oldWidget.value;
+    if (widget.value > oldWidget.value) {
+      _glowController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _glowController.stop();
+    _glowController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _glowController,
+      builder: (BuildContext _, Widget? child) {
+        final double glow = (1 - _glowController.value).clamp(0.0, 1.0);
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: <BoxShadow>[
+              if (glow > 0)
+                BoxShadow(
+                  color: widget.foregroundColor.withValues(alpha: 0.32 * glow),
+                  blurRadius: 18 * glow,
+                  spreadRadius: 1.5 * glow,
+                ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: _previousValue.clamp(0, 1),
+                end: widget.value.clamp(0, 1),
+              ),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeOutCubic,
+              builder: (BuildContext ctx, double value, Widget? _) {
+                return LinearProgressIndicator(
+                  value: value,
+                  minHeight: 10,
+                  backgroundColor: widget.backgroundColor,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    widget.foregroundColor,
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -919,32 +1521,44 @@ class _NextActionCard extends StatelessWidget {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(18),
+        color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.68),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: scheme.primary.withValues(alpha: 0.35),
+          color: scheme.primary.withValues(alpha: 0.24),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Text(
-            'Next step',
-            style: TextStyle(
-              color: shell.mutedStrong,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            hint,
-            style: TextStyle(
-              color: shell.onChrome,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
+          Icon(Icons.arrow_forward_rounded, color: scheme.primary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Recommended next move',
+                  style: TextStyle(
+                    color: shell.mutedStrong,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  hint,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: shell.onChrome,
+                    fontSize: 13,
+                    height: 1.25,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1233,6 +1847,7 @@ class _AchievementOrbState extends State<_AchievementOrb>
 
   @override
   void dispose() {
+    _controller.stop();
     _controller.dispose();
     super.dispose();
   }
@@ -1241,7 +1856,7 @@ class _AchievementOrbState extends State<_AchievementOrb>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, child) {
+      builder: (BuildContext _, Widget? child) {
         final double pulse =
             widget.unlocked ? (0.88 + (_controller.value * 0.2)) : 0.55;
         return Container(

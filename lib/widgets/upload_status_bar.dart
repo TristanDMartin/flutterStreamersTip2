@@ -136,8 +136,7 @@ class _UploadingCard extends StatelessWidget {
             value: mgr.currentProgress,
             minHeight: 4,
             backgroundColor: Colors.white12,
-            valueColor:
-                const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
           ),
         ),
         const SizedBox(height: 4),
@@ -171,8 +170,7 @@ class _ProcessingCard extends StatelessWidget {
               height: 18,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
               ),
             ),
             const SizedBox(width: 10),

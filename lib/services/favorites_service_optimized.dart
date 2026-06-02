@@ -3,7 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FavoritesServiceOptimized {
-  static final FavoritesServiceOptimized _instance = FavoritesServiceOptimized._internal();
+  static final FavoritesServiceOptimized _instance =
+      FavoritesServiceOptimized._internal();
   factory FavoritesServiceOptimized() => _instance;
   FavoritesServiceOptimized._internal();
 
@@ -12,7 +13,7 @@ class FavoritesServiceOptimized {
 
   // Local storage key
   static const String _favoritesKey = 'user_favorites';
-  
+
   // Simple state management
   final Set<String> _favorites = <String>{};
   bool _isInitialized = false;
@@ -20,14 +21,14 @@ class FavoritesServiceOptimized {
   /// Initialize the service
   Future<void> initialize() async {
     if (_isInitialized) return;
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final favoritesList = prefs.getStringList(_favoritesKey) ?? [];
       _favorites.addAll(favoritesList);
       _isInitialized = true;
     } catch (e) {
-    // print('Error initializing favorites: $e');
+      // appLog('Error initializing favorites: $e');
     }
   }
 
@@ -48,14 +49,14 @@ class FavoritesServiceOptimized {
       if (currentUser == null) return false;
 
       final isFavorited = _favorites.contains(videoId);
-      
+
       if (isFavorited) {
         return await _removeFavorite(videoId, currentUser.uid);
       } else {
         return await _addFavorite(videoId, currentUser.uid);
       }
     } catch (e) {
-    // print('Error toggling favorite: $e');
+      // appLog('Error toggling favorite: $e');
       return false;
     }
   }
@@ -64,7 +65,7 @@ class FavoritesServiceOptimized {
   Future<bool> _addFavorite(String videoId, String userId) async {
     try {
       final batch = _firestore.batch();
-      
+
       // Add to user's favorites
       final userFavRef = _firestore
           .collection('users')
@@ -84,14 +85,14 @@ class FavoritesServiceOptimized {
       });
 
       await batch.commit();
-      
+
       // Update local state
       _favorites.add(videoId);
       await _saveLocalState();
-      
+
       return true;
     } catch (e) {
-    // print('Error adding favorite: $e');
+      // appLog('Error adding favorite: $e');
       return false;
     }
   }
@@ -100,7 +101,7 @@ class FavoritesServiceOptimized {
   Future<bool> _removeFavorite(String videoId, String userId) async {
     try {
       final batch = _firestore.batch();
-      
+
       // Remove from user's favorites
       final userFavRef = _firestore
           .collection('users')
@@ -117,14 +118,14 @@ class FavoritesServiceOptimized {
       });
 
       await batch.commit();
-      
+
       // Update local state
       _favorites.remove(videoId);
       await _saveLocalState();
-      
+
       return true;
     } catch (e) {
-    // print('Error removing favorite: $e');
+      // appLog('Error removing favorite: $e');
       return false;
     }
   }
@@ -135,7 +136,7 @@ class FavoritesServiceOptimized {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_favoritesKey, _favorites.toList());
     } catch (e) {
-    // print('Error saving favorites: $e');
+      // appLog('Error saving favorites: $e');
     }
   }
 
@@ -145,7 +146,7 @@ class FavoritesServiceOptimized {
       final doc = await _firestore.collection('videos').doc(videoId).get();
       return doc.data()?['favoriteCount'] ?? 0;
     } catch (e) {
-    // print('Error getting favorite count: $e');
+      // appLog('Error getting favorite count: $e');
       return 0;
     }
   }
@@ -172,10 +173,10 @@ class FavoritesServiceOptimized {
       for (final doc in snapshot.docs) {
         _favorites.add(doc.id);
       }
-      
+
       await _saveLocalState();
     } catch (e) {
-    // print('Error syncing favorites: $e');
+      // appLog('Error syncing favorites: $e');
     }
   }
 }

@@ -1,35 +1,32 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../constants/app_colors.dart';
+import '../features/billing/debug_studio_bypass.dart';
+import '../features/billing/get_user_tier.dart';
 import '../features/billing/iap_billing_coordinator.dart';
 import '../features/billing/mobile_billing_setup_status_banner.dart';
 import '../features/billing/iap_billing_facade.dart';
+import '../features/billing/store_product_catalog.dart';
 import '../features/billing/store_product_ids.dart';
+import '../features/billing/subscription_tier_provider.dart';
+import '../features/gamification/models/subscription_plan.dart';
 import 'contact_support_view.dart';
 
-class UpgradeView extends StatefulWidget {
+class UpgradeView extends ConsumerStatefulWidget {
   const UpgradeView({super.key});
 
   @override
-  State<UpgradeView> createState() => _UpgradeViewState();
+  ConsumerState<UpgradeView> createState() => _UpgradeViewState();
 }
 
-class _UpgradeViewState extends State<UpgradeView> {
+class _UpgradeViewState extends ConsumerState<UpgradeView> {
   Color get _on => Theme.of(context).colorScheme.onSurface;
   Color get _onP => Theme.of(context).colorScheme.onPrimary;
-  static const Set<String> _bypassStudioUids = {
-    'bU0RxyZ2L4ULAv1Co5L4f825yV73',
-    'jsmbQMLQjoUyC5cUFvkrRbi9mkp1',
-  };
-
-  String _resolvedTier = 'starter';
-  String? _subscriptionStatus;
-  bool _isLoadingTier = true;
   String? _localProductHint;
 
   IapBillingFacade get _iap => IapBillingCoordinator.instance.facade;
@@ -41,7 +38,9 @@ class _UpgradeViewState extends State<UpgradeView> {
   }
 
   void _onPurchaseVerified() {
-    unawaited(_loadSubscriptionTier());
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -50,8 +49,7 @@ class _UpgradeViewState extends State<UpgradeView> {
     final IapBillingCoordinator coordinator = IapBillingCoordinator.instance;
     coordinator.addListener(_onIapUi);
     coordinator.addVerifiedHandler(_onPurchaseVerified);
-    unawaited(_iap.loadProducts());
-    unawaited(_loadSubscriptionTier());
+    unawaited(coordinator.refreshStoreCatalog());
   }
 
   @override
@@ -81,23 +79,23 @@ class _UpgradeViewState extends State<UpgradeView> {
     await _iap.buySubscription(details);
   }
 
-  Future<void> _pickStudioProductThenBuy() async {
+  Future<void> _pickProProductThenBuy() async {
     final String? picked = await showDialog<String>(
       context: context,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          title: const Text('Studio billing period'),
+          title: const Text('Pro billing period'),
           content: const Text(
-            'Choose monthly or yearly Studio. Apple or Google will '
-            'run checkout; entitlements unlock after server verification.',
+            'Choose monthly or yearly Pro. Checkout runs in the '
+            'App Store or Google Play app on this device.',
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(kStreamersTipStudioMonthlyId),
+              onPressed: () => Navigator.of(ctx).pop(kStreamersTipProMonthlyId),
               child: const Text('Monthly'),
             ),
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(kStreamersTipStudioYearlyId),
+              onPressed: () => Navigator.of(ctx).pop(kStreamersTipProYearlyId),
               child: const Text('Yearly'),
             ),
           ],
@@ -112,63 +110,60 @@ class _UpgradeViewState extends State<UpgradeView> {
     }
   }
 
-  Future<void> _loadSubscriptionTier() async {
-    final user = fa.FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (mounted) {
-        setState(() {
-          _resolvedTier = 'starter';
-          _subscriptionStatus = null;
-          _isLoadingTier = false;
-        });
-      }
+  Future<void> _pickStudioProductThenBuy() async {
+    final String? picked = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Studio billing period'),
+          content: const Text(
+            'Choose monthly or yearly Studio. Apple or Google will '
+            'run checkout; entitlements unlock after server verification.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(kStreamersTipStudioMonthlyId),
+              child: const Text('Monthly'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(kStreamersTipStudioYearlyId),
+              child: const Text('Yearly'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted) {
       return;
     }
-
-    try {
-      if (_bypassStudioUids.contains(user.uid)) {
-        if (mounted) {
-          setState(() {
-            _resolvedTier = 'studio';
-            _subscriptionStatus = 'active';
-            _isLoadingTier = false;
-          });
-        }
-        return;
-      }
-
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      final data = doc.data() ?? const <String, dynamic>{};
-      final rawTier = (data['subscriptionTier'] as String?)?.toLowerCase();
-      final status = (data['subscriptionStatus'] as String?)?.toLowerCase();
-      const validTiers = {'starter', 'pro', 'studio'};
-      const activeStatuses = {'active', 'trialing'};
-
-      final resolvedTier = validTiers.contains(rawTier) &&
-              activeStatuses.contains(status)
-          ? rawTier!
-          : 'starter';
-
-      if (mounted) {
-        setState(() {
-          _resolvedTier = resolvedTier;
-          _subscriptionStatus = status;
-          _isLoadingTier = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _resolvedTier = 'starter';
-          _subscriptionStatus = null;
-          _isLoadingTier = false;
-        });
-      }
+    if (picked != null) {
+      await _buyProduct(picked);
     }
+  }
+
+  ({String tier, String? status, bool isLoading}) _readTierSnapshot() {
+    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
+    if (user != null && DebugStudioBypass.grantsStudio(user.uid)) {
+      return (tier: 'studio', status: 'active', isLoading: false);
+    }
+    final AsyncValue<BillingTierAccess> tierAsync =
+        ref.watch(billingTierAccessProvider);
+    return tierAsync.when(
+      data: (BillingTierAccess access) {
+        final String tier = access.usedCanonicalFields
+            ? subscriptionPlanToApiValue(access.effectivePlan)
+            : 'starter';
+        return (
+          tier: tier,
+          status: access.subscriptionStatusForDisplay,
+          isLoading: false,
+        );
+      },
+      loading: () => (tier: 'starter', status: null, isLoading: true),
+      error: (_, __) => (tier: 'starter', status: null, isLoading: false),
+    );
   }
 
   String _tierLabel(String tier) {
@@ -199,6 +194,18 @@ class _UpgradeViewState extends State<UpgradeView> {
 
   @override
   Widget build(BuildContext context) {
+    final ({String tier, String? status, bool isLoading}) tierSnapshot =
+        _readTierSnapshot();
+    final String resolvedTier = tierSnapshot.tier;
+    final bool isLoadingTier = tierSnapshot.isLoading;
+    final ProductDetails? proMonthly =
+        _iap.productsById[kStreamersTipProMonthlyId];
+    final ProductDetails? proYearly =
+        _iap.productsById[kStreamersTipProYearlyId];
+    final ProductDetails? studioMonthly =
+        _iap.productsById[kStreamersTipStudioMonthlyId];
+    final ProductDetails? studioYearly =
+        _iap.productsById[kStreamersTipStudioYearlyId];
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -237,9 +244,14 @@ class _UpgradeViewState extends State<UpgradeView> {
                 context,
                 tierKey: 'pro',
                 name: 'Pro',
-                price: '\$29',
-                cadence: '/month',
-                secondaryPrice: '\$288/year',
+                price: formatStorePrice(
+                  proMonthly,
+                  '\$29',
+                ),
+                cadence: storeCadenceLabel(proMonthly) ?? '/month',
+                secondaryPrice: proYearly != null
+                    ? '${formatStorePrice(proYearly, '\$288')}/year'
+                    : '\$288/year',
                 description:
                     'For active creators who need more platforms, stronger publishing tools, and deeper growth support.',
                 features: const [
@@ -253,32 +265,24 @@ class _UpgradeViewState extends State<UpgradeView> {
                   'Unlimited weekly cross-posting',
                 ],
                 isFeatured: true,
-                storePrimaryAction:
-                    !_isLoadingTier && _resolvedTier == 'starter'
-                        ? () => _buyProduct(kStreamersTipProMonthlyId)
-                        : null,
-                storePrimaryLabel: 'Start 7-Day Free Trial',
+                storePrimaryAction: !isLoadingTier && resolvedTier == 'starter'
+                    ? _pickProProductThenBuy
+                    : null,
+                storePrimaryLabel: 'Subscribe with App Store / Google Play',
               ),
-              if (!_isLoadingTier &&
-                  _resolvedTier == 'starter' &&
-                  _iap.productsById[kStreamersTipProYearlyId] != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 4),
-                  child: TextButton(
-                    onPressed: _iap.purchaseBusy
-                        ? null
-                        : () => _buyProduct(kStreamersTipProYearlyId),
-                    child: const Text('Prefer Pro yearly?'),
-                  ),
-                ),
               const SizedBox(height: 16),
               _buildTierCard(
                 context,
                 tierKey: 'studio',
                 name: 'Studio',
-                price: '\$89',
-                cadence: '/month',
-                secondaryPrice: '\$888/year',
+                price: formatStorePrice(
+                  studioMonthly,
+                  '\$89',
+                ),
+                cadence: storeCadenceLabel(studioMonthly) ?? '/month',
+                secondaryPrice: studioYearly != null
+                    ? '${formatStorePrice(studioYearly, '\$888')}/year'
+                    : '\$888/year',
                 description:
                     'For serious teams and power creators who need advanced analytics, automation, and team access.',
                 features: const [
@@ -291,12 +295,10 @@ class _UpgradeViewState extends State<UpgradeView> {
                   'Up to 5 team members',
                   'Exportable reports and priority support',
                 ],
-                storePrimaryAction:
-                    !_isLoadingTier &&
-                            (_resolvedTier == 'starter' ||
-                                _resolvedTier == 'pro')
-                        ? _pickStudioProductThenBuy
-                        : null,
+                storePrimaryAction: !isLoadingTier &&
+                        (resolvedTier == 'starter' || resolvedTier == 'pro')
+                    ? _pickStudioProductThenBuy
+                    : null,
                 storePrimaryLabel: 'Subscribe to Studio',
               ),
               const SizedBox(height: 20),
@@ -407,7 +409,8 @@ class _UpgradeViewState extends State<UpgradeView> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
-                onPressed: _iap.purchaseBusy ? null : () => _iap.restorePurchases(),
+                onPressed:
+                    _iap.purchaseBusy ? null : () => _iap.restorePurchases(),
                 child: const Text('Restore purchases'),
               ),
             ),
@@ -417,6 +420,11 @@ class _UpgradeViewState extends State<UpgradeView> {
   }
 
   Widget _buildCurrentPlanCard() {
+    final ({String tier, String? status, bool isLoading}) tierSnapshot =
+        _readTierSnapshot();
+    final bool isLoadingTier = tierSnapshot.isLoading;
+    final String resolvedTier = tierSnapshot.tier;
+    final String? subscriptionStatus = tierSnapshot.status;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -436,7 +444,7 @@ class _UpgradeViewState extends State<UpgradeView> {
               color: _on.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: _isLoadingTier
+            child: isLoadingTier
                 ? Padding(
                     padding: const EdgeInsets.all(12),
                     child: CircularProgressIndicator(
@@ -465,9 +473,9 @@ class _UpgradeViewState extends State<UpgradeView> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _isLoadingTier
+                  isLoadingTier
                       ? 'Checking your subscription...'
-                      : '${_tierLabel(_resolvedTier)} · ${_statusLabel(_subscriptionStatus)}',
+                      : '${_tierLabel(resolvedTier)} · ${_statusLabel(subscriptionStatus)}',
                   style: TextStyle(
                     color: _on,
                     fontSize: 18,
@@ -512,28 +520,31 @@ class _UpgradeViewState extends State<UpgradeView> {
             ),
           ),
           const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Upgrade',
-                style: TextStyle(
-                  color: _on,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  height: 1.0,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Upgrade',
+                  style: TextStyle(
+                    color: _on,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Choose the tier that fits your creator journey',
-                style: TextStyle(
-                  color: _on.withValues(alpha: 0.68),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 4),
+                Text(
+                  'Choose the tier that fits your creator journey',
+                  style: TextStyle(
+                    color: _on.withValues(alpha: 0.68),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  softWrap: true,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -580,23 +591,16 @@ class _UpgradeViewState extends State<UpgradeView> {
           ),
           const SizedBox(height: 18),
           Text(
-            'Pick the same tier model used across the website, backend, and creator tools.',
-            style: TextStyle(
-              color: _onP,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              height: 1.15,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Starter keeps things lightweight, Pro unlocks serious publishing power, and Studio adds advanced analytics, automation, and team features.',
+            'Starter keeps things lightweight, Pro unlocks serious '
+            'publishing power, and Studio adds advanced analytics, '
+            'automation, and team features.',
             style: TextStyle(
               color: _onP.withValues(alpha: 0.9),
               fontSize: 14,
               fontWeight: FontWeight.w500,
               height: 1.35,
             ),
+            softWrap: true,
           ),
         ],
       ),
@@ -616,22 +620,21 @@ class _UpgradeViewState extends State<UpgradeView> {
     VoidCallback? storePrimaryAction,
     String? storePrimaryLabel,
   }) {
-    final isCurrentTier = !_isLoadingTier && _resolvedTier == tierKey;
+    final ({String tier, String? status, bool isLoading}) tierSnapshot =
+        _readTierSnapshot();
+    final bool isCurrentTier =
+        !tierSnapshot.isLoading && tierSnapshot.tier == tierKey;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: _on.withValues(
-          alpha: isCurrentTier
-              ? 0.12
-              : (isFeatured ? 0.1 : 0.07),
+          alpha: isCurrentTier ? 0.12 : (isFeatured ? 0.1 : 0.07),
         ),
         borderRadius: BorderRadius.circular(26),
         border: Border.all(
           color: _on.withValues(
-            alpha: isCurrentTier
-                ? 0.26
-                : (isFeatured ? 0.18 : 0.1),
+            alpha: isCurrentTier ? 0.26 : (isFeatured ? 0.18 : 0.1),
           ),
         ),
       ),

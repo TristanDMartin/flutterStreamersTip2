@@ -191,7 +191,8 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
     final draftId = widget.selectedDraft!['id'] as String?;
 
     if (draftId == null || draftId.isEmpty) {
-      _showErrorSnackBar('This draft is missing its ID and cannot be shared yet.');
+      _showErrorSnackBar(
+          'This draft is missing its ID and cannot be shared yet.');
       return;
     }
 
@@ -210,7 +211,8 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
     );
 
     if (!result.isSuccess) {
-      debugPrint('❌ ChoosePersonView: Draft sharing failed for user ${person.id}');
+      debugPrint(
+          '❌ ChoosePersonView: Draft sharing failed for user ${person.id}');
       _showErrorSnackBar(
         _draftShareFailureMessage(result, person.displayName),
       );
@@ -219,7 +221,8 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
 
     final chat = await ChatService.shared.fetchOrCreateChat(person.id);
     if (chat == null || chat.id == null || chat.id!.isEmpty) {
-      debugPrint('❌ ChoosePersonView: Failed to create chat for user ${person.id}');
+      debugPrint(
+          '❌ ChoosePersonView: Failed to create chat for user ${person.id}');
       _showErrorSnackBar(
         'The draft was shared, but we couldn’t open the feedback chat yet.',
       );

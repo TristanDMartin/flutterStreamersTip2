@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/home_video.dart';
 import '../models/share_payload.dart';
+import '../routing/app_navigator.dart';
+import '../services/chat_service.dart';
 import '../services/share_service_optimized.dart';
+import '../services/video_actions_service.dart';
 import 'connections_row.dart';
 import 'connections_search_overlay.dart';
 
@@ -17,7 +22,7 @@ import 'connections_search_overlay.dart';
 /// - Analytics tracking for all interactions
 /// - Fast 200ms slide animation
 /// - Swipe-down or tap outside to dismiss
-class ShareSheetView extends StatefulWidget {
+class ShareSheetView extends ConsumerStatefulWidget {
   final HomeVideo video;
   final SharePayload? payload;
   final VoidCallback? onDismiss;
@@ -32,10 +37,10 @@ class ShareSheetView extends StatefulWidget {
   });
 
   @override
-  State<ShareSheetView> createState() => _ShareSheetViewState();
+  ConsumerState<ShareSheetView> createState() => _ShareSheetViewState();
 }
 
-class _ShareSheetViewState extends State<ShareSheetView>
+class _ShareSheetViewState extends ConsumerState<ShareSheetView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animationController;
   late final Animation<double> _animation;
@@ -147,12 +152,72 @@ class _ShareSheetViewState extends State<ShareSheetView>
     _handleDismiss();
   }
 
-  void _handleAction(ShareAction action) {
+  Future<void> _handleAction(ShareAction action) async {
     HapticFeedback.lightImpact();
-    ShareServiceOptimized()
-        .handleAction(action, widget.video.id, widget.video.creator.id);
+    final String videoId = widget.video.id;
+    final String creatorId = widget.video.creator.id;
+    await ShareServiceOptimized().handleAction(action, videoId, creatorId);
+    try {
+      switch (action) {
+        case ShareAction.sendMessage:
+          final chat = await ChatService.shared.fetchOrCreateChat(creatorId);
+          if (!mounted) {
+            return;
+          }
+          if (chat == null) {
+            _showBriefMessage('Could not open conversation', isError: true);
+            return;
+          }
+          _handleDismiss();
+          AppNavigator.openChat(
+            context,
+            chat: chat,
+            otherUserId: creatorId,
+            otherUserName: widget.video.creator.displayName.isNotEmpty
+                ? widget.video.creator.displayName
+                : widget.video.creator.username,
+            otherUserAvatarUrl: widget.video.creator.avatarURL,
+            otherUserIsOnline: false,
+          );
+          return;
+        case ShareAction.notInterested:
+          await ref.read(videoActionsServiceProvider).markNotInterested(
+                videoId: videoId,
+                creatorId: creatorId,
+              );
+          if (mounted) {
+            _showBriefMessage('Noted. Adjusting recommendations...');
+          }
+          break;
+        case ShareAction.favorite:
+          await ref.read(videoActionsServiceProvider).addToFavorites(videoId);
+          if (mounted) {
+            _showBriefMessage('Added to collection');
+          }
+          break;
+        case ShareAction.report:
+        case ShareAction.block:
+          break;
+      }
+    } catch (e) {
+      if (mounted) {
+        _showBriefMessage('Action failed: $e', isError: true);
+      }
+    }
     widget.onAction?.call(action);
-    _handleDismiss();
+    if (action != ShareAction.sendMessage) {
+      _handleDismiss();
+    }
+  }
+
+  void _showBriefMessage(String text, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+      ),
+    );
   }
 
   @override
@@ -399,10 +464,12 @@ class _ShareSheetViewState extends State<ShareSheetView>
   }
 
   Widget _buildContextualActions() {
-    final actions = [
+    final actions = <ShareAction>[
+      ShareAction.sendMessage,
+      ShareAction.favorite,
+      ShareAction.notInterested,
       ShareAction.report,
       ShareAction.block,
-      ShareAction.sendMessage,
     ];
 
     return Padding(
@@ -417,7 +484,9 @@ class _ShareSheetViewState extends State<ShareSheetView>
 
   Widget _buildActionRow(ShareAction action) {
     return InkWell(
-      onTap: () => _handleAction(action),
+      onTap: () {
+        unawaited(_handleAction(action));
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(

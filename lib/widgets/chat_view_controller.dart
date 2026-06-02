@@ -13,6 +13,7 @@ import '../services/chat_service_optimized.dart';
 import '../services/r2_media_service.dart';
 import '../services/report_service.dart';
 import '../services/user_blocking_service.dart';
+import '../utils/swallow_non_fatal.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/chat_gif_url.dart';
 
@@ -184,7 +185,8 @@ class ChatViewServiceAdapter implements ChatViewService {
   final UserBlockingService _blockingService;
 
   @override
-  String? get currentUserDisplayName => _chatService.auth.currentUser?.displayName;
+  String? get currentUserDisplayName =>
+      _chatService.auth.currentUser?.displayName;
 
   @override
   String? get currentUserId => _chatService.auth.currentUser?.uid;
@@ -230,7 +232,9 @@ class ChatViewServiceAdapter implements ChatViewService {
         if (await file.exists()) {
           await file.delete();
         }
-      } catch (_) {}
+      } catch (e, st) {
+        swallowNonFatal('ChatViewController.deleteTempFile', e, st);
+      }
     }
   }
 

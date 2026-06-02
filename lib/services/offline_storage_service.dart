@@ -7,7 +7,8 @@ import '../models/trending_creator.dart';
 import 'logging_service.dart';
 
 class OfflineStorageService {
-  static final OfflineStorageService _instance = OfflineStorageService._internal();
+  static final OfflineStorageService _instance =
+      OfflineStorageService._internal();
   factory OfflineStorageService() => _instance;
   OfflineStorageService._internal();
 
@@ -110,12 +111,17 @@ class OfflineStorageService {
       ''');
 
       // Create indexes for better performance
-      await db.execute('CREATE INDEX idx_scheduled_posts_status ON scheduled_posts(status)');
-      await db.execute('CREATE INDEX idx_scheduled_posts_sync ON scheduled_posts(sync_status)');
-      await db.execute('CREATE INDEX idx_trending_creators_active ON trending_creators(is_active)');
-      await db.execute('CREATE INDEX idx_sync_queue_status ON sync_queue(status)');
+      await db.execute(
+          'CREATE INDEX idx_scheduled_posts_status ON scheduled_posts(status)');
+      await db.execute(
+          'CREATE INDEX idx_scheduled_posts_sync ON scheduled_posts(sync_status)');
+      await db.execute(
+          'CREATE INDEX idx_trending_creators_active ON trending_creators(is_active)');
+      await db
+          .execute('CREATE INDEX idx_sync_queue_status ON sync_queue(status)');
 
-      LoggingService.instance.info('Offline database created successfully', tag: 'OfflineStorageService');
+      LoggingService.instance.info('Offline database created successfully',
+          tag: 'OfflineStorageService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to create database tables',
@@ -129,7 +135,9 @@ class OfflineStorageService {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // Handle database upgrades here
-    LoggingService.instance.info('Database upgraded from $oldVersion to $newVersion', tag: 'OfflineStorageService');
+    LoggingService.instance.info(
+        'Database upgraded from $oldVersion to $newVersion',
+        tag: 'OfflineStorageService');
   }
 
   // Scheduled Posts CRUD
@@ -145,8 +153,11 @@ class OfflineStorageService {
           'tags': jsonEncode(post.tags),
           'visibility': post.visibility.name,
           'media_data': jsonEncode(post.media.map((m) => m.toJson()).toList()),
-          'platforms_data': jsonEncode(post.platforms.map((p) => p.toJson()).toList()),
-          'schedule_data': post.schedule != null ? jsonEncode(post.schedule!.toJson()) : null,
+          'platforms_data':
+              jsonEncode(post.platforms.map((p) => p.toJson()).toList()),
+          'schedule_data': post.schedule != null
+              ? jsonEncode(post.schedule!.toJson())
+              : null,
           'status': post.status.name,
           'created_at': post.createdAt.millisecondsSinceEpoch,
           'updated_at': post.updatedAt.millisecondsSinceEpoch,
@@ -156,9 +167,11 @@ class OfflineStorageService {
       );
 
       // Add to sync queue
-      await _addToSyncQueue('scheduled_posts', post.id, 'upsert', jsonEncode(post.toJson()));
+      await _addToSyncQueue(
+          'scheduled_posts', post.id, 'upsert', jsonEncode(post.toJson()));
 
-      LoggingService.instance.debug('Scheduled post saved offline: ${post.id}', tag: 'OfflineStorageService');
+      LoggingService.instance.debug('Scheduled post saved offline: ${post.id}',
+          tag: 'OfflineStorageService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to save scheduled post offline',
@@ -202,11 +215,12 @@ class OfflineStorageService {
     try {
       final db = await database;
       await db.delete('scheduled_posts', where: 'id = ?', whereArgs: [id]);
-      
+
       // Add to sync queue
       await _addToSyncQueue('scheduled_posts', id, 'delete', '{}');
 
-      LoggingService.instance.debug('Scheduled post deleted offline: $id', tag: 'OfflineStorageService');
+      LoggingService.instance.debug('Scheduled post deleted offline: $id',
+          tag: 'OfflineStorageService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to delete scheduled post from offline storage',
@@ -242,7 +256,9 @@ class OfflineStorageService {
       }
 
       await batch.commit();
-      LoggingService.instance.debug('Trending creators saved offline: ${creators.length}', tag: 'OfflineStorageService');
+      LoggingService.instance.debug(
+          'Trending creators saved offline: ${creators.length}',
+          tag: 'OfflineStorageService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to save trending creators offline',
@@ -277,7 +293,8 @@ class OfflineStorageService {
   }
 
   // Sync Queue Management
-  Future<void> _addToSyncQueue(String tableName, String recordId, String operation, String data) async {
+  Future<void> _addToSyncQueue(
+      String tableName, String recordId, String operation, String data) async {
     try {
       final db = await database;
       await db.insert('sync_queue', {
@@ -389,7 +406,9 @@ class OfflineStorageService {
     try {
       final prefs = await this.prefs;
       final timestamp = prefs.getInt('last_sync_time');
-      return timestamp != null ? DateTime.fromMillisecondsSinceEpoch(timestamp) : null;
+      return timestamp != null
+          ? DateTime.fromMillisecondsSinceEpoch(timestamp)
+          : null;
     } catch (e) {
       return null;
     }
@@ -446,6 +465,9 @@ class OfflineStorageService {
       avatarURL: map['avatar_url'],
       followerCount: map['follower_count'] ?? 0,
       isActive: map['is_active'] == 1,
+      creatorLevel: map['creator_level'] as int? ?? 0,
+      tierStatusLabel: map['tier_status_label'] as String?,
+      isFollowing: map['is_following'] == 1,
     );
   }
 

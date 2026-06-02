@@ -7,14 +7,15 @@ import '../models/user.dart';
 import '../utils/avatar_url_resolver.dart';
 
 /// Advanced Network Service
-/// 
+///
 /// This service provides advanced network management including:
 /// - Connection optimization algorithms
 /// - Network analytics and insights
 /// - Performance monitoring
 /// - Smart suggestions
 class AdvancedNetworkService extends ChangeNotifier {
-  static final AdvancedNetworkService _instance = AdvancedNetworkService._internal();
+  static final AdvancedNetworkService _instance =
+      AdvancedNetworkService._internal();
   factory AdvancedNetworkService() => _instance;
   AdvancedNetworkService._internal();
 
@@ -38,7 +39,7 @@ class AdvancedNetworkService extends ChangeNotifier {
     lastUpdated: DateTime.now(),
   );
   List<Map<String, dynamic>> _analytics = [];
-  
+
   // Performance tracking
   bool _isLoading = false;
   String? _lastError;
@@ -59,16 +60,16 @@ class AdvancedNetworkService extends ChangeNotifier {
 
       // Load only critical data first (connections)
       await _loadConnections();
-      
+
       // Load users and stats in background (non-blocking)
       _loadUsers().catchError((e) {
         debugPrint('⚠️ Failed to load users (non-critical): $e');
       });
-      
+
       _calculateStats().catchError((e) {
         debugPrint('⚠️ Failed to calculate stats (non-critical): $e');
       });
-      
+
       _loadAnalytics().catchError((e) {
         debugPrint('⚠️ Failed to load analytics (non-critical): $e');
       });
@@ -113,7 +114,8 @@ class AdvancedNetworkService extends ChangeNotifier {
           avatarURL: resolveAvatarUrl(data),
           onlineStatus: OnlineStatus.offline,
           relationshipType: RelationshipType.following,
-          lastInteraction: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          lastInteraction:
+              (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
           interactionCount: 0,
           connectionStrength: 0.5,
           mutualConnections: [],
@@ -135,7 +137,8 @@ class AdvancedNetworkService extends ChangeNotifier {
           avatarURL: resolveAvatarUrl(data),
           onlineStatus: OnlineStatus.offline,
           relationshipType: RelationshipType.follower,
-          lastInteraction: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          lastInteraction:
+              (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
           interactionCount: 0,
           connectionStrength: 0.5,
           mutualConnections: [],
@@ -148,7 +151,8 @@ class AdvancedNetworkService extends ChangeNotifier {
       }
 
       _connections = connections;
-      debugPrint('✅ AdvancedNetworkService: Loaded ${connections.length} connections');
+      debugPrint(
+          '✅ AdvancedNetworkService: Loaded ${connections.length} connections');
     } catch (e) {
       debugPrint('❌ AdvancedNetworkService: Error loading connections: $e');
       rethrow;
@@ -158,10 +162,7 @@ class AdvancedNetworkService extends ChangeNotifier {
   /// Load user data for connections
   Future<void> _loadUsers() async {
     try {
-      final userIds = _connections
-          .map((c) => c.userId)
-          .toSet()
-          .toList();
+      final userIds = _connections.map((c) => c.userId).toSet().toList();
 
       if (userIds.isEmpty) {
         _users = [];
@@ -172,7 +173,8 @@ class AdvancedNetworkService extends ChangeNotifier {
       const batchSize = 10;
 
       for (int i = 0; i < userIds.length; i += batchSize) {
-        final batch = userIds.sublist(i, (i + batchSize).clamp(0, userIds.length));
+        final batch =
+            userIds.sublist(i, (i + batchSize).clamp(0, userIds.length));
         final query = await _db
             .collection('users')
             .where(FieldPath.documentId, whereIn: batch)
@@ -196,8 +198,12 @@ class AdvancedNetworkService extends ChangeNotifier {
     try {
       final connections = _connections;
       final mutualConnections = _findMutualConnections();
-      final followers = connections.where((c) => c.relationshipType == RelationshipType.follower).length;
-      final following = connections.where((c) => c.relationshipType == RelationshipType.following).length;
+      final followers = connections
+          .where((c) => c.relationshipType == RelationshipType.follower)
+          .length;
+      final following = connections
+          .where((c) => c.relationshipType == RelationshipType.following)
+          .length;
 
       // Calculate engagement rate
       await _getTotalInteractions();
@@ -207,18 +213,25 @@ class AdvancedNetworkService extends ChangeNotifier {
         totalFollowers: followers,
         totalFollowing: following,
         mutualConnections: mutualConnections.length,
-        newConnectionsThisWeek: 0, // Placeholder - would calculate from recent connections
-        newFollowersThisWeek: 0, // Placeholder - would calculate from recent followers
-        averageConnectionStrength: connections.isNotEmpty 
-            ? connections.fold(0.0, (total, c) => total + c.connectionStrength) / connections.length 
+        newConnectionsThisWeek:
+            0, // Placeholder - would calculate from recent connections
+        newFollowersThisWeek:
+            0, // Placeholder - would calculate from recent followers
+        averageConnectionStrength: connections.isNotEmpty
+            ? connections.fold(
+                    0.0, (total, c) => total + c.connectionStrength) /
+                connections.length
             : 0.0,
-        networkGrowthRate: 0.0, // Placeholder - would calculate growth over time
+        networkGrowthRate:
+            0.0, // Placeholder - would calculate growth over time
         topHashtags: [], // Placeholder - would analyze user hashtags
-        topMutualConnections: mutualConnections.map((c) => c.userId).take(5).toList(),
+        topMutualConnections:
+            mutualConnections.map((c) => c.userId).take(5).toList(),
         lastUpdated: DateTime.now(),
       );
 
-      debugPrint('✅ AdvancedNetworkService: Calculated stats: ${_stats.totalConnections} connections');
+      debugPrint(
+          '✅ AdvancedNetworkService: Calculated stats: ${_stats.totalConnections} connections');
     } catch (e) {
       debugPrint('❌ AdvancedNetworkService: Error calculating stats: $e');
       rethrow;
@@ -238,10 +251,12 @@ class AdvancedNetworkService extends ChangeNotifier {
         .toSet();
 
     final mutualIds = followingIds.intersection(followerIds);
-    
-    return _connections.where((c) => 
-      mutualIds.contains(c.userId) && c.relationshipType == RelationshipType.mutual
-    ).toList();
+
+    return _connections
+        .where((c) =>
+            mutualIds.contains(c.userId) &&
+            c.relationshipType == RelationshipType.mutual)
+        .toList();
   }
 
   /// Get total interactions (simplified)
@@ -272,11 +287,10 @@ class AdvancedNetworkService extends ChangeNotifier {
           .limit(30)
           .get();
 
-      _analytics = query.docs
-          .map((doc) => doc.data())
-          .toList();
+      _analytics = query.docs.map((doc) => doc.data()).toList();
 
-      debugPrint('✅ AdvancedNetworkService: Loaded ${_analytics.length} analytics records');
+      debugPrint(
+          '✅ AdvancedNetworkService: Loaded ${_analytics.length} analytics records');
     } catch (e) {
       debugPrint('❌ AdvancedNetworkService: Error loading analytics: $e');
       // Don't rethrow - analytics are optional
@@ -327,7 +341,7 @@ class AdvancedNetworkService extends ChangeNotifier {
     try {
       final activeConnections = _connections;
       final interactionCounts = <String, int>{};
-      
+
       for (final user in _users) {
         interactionCounts[user.id] = user.followerCount; // Placeholder
       }
@@ -347,7 +361,7 @@ class AdvancedNetworkService extends ChangeNotifier {
   List<String> detectAnomalies() {
     try {
       final interactionCounts = <String, int>{};
-      
+
       for (final user in _users) {
         interactionCounts[user.id] = user.followerCount; // Placeholder
       }
@@ -427,9 +441,8 @@ class AdvancedNetworkService extends ChangeNotifier {
       }
 
       // Remove from local list
-      _connections.removeWhere((c) => 
-        c.userId == userId && c.relationshipType == type
-      );
+      _connections
+          .removeWhere((c) => c.userId == userId && c.relationshipType == type);
 
       await _calculateStats();
       notifyListeners();
@@ -453,9 +466,7 @@ class AdvancedNetworkService extends ChangeNotifier {
   /// Get connection by user ID
   UserConnection? getConnectionByUserId(String userId) {
     try {
-      return _connections.firstWhere((c) => 
-        c.userId == userId
-      );
+      return _connections.firstWhere((c) => c.userId == userId);
     } catch (e) {
       return null;
     }
@@ -463,9 +474,7 @@ class AdvancedNetworkService extends ChangeNotifier {
 
   /// Check if users are connected
   bool areUsersConnected(String userId1, String userId2) {
-    return _connections.any((c) => 
-      c.userId == userId1 || c.userId == userId2
-    );
+    return _connections.any((c) => c.userId == userId1 || c.userId == userId2);
   }
 
   /// Get connection strength
@@ -481,12 +490,13 @@ class AdvancedNetworkService extends ChangeNotifier {
         mutualConnections: 1, // Simplified
         totalInteractions: user.followerCount,
         lastInteraction: connection.lastInteraction,
-        daysSinceLastInteraction: DateTime.now().difference(connection.lastInteraction).inDays,
+        daysSinceLastInteraction:
+            DateTime.now().difference(connection.lastInteraction).inDays,
       );
     } catch (e) {
-      debugPrint('❌ AdvancedNetworkService: Error calculating connection strength: $e');
+      debugPrint(
+          '❌ AdvancedNetworkService: Error calculating connection strength: $e');
       return 0.0;
     }
   }
-
 }

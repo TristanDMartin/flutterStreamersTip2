@@ -59,8 +59,10 @@ class BackgroundUploadService {
       secureLog('📤 Starting Mux upload for job $localId');
       void onProgress(double p) {
         _progressControllers[localId]?.add(p);
-        secureLog('📊 Upload progress for $localId: ${(p * 100).toStringAsFixed(1)}%');
+        secureLog(
+            '📊 Upload progress for $localId: ${(p * 100).toStringAsFixed(1)}%');
       }
+
       final result = await _uploadService.uploadVideo(
         videoFile: file,
         caption: job.title,

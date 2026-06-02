@@ -5,6 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'network_connectivity_service.dart';
+import '../features/gamification/emit_engagement_gamification.dart';
+import '../features/gamification/gamification_event_types.dart';
+import 'progression_service.dart';
 
 /// Like state for a video
 class LikeState {
@@ -209,7 +212,7 @@ class StreamersTipLikeService extends ChangeNotifier {
 
       final likedVideos = <String>{};
 
-      // Canonical cross-platform source used by Cloud Functions and web/mobile.
+      // Canonical cross-platform likes (/likes/{videoId}/byUser/{userId}).
       try {
         final canonicalLikes = await _firestore
             .collectionGroup('byUser')
@@ -302,6 +305,21 @@ class StreamersTipLikeService extends ChangeNotifier {
         return true;
       }
 
+      final videoScopedDoc = await _firestore
+          .collection('videos')
+          .doc(videoId)
+          .collection('likes')
+          .doc(userId)
+          .get();
+      if (videoScopedDoc.exists) {
+        _localCache[videoId] = LikeState(
+          isLiked: true,
+          likeCount: cachedState?.likeCount ?? 0,
+          timestamp: DateTime.now(),
+        );
+        return true;
+      }
+
       final canonicalDoc = await _firestore
           .collection('likes')
           .doc(videoId)
@@ -384,6 +402,17 @@ class StreamersTipLikeService extends ChangeNotifier {
       await _performLikeOperation(videoId, userId, true);
       _lastLikeTimes[videoId] = DateTime.now();
       _trackLikeEngagement(videoId, source);
+      scheduleEngagementGamificationEvent(
+        type: GamificationEventTypes.engagementLikeGiven,
+        entityType: 'video',
+        entityId: videoId,
+        source: 'likes',
+      );
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        userId,
+        ProgressionTaskIds.firstLikeGiven,
+        source: 'likes',
+      ));
       debugPrint('💖 StreamersTipLikeService: Video liked successfully');
       return true;
     } catch (e) {
@@ -497,7 +526,7 @@ class StreamersTipLikeService extends ChangeNotifier {
   ///    - Survives app closes, device changes, and logouts
   Future<void> _performLikeOperation(
       String videoId, String userId, bool isLike) async {
-    final likeRef = _firestore
+    final legacyLikeRef = _firestore
         .collection('likes')
         .doc(videoId)
         .collection('byUser')
@@ -505,16 +534,29 @@ class StreamersTipLikeService extends ChangeNotifier {
     final userRef = _firestore.collection('users').doc(userId);
     final legacyLikedRef = userRef.collection('likedVideos').doc(videoId);
     final videoRef = _firestore.collection('videos').doc(videoId);
+    final videoLikeRef = videoRef.collection('likes').doc(userId);
 
     await _firestore.runTransaction((transaction) async {
-      final likeSnapshot = await transaction.get(likeRef);
+      final likeSnapshot = await transaction.get(videoLikeRef);
+      final legacyLikeSnapshot = await transaction.get(legacyLikeRef);
       final videoSnapshot = await transaction.get(videoRef);
       final videoData = videoSnapshot.data();
       final currentCount = videoData == null ? 0 : _readLikeCount(videoData);
+      final alreadyLiked = likeSnapshot.exists || legacyLikeSnapshot.exists;
 
       if (isLike) {
         transaction.set(
-          likeRef,
+          videoLikeRef,
+          {
+            'userId': userId,
+            'videoId': videoId,
+            'likedAt': FieldValue.serverTimestamp(),
+            'createdAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        transaction.set(
+          legacyLikeRef,
           {
             'userId': userId,
             'videoId': videoId,
@@ -540,7 +582,7 @@ class StreamersTipLikeService extends ChangeNotifier {
           SetOptions(merge: true),
         );
 
-        if (!likeSnapshot.exists && videoSnapshot.exists) {
+        if (!alreadyLiked && videoSnapshot.exists) {
           final nextCount = currentCount + 1;
           transaction.update(videoRef, {
             'likes': nextCount,
@@ -549,7 +591,8 @@ class StreamersTipLikeService extends ChangeNotifier {
           });
         }
       } else {
-        transaction.delete(likeRef);
+        transaction.delete(videoLikeRef);
+        transaction.delete(legacyLikeRef);
         transaction.delete(legacyLikedRef);
         transaction.set(
           userRef,
@@ -560,7 +603,7 @@ class StreamersTipLikeService extends ChangeNotifier {
           SetOptions(merge: true),
         );
 
-        if (likeSnapshot.exists && videoSnapshot.exists) {
+        if (alreadyLiked && videoSnapshot.exists) {
           final nextCount = (currentCount - 1).clamp(0, 1 << 31).toInt();
           transaction.update(videoRef, {
             'likes': nextCount,
@@ -770,9 +813,19 @@ class StreamersTipLikeService extends ChangeNotifier {
   }
 
   int _readLikeCount(Map<String, dynamic> data) {
-    final dynamic rawLikeCount =
-        data['likes'] ?? data['likeCount'] ?? data['likesCount'];
-    return rawLikeCount is num ? rawLikeCount.toInt() : 0;
+    for (final key in const ['likeCount', 'likesCount', 'likes']) {
+      final dynamic value = data[key];
+      if (value is num) {
+        return value.toInt().clamp(0, 1 << 31).toInt();
+      }
+      if (value is String) {
+        final parsed = int.tryParse(value);
+        if (parsed != null) {
+          return parsed.clamp(0, 1 << 31).toInt();
+        }
+      }
+    }
+    return 0;
   }
 
   int _coerceServerLikeCount({

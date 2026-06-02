@@ -32,15 +32,15 @@ class DataSyncService extends ChangeNotifier {
     required AuthenticationService authService,
     required FavoritesManager favoritesManager,
     required HomeViewModel homeNotifier,
-  }) : _authService = authService,
-       _favoritesManager = favoritesManager,
-       _homeNotifier = homeNotifier;
+  })  : _authService = authService,
+        _favoritesManager = favoritesManager,
+        _homeNotifier = homeNotifier;
 
   // Main data synchronization method
   Future<void> syncUserData() async {
     if (_isLoading || _hasLoaded) return;
 
-    // print("🔄 Starting comprehensive data synchronization");
+    // appLog("🔄 Starting comprehensive data synchronization");
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -51,7 +51,7 @@ class DataSyncService extends ChangeNotifier {
         throw Exception('No authenticated user found');
       }
 
-      // print("👤 Syncing data for user: ${user.displayName} (${user.id})");
+      // appLog("👤 Syncing data for user: ${user.displayName} (${user.id})");
 
       // 1. Load user profile data (already handled by AuthService)
       await _loadUserProfileData(user);
@@ -69,10 +69,10 @@ class DataSyncService extends ChangeNotifier {
       _setupRealtimeListeners(user.id);
 
       _hasLoaded = true;
-      // print("✅ Data synchronization completed successfully");
+      // appLog("✅ Data synchronization completed successfully");
     } catch (e) {
       _errorMessage = e.toString();
-      // print("❌ Data synchronization failed: $e");
+      // appLog("❌ Data synchronization failed: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -81,15 +81,15 @@ class DataSyncService extends ChangeNotifier {
 
   // Load user profile data
   Future<void> _loadUserProfileData(User user) async {
-    // print("📄 Loading user profile data");
+    // appLog("📄 Loading user profile data");
     try {
       final userDoc = await _firestore.collection('users').doc(user.id).get();
       if (userDoc.exists) {
         // final data = userDoc.data()!;
-        // print("✅ User profile data loaded: ${data['displayName']}");
+        // appLog("✅ User profile data loaded: ${data['displayName']}");
       }
     } catch (e) {
-      // print("❌ Error loading user profile: $e");
+      // appLog("❌ Error loading user profile: $e");
     }
   }
 
@@ -99,31 +99,31 @@ class DataSyncService extends ChangeNotifier {
       await _homeNotifier.refreshFeedByTab(FeedTab.forYou);
       await _homeNotifier.refreshFollowingFeed(reset: true);
     } catch (e) {
-      // print("❌ Error loading video data: $e");
+      // appLog("❌ Error loading video data: $e");
     }
   }
 
   // Load user favorites
   Future<void> _loadFavorites(String userId) async {
-    // print("❤️ Loading user favorites");
+    // appLog("❤️ Loading user favorites");
     try {
       await _favoritesManager.initialize();
-      // print("✅ Favorites loaded");
+      // appLog("✅ Favorites loaded");
     } catch (e) {
-      // print("❌ Error loading favorites: $e");
+      // appLog("❌ Error loading favorites: $e");
     }
   }
 
   // Sync video states (likes, comments, etc.)
   Future<void> _syncVideoStates() async {
-    // print("🔄 Syncing video states");
+    // appLog("🔄 Syncing video states");
     try {
       await _homeNotifier.syncLikeStates();
       await _homeNotifier.syncFavoriteStates();
       await _homeNotifier.syncCommentCounts();
-      // print("✅ Video states synced");
+      // appLog("✅ Video states synced");
     } catch (e) {
-      // print("❌ Error syncing video states: $e");
+      // appLog("❌ Error syncing video states: $e");
     }
   }
 
@@ -159,13 +159,13 @@ class DataSyncService extends ChangeNotifier {
     try {
       await _homeNotifier.refreshFollowingFeed(reset: true);
     } catch (e) {
-      // print("❌ Error refreshing following videos: $e");
+      // appLog("❌ Error refreshing following videos: $e");
     }
   }
 
   // Force refresh all data
   Future<void> refreshAllData() async {
-    // print("🔄 Force refreshing all data");
+    // appLog("🔄 Force refreshing all data");
     _hasLoaded = false;
     await syncUserData();
   }

@@ -7,7 +7,8 @@ import 'accessibility_service.dart';
 import 'logging_service.dart';
 
 class AppInitializationService {
-  static final AppInitializationService _instance = AppInitializationService._internal();
+  static final AppInitializationService _instance =
+      AppInitializationService._internal();
   factory AppInitializationService() => _instance;
   AppInitializationService._internal();
 
@@ -22,13 +23,15 @@ class AppInitializationService {
     if (_isInitialized) return;
 
     try {
-      LoggingService.instance.info('Initializing app services...', tag: 'AppInitializationService');
+      LoggingService.instance.info('Initializing app services...',
+          tag: 'AppInitializationService');
 
       // Initialize accessibility service first
       await _accessibilityService.initialize(context);
 
       // Initialize offline storage
-      await _offlineStorage.database; // This will create the database if it doesn't exist
+      await _offlineStorage
+          .database; // This will create the database if it doesn't exist
 
       // Initialize sync service
       await _syncService.initialize();
@@ -38,7 +41,8 @@ class AppInitializationService {
 
       _isInitialized = true;
 
-      LoggingService.instance.info('App services initialized successfully', tag: 'AppInitializationService');
+      LoggingService.instance.info('App services initialized successfully',
+          tag: 'AppInitializationService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to initialize app services',
@@ -55,8 +59,9 @@ class AppInitializationService {
       await _syncService.dispose();
       await _offlineStorage.close();
       _cachingService.clearMemoryCache();
-      
-      LoggingService.instance.info('App services disposed', tag: 'AppInitializationService');
+
+      LoggingService.instance
+          .info('App services disposed', tag: 'AppInitializationService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to dispose app services',

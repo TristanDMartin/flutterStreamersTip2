@@ -26,34 +26,45 @@ class PushNotificationService {
 
   String? _fcmToken;
 
+  static const Duration _initTimeout = Duration(seconds: 25);
+  static const Duration _tokenTimeout = Duration(seconds: 12);
+  static const Duration _firestoreSaveTimeout = Duration(seconds: 10);
+
   /// Initialize push notification service
   Future<void> initialize() async {
     try {
-      LoggingService.instance.debug('🔔 Initializing push notification service',
-          tag: 'PushNotificationService');
-
-      // Request permission
-      await _requestPermission();
-
-      // Initialize local notifications
-      await _initializeLocalNotifications();
-
-      // Get FCM token
-      await _getFCMToken();
-
-      // Set up message handlers
-      await _setupMessageHandlers();
-
-      // Listen to token refresh
-      _tokenRefreshSub?.cancel();
-      _tokenRefreshSub = _messaging.onTokenRefresh.listen(_onTokenRefresh);
-
-      LoggingService.instance.debug('✅ Push notification service initialized',
-          tag: 'PushNotificationService');
+      await _initializeImpl().timeout(
+        _initTimeout,
+        onTimeout: () {
+          LoggingService.instance.debug(
+            'Push init timed out after ${_initTimeout.inSeconds}s; continuing',
+            tag: 'PushNotificationService',
+          );
+        },
+      );
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error initializing push notifications',
           tag: 'PushNotificationService', error: e, stackTrace: stackTrace);
     }
+  }
+
+  Future<void> _initializeImpl() async {
+    LoggingService.instance.debug('🔔 Initializing push notification service',
+        tag: 'PushNotificationService');
+
+    await _requestPermission();
+
+    await _initializeLocalNotifications();
+
+    await _getFCMToken();
+
+    await _setupMessageHandlers();
+
+    _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = _messaging.onTokenRefresh.listen(_onTokenRefresh);
+
+    LoggingService.instance.debug('✅ Push notification service initialized',
+        tag: 'PushNotificationService');
   }
 
   /// Request notification permission
@@ -126,11 +137,28 @@ class PushNotificationService {
         }
       }
 
-      _fcmToken = await _messaging.getToken();
+      _fcmToken = await _messaging.getToken().timeout(
+        _tokenTimeout,
+        onTimeout: () {
+          LoggingService.instance.debug(
+            'FCM getToken timed out; skipping registration',
+            tag: 'PushNotificationService',
+          );
+          return null;
+        },
+      );
       if (_fcmToken != null) {
         LoggingService.instance
             .debug('FCM Token: $_fcmToken', tag: 'PushNotificationService');
-        await _saveTokenToFirestore(_fcmToken!);
+        await _saveTokenToFirestore(_fcmToken!).timeout(
+          _firestoreSaveTimeout,
+          onTimeout: () {
+            LoggingService.instance.debug(
+              'FCM token Firestore save timed out',
+              tag: 'PushNotificationService',
+            );
+          },
+        );
       }
     } catch (e) {
       LoggingService.instance.error('Error getting FCM token',
@@ -144,26 +172,22 @@ class PushNotificationService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
-      // Save to both locations for compatibility
-      // 1. Save to user document (for backwards compatibility)
-      await _firestore.collection('users').doc(currentUser.uid).update({
-        'fcmToken': token,
-        'lastTokenUpdate': FieldValue.serverTimestamp(),
-      });
-
-      // 2. Save to deviceTokens subcollection (for Cloud Functions)
+      // Save to deviceTokens subcollection for Cloud Functions.
       await _firestore
           .collection('users')
           .doc(currentUser.uid)
           .collection('deviceTokens')
           .doc(token)
           .set({
-        'createdAt': FieldValue.serverTimestamp(),
+        'token': token,
         'platform': _getPlatform(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
         'lastSeenAt': FieldValue.serverTimestamp(),
+        'source': 'push_notification',
       }, SetOptions(merge: true));
 
-      LoggingService.instance.debug('✅ FCM token saved to both locations',
+      LoggingService.instance.debug('✅ FCM token saved to deviceTokens',
           tag: 'PushNotificationService');
     } catch (e) {
       LoggingService.instance.error('Error saving FCM token',

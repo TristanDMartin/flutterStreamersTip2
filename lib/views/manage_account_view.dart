@@ -7,6 +7,7 @@ import '../widgets/two_factor_settings_view.dart';
 import '../widgets/tiktok_account_switcher_modal.dart';
 import '../services/tiktok_account_switcher.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/swallow_non_fatal.dart';
 
 class ManageAccountView extends ConsumerStatefulWidget {
   const ManageAccountView({super.key});
@@ -69,9 +70,10 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     }
     if (kDebugMode) {
       try {
-        final token = await user.getIdToken(true);
-        debugPrint('🔑 Firebase ID Token (for Mux Worker test): $token');
-      } catch (_) {}
+        await user.getIdToken(true);
+      } catch (e, st) {
+        swallowNonFatal('ManageAccountView.tokenWarmup', e, st);
+      }
     }
     try {
       final doc = await _firestore.collection('users').doc(user.uid).get();
@@ -646,11 +648,8 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   Widget _buildProfileHeader(firebase_auth.User? user) {
     final String? avatarURL = resolveAvatarUrl(_userData);
     final String displayName =
-        _userData?['displayName'] as String? ??
-            user?.displayName ??
-            'User';
-    final String username =
-        _userData?['username'] as String? ?? 'username';
+        _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
+    final String username = _userData?['username'] as String? ?? 'username';
     final ColorScheme c = Theme.of(context).colorScheme;
     return Column(
       children: [

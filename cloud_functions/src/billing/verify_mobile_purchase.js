@@ -16,6 +16,12 @@
 const admin = require('firebase-admin');
 const https = require('https');
 const {JWT} = require('google-auth-library');
+const {
+  SignedDataVerifier,
+  Environment,
+  OfferType,
+} = require('@apple/app-store-server-library');
+const {loadAppleRootCertificates} = require('./apple_root_cas');
 
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
@@ -28,6 +34,7 @@ const ALLOWED_PRODUCT_IDS = new Set([
 ]);
 
 const DEFAULT_ANDROID_PACKAGE = 'com.streamerstip.streamersTipApp';
+const DEFAULT_APPLE_BUNDLE_ID = 'com.streamerstip.streamersTipApp';
 
 function tierFromProductId(productId) {
   if (String(productId).includes('studio')) return 'studio';
@@ -119,6 +126,125 @@ async function verifyAppleReceipt(receiptData, sharedSecret, expectedProductId) 
 function looksLikeStoreKit2Jws(token) {
   const s = String(token || '');
   return s.split('.').length === 3 && s.startsWith('eyJ');
+}
+
+async function verifyAppleStoreKit2Transaction(signedTransaction, expectedProductId) {
+  const bundleId = process.env.APPLE_BUNDLE_ID || DEFAULT_APPLE_BUNDLE_ID;
+  const appAppleIdRaw = process.env.APP_STORE_APP_APPLE_ID || '';
+  const appAppleId = appAppleIdRaw.trim()
+    ? parseInt(appAppleIdRaw.trim(), 10)
+    : undefined;
+  const appleRootCAs = await loadAppleRootCertificates();
+  const environments = [Environment.SANDBOX, Environment.PRODUCTION];
+  let lastError = null;
+  for (const environment of environments) {
+    try {
+      const verifier = new SignedDataVerifier(
+          appleRootCAs,
+          true,
+          environment,
+          bundleId,
+          environment === Environment.PRODUCTION ? appAppleId : undefined,
+      );
+      const txn = await verifier.verifyAndDecodeTransaction(signedTransaction);
+      const productId = String(txn.productId || '');
+      if (productId !== expectedProductId) {
+        throw new Error(
+            `JWS product ${productId} does not match ${expectedProductId}`,
+        );
+      }
+      const expiresMs = txn.expiresDate;
+      if (!expiresMs) {
+        throw new Error('Apple JWS transaction missing expiresDate');
+      }
+      const offerType = txn.offerType;
+      const offerDiscount = String(txn.offerDiscountType || '').toUpperCase();
+      const trial =
+        offerType === OfferType.INTRODUCTORY_OFFER ||
+        offerType === OfferType.SUBSCRIPTION_OFFER_CODE ||
+        offerDiscount.includes('FREE_TRIAL') ||
+        offerDiscount.includes('INTRODUCTORY');
+      return {
+        originalTransactionId: String(
+            txn.originalTransactionId || txn.transactionId || '',
+        ),
+        purchaseTokenStored: signedTransaction,
+        currentPeriodEnd: new Date(expiresMs),
+        trialEndsAt: trial ? new Date(expiresMs) : null,
+        subscriptionStatus: trial ? 'trialing' : 'active',
+      };
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('Apple JWS verification failed');
+}
+
+function buildUserEntitlementPatch({
+  tier,
+  provider,
+  productId,
+  verified,
+  periodEndTs,
+  trialTs,
+  now,
+  existingUser = {},
+}) {
+  const isPaid =
+    verified.subscriptionStatus === 'active' ||
+    verified.subscriptionStatus === 'trialing';
+  const existingEnt =
+    existingUser.entitlements &&
+    typeof existingUser.entitlements === 'object' &&
+    !Array.isArray(existingUser.entitlements)
+      ? existingUser.entitlements
+      : {};
+  const existingSub =
+    existingUser.subscription &&
+    typeof existingUser.subscription === 'object' &&
+    !Array.isArray(existingUser.subscription)
+      ? existingUser.subscription
+      : {};
+  const existingTippy =
+    existingEnt.tippyAi &&
+    typeof existingEnt.tippyAi === 'object' &&
+    !Array.isArray(existingEnt.tippyAi)
+      ? existingEnt.tippyAi
+      : {};
+  return {
+    tier,
+    subscriptionTier: tier,
+    subscriptionStatus: verified.subscriptionStatus,
+    billingProvider: provider,
+    planProductId: productId,
+    currentPeriodEnd: periodEndTs,
+    trialEndsAt: trialTs,
+    subscriptionTrialEndAt: trialTs,
+    updatedAt: now,
+    entitlements: {
+      ...existingEnt,
+      active: isPaid,
+      tippyAi: {
+        ...existingTippy,
+        plan: tier,
+        tier,
+        status: verified.subscriptionStatus,
+        productId,
+        provider,
+      },
+    },
+    subscription: {
+      ...existingSub,
+      tier,
+      plan: tier,
+      status: verified.subscriptionStatus,
+      productId,
+      provider,
+      currentPeriodEnd: periodEndTs,
+      trialEndsAt: trialTs,
+      cancelAtPeriodEnd: false,
+    },
+  };
 }
 
 async function verifyGooglePlaySubscription(packageName, productId, purchaseToken) {
@@ -217,19 +343,18 @@ async function handleVerifyMobilePurchase(req, res) {
     let verified;
     if (platform === 'ios') {
       if (looksLikeStoreKit2Jws(purchaseToken)) {
-        res.status(501).json({
-          error:
-            'StoreKit 2 JWS receipt: add App Store Server API verification; ' +
-            'verifyReceipt does not accept this format.',
-        });
-        return;
+        verified = await verifyAppleStoreKit2Transaction(
+            purchaseToken,
+            productId,
+        );
+      } else {
+        const secret = process.env.APP_STORE_SHARED_SECRET || '';
+        verified = await verifyAppleReceipt(
+            purchaseToken,
+            secret,
+            productId,
+        );
       }
-      const secret = process.env.APP_STORE_SHARED_SECRET || '';
-      verified = await verifyAppleReceipt(
-          purchaseToken,
-          secret,
-          productId,
-      );
     } else if (platform === 'android') {
       const pkg =
         process.env.ANDROID_PACKAGE_NAME || DEFAULT_ANDROID_PACKAGE;
@@ -247,6 +372,8 @@ async function handleVerifyMobilePurchase(req, res) {
     const now = FieldValue.serverTimestamp();
     const userRef = admin.firestore().collection('users').doc(uid);
     const subRef = admin.firestore().collection('subscriptions').doc(uid);
+    const userSnap = await userRef.get();
+    const existingUser = userSnap.exists ? userSnap.data() || {} : {};
     const subSnap = await subRef.get();
     const existingCreatedAt =
       subSnap.exists && subSnap.data().createdAt
@@ -259,16 +386,16 @@ async function handleVerifyMobilePurchase(req, res) {
     const batch = admin.firestore().batch();
     batch.set(
         userRef,
-        {
+        buildUserEntitlementPatch({
           tier,
-          subscriptionTier: tier,
-          subscriptionStatus: verified.subscriptionStatus,
-          billingProvider: provider,
-          planProductId: productId,
-          currentPeriodEnd: periodEndTs,
-          trialEndsAt: trialTs,
-          updatedAt: now,
-        },
+          provider,
+          productId,
+          verified,
+          periodEndTs,
+          trialTs,
+          now,
+          existingUser,
+        }),
         {merge: true},
     );
     batch.set(

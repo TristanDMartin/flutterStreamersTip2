@@ -20,27 +20,27 @@ class InsightsViewersTab extends StatelessWidget {
         children: [
           // Viewer summary cards
           _buildViewerSummaryCards(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Viewer types section
           _buildViewerTypesSection(context),
-          
+
           const SizedBox(height: 24),
-          
+
           // Gender breakdown section
           _buildGenderBreakdownSection(context),
-          
+
           const SizedBox(height: 24),
-          
+
           // Age groups section
           _buildAgeGroupsSection(context),
-          
+
           const SizedBox(height: 24),
-          
+
           // Top locations section
           _buildTopLocationsSection(context),
-          
+
           const SizedBox(height: 24),
         ],
       ),
@@ -264,7 +264,7 @@ class InsightsViewersTab extends StatelessWidget {
     required Color color,
   }) {
     final percentage = total > 0 ? (count / total * 100) : 0.0;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -314,10 +314,8 @@ class InsightsViewersTab extends StatelessWidget {
 
   Widget _buildGenderBreakdownSection(BuildContext context) {
     final breakdown = insights.viewers.genderBreakdown;
-    final totalGender = breakdown.male +
-        breakdown.female +
-        breakdown.other +
-        breakdown.unknown;
+    final totalGender =
+        breakdown.male + breakdown.female + breakdown.other + breakdown.unknown;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,9 +367,12 @@ class InsightsViewersTab extends StatelessWidget {
                 const SizedBox(height: 20),
                 Column(
                   children: [
-                    _buildGenderItem('Male', breakdown.male, const Color(0xFF1670DE)),
-                    _buildGenderItem('Female', breakdown.female, const Color(0xFFE91E63)),
-                    _buildGenderItem('Other', breakdown.other, const Color(0xFF40DCD1)),
+                    _buildGenderItem(
+                        'Male', breakdown.male, const Color(0xFF1670DE)),
+                    _buildGenderItem(
+                        'Female', breakdown.female, const Color(0xFFE91E63)),
+                    _buildGenderItem(
+                        'Other', breakdown.other, const Color(0xFF40DCD1)),
                     _buildGenderItem('Unknown', breakdown.unknown, Colors.grey),
                   ],
                 ),
@@ -385,11 +386,11 @@ class InsightsViewersTab extends StatelessWidget {
 
   Widget _buildGenderItem(String label, int count, Color color) {
     final total = insights.viewers.genderBreakdown.male +
-                  insights.viewers.genderBreakdown.female +
-                  insights.viewers.genderBreakdown.other +
-                  insights.viewers.genderBreakdown.unknown;
+        insights.viewers.genderBreakdown.female +
+        insights.viewers.genderBreakdown.other +
+        insights.viewers.genderBreakdown.unknown;
     final percentage = total > 0 ? (count / total * 100) : 0.0;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -805,18 +806,18 @@ class InsightsViewersTab extends StatelessWidget {
             width: 24,
             height: 24,
             decoration: BoxDecoration(
-              color: rank <= 3 
-                ? const Color(0xFF9248D2).withValues(alpha: 0.2)
-                : Colors.white.withValues(alpha: 0.1),
+              color: rank <= 3
+                  ? const Color(0xFF9248D2).withValues(alpha: 0.2)
+                  : Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
               child: Text(
                 '$rank',
                 style: TextStyle(
-                  color: rank <= 3 
-                    ? const Color(0xFF9248D2)
-                    : Colors.white.withValues(alpha: 0.7),
+                  color: rank <= 3
+                      ? const Color(0xFF9248D2)
+                      : Colors.white.withValues(alpha: 0.7),
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),

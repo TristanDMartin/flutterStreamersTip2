@@ -19,7 +19,8 @@ void secureLog(
   }
   if (error != null) {
     final String errText = '$error';
-    output = '$output | Error: ${kReleaseMode ? SensitiveDataRedactor.redact(errText) : errText}';
+    output =
+        '$output | Error: ${kReleaseMode ? SensitiveDataRedactor.redact(errText) : errText}';
   }
   if (stackTrace != null && kDebugMode) {
     output = '$output | Stack: $stackTrace';

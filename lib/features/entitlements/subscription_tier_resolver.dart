@@ -1,3 +1,4 @@
+import '../../utils/firestore_map_readers.dart';
 import '../gamification/models/subscription_plan.dart';
 
 /// Aligned with cloud_functions `src/shared/subscription_tier.js`.
@@ -11,14 +12,6 @@ class SubscriptionTierResolution {
   final String sourceField;
 }
 
-String? _stringField(Map<String, dynamic>? map, String key) {
-  if (map == null) {
-    return null;
-  }
-  final Object? v = map[key];
-  return v is String ? v : null;
-}
-
 SubscriptionTierResolution resolveSubscriptionTierFromUserDocument(
   Map<String, dynamic>? raw,
 ) {
@@ -29,24 +22,23 @@ SubscriptionTierResolution resolveSubscriptionTierFromUserDocument(
     );
   }
   final Object? sub = raw['subscription'];
-  final Map<String, dynamic>? subMap =
-      sub is Map<String, dynamic> ? sub : null;
+  final Map<String, dynamic>? subMap = sub is Map<String, dynamic> ? sub : null;
   final Object? ent = raw['entitlements'];
-  final Map<String, dynamic>? entMap =
-      ent is Map<String, dynamic> ? ent : null;
+  final Map<String, dynamic>? entMap = ent is Map<String, dynamic> ? ent : null;
   Map<String, dynamic>? tippyEnt;
   final Object? tippyObj = entMap?['tippyAi'] ?? entMap?['tippy_ai'];
   if (tippyObj is Map<String, dynamic>) {
     tippyEnt = tippyObj;
   }
-  final List<MapEntry<String, String?>> candidates = <MapEntry<String, String?>>[
+  final List<MapEntry<String, String?>> candidates =
+      <MapEntry<String, String?>>[
     MapEntry<String, String?>(
       'subscription.tier',
-      _stringField(subMap, 'tier'),
+      stringFieldFromMap(subMap, 'tier'),
     ),
     MapEntry<String, String?>(
       'subscription.plan',
-      _stringField(subMap, 'plan'),
+      stringFieldFromMap(subMap, 'plan'),
     ),
     MapEntry<String, String?>(
       'stripeRole',
@@ -64,11 +56,11 @@ SubscriptionTierResolution resolveSubscriptionTierFromUserDocument(
     ),
     MapEntry<String, String?>(
       'entitlements.tippyAi.plan',
-      _stringField(tippyEnt, 'plan'),
+      stringFieldFromMap(tippyEnt, 'plan'),
     ),
     MapEntry<String, String?>(
       'entitlements.tippyAi.tier',
-      _stringField(tippyEnt, 'tier'),
+      stringFieldFromMap(tippyEnt, 'tier'),
     ),
     MapEntry<String, String?>(
       'tier',

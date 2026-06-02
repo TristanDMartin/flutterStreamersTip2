@@ -67,6 +67,16 @@ class AppNavigator {
     );
   }
 
+  static Future<T?> openVideoUnavailable<T>(
+    BuildContext context, {
+    required String videoId,
+  }) {
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.videoUnavailable,
+      arguments: VideoUnavailableRouteArgs(videoId: videoId),
+    );
+  }
+
   static Future<T?> openDiscover<T>(BuildContext context) {
     return Navigator.of(context).pushNamed<T>(AppRoutes.discover);
   }

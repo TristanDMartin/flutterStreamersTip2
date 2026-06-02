@@ -39,8 +39,7 @@ class ProfilePostCountReconcile {
       if (kDebugMode) {
         debugPrint('📊 PROFILE: Reconciling postCount for $userId');
       }
-      final int count =
-          await PostCounterService().reconcilePostCount(userId);
+      final int count = await PostCounterService().reconcilePostCount(userId);
       if (count >= 0) {
         _lastReconcileByUserId[userId] = DateTime.now();
         if (kDebugMode) {

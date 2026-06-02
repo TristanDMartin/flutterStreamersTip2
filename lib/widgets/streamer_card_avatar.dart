@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class StreamerCardAvatar extends StatelessWidget {
   final Map<String, dynamic> streamer;
-  
+
   const StreamerCardAvatar({
     super.key,
     required this.streamer,
@@ -36,7 +36,7 @@ class StreamerCardAvatar extends StatelessWidget {
             ),
           ),
         ),
-        
+
         // 2) The avatar image, same center, slightly smaller
         Positioned(
           top: 4, // (120 - 112) / 2 = 4
@@ -48,7 +48,7 @@ class StreamerCardAvatar extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF25E5D2).withValues(alpha:0.6),
+                  color: const Color(0xFF25E5D2).withValues(alpha: 0.6),
                   blurRadius: 8,
                   offset: const Offset(0, 0),
                 ),
@@ -61,8 +61,7 @@ class StreamerCardAvatar extends StatelessWidget {
                       width: 112,
                       height: 112,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(
+                      errorBuilder: (context, error, stackTrace) => const Icon(
                         Icons.person,
                         size: 112,
                         color: Colors.grey,

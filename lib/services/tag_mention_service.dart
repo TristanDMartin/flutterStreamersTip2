@@ -25,17 +25,20 @@ class TagMentionService {
     String? postThumbnailUrl,
   }) async {
     try {
-      debugPrint('🏷️ TagMentionService: Processing tags and mentions for video: $videoId');
-      
+      debugPrint(
+          '🏷️ TagMentionService: Processing tags and mentions for video: $videoId');
+
       // Parse tags and mentions from caption
       final parsedData = _parseTagsAndMentions(caption);
-      
+
       if (parsedData.tags.isEmpty && parsedData.mentions.isEmpty) {
-        debugPrint('🏷️ TagMentionService: No tags or mentions found in caption');
+        debugPrint(
+            '🏷️ TagMentionService: No tags or mentions found in caption');
         return;
       }
 
-      debugPrint('🏷️ TagMentionService: Found ${parsedData.tags.length} tags and ${parsedData.mentions.length} mentions');
+      debugPrint(
+          '🏷️ TagMentionService: Found ${parsedData.tags.length} tags and ${parsedData.mentions.length} mentions');
 
       // Process tags (users tagged in the video)
       if (parsedData.tags.isNotEmpty) {
@@ -57,7 +60,8 @@ class TagMentionService {
         );
       }
 
-      debugPrint('✅ TagMentionService: Successfully processed tags and mentions');
+      debugPrint(
+          '✅ TagMentionService: Successfully processed tags and mentions');
     } catch (e) {
       debugPrint('❌ TagMentionService: Error processing tags and mentions: $e');
     }
@@ -83,12 +87,13 @@ class TagMentionService {
     }
 
     // Parse mentions - look for @username patterns (but not in tag context)
-    final mentionRegex = RegExp(r'(?<!tagged\s*:?\s*)@(\w+)', caseSensitive: false);
+    final mentionRegex =
+        RegExp(r'(?<!tagged\s*:?\s*)@(\w+)', caseSensitive: false);
     final mentionMatches = mentionRegex.allMatches(caption);
     for (final match in mentionMatches) {
       final username = match.group(1);
-      if (username != null && 
-          !mentions.contains(username) && 
+      if (username != null &&
+          !mentions.contains(username) &&
           !tags.contains(username)) {
         mentions.add(username);
       }
@@ -105,7 +110,8 @@ class TagMentionService {
     String? postThumbnailUrl,
   }) async {
     try {
-      debugPrint('🏷️ TagMentionService: Processing ${taggedUsernames.length} tags');
+      debugPrint(
+          '🏷️ TagMentionService: Processing ${taggedUsernames.length} tags');
 
       for (final username in taggedUsernames) {
         // Find user by username
@@ -113,7 +119,8 @@ class TagMentionService {
         if (userDoc != null) {
           final taggedUserId = userDoc.id;
 
-          debugPrint('🏷️ TagMentionService: Found tagged user: $username ($taggedUserId)');
+          debugPrint(
+              '🏷️ TagMentionService: Found tagged user: $username ($taggedUserId)');
 
           // Trigger tag event notification
           if (_eventTriggerService != null) {
@@ -124,7 +131,8 @@ class TagMentionService {
               postThumbnailUrl: postThumbnailUrl,
             );
           } else {
-            debugPrint('⚠️ TagMentionService: EventTriggerService not set - no tag notification will be created');
+            debugPrint(
+                '⚠️ TagMentionService: EventTriggerService not set - no tag notification will be created');
           }
 
           // Store tag relationship in Firestore
@@ -150,7 +158,8 @@ class TagMentionService {
     String? postThumbnailUrl,
   }) async {
     try {
-      debugPrint('💬 TagMentionService: Processing ${mentionedUsernames.length} mentions');
+      debugPrint(
+          '💬 TagMentionService: Processing ${mentionedUsernames.length} mentions');
 
       for (final username in mentionedUsernames) {
         // Find user by username
@@ -158,7 +167,8 @@ class TagMentionService {
         if (userDoc != null) {
           final mentionedUserId = userDoc.id;
 
-          debugPrint('💬 TagMentionService: Found mentioned user: $username ($mentionedUserId)');
+          debugPrint(
+              '💬 TagMentionService: Found mentioned user: $username ($mentionedUserId)');
 
           // Create mention notification
           if (_eventTriggerService != null) {
@@ -169,7 +179,8 @@ class TagMentionService {
               postThumbnailUrl: postThumbnailUrl,
             );
           } else {
-            debugPrint('⚠️ TagMentionService: EventTriggerService not set - no mention notification will be created');
+            debugPrint(
+                '⚠️ TagMentionService: EventTriggerService not set - no mention notification will be created');
           }
 
           // Store mention relationship in Firestore
@@ -179,7 +190,8 @@ class TagMentionService {
             videoId: videoId,
           );
         } else {
-          debugPrint('⚠️ TagMentionService: Mentioned user not found: $username');
+          debugPrint(
+              '⚠️ TagMentionService: Mentioned user not found: $username');
         }
       }
     } catch (e) {
@@ -188,7 +200,8 @@ class TagMentionService {
   }
 
   /// Find user by username
-  Future<QueryDocumentSnapshot<Map<String, dynamic>>?> _findUserByUsername(String username) async {
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?> _findUserByUsername(
+      String username) async {
     try {
       final query = await _firestore
           .collection('users')

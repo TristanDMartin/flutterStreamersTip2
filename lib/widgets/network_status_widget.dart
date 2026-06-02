@@ -4,11 +4,13 @@ import '../services/error_handling_service.dart';
 class NetworkStatusWidget extends StatefulWidget {
   final Widget child;
   final bool showOfflineIndicator;
+  final VoidCallback? onRetry;
 
   const NetworkStatusWidget({
     super.key,
     required this.child,
     this.showOfflineIndicator = true,
+    this.onRetry,
   });
 
   @override
@@ -107,16 +109,27 @@ class _NetworkStatusWidgetState extends State<NetworkStatusWidget>
             size: 20,
           ),
           const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'You\'re offline. Some features may not be available.',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+          Expanded(
+            child: SelectableText.rich(
+              const TextSpan(
+                text: 'You\'re offline. Some features may not be available.',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
+          if (widget.onRetry != null)
+            TextButton(
+              onPressed: widget.onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('Retry'),
+            ),
           if (_isOnline)
             GestureDetector(
               onTap: () {
@@ -147,7 +160,7 @@ class NetworkStatusIndicator extends StatelessWidget {
       stream: ErrorHandlingService().connectivityStream,
       builder: (context, snapshot) {
         final isOnline = snapshot.data ?? true;
-        
+
         return Container(
           width: 8,
           height: 8,

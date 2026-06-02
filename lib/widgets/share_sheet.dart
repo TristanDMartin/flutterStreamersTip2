@@ -52,9 +52,11 @@ class ShareSheet extends ConsumerWidget {
               data: (connections) => FutureBuilder<List<String>>(
                 future: blockingService.getBlockedUsers(),
                 builder: (context, snapshot) {
-                  final blockedUserIds = snapshot.data?.toSet() ?? const <String>{};
+                  final blockedUserIds =
+                      snapshot.data?.toSet() ?? const <String>{};
                   final visibleConnections = connections
-                      .where((connection) => !blockedUserIds.contains(connection.id))
+                      .where((connection) =>
+                          !blockedUserIds.contains(connection.id))
                       .toList();
                   return _buildQuickShareRow(context, visibleConnections);
                 },

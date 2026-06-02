@@ -212,15 +212,7 @@ class _ProductTourOverlayState extends ConsumerState<ProductTourOverlay> {
   void dispose() {
     _discoverPeekTimer?.cancel();
     _releasePrimerPlaybackBlock();
-    _tearDownCreatorCardTourOverlay(popStreamer: true);
-    _tearDownTourShellRoutes();
-    try {
-      ref.read(productTourUiPhaseProvider.notifier).state =
-          ProductTourUiPhase.idle;
-      ref.read(productTourMainTabIndexRequestProvider.notifier).state = null;
-    } catch (_) {
-      // Some widget tests mount this overlay without a live ProviderScope.
-    }
+    _tearDownCreatorCardTourOverlay(popStreamer: false);
     super.dispose();
   }
 
@@ -926,8 +918,7 @@ class _ProductTourOverlayState extends ConsumerState<ProductTourOverlay> {
         ),
       );
     }
-    if (step.id == 'creator_card' &&
-        _creatorCardTourUsesNavigatorOverlay) {
+    if (step.id == 'creator_card' && _creatorCardTourUsesNavigatorOverlay) {
       return const SizedBox.shrink();
     }
     return Material(

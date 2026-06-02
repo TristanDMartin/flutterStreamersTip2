@@ -208,8 +208,10 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
       if (data == null) return;
 
       final dynamic rawLikeCount =
-          data['likes'] ?? data['likeCount'] ?? data['likesCount'];
-      final int nextLikeCount = rawLikeCount is num ? rawLikeCount.toInt() : 0;
+          data['likeCount'] ?? data['likesCount'] ?? data['likes'];
+      final int nextLikeCount = rawLikeCount is num
+          ? math.max(0, rawLikeCount.toInt())
+          : math.max(0, int.tryParse(rawLikeCount?.toString() ?? '') ?? 0);
       if (_likeCount == nextLikeCount) return;
 
       setState(() {

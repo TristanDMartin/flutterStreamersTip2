@@ -19,20 +19,20 @@ class HashtagChipWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final hashtagService = HashtagLockService();
     final isReserved = hashtagService.isHashtagReserved(hashtag);
-    
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected 
+          color: isSelected
               ? const Color(0xFF9248D2)
-              : isReserved 
+              : isReserved
                   ? Colors.orange.withValues(alpha: 0.2)
                   : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected 
+            color: isSelected
                 ? const Color(0xFF9248D2)
                 : isReserved
                     ? Colors.orange.withValues(alpha: 0.5)
@@ -46,9 +46,9 @@ class HashtagChipWidget extends StatelessWidget {
             Text(
               hashtag,
               style: TextStyle(
-                color: isSelected 
-                    ? Colors.white 
-                    : isReserved 
+                color: isSelected
+                    ? Colors.white
+                    : isReserved
                         ? Colors.orange
                         : Colors.white70,
                 fontSize: 12,
@@ -72,7 +72,7 @@ class HashtagChipWidget extends StatelessWidget {
 
 class ReservedHashtagIndicator extends StatelessWidget {
   final String hashtag;
-  
+
   const ReservedHashtagIndicator({
     super.key,
     required this.hashtag,
@@ -82,9 +82,9 @@ class ReservedHashtagIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     final hashtagService = HashtagLockService();
     final isReserved = hashtagService.isHashtagReserved(hashtag);
-    
+
     if (!isReserved) return const SizedBox.shrink();
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

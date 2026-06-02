@@ -14,32 +14,33 @@ enum FavoritesSyncStatus {
 class FavoritesService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
+
   // Local storage keys
   static const String _favoritesKey = 'user_favorites';
   static const String _pendingSyncKey = 'pending_favorites_sync';
-  
+
   // State management
   final Set<String> _localFavorites = <String>{};
   final Set<String> _pendingSync = <String>{};
   FavoritesSyncStatus _syncStatus = FavoritesSyncStatus.synced;
   bool _isLoading = false;
-  
+
   // Stream controllers for reactive updates
-  final StreamController<Set<String>> _favoritesController = 
+  final StreamController<Set<String>> _favoritesController =
       StreamController<Set<String>>.broadcast();
-  final StreamController<FavoritesSyncStatus> _syncStatusController = 
+  final StreamController<FavoritesSyncStatus> _syncStatusController =
       StreamController<FavoritesSyncStatus>.broadcast();
-  
+
   // Getters
   Set<String> get localFavorites => Set.from(_localFavorites);
   Set<String> get pendingSync => Set.from(_pendingSync);
   FavoritesSyncStatus get syncStatus => _syncStatus;
   bool get isLoading => _isLoading;
-  
+
   // Streams
   Stream<Set<String>> get favoritesStream => _favoritesController.stream;
-  Stream<FavoritesSyncStatus> get syncStatusStream => _syncStatusController.stream;
+  Stream<FavoritesSyncStatus> get syncStatusStream =>
+      _syncStatusController.stream;
 
   /// Initialize the service and load local state
   Future<void> initialize() async {
@@ -57,18 +58,17 @@ class FavoritesService {
   Future<void> _loadLocalState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // Load local favorites
       final favoritesList = prefs.getStringList(_favoritesKey) ?? [];
       _localFavorites.addAll(favoritesList);
-      
+
       // Load pending sync operations
       final pendingList = prefs.getStringList(_pendingSyncKey) ?? [];
       _pendingSync.addAll(pendingList);
-      
+
       _notifyFavoritesChanged();
       _updateSyncStatus();
-      
     } catch (e) {
       debugPrint('Error loading local favorites state: $e');
       _setSyncStatus(FavoritesSyncStatus.error);
@@ -158,9 +158,9 @@ class FavoritesService {
   /// Optimistic toggle with immediate UI feedback
   Future<bool> toggleFavorite(String videoId) async {
     if (_isLoading) return false;
-    
+
     _isLoading = true;
-    
+
     // For now, work offline-only to avoid Firebase permission issues
     final result = _toggleLocalFavorite(videoId);
     _isLoading = false;
@@ -191,7 +191,7 @@ class FavoritesService {
     if (user == null || _pendingSync.isEmpty) return;
 
     _setSyncStatus(FavoritesSyncStatus.pending);
-    
+
     try {
       // Sync all pending operations
       for (final videoId in List.from(_pendingSync)) {
@@ -201,18 +201,17 @@ class FavoritesService {
           userId: user.uid,
           isFavoriting: isFavorited,
         );
-        
+
         if (success) {
           _pendingSync.remove(videoId);
         }
       }
-      
+
       // Load remote favorites to sync with local state
       await _loadRemoteFavorites(user.uid);
-      
+
       _updateSyncStatus();
       await _saveLocalState();
-      
     } catch (e) {
       debugPrint('Error syncing with Firebase: $e');
       _setSyncStatus(FavoritesSyncStatus.error);
@@ -240,7 +239,6 @@ class FavoritesService {
   List<String> getFavorites() {
     return _localFavorites.toList();
   }
-
 
   /// Gets all favorite video IDs for a user from Firebase
   Future<List<String>> getUserFavorites(String userId) async {

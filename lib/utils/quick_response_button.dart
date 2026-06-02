@@ -6,7 +6,7 @@ class QuickResponseButtonStyle extends ButtonStyle {
   const QuickResponseButtonStyle();
 
   @override
-  WidgetStateProperty<Color?>? get backgroundColor => 
+  WidgetStateProperty<Color?>? get backgroundColor =>
       WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.pressed)) {
           return Colors.grey.withValues(alpha: 0.1);
@@ -15,7 +15,7 @@ class QuickResponseButtonStyle extends ButtonStyle {
       });
 
   @override
-  WidgetStateProperty<Color?>? get foregroundColor => 
+  WidgetStateProperty<Color?>? get foregroundColor =>
       WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.pressed)) {
           return Colors.grey;
@@ -24,7 +24,7 @@ class QuickResponseButtonStyle extends ButtonStyle {
       });
 
   @override
-  WidgetStateProperty<double>? get elevation => 
+  WidgetStateProperty<double>? get elevation =>
       WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.pressed)) {
           return 1.0;
@@ -33,11 +33,11 @@ class QuickResponseButtonStyle extends ButtonStyle {
       });
 
   @override
-  WidgetStateProperty<EdgeInsetsGeometry>? get padding => 
+  WidgetStateProperty<EdgeInsetsGeometry>? get padding =>
       const WidgetStatePropertyAll(EdgeInsets.all(16.0));
 
   @override
-  WidgetStateProperty<OutlinedBorder>? get shape => 
+  WidgetStateProperty<OutlinedBorder>? get shape =>
       const WidgetStatePropertyAll(
         RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(8.0)),
@@ -173,24 +173,29 @@ class RoundedCornerWidget extends StatelessWidget {
     super.key,
     required this.child,
     this.radius = 8.0,
-    this.corners = const [Corner.topLeft, Corner.topRight, Corner.bottomLeft, Corner.bottomRight],
+    this.corners = const [
+      Corner.topLeft,
+      Corner.topRight,
+      Corner.bottomLeft,
+      Corner.bottomRight
+    ],
   });
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.only(
-        topLeft: corners.contains(Corner.topLeft) 
-            ? Radius.circular(radius) 
+        topLeft: corners.contains(Corner.topLeft)
+            ? Radius.circular(radius)
             : Radius.zero,
-        topRight: corners.contains(Corner.topRight) 
-            ? Radius.circular(radius) 
+        topRight: corners.contains(Corner.topRight)
+            ? Radius.circular(radius)
             : Radius.zero,
-        bottomLeft: corners.contains(Corner.bottomLeft) 
-            ? Radius.circular(radius) 
+        bottomLeft: corners.contains(Corner.bottomLeft)
+            ? Radius.circular(radius)
             : Radius.zero,
-        bottomRight: corners.contains(Corner.bottomRight) 
-            ? Radius.circular(radius) 
+        bottomRight: corners.contains(Corner.bottomRight)
+            ? Radius.circular(radius)
             : Radius.zero,
       ),
       child: child,

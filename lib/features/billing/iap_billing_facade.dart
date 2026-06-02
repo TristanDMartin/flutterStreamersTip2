@@ -207,8 +207,7 @@ class IapBillingFacade {
       await _safeComplete(purchase);
       return;
     }
-    final String transactionId =
-        purchase.purchaseID ?? purchase.transactionDate ?? '';
+    final String transactionId = _readTransactionId(purchase);
     try {
       await _verificationClient.submitPurchase(
         payload: MobilePurchaseVerificationPayload(
@@ -235,6 +234,18 @@ class IapBillingFacade {
       lastError = e.toString();
       onUiChanged();
     }
+  }
+
+  String _readTransactionId(PurchaseDetails purchase) {
+    final String? purchaseId = purchase.purchaseID;
+    if (purchaseId != null && purchaseId.isNotEmpty) {
+      return purchaseId;
+    }
+    final String? transactionDate = purchase.transactionDate;
+    if (transactionDate != null && transactionDate.isNotEmpty) {
+      return transactionDate;
+    }
+    return purchase.productID;
   }
 
   Future<void> _safeComplete(PurchaseDetails purchase) async {

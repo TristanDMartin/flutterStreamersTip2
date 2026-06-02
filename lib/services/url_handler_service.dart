@@ -25,7 +25,7 @@ class URLHandlerService extends ChangeNotifier {
     final normalizedUrl = ProfileLinkService.normalizeIncomingProfileLink(url);
     // cspell:ignore streamerstip
     if (!normalizedUrl.startsWith("streamerstip://")) {
-      // print("❌ Not a streamerstip URL: $url");
+      // appLog("❌ Not a streamerstip URL: $url");
       return;
     }
 
@@ -43,10 +43,10 @@ class URLHandlerService extends ChangeNotifier {
     final pathComponents =
         path.split("/").where((component) => component.isNotEmpty).toList();
 
-    // print("📋 Path components: $pathComponents");
+    // appLog("📋 Path components: $pathComponents");
 
     if (pathComponents.isEmpty) {
-      // print("❌ Empty path components");
+      // appLog("❌ Empty path components");
       _isProcessingURL = false;
       notifyListeners();
       return;
@@ -56,10 +56,10 @@ class URLHandlerService extends ChangeNotifier {
       case "streamercard": // cspell:ignore streamercard
         if (pathComponents.length > 1) {
           final userId = pathComponents[1];
-          // print("👤 Processing streamer card for user ID: $userId");
+          // appLog("👤 Processing streamer card for user ID: $userId");
           _handleStreamerCard(userId);
         } else {
-          // print("❌ Missing user ID in streamercard URL"); // cspell:ignore streamercard
+          // appLog("❌ Missing user ID in streamercard URL"); // cspell:ignore streamercard
           _isProcessingURL = false;
           notifyListeners();
         }
@@ -69,13 +69,13 @@ class URLHandlerService extends ChangeNotifier {
           final identifier = pathComponents[1];
           _handleProfile(identifier);
         } else {
-          // print("❌ Missing username in profile URL");
+          // appLog("❌ Missing username in profile URL");
           _isProcessingURL = false;
           notifyListeners();
         }
 
       default:
-        // print("❌ Unknown URL path: $pathComponents");
+        // appLog("❌ Unknown URL path: $pathComponents");
         _isProcessingURL = false;
         notifyListeners();
     }
@@ -84,12 +84,12 @@ class URLHandlerService extends ChangeNotifier {
   Future<void> _handleStreamerCard(String userId) async {
     try {
       final streamerCard = await _loadUserForStreamerCard(userId);
-      // print("✅ URLHandlerService: Loaded streamer card for user: $userId");
+      // appLog("✅ URLHandlerService: Loaded streamer card for user: $userId");
 
       // Navigate to the streamer card view
       await _navigateToStreamerCard(streamerCard);
     } catch (e) {
-      // print("❌ Error fetching user data: $e");
+      // appLog("❌ Error fetching user data: $e");
     }
 
     _isProcessingURL = false;
@@ -108,7 +108,7 @@ class URLHandlerService extends ChangeNotifier {
       // Navigate to the streamer card view
       await _navigateToStreamerCard(streamerCard);
     } catch (e) {
-      // print("❌ Error fetching user by username: $e");
+      // appLog("❌ Error fetching user by username: $e");
     }
 
     _isProcessingURL = false;
@@ -125,7 +125,7 @@ class URLHandlerService extends ChangeNotifier {
         throw Exception("User not found");
       }
     } catch (e) {
-      // print("❌ Error loading user for streamer card: $e");
+      // appLog("❌ Error loading user for streamer card: $e");
       rethrow;
     }
   }
@@ -145,7 +145,7 @@ class URLHandlerService extends ChangeNotifier {
         throw Exception("User not found");
       }
     } catch (e) {
-      // print("❌ Error loading user by username: $e");
+      // appLog("❌ Error loading user by username: $e");
       rethrow;
     }
   }
@@ -199,7 +199,7 @@ class URLHandlerService extends ChangeNotifier {
   // Method to handle deep links from app launch
   void handleInitialURL(String? url) {
     if (url != null && isValidStreamerTipURL(url)) {
-      // print("🔗 Handling initial URL: $url");
+      // appLog("🔗 Handling initial URL: $url");
       handleURL(url);
     }
   }
@@ -207,7 +207,7 @@ class URLHandlerService extends ChangeNotifier {
   // Method to handle URL changes while app is running
   void handleURLChange(String? url) {
     if (url != null && isValidStreamerTipURL(url)) {
-      // print("🔗 Handling URL change: $url");
+      // appLog("🔗 Handling URL change: $url");
       handleURL(url);
     }
   }

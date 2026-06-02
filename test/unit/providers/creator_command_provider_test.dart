@@ -36,7 +36,8 @@ void main() {
             'authorId': 'user-1',
             'status': 'scheduled',
             'schedule': <String, dynamic>{
-              'scheduledAtUtc': DateTime.now().subtract(const Duration(hours: 1)),
+              'scheduledAtUtc':
+                  DateTime.now().subtract(const Duration(hours: 1)),
             },
           },
           <String, dynamic>{
@@ -66,7 +67,8 @@ void main() {
       expect(snapshot.growthPercent, 12);
     });
 
-    test('falls back to recent videos for consistency and omits missing growth', () {
+    test('falls back to recent videos for consistency and omits missing growth',
+        () {
       final DateTime now = DateTime.now();
       final snapshot = buildCreatorCommandSnapshot(
         userData: <String, dynamic>{
@@ -80,8 +82,12 @@ void main() {
         metrics: null,
         recentVideos: <Map<String, dynamic>>[
           <String, dynamic>{'createdAt': now.subtract(const Duration(days: 3))},
-          <String, dynamic>{'createdAt': now.subtract(const Duration(days: 11))},
-          <String, dynamic>{'createdAt': now.subtract(const Duration(days: 18))},
+          <String, dynamic>{
+            'createdAt': now.subtract(const Duration(days: 11))
+          },
+          <String, dynamic>{
+            'createdAt': now.subtract(const Duration(days: 18))
+          },
         ],
       );
 

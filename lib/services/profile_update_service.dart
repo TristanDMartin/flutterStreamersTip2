@@ -33,9 +33,20 @@ class ProfileUpdateService extends ChangeNotifier {
 
   /// Initialize the service with current user
   Future<void> initialize() async {
-    _currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user != null &&
+        _currentUser?.uid == user.uid &&
+        _userDataSubscription != null) {
+      debugPrint(
+        '🔍 ProfileUpdateService: Already initialized for ${user.uid}, skipping',
+      );
+      return;
+    }
+    _currentUser = user;
     debugPrint(
-        "🔍 ProfileUpdateService: Initializing with user: ${_currentUser?.uid}");
+      '🔍 ProfileUpdateService: Initializing with user: ${_currentUser?.uid}',
+    );
     if (_currentUser != null) {
       await _loadUserData();
     }

@@ -90,15 +90,27 @@ function buildTippyFeatures(tier) {
   const t = String(tier || '');
   if (t === 'studio') {
     return [
-      'unlimited_ai_chat',
-      'advanced_growth_reports',
+      'ai_chat',
+      'caption_rewrite',
+      'content_analysis',
+      'content_planner_sync',
+      'stream_pc_optimization',
+      'advanced_growth_coaching',
+      'cross_platform_strategy',
       'studio_priority',
     ];
   }
   if (t === 'pro') {
-    return ['ai_chat', 'growth_reports'];
+    return [
+      'ai_chat',
+      'caption_rewrite',
+      'content_analysis',
+      'content_planner_sync',
+      'growth_reports',
+      'stream_optimization',
+    ];
   }
-  return ['ai_chat_limited'];
+  return ['ai_chat_limited', 'basic_posting_tips'];
 }
 
 async function handleMeEntitlements(req, res) {

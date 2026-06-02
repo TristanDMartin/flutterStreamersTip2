@@ -10,18 +10,19 @@ final Provider<ContentPlanningRepository> contentPlanningRepositoryProvider =
   return FirestoreContentPlanningRepository();
 });
 
-final FutureProvider<List<ContentPlan>> contentPlansProvider =
-    FutureProvider<List<ContentPlan>>((Ref ref) async {
+final StreamProvider<List<ContentPlan>> contentPlansProvider =
+    StreamProvider<List<ContentPlan>>((Ref ref) async* {
   final User? user = FirebaseAuth.instance.currentUser;
-  final String? token = await user?.getIdToken(false);
-  if (user == null || token == null || token.isEmpty) {
+  if (user == null) {
     throw const ContentPlanningException('Authentication required.');
   }
   final ContentPlanningRepository repository =
       ref.watch(contentPlanningRepositoryProvider);
-  final plans = await repository.listPlans(idToken: token, userId: user.uid);
-  if (plans.isNotEmpty) {
-    await OnboardingMissionActions.complete(user.uid, 'create_content_plan');
+  await for (final List<ContentPlan> plans
+      in repository.watchPlans(userId: user.uid)) {
+    if (plans.isNotEmpty) {
+      await OnboardingMissionActions.complete(user.uid, 'create_content_plan');
+    }
+    yield plans;
   }
-  return plans;
 });

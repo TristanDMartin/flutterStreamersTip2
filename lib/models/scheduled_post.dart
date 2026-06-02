@@ -169,14 +169,29 @@ class TimezoneInfo {
   });
 
   static const List<TimezoneInfo> commonTimezones = [
-    TimezoneInfo(name: 'America/New_York', displayName: 'Eastern Time', offsetMinutes: -300),
-    TimezoneInfo(name: 'America/Chicago', displayName: 'Central Time', offsetMinutes: -360),
-    TimezoneInfo(name: 'America/Denver', displayName: 'Mountain Time', offsetMinutes: -420),
-    TimezoneInfo(name: 'America/Los_Angeles', displayName: 'Pacific Time', offsetMinutes: -480),
-    TimezoneInfo(name: 'Europe/London', displayName: 'London', offsetMinutes: 0),
+    TimezoneInfo(
+        name: 'America/New_York',
+        displayName: 'Eastern Time',
+        offsetMinutes: -300),
+    TimezoneInfo(
+        name: 'America/Chicago',
+        displayName: 'Central Time',
+        offsetMinutes: -360),
+    TimezoneInfo(
+        name: 'America/Denver',
+        displayName: 'Mountain Time',
+        offsetMinutes: -420),
+    TimezoneInfo(
+        name: 'America/Los_Angeles',
+        displayName: 'Pacific Time',
+        offsetMinutes: -480),
+    TimezoneInfo(
+        name: 'Europe/London', displayName: 'London', offsetMinutes: 0),
     TimezoneInfo(name: 'Europe/Paris', displayName: 'Paris', offsetMinutes: 60),
     TimezoneInfo(name: 'Asia/Tokyo', displayName: 'Tokyo', offsetMinutes: 540),
-    TimezoneInfo(name: 'Asia/Shanghai', displayName: 'Shanghai', offsetMinutes: 480),
-    TimezoneInfo(name: 'Australia/Sydney', displayName: 'Sydney', offsetMinutes: 660),
+    TimezoneInfo(
+        name: 'Asia/Shanghai', displayName: 'Shanghai', offsetMinutes: 480),
+    TimezoneInfo(
+        name: 'Australia/Sydney', displayName: 'Sydney', offsetMinutes: 660),
   ];
 }

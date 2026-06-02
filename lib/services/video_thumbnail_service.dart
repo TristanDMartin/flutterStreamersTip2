@@ -12,7 +12,7 @@ class VideoThumbnailService {
   static const int _maxHeight = 1280; // High resolution for crisp thumbnails
   static const int _thumbnailTimeMs = 1000; // 1 second
   static const int _highQuality = 95; // High quality for crisp images
-  
+
   // Cache for thumbnails
   static final Map<String, Uint8List> _thumbnailCache = {};
   static final Map<String, String> _localFileCache = {};
@@ -26,7 +26,7 @@ class VideoThumbnailService {
 
     try {
       String localPath = videoPath;
-      
+
       // If it's a network URL, download it first
       if (videoPath.startsWith('http')) {
         final downloadedPath = await _downloadVideoToLocal(videoPath);
@@ -70,14 +70,15 @@ class VideoThumbnailService {
       if (response.statusCode == 200) {
         final tempDir = await getTemporaryDirectory();
         final fileName = path.basename(videoUrl).split('?').first;
-        final localPath = path.join(tempDir.path, 'video_${DateTime.now().millisecondsSinceEpoch}_$fileName');
-        
+        final localPath = path.join(tempDir.path,
+            'video_${DateTime.now().millisecondsSinceEpoch}_$fileName');
+
         final file = File(localPath);
         await file.writeAsBytes(response.bodyBytes);
-        
+
         // Cache the local path
         _localFileCache[videoUrl] = localPath;
-        
+
         return localPath;
       }
     } catch (e) {
@@ -110,7 +111,7 @@ class VideoThumbnailService {
     List<int> timePointsMs = const [500, 1000, 2000],
   }) async {
     final thumbnails = <Uint8List?>[];
-    
+
     for (final timeMs in timePointsMs) {
       try {
         final thumbnail = await VideoThumbnail.thumbnailData(
@@ -127,7 +128,7 @@ class VideoThumbnailService {
         thumbnails.add(null);
       }
     }
-    
+
     return thumbnails;
   }
 
@@ -140,7 +141,7 @@ class VideoThumbnailService {
   }) async {
     try {
       String localPath = videoPath;
-      
+
       // If it's a network URL, download it first
       if (videoPath.startsWith('http')) {
         final downloadedPath = await _downloadVideoToLocal(videoPath);

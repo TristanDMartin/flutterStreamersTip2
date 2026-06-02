@@ -33,12 +33,12 @@ class VideoLengthSelector extends StatelessWidget {
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
-                  color: isSelected 
+                  color: isSelected
                       ? Colors.white.withValues(alpha: 0.2)
                       : Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isSelected 
+                    color: isSelected
                         ? Colors.white.withValues(alpha: 0.5)
                         : Colors.white.withValues(alpha: 0.1),
                     width: 1,
@@ -48,9 +48,12 @@ class VideoLengthSelector extends StatelessWidget {
                   child: Text(
                     length.label,
                     style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.7),
+                      color: isSelected
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.7),
                       fontSize: 16,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                 ),

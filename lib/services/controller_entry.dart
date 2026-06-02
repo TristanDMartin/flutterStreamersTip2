@@ -76,4 +76,3 @@ class ControllerEntry {
         coolingDownUntil!.isAfter(DateTime.now());
   }
 }
-

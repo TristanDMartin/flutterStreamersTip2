@@ -1,6 +1,16 @@
 name: QA
 
 on:
+  workflow_dispatch:
+    inputs:
+      mobile_feed_e2e:
+        description: "Run Android/iOS home feed playback E2E"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   pull_request:
   push:
     branches:
@@ -37,7 +47,7 @@ jobs:
         run: flutter test
 
       - name: Flutter integration_test harness
-        run: flutter test integration_test -d linux
+        run: flutter test integration_test/qa_harness_test.dart -d linux
 
   cloud-functions-lint:
     runs-on: ubuntu-latest
@@ -55,6 +65,76 @@ jobs:
       - name: ESLint
         run: npm run lint
         working-directory: cloud_functions
+
+      - name: Set up Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Firestore rules regression - likes
+        run: npx firebase-tools emulators:exec --only firestore --project demo-likes-tests "npm --prefix cloud_functions run test:rules:likes"
+
+      - name: Firestore rules regression - interactions and FCM tokens
+        run: npx firebase-tools emulators:exec --only firestore --project demo-interactions-tests "npm --prefix cloud_functions run test:rules:interactions"
+
+  android-feed-e2e:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_feed_e2e == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Android home feed playback E2E
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          FLUTTER_INTEGRATION_TEST_TARGET: integration_test/home_feed_playback_e2e_test.dart
+          RUN_MOBILE_FEED_E2E: "true"
+          QA_EMAIL_OR_USERNAME: ${{ secrets.QA_EMAIL_OR_USERNAME }}
+          QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          script: ./scripts/run_flutter_integration_tests.sh
+
+  ios-feed-e2e:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_feed_e2e == 'true' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Boot iOS simulator
+        run: |
+          xcrun simctl boot "iPhone 16" || xcrun simctl boot "iPhone 15" || true
+          xcrun simctl bootstatus booted -b
+
+      - name: iOS home feed playback E2E
+        env:
+          PREFER_INTEGRATION_DEVICE: ios
+          FLUTTER_INTEGRATION_TEST_TARGET: integration_test/home_feed_playback_e2e_test.dart
+          RUN_MOBILE_FEED_E2E: "true"
+          QA_EMAIL_OR_USERNAME: ${{ secrets.QA_EMAIL_OR_USERNAME }}
+          QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
+        run: ./scripts/run_flutter_integration_tests.sh
 
   # Next.js only; skipped unless E2E_BASE_URL is configured (Flutter-only QA
   # does not need this job).

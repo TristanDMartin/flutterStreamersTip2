@@ -55,8 +55,8 @@ class AdminReportsView extends StatelessWidget {
             final doc = docs[i];
             final d = doc.data();
             final status = (d['status'] ?? 'open').toString();
-            final ts = d['timestamp'] as Timestamp? ??
-                d['createdAt'] as Timestamp?;
+            final ts =
+                d['timestamp'] as Timestamp? ?? d['createdAt'] as Timestamp?;
             final String time =
                 ts != null ? ts.toDate().toIso8601String() : '—';
             return Card(

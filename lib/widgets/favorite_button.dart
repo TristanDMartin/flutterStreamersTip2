@@ -21,7 +21,7 @@ class FavoriteButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final favoritesState = ref.watch(favoritesProvider);
     final favoritesNotifier = ref.read(favoritesProvider.notifier);
-    
+
     final isFavorited = favoritesState.favorites.contains(videoId);
     final isLoading = favoritesState.isLoading;
     final syncStatus = favoritesState.syncStatus;
@@ -38,7 +38,7 @@ class FavoriteButton extends ConsumerWidget {
                 Icon(
                   isFavorited ? Icons.favorite : Icons.favorite_border,
                   size: size,
-                  color: isFavorited 
+                  color: isFavorited
                       ? (activeColor ?? Colors.red)
                       : (color ?? Colors.white),
                 ),
@@ -46,7 +46,7 @@ class FavoriteButton extends ConsumerWidget {
                   Positioned.fill(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha:0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         shape: BoxShape.circle,
                       ),
                       child: const Center(
@@ -55,7 +55,8 @@ class FavoriteButton extends ConsumerWidget {
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         ),
                       ),

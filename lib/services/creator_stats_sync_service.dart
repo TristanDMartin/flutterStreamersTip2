@@ -71,8 +71,12 @@ class CreatorStatsSyncService {
       final updates = <String, dynamic>{
         'updatedAt': FieldValue.serverTimestamp(),
       };
-      if (deltaViews != 0) updates['totalViews'] = FieldValue.increment(deltaViews);
-      if (deltaLikes != 0) updates['totalLikes'] = FieldValue.increment(deltaLikes);
+      if (deltaViews != 0) {
+        updates['totalViews'] = FieldValue.increment(deltaViews);
+      }
+      if (deltaLikes != 0) {
+        updates['totalLikes'] = FieldValue.increment(deltaLikes);
+      }
       await _firestore.collection('users').doc(cid).update(updates);
     } catch (e) {
       debugPrint('CreatorStatsSync: sync failed: $e');

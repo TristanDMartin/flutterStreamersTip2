@@ -634,7 +634,8 @@ class _InsightsViewState extends ConsumerState<InsightsView>
       ..writeln()
       ..writeln('Views: ${insights.overview.totalViews}')
       ..writeln('Watch time: ${insights.overview.totalWatchTime.inMinutes} min')
-      ..writeln('Retention: ${(insights.overview.retentionRate * 100).toStringAsFixed(1)}%')
+      ..writeln(
+          'Retention: ${(insights.overview.retentionRate * 100).toStringAsFixed(1)}%')
       ..writeln('Likes: ${insights.engagement.likes}')
       ..writeln('Comments: ${insights.engagement.comments}')
       ..writeln('Shares: ${insights.engagement.shares}')

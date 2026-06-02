@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../core/theme/support_shell_style.dart';
 import '../models/scheduled_post.dart';
 import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
@@ -205,97 +206,109 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: shell.pageGradient,
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: shell.onChrome,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back_rounded, color: shell.onChrome),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'Manage Posts',
+            style: TextStyle(
+              color: shell.onChrome,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          actions: <Widget>[
+            if (_isSelectionMode) ...<Widget>[
+              IconButton(
+                icon: Icon(Icons.close_rounded, color: shell.onChrome),
+                onPressed: _exitSelectionMode,
+              ),
+              IconButton(
+                icon: Icon(Icons.delete_outline_rounded, color: cs.error),
+                onPressed:
+                    _selectedPosts.isNotEmpty ? _showBulkActionDialog : null,
+              ),
+            ] else ...<Widget>[
+              IconButton(
+                icon: Icon(Icons.search_rounded, color: shell.onChrome),
+                onPressed: _showSearchDialog,
+              ),
+              IconButton(
+                icon: Icon(Icons.sort_rounded, color: shell.onChrome),
+                onPressed: _showSortDialog,
+              ),
+              IconButton(
+                icon: Icon(Icons.filter_list_rounded, color: shell.onChrome),
+                onPressed: _showFilterDialog,
+              ),
+              IconButton(
+                icon: Icon(Icons.more_vert_rounded, color: shell.onChrome),
+                onPressed: _showMoreOptionsDialog,
+              ),
+            ],
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicator: BoxDecoration(
+              color: shell.chipSelectedBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: shell.chipSelectedBorder),
+            ),
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: cs.outlineVariant.withValues(alpha: 0.35),
+            labelColor: shell.chipSelectedFg,
+            unselectedLabelColor: shell.muted,
+            labelStyle: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+            tabs: const <Widget>[
+              Tab(text: 'Scheduled'),
+              Tab(text: 'Publishing'),
+              Tab(text: 'Published'),
+            ],
           ),
         ),
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: const Text(
-              'Manage Posts',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            actions: [
-              if (_isSelectionMode) ...[
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: _exitSelectionMode,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed:
-                      _selectedPosts.isNotEmpty ? _showBulkActionDialog : null,
-                ),
-              ] else ...[
-                IconButton(
-                  icon: const Icon(Icons.search, color: Colors.white),
-                  onPressed: _showSearchDialog,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.sort, color: Colors.white),
-                  onPressed: _showSortDialog,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.filter_list, color: Colors.white),
-                  onPressed: _showFilterDialog,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.more_vert, color: Colors.white),
-                  onPressed: _showMoreOptionsDialog,
-                ),
-              ],
-            ],
-            bottom: TabBar(
-              controller: _tabController,
-              indicatorColor: const Color(0xFF9248D2),
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white70,
-              tabs: const [
-                Tab(text: 'Scheduled'),
-                Tab(text: 'Publishing'),
-                Tab(text: 'Published'),
-              ],
-            ),
-          ),
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildPostsList(PostStatus.scheduled),
-              _buildPostsList(PostStatus.publishing),
-              _buildPostsList(PostStatus.published),
-            ],
-          ),
+        body: TabBarView(
+          controller: _tabController,
+          children: <Widget>[
+            _buildPostsList(context, PostStatus.scheduled),
+            _buildPostsList(context, PostStatus.publishing),
+            _buildPostsList(context, PostStatus.published),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPostsList(PostStatus status) {
+  Widget _buildPostsList(BuildContext context, PostStatus status) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     final filteredPosts =
         _posts.where((post) => post.status == status).toList();
 
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-        ),
+      return Center(
+        child: CircularProgressIndicator(color: cs.primary),
       );
     }
 
@@ -303,18 +316,19 @@ class _ManagePostsViewState extends State<ManagePostsView>
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+          children: <Widget>[
             Icon(
               _getEmptyStateIcon(status),
               size: 64,
-              color: Colors.white30,
+              color: shell.iconDim,
             ),
             const SizedBox(height: 16),
             Text(
               _getEmptyStateMessage(status),
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: shell.muted,
                 fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -324,8 +338,8 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
     return RefreshIndicator(
       onRefresh: _loadPosts,
-      color: const Color(0xFF9248D2),
-      backgroundColor: const Color(0xFF1A1A1A),
+      color: cs.primary,
+      backgroundColor: shell.refreshBackground,
       child: ListView.builder(
         padding: EdgeInsets.fromLTRB(
           16,
@@ -334,16 +348,17 @@ class _ManagePostsViewState extends State<ManagePostsView>
           24,
         ),
         itemCount: filteredPosts.length,
-        itemBuilder: (context, index) {
-          final post = filteredPosts[index];
-          return _buildPostCard(post);
+        itemBuilder: (BuildContext context, int index) {
+          final ScheduledPost post = filteredPosts[index];
+          return _buildPostCard(context, post);
         },
       ),
     );
   }
 
-  Widget _buildPostCard(ScheduledPost post) {
-    final isSelected = _selectedPosts.contains(post.id);
+  Widget _buildPostCard(BuildContext context, ScheduledPost post) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isSelected = _selectedPosts.contains(post.id);
 
     return GestureDetector(
       onTap: _isSelectionMode ? () => _togglePostSelection(post.id) : null,
@@ -352,29 +367,41 @@ class _ManagePostsViewState extends State<ManagePostsView>
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFF9248D2).withValues(alpha: 0.1)
-              : Colors.white.withValues(alpha: 0.05),
+              ? shell.chipSelectedBg.withValues(alpha: 0.55)
+              : shell.surfaceCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected
-                ? const Color(0xFF9248D2)
-                : Colors.white.withValues(alpha: 0.1),
+            color:
+                isSelected ? shell.chipSelectedBorder : shell.surfaceCardBorder,
             width: isSelected ? 2 : 1,
           ),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: shell.shadowSoft,
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildPostHeader(post, isSelected),
-            _buildPostContent(post),
-            _buildPostActions(post),
+          children: <Widget>[
+            _buildPostHeader(context, post, isSelected),
+            _buildPostContent(context, post),
+            _buildPostActions(context, post),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPostHeader(ScheduledPost post, bool isSelected) {
+  Widget _buildPostHeader(
+    BuildContext context,
+    ScheduledPost post,
+    bool isSelected,
+  ) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     final isOverdue = post.status == PostStatus.scheduled &&
         post.schedule?.scheduledAtUtc != null &&
         post.schedule!.scheduledAtUtc.isBefore(DateTime.now());
@@ -382,34 +409,34 @@ class _ManagePostsViewState extends State<ManagePostsView>
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
-        children: [
-          if (_isSelectionMode) ...[
+        children: <Widget>[
+          if (_isSelectionMode) ...<Widget>[
             Checkbox(
               value: isSelected,
-              onChanged: (value) => _togglePostSelection(post.id),
-              activeColor: const Color(0xFF9248D2),
+              onChanged: (bool? value) => _togglePostSelection(post.id),
+              activeColor: cs.primary,
             ),
             const SizedBox(width: 8),
           ],
-          _buildStatusChip(post.status, isOverdue: isOverdue),
+          _buildStatusChip(context, post.status, isOverdue: isOverdue),
           const Spacer(),
-          if (isOverdue) ...[
+          if (isOverdue) ...<Widget>[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.2),
+                color: cs.tertiary.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.orange, width: 1),
+                border: Border.all(color: cs.tertiary, width: 1),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.schedule, color: Colors.orange, size: 14),
-                  SizedBox(width: 4),
+                children: <Widget>[
+                  Icon(Icons.schedule_rounded, color: cs.tertiary, size: 14),
+                  const SizedBox(width: 4),
                   Text(
                     'Overdue',
                     style: TextStyle(
-                      color: Colors.orange,
+                      color: cs.tertiary,
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                     ),
@@ -427,9 +454,9 @@ class _ManagePostsViewState extends State<ManagePostsView>
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.end,
               style: TextStyle(
-                color: isOverdue ? Colors.orange : Colors.white70,
+                color: isOverdue ? cs.tertiary : shell.muted,
                 fontSize: 12,
-                fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                fontWeight: isOverdue ? FontWeight.bold : FontWeight.w500,
               ),
             ),
           ),
@@ -438,91 +465,102 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildPostContent(ScheduledPost post) {
+  Widget _buildPostContent(BuildContext context, ScheduledPost post) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (post.media.isNotEmpty) ...[
-            _buildMediaPreview(post.media.first),
+        children: <Widget>[
+          if (post.media.isNotEmpty) ...<Widget>[
+            _buildMediaPreview(context, post.media.first),
             const SizedBox(height: 12),
           ],
           Text(
             post.caption,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: shell.onChrome,
               fontSize: 14,
+              fontWeight: FontWeight.w500,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          if (post.tags.isNotEmpty) ...[
+          if (post.tags.isNotEmpty) ...<Widget>[
             const SizedBox(height: 8),
             Wrap(
               spacing: 4,
               runSpacing: 4,
               children: post.tags
                   .take(3)
-                  .map((tag) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF9248D2).withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
+                  .map(
+                    (String tag) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '#$tag',
+                        style: TextStyle(
+                          color: cs.onPrimaryContainer,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
                         ),
-                        child: Text(
-                          '#$tag',
-                          style: const TextStyle(
-                            color: Color(0xFF9248D2),
-                            fontSize: 10,
-                          ),
-                        ),
-                      ))
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
           ],
           const SizedBox(height: 12),
-          _buildPlatformStatuses(post),
+          _buildPlatformStatuses(context, post),
         ],
       ),
     );
   }
 
-  Widget _buildMediaPreview(PostMedia media) {
+  Widget _buildMediaPreview(BuildContext context, PostMedia media) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Container(
       height: 120,
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        color: Colors.white.withValues(alpha: 0.1),
+        color: shell.skeletonFill,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Stack(
           fit: StackFit.expand,
-          children: [
-            // Show thumbnail/image
+          children: <Widget>[
             Image.network(
               media.src,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: Colors.white.withValues(alpha: 0.1),
-                child: const Icon(
-                  Icons.image,
-                  color: Colors.white30,
-                  size: 32,
-                ),
-              ),
+              errorBuilder:
+                  (BuildContext context, Object error, StackTrace? stackTrace) {
+                return Container(
+                  color: shell.skeletonFill,
+                  child: Icon(
+                    Icons.image_outlined,
+                    color: shell.iconDim,
+                    size: 32,
+                  ),
+                );
+              },
             ),
-            // Show play icon overlay for videos
             if (media.type == MediaType.video)
               Container(
-                color: Colors.black.withValues(alpha: 0.3),
-                child: const Center(
+                color: cs.shadow.withValues(alpha: 0.35),
+                child: Center(
                   child: Icon(
-                    Icons.play_circle_outline,
-                    color: Colors.white,
+                    Icons.play_circle_outline_rounded,
+                    color: shell.onChrome,
                     size: 48,
                   ),
                 ),
@@ -533,19 +571,23 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildPlatformStatuses(ScheduledPost post) {
+  Widget _buildPlatformStatuses(BuildContext context, ScheduledPost post) {
     if (post.platforms.isEmpty) {
-      return _buildActionChip('StreamersTip only', Icons.verified);
+      return _buildActionChip(
+          context, 'StreamersTip only', Icons.verified_rounded);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+      children: <Widget>[
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: post.platforms
-              .map((platform) => _buildPlatformStatus(platform))
+              .map(
+                (PlatformConfig platform) =>
+                    _buildPlatformStatus(context, platform),
+              )
               .toList(),
         ),
         if (_failedPlatforms(post).isNotEmpty ||
@@ -557,9 +599,13 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildPlatformStatus(PlatformConfig platform) {
-    final status = platform.status ?? PlatformStatus.pending;
-    final color = _getPlatformStatusColor(status);
+  Widget _buildPlatformStatus(
+    BuildContext context,
+    PlatformConfig platform,
+  ) {
+    final PlatformStatus status = platform.status ?? PlatformStatus.pending;
+    final Color color =
+        _getPlatformStatusColor(Theme.of(context).colorScheme, status);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -590,7 +636,7 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildPostActions(ScheduledPost post) {
+  Widget _buildPostActions(BuildContext context, ScheduledPost post) {
     final failedPlatforms = _failedPlatforms(post);
     final reauthPlatforms = _reauthPlatforms(post);
 
@@ -599,52 +645,61 @@ class _ManagePostsViewState extends State<ManagePostsView>
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: [
-          if (post.status == PostStatus.scheduled) ...[
+        children: <Widget>[
+          if (post.status == PostStatus.scheduled) ...<Widget>[
             _buildActionButton(
+              context,
               'Publish Now',
-              Icons.publish,
+              Icons.publish_rounded,
               () => _publishNow(post),
             ),
             _buildActionButton(
+              context,
               'Cancel',
-              Icons.cancel,
+              Icons.cancel_rounded,
               () => _cancelPost(post),
             ),
             _buildActionButton(
+              context,
               'Progress',
-              Icons.insights,
+              Icons.insights_rounded,
               () => _showPostProgress(post),
             ),
-          ] else if (post.status == PostStatus.publishing) ...[
-            _buildActionChip('Publishing', Icons.schedule_send),
+          ] else if (post.status == PostStatus.publishing) ...<Widget>[
+            _buildActionChip(
+                context, 'Publishing', Icons.schedule_send_rounded),
             _buildActionButton(
+              context,
               'Progress',
-              Icons.insights,
+              Icons.insights_rounded,
               () => _showPostProgress(post),
             ),
-          ] else if (post.status == PostStatus.published) ...[
+          ] else if (post.status == PostStatus.published) ...<Widget>[
             _buildActionButton(
+              context,
               'View Post',
-              Icons.open_in_new,
+              Icons.open_in_new_rounded,
               () => _viewPost(post),
             ),
             _buildActionButton(
+              context,
               'Analytics',
-              Icons.bar_chart,
+              Icons.bar_chart_rounded,
               () => _showPostAnalytics(post),
             ),
-            if (failedPlatforms.isNotEmpty) ...[
+            if (failedPlatforms.isNotEmpty) ...<Widget>[
               _buildActionButton(
+                context,
                 'Retry Failed',
-                Icons.refresh,
+                Icons.refresh_rounded,
                 () => _retryPost(post, platformKeys: failedPlatforms),
               ),
             ],
-          ] else if (post.status == PostStatus.failed) ...[
+          ] else if (post.status == PostStatus.failed) ...<Widget>[
             _buildActionButton(
+              context,
               failedPlatforms.isNotEmpty ? 'Retry Failed' : 'Retry',
-              Icons.refresh,
+              Icons.refresh_rounded,
               () => _retryPost(
                 post,
                 platformKeys:
@@ -652,35 +707,40 @@ class _ManagePostsViewState extends State<ManagePostsView>
               ),
             ),
             _buildActionButton(
+              context,
               'Progress',
-              Icons.insights,
+              Icons.insights_rounded,
               () => _showPostProgress(post),
             ),
-            if (reauthPlatforms.isNotEmpty) ...[
+            if (reauthPlatforms.isNotEmpty) ...<Widget>[
               _buildActionButton(
+                context,
                 'Reconnect',
-                Icons.link_off,
+                Icons.link_off_rounded,
                 () => _openReconnectPlatforms(post),
               ),
-            ] else ...[
+            ] else ...<Widget>[
               _buildActionButton(
+                context,
                 'Analytics',
-                Icons.bar_chart,
+                Icons.bar_chart_rounded,
                 () => _showPostAnalytics(post),
               ),
             ],
           ] else if (post.status == PostStatus.canceled ||
-              post.status == PostStatus.draft) ...[
+              post.status == PostStatus.draft) ...<Widget>[
             _buildActionButton(
+              context,
               'Progress',
-              Icons.insights,
+              Icons.insights_rounded,
               () => _showPostProgress(post),
             ),
           ],
-          if (post.platforms.isNotEmpty) ...[
+          if (post.platforms.isNotEmpty) ...<Widget>[
             _buildActionButton(
+              context,
               'Details',
-              Icons.toc,
+              Icons.toc_rounded,
               () => _showPlatformDetails(post),
             ),
           ],
@@ -689,28 +749,33 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildActionChip(String label, IconData icon) {
+  Widget _buildActionChip(
+    BuildContext context,
+    String label,
+    IconData icon,
+  ) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: shell.chipUnselectedBg,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.15),
+          color: shell.chipUnselectedBorder,
           width: 1,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.white54),
+        children: <Widget>[
+          Icon(icon, size: 14, color: shell.iconDim),
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white54,
+            style: TextStyle(
+              color: shell.muted,
               fontSize: 12,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -718,7 +783,13 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildActionButton(String label, IconData icon, VoidCallback onTap) {
+  Widget _buildActionButton(
+    BuildContext context,
+    String label,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -727,23 +798,24 @@ class _ManagePostsViewState extends State<ManagePostsView>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: shell.panelSurface,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: shell.panelBorder,
             width: 1,
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: Colors.white70),
+          children: <Widget>[
+            Icon(icon, size: 14, color: shell.onChrome.withValues(alpha: 0.85)),
             const SizedBox(width: 4),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: shell.onChrome.withValues(alpha: 0.9),
                 fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -752,8 +824,13 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildStatusChip(PostStatus status, {bool isOverdue = false}) {
-    final color = isOverdue ? Colors.orange : _getStatusColor(status);
+  Widget _buildStatusChip(
+    BuildContext context,
+    PostStatus status, {
+    bool isOverdue = false,
+  }) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color color = isOverdue ? cs.tertiary : _getStatusColor(cs, status);
     final text = _getStatusText(status);
 
     return Container(
@@ -774,20 +851,20 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Color _getStatusColor(PostStatus status) {
+  Color _getStatusColor(ColorScheme cs, PostStatus status) {
     switch (status) {
       case PostStatus.scheduled:
-        return Colors.blue;
+        return cs.primary;
       case PostStatus.publishing:
-        return Colors.orange;
+        return cs.tertiary;
       case PostStatus.published:
-        return Colors.green;
+        return cs.secondary;
       case PostStatus.failed:
-        return Colors.red;
+        return cs.error;
       case PostStatus.canceled:
-        return Colors.grey;
+        return cs.outline;
       case PostStatus.draft:
-        return Colors.purple;
+        return cs.onSurfaceVariant;
     }
   }
 
@@ -808,20 +885,20 @@ class _ManagePostsViewState extends State<ManagePostsView>
     }
   }
 
-  Color _getPlatformStatusColor(PlatformStatus status) {
+  Color _getPlatformStatusColor(ColorScheme cs, PlatformStatus status) {
     switch (status) {
       case PlatformStatus.pending:
-        return Colors.blue;
+        return cs.primary;
       case PlatformStatus.publishing:
-        return Colors.orange;
+        return cs.tertiary;
       case PlatformStatus.published:
-        return Colors.green;
+        return cs.secondary;
       case PlatformStatus.failed:
-        return Colors.red;
+        return cs.error;
       case PlatformStatus.needsReauth:
-        return Colors.amber;
+        return cs.tertiary;
       case PlatformStatus.canceled:
-        return Colors.grey;
+        return cs.outline;
     }
   }
 
@@ -903,123 +980,130 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   void _showSearchDialog() {
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Search Posts',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: TextField(
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Search by caption or tags...',
-            hintStyle: TextStyle(color: Colors.white70),
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (value) {
-            setState(() {
-              _searchQuery = value;
-            });
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
+      builder: (BuildContext dialogContext) {
+        final ColorScheme cs = Theme.of(dialogContext).colorScheme;
+        final TextTheme tt = Theme.of(dialogContext).textTheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text('Search Posts', style: tt.titleLarge),
+          content: TextField(
+            style: tt.bodyLarge,
+            decoration: InputDecoration(
+              hintText: 'Search by caption or tags...',
+              hintStyle: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              border: const OutlineInputBorder(),
+              filled: true,
+              fillColor: cs.surfaceContainerLow,
+            ),
+            onChanged: (String value) {
               setState(() {
-                _searchQuery = '';
+                _searchQuery = value;
               });
-              _loadPosts();
-              Navigator.pop(context);
             },
-            child: const Text('Clear'),
           ),
-          TextButton(
-            onPressed: () {
-              _loadPosts();
-              Navigator.pop(context);
-            },
-            child: const Text('Search'),
-          ),
-        ],
-      ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _searchQuery = '';
+                });
+                _loadPosts();
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Clear'),
+            ),
+            TextButton(
+              onPressed: () {
+                _loadPosts();
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Search'),
+            ),
+          ],
+        );
+      },
     );
   }
 
   void _showFilterDialog() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Filter Posts',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        final ColorScheme cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Filter Posts',
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Status',
+                  style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: PostStatus.values
+                      .map(
+                        (PostStatus status) => FilterChip(
+                          label: Text(_getStatusText(status)),
+                          selected: _filterStatus == status,
+                          onSelected: (bool selected) {
+                            setState(() {
+                              _filterStatus = selected ? status : null;
+                            });
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Platform',
+                  style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: PlatformKey.values
+                      .map(
+                        (PlatformKey platform) => FilterChip(
+                          label: Text(_getPlatformName(platform)),
+                          selected: _filterPlatform == platform,
+                          onSelected: (bool selected) {
+                            setState(() {
+                              _filterPlatform = selected ? platform : null;
+                            });
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    _loadPosts();
+                    Navigator.pop(sheetContext);
+                  },
+                  child: const Text('Apply Filters'),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            // Status filter
-            const Text(
-              'Status',
-              style: TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: PostStatus.values
-                  .map((status) => FilterChip(
-                        label: Text(_getStatusText(status)),
-                        selected: _filterStatus == status,
-                        onSelected: (selected) {
-                          setState(() {
-                            _filterStatus = selected ? status : null;
-                          });
-                        },
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 16),
-            // Platform filter
-            const Text(
-              'Platform',
-              style: TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: PlatformKey.values
-                  .map((platform) => FilterChip(
-                        label: Text(_getPlatformName(platform)),
-                        selected: _filterPlatform == platform,
-                        onSelected: (selected) {
-                          setState(() {
-                            _filterPlatform = selected ? platform : null;
-                          });
-                        },
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                _loadPosts();
-                Navigator.pop(context);
-              },
-              child: const Text('Apply Filters'),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -1148,9 +1232,10 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
     return Text(
       parts.join('  |  '),
-      style: const TextStyle(
-        color: Colors.white60,
+      style: TextStyle(
+        color: StSupportShellStyle.of(context).muted,
         fontSize: 11,
+        fontWeight: FontWeight.w600,
       ),
     );
   }
@@ -1187,125 +1272,132 @@ class _ManagePostsViewState extends State<ManagePostsView>
     final failedCount = _failedPlatforms(post).length;
     final reauthCount = _reauthPlatforms(post).length;
 
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Publish Progress',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        final ColorScheme cs = Theme.of(sheetContext).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Publish Progress',
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                post.caption.isEmpty ? 'Untitled post' : post.caption,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white70),
-              ),
-              const SizedBox(height: 16),
-              _buildProgressMetric(
-                'Current status',
-                _getStatusText(post.status),
-              ),
-              if (scheduledAt != null)
+                const SizedBox(height: 10),
+                Text(
+                  post.caption.isEmpty ? 'Untitled post' : post.caption,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
                 _buildProgressMetric(
-                  'Scheduled for',
-                  '${MaterialLocalizations.of(context).formatFullDate(scheduledAt)} '
-                      '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(scheduledAt))}',
+                  sheetContext,
+                  'Current status',
+                  _getStatusText(post.status),
                 ),
-              _buildProgressMetric(
-                'Destinations completed',
-                '$successfulCount of ${post.platforms.length}',
-              ),
-              if (inFlightCount > 0)
-                _buildProgressMetric('Currently publishing', '$inFlightCount'),
-              if (failedCount > 0)
+                if (scheduledAt != null)
+                  _buildProgressMetric(
+                    sheetContext,
+                    'Scheduled for',
+                    '${MaterialLocalizations.of(sheetContext).formatFullDate(scheduledAt)} '
+                        '${MaterialLocalizations.of(sheetContext).formatTimeOfDay(TimeOfDay.fromDateTime(scheduledAt))}',
+                  ),
                 _buildProgressMetric(
-                  'Needs retry',
-                  _failedPlatforms(post)
-                      .map(_getPlatformNameFromString)
-                      .join(', '),
+                  sheetContext,
+                  'Destinations completed',
+                  '$successfulCount of ${post.platforms.length}',
                 ),
-              if (reauthCount > 0)
-                _buildProgressMetric(
-                  'Needs reconnect',
-                  _reauthPlatforms(post)
-                      .map(_getPlatformNameFromString)
-                      .join(', '),
+                if (inFlightCount > 0)
+                  _buildProgressMetric(
+                    sheetContext,
+                    'Currently publishing',
+                    '$inFlightCount',
+                  ),
+                if (failedCount > 0)
+                  _buildProgressMetric(
+                    sheetContext,
+                    'Needs retry',
+                    _failedPlatforms(post)
+                        .map(_getPlatformNameFromString)
+                        .join(', '),
+                  ),
+                if (reauthCount > 0)
+                  _buildProgressMetric(
+                    sheetContext,
+                    'Needs reconnect',
+                    _reauthPlatforms(post)
+                        .map(_getPlatformNameFromString)
+                        .join(', '),
+                  ),
+                const SizedBox(height: 12),
+                Text(
+                  'Publishing Timeline',
+                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
-              const SizedBox(height: 12),
-              const Text(
-                'Publishing Timeline',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 10),
-              FutureBuilder<List<Map<String, dynamic>>>(
-                future: _loadPublishingHistory(post),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: LinearProgressIndicator(),
-                    );
-                  }
+                const SizedBox(height: 10),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _loadPublishingHistory(post),
+                  builder: (BuildContext _,
+                      AsyncSnapshot<List<Map<String, dynamic>>> snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: LinearProgressIndicator(color: cs.primary),
+                      );
+                    }
 
-                  final history = snapshot.data ?? const [];
-                  if (history.isEmpty) {
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
+                    final List<Map<String, dynamic>> history =
+                        snapshot.data ?? const <Map<String, dynamic>>[];
+                    if (history.isEmpty) {
+                      final StSupportShellStyle shell =
+                          StSupportShellStyle.of(sheetContext);
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: shell.surfaceCard,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: shell.surfaceCardBorder),
                         ),
-                      ),
-                      child: Text(
-                        snapshot.hasError
-                            ? 'Detailed publishing history is not available from the backend for this post yet.'
-                            : 'No per-attempt publishing history is available for this post yet.',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
+                        child: Text(
+                          snapshot.hasError
+                              ? 'Detailed publishing history is not available from the backend for this post yet.'
+                              : 'No per-attempt publishing history is available for this post yet.',
+                          style: tt.bodySmall?.copyWith(color: shell.muted),
                         ),
-                      ),
-                    );
-                  }
+                      );
+                    }
 
-                  return Column(
-                    children: history
-                        .map((entry) => _buildHistoryEntry(entry))
-                        .toList(),
-                  );
-                },
-              ),
-            ],
+                    return Column(
+                      children: history
+                          .map(
+                            (Map<String, dynamic> entry) =>
+                                _buildHistoryEntry(sheetContext, entry),
+                          )
+                          .toList(),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildHistoryEntry(Map<String, dynamic> entry) {
+  Widget _buildHistoryEntry(BuildContext context, Map<String, dynamic> entry) {
     final status = entry['status']?.toString() ?? 'update';
     final platform = entry['platform']?.toString();
     final message = entry['message']?.toString() ??
@@ -1319,23 +1411,26 @@ class _ManagePostsViewState extends State<ManagePostsView>
       timestamp = DateTime.fromMillisecondsSinceEpoch(rawTimestamp);
     }
 
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final TextTheme tt = Theme.of(context).textTheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           Container(
             width: 10,
             height: 10,
             margin: const EdgeInsets.only(top: 4),
             decoration: BoxDecoration(
-              color: _historyStatusColor(status),
+              color: _historyStatusColor(cs, status),
               shape: BoxShape.circle,
             ),
           ),
@@ -1343,33 +1438,26 @@ class _ManagePostsViewState extends State<ManagePostsView>
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 Text(
                   platform == null || platform.isEmpty
                       ? _historyStatusLabel(status)
                       : '${_getPlatformNameFromString(platform)} • ${_historyStatusLabel(status)}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
+                  style: tt.titleSmall?.copyWith(
+                    color: shell.onChrome,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   message,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
+                  style: tt.bodySmall?.copyWith(color: shell.muted),
                 ),
-                if (timestamp != null) ...[
+                if (timestamp != null) ...<Widget>[
                   const SizedBox(height: 4),
                   Text(
                     '${MaterialLocalizations.of(context).formatShortDate(timestamp)} ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(timestamp))}',
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 11,
-                    ),
+                    style: tt.labelSmall?.copyWith(color: shell.iconDim),
                   ),
                 ],
               ],
@@ -1380,24 +1468,24 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Color _historyStatusColor(String rawStatus) {
+  Color _historyStatusColor(ColorScheme cs, String rawStatus) {
     switch (rawStatus.toLowerCase()) {
       case 'published':
       case 'success':
       case 'completed':
-        return Colors.greenAccent;
+        return cs.primary;
       case 'publishing':
       case 'processing':
       case 'queued':
-        return Colors.orangeAccent;
+        return cs.tertiary;
       case 'failed':
       case 'error':
-        return Colors.redAccent;
+        return cs.error;
       case 'needsreauth':
       case 'needs_reauth':
-        return Colors.amberAccent;
+        return cs.secondary;
       default:
-        return Colors.white54;
+        return cs.outline;
     }
   }
 
@@ -1434,180 +1522,207 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   void _showPostAnalytics(ScheduledPost post) {
-    final successfulPlatforms = post.platforms
-        .where((platform) => platform.status == PlatformStatus.published)
-        .map((platform) => _getPlatformNameFromString(platform.key))
+    final List<String> successfulPlatforms = post.platforms
+        .where((PlatformConfig p) => p.status == PlatformStatus.published)
+        .map((PlatformConfig p) => _getPlatformNameFromString(p.key))
         .toList();
-    final videoId = _resolveVideoId(post);
+    final String? videoId = _resolveVideoId(post);
 
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Post Analytics',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        final ColorScheme cs = Theme.of(sheetContext).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Post Analytics',
+                style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
-            ),
-            const SizedBox(height: 16),
-            FutureBuilder<VideoAnalytics?>(
-              future: _loadVideoAnalytics(post),
-              builder: (context, snapshot) {
-                final analytics = snapshot.data;
-                final fallback = post.analyticsHints;
-                final views = analytics?.views ??
-                    fallback['views'] ??
-                    fallback['impressions'] ??
-                    0;
-                final likes = analytics?.likes ?? fallback['likes'] ?? 0;
-                final comments =
-                    analytics?.comments ?? fallback['comments'] ?? 0;
-                final shares = analytics?.shares ?? fallback['shares'] ?? 0;
-                final engagement =
-                    analytics?.engagementRate ?? fallback['engagement'] ?? 0;
-                final averageWatchTime = analytics?.averageWatchTime ??
-                    fallback['averageWatchTime'] ??
-                    0;
-                final completionRate = analytics?.completionRate ??
-                    fallback['completionRate'] ??
-                    0;
-                final uniqueViewers =
-                    analytics?.uniqueViewers ?? fallback['uniqueViewers'] ?? 0;
-                final audienceReach =
-                    analytics?.audienceReach ?? fallback['audienceReach'] ?? 0;
+              const SizedBox(height: 16),
+              FutureBuilder<VideoAnalytics?>(
+                future: _loadVideoAnalytics(post),
+                builder: (
+                  BuildContext _,
+                  AsyncSnapshot<VideoAnalytics?> snapshot,
+                ) {
+                  final VideoAnalytics? analytics = snapshot.data;
+                  final Map<String, dynamic> fallback = post.analyticsHints;
+                  final Object views = analytics?.views ??
+                      fallback['views'] ??
+                      fallback['impressions'] ??
+                      0;
+                  final Object likes =
+                      analytics?.likes ?? fallback['likes'] ?? 0;
+                  final Object comments =
+                      analytics?.comments ?? fallback['comments'] ?? 0;
+                  final Object shares =
+                      analytics?.shares ?? fallback['shares'] ?? 0;
+                  final Object engagement =
+                      analytics?.engagementRate ?? fallback['engagement'] ?? 0;
+                  final Object averageWatchTime = analytics?.averageWatchTime ??
+                      fallback['averageWatchTime'] ??
+                      0;
+                  final Object completionRate = analytics?.completionRate ??
+                      fallback['completionRate'] ??
+                      0;
+                  final Object uniqueViewers = analytics?.uniqueViewers ??
+                      fallback['uniqueViewers'] ??
+                      0;
+                  final Object audienceReach = analytics?.audienceReach ??
+                      fallback['audienceReach'] ??
+                      0;
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (snapshot.connectionState == ConnectionState.waiting &&
-                        videoId != null)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 12),
-                        child: LinearProgressIndicator(),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          videoId != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: LinearProgressIndicator(color: cs.primary),
+                        ),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: <Widget>[
+                          _buildAnalyticsCard(sheetContext, 'Views', '$views'),
+                          _buildAnalyticsCard(sheetContext, 'Likes', '$likes'),
+                          _buildAnalyticsCard(
+                            sheetContext,
+                            'Comments',
+                            '$comments',
+                          ),
+                          _buildAnalyticsCard(
+                              sheetContext, 'Shares', '$shares'),
+                          _buildAnalyticsCard(
+                            sheetContext,
+                            'Engagement',
+                            _formatRate(engagement),
+                          ),
+                          _buildAnalyticsCard(
+                            sheetContext,
+                            'Avg Watch',
+                            _formatSeconds(averageWatchTime),
+                          ),
+                          _buildAnalyticsCard(
+                            sheetContext,
+                            'Completion',
+                            _formatRate(completionRate),
+                          ),
+                          _buildAnalyticsCard(
+                            sheetContext,
+                            'Unique Viewers',
+                            '$uniqueViewers',
+                          ),
+                          _buildAnalyticsCard(
+                            sheetContext,
+                            'Reach',
+                            '$audienceReach',
+                          ),
+                        ],
                       ),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        _buildAnalyticsCard('Views', '$views'),
-                        _buildAnalyticsCard('Likes', '$likes'),
-                        _buildAnalyticsCard('Comments', '$comments'),
-                        _buildAnalyticsCard('Shares', '$shares'),
-                        _buildAnalyticsCard(
-                          'Engagement',
-                          _formatRate(engagement),
-                        ),
-                        _buildAnalyticsCard(
-                          'Avg Watch',
-                          _formatSeconds(averageWatchTime),
-                        ),
-                        _buildAnalyticsCard(
-                          'Completion',
-                          _formatRate(completionRate),
-                        ),
-                        _buildAnalyticsCard('Unique Viewers', '$uniqueViewers'),
-                        _buildAnalyticsCard('Reach', '$audienceReach'),
-                      ],
-                    ),
-                    if (snapshot.hasError)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Text(
-                          'Showing saved analytics hints because live analytics could not be loaded.',
-                          style: TextStyle(
-                            color: Colors.orangeAccent.withValues(alpha: 0.9),
-                            fontSize: 12,
+                      if (snapshot.hasError)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            'Showing saved analytics hints because live '
+                            'analytics could not be loaded.',
+                            style: tt.bodySmall?.copyWith(color: cs.tertiary),
                           ),
                         ),
-                      ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            Text(
-              successfulPlatforms.isEmpty
-                  ? 'No external destinations have completed yet.'
-                  : 'Published destinations: ${successfulPlatforms.join(', ')}',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
+                    ],
+                  );
+                },
               ),
-            ),
-          ],
-        ),
-      ),
+              const SizedBox(height: 16),
+              Text(
+                successfulPlatforms.isEmpty
+                    ? 'No external destinations have completed yet.'
+                    : 'Published destinations: ${successfulPlatforms.join(', ')}',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   void _showPlatformDetails(ScheduledPost post) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Platform Status',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        final ColorScheme cs = Theme.of(sheetContext).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Platform Status',
+                style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
-            ),
-            const SizedBox(height: 16),
-            ...post.platforms.map((platform) {
-              final status = platform.status ?? PlatformStatus.pending;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  _getPlatformIconFromString(platform.key),
-                  color: _getPlatformColorFromString(platform.key),
-                ),
-                title: Text(
-                  _getPlatformNameFromString(platform.key),
-                  style: const TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  platform.error?.isNotEmpty == true
-                      ? '${_getPlatformStatusText(status)}: ${platform.error}'
-                      : _getPlatformStatusText(status),
-                  style: const TextStyle(color: Colors.white70),
-                ),
-                trailing: _buildInlinePlatformAction(post, platform),
-              );
-            }),
-          ],
-        ),
-      ),
+              const SizedBox(height: 16),
+              ...post.platforms.map((PlatformConfig platform) {
+                final PlatformStatus status =
+                    platform.status ?? PlatformStatus.pending;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    _getPlatformIconFromString(platform.key),
+                    color:
+                        _getPlatformColorFromString(sheetContext, platform.key),
+                  ),
+                  title: Text(
+                    _getPlatformNameFromString(platform.key),
+                    style: tt.titleSmall?.copyWith(color: cs.onSurface),
+                  ),
+                  subtitle: Text(
+                    platform.error?.isNotEmpty == true
+                        ? '${_getPlatformStatusText(status)}: ${platform.error}'
+                        : _getPlatformStatusText(status),
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  trailing: _buildInlinePlatformAction(
+                    sheetContext,
+                    post,
+                    platform,
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget? _buildInlinePlatformAction(
-      ScheduledPost post, PlatformConfig platform) {
-    final status = platform.status ?? PlatformStatus.pending;
+    BuildContext sheetContext,
+    ScheduledPost post,
+    PlatformConfig platform,
+  ) {
+    final PlatformStatus status = platform.status ?? PlatformStatus.pending;
     if (status == PlatformStatus.failed) {
       return TextButton(
         onPressed: () {
-          Navigator.pop(context);
-          _retryPost(post, platformKeys: [platform.key]);
+          Navigator.pop(sheetContext);
+          _retryPost(post, platformKeys: <String>[platform.key]);
         },
         child: const Text('Retry'),
       );
@@ -1615,7 +1730,7 @@ class _ManagePostsViewState extends State<ManagePostsView>
     if (status == PlatformStatus.needsReauth) {
       return TextButton(
         onPressed: () {
-          Navigator.pop(context);
+          Navigator.pop(sheetContext);
           _openReconnectPlatforms(post);
         },
         child: const Text('Reconnect'),
@@ -1624,28 +1739,30 @@ class _ManagePostsViewState extends State<ManagePostsView>
     return null;
   }
 
-  Widget _buildProgressMetric(String label, String value) {
+  Widget _buildProgressMetric(
+    BuildContext context,
+    String label,
+    String value,
+  ) {
+    final TextTheme tt = Theme.of(context).textTheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           SizedBox(
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-              ),
+              style: tt.bodySmall?.copyWith(color: shell.iconDim),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
+              style: tt.bodyMedium?.copyWith(
+                color: shell.onChrome,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1655,33 +1772,35 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildAnalyticsCard(String label, String value) {
+  Widget _buildAnalyticsCard(
+    BuildContext context,
+    String label,
+    String value,
+  ) {
+    final TextTheme tt = Theme.of(context).textTheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       width: 104,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
+            style: tt.titleLarge?.copyWith(
+              color: shell.onChrome,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white60,
-              fontSize: 12,
-            ),
+            style: tt.labelMedium?.copyWith(color: shell.muted),
           ),
         ],
       ),
@@ -1730,50 +1849,66 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   Future<bool> _showConfirmDialog(String title, String message) async {
-    final result = await showDialog<bool>(
+    final bool? result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
-        content: Text(message, style: const TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
+      builder: (BuildContext dialogContext) {
+        final TextTheme tt = Theme.of(dialogContext).textTheme;
+        final ColorScheme cs = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text(title, style: tt.titleLarge),
+          content: Text(message, style: tt.bodyMedium),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
     );
     return result ?? false;
   }
 
   void _showSuccessSnackBar(String message) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
+        backgroundColor: cs.primaryContainer,
+        content: Text(
+          message,
+          style: TextStyle(color: cs.onPrimaryContainer),
+        ),
       ),
     );
   }
 
   void _showErrorSnackBar(String message) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
+        backgroundColor: cs.errorContainer,
+        content: Text(
+          message,
+          style: TextStyle(color: cs.onErrorContainer),
+        ),
       ),
     );
   }
 
   void _showInfoSnackBar(String message) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF9248D2),
+        backgroundColor: cs.secondaryContainer,
+        content: Text(
+          message,
+          style: TextStyle(color: cs.onSecondaryContainer),
+        ),
       ),
     );
   }
@@ -1807,61 +1942,82 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   void _showBulkActionDialog() {
-    final selectedPosts =
-        _posts.where((post) => _selectedPosts.contains(post.id)).toList();
-    final canPublish = selectedPosts.isNotEmpty &&
-        selectedPosts.every((post) => post.status == PostStatus.scheduled);
-    final canCancel =
-        selectedPosts.any((post) => post.status == PostStatus.scheduled);
+    final List<ScheduledPost> selectedPosts = _posts
+        .where((ScheduledPost post) => _selectedPosts.contains(post.id))
+        .toList();
+    final bool canPublish = selectedPosts.isNotEmpty &&
+        selectedPosts
+            .every((ScheduledPost post) => post.status == PostStatus.scheduled);
+    final bool canCancel = selectedPosts.any(
+      (ScheduledPost post) => post.status == PostStatus.scheduled,
+    );
 
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Bulk Actions (${_selectedPosts.length} selected)',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Bulk Actions (${_selectedPosts.length} selected)',
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                if (canPublish)
+                  _buildBulkActionTile(
+                    sheetContext,
+                    'Publish Now',
+                    Icons.publish,
+                    BulkAction.publish,
+                  ),
+                if (canCancel)
+                  _buildBulkActionTile(
+                    sheetContext,
+                    'Cancel Posts',
+                    Icons.cancel,
+                    BulkAction.cancel,
+                  ),
+                _buildBulkActionTile(
+                  sheetContext,
+                  'Delete Posts',
+                  Icons.delete,
+                  BulkAction.delete,
+                ),
+                _buildBulkActionTile(
+                  sheetContext,
+                  'Export Data',
+                  Icons.download,
+                  BulkAction.export,
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            if (canPublish)
-              _buildBulkActionTile(
-                'Publish Now',
-                Icons.publish,
-                BulkAction.publish,
-              ),
-            if (canCancel)
-              _buildBulkActionTile(
-                'Cancel Posts',
-                Icons.cancel,
-                BulkAction.cancel,
-              ),
-            _buildBulkActionTile(
-                'Delete Posts', Icons.delete, BulkAction.delete),
-            _buildBulkActionTile(
-                'Export Data', Icons.download, BulkAction.export),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildBulkActionTile(String title, IconData icon, BulkAction action) {
+  Widget _buildBulkActionTile(
+    BuildContext sheetContext,
+    String title,
+    IconData icon,
+    BulkAction action,
+  ) {
+    final TextTheme tt = Theme.of(sheetContext).textTheme;
+    final ColorScheme cs = Theme.of(sheetContext).colorScheme;
     return ListTile(
-      leading: Icon(icon, color: Colors.white70),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
+      leading: Icon(icon, color: cs.onSurfaceVariant),
+      title: Text(title, style: tt.titleSmall?.copyWith(color: cs.onSurface)),
       onTap: () {
-        Navigator.pop(context);
+        Navigator.pop(sheetContext);
         _performBulkAction(action);
       },
     );
@@ -1978,55 +2134,56 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
   // Sorting
   void _showSortDialog() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Sort Posts',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        final ColorScheme cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Sort Posts',
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                ...PostSortOption.values.map((PostSortOption option) {
+                  final bool isSelected = option == _sortOption;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      isSelected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      color: isSelected ? cs.primary : cs.outline,
+                    ),
+                    title: Text(
+                      _getSortOptionLabel(option),
+                      style: tt.titleSmall?.copyWith(color: cs.onSurface),
+                    ),
+                    onTap: () {
+                      setState(() {
+                        _sortOption = option;
+                        _posts = _sortPosts(
+                          List<ScheduledPost>.from(_posts),
+                        );
+                      });
+                      Navigator.pop(sheetContext);
+                    },
+                  );
+                }),
+              ],
             ),
-            const SizedBox(height: 16),
-            ...PostSortOption.values.map(
-              (option) {
-                final isSelected = option == _sortOption;
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    isSelected
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_unchecked,
-                    color:
-                        isSelected ? const Color(0xFF9248D2) : Colors.white54,
-                  ),
-                  title: Text(
-                    _getSortOptionLabel(option),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _sortOption = option;
-                      _posts = _sortPosts(List<ScheduledPost>.from(_posts));
-                    });
-                    Navigator.pop(context);
-                  },
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -2047,70 +2204,76 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
   // More options
   void _showMoreOptionsDialog() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'More Options',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        final ColorScheme cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'More Options',
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Icon(Icons.download, color: cs.onSurfaceVariant),
+                  title: Text(
+                    'Export All Posts',
+                    style: tt.titleSmall?.copyWith(color: cs.onSurface),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _exportAllPosts();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    _isRealTimeEnabled ? Icons.pause : Icons.play_arrow,
+                    color: cs.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    _isRealTimeEnabled
+                        ? 'Pause Auto-Refresh'
+                        : 'Enable Auto-Refresh',
+                    style: tt.titleSmall?.copyWith(color: cs.onSurface),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _isRealTimeEnabled = !_isRealTimeEnabled;
+                    });
+                    if (_isRealTimeEnabled) {
+                      _startRealTimeUpdates();
+                    } else {
+                      _refreshTimer?.cancel();
+                    }
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.settings, color: cs.onSurfaceVariant),
+                  title: Text(
+                    'Refresh Settings',
+                    style: tt.titleSmall?.copyWith(color: cs.onSurface),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showRefreshSettingsDialog();
+                  },
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.download, color: Colors.white70),
-              title: const Text('Export All Posts',
-                  style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(context);
-                _exportAllPosts();
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                _isRealTimeEnabled ? Icons.pause : Icons.play_arrow,
-                color: Colors.white70,
-              ),
-              title: Text(
-                _isRealTimeEnabled
-                    ? 'Pause Auto-Refresh'
-                    : 'Enable Auto-Refresh',
-                style: const TextStyle(color: Colors.white),
-              ),
-              onTap: () {
-                setState(() {
-                  _isRealTimeEnabled = !_isRealTimeEnabled;
-                });
-                if (_isRealTimeEnabled) {
-                  _startRealTimeUpdates();
-                } else {
-                  _refreshTimer?.cancel();
-                }
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings, color: Colors.white70),
-              title: const Text('Refresh Settings',
-                  style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(context);
-                _showRefreshSettingsDialog();
-              },
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -2163,91 +2326,110 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   void _showRefreshSettingsDialog() {
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Refresh Settings',
-            style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Refresh Interval: $_refreshInterval seconds',
-                style: const TextStyle(color: Colors.white70)),
-            Slider(
-              value: _refreshInterval.toDouble(),
-              min: 10,
-              max: 300,
-              divisions: 29,
-              onChanged: (value) {
-                setState(() {
-                  _refreshInterval = value.round();
-                });
+      builder: (BuildContext dialogContext) {
+        final TextTheme tt = Theme.of(dialogContext).textTheme;
+        final ColorScheme cs = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text('Refresh Settings', style: tt.titleLarge),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                'Refresh Interval: $_refreshInterval seconds',
+                style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              SliderTheme(
+                data: SliderTheme.of(dialogContext).copyWith(
+                  activeTrackColor: cs.primary,
+                  inactiveTrackColor: cs.outlineVariant,
+                  thumbColor: cs.primary,
+                  overlayColor: cs.primary.withValues(alpha: 0.12),
+                ),
+                child: Slider(
+                  value: _refreshInterval.toDouble(),
+                  min: 10,
+                  max: 300,
+                  divisions: 29,
+                  onChanged: (double value) {
+                    setState(() {
+                      _refreshInterval = value.round();
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                if (_isRealTimeEnabled) {
+                  _startRealTimeUpdates();
+                } else {
+                  _refreshTimer?.cancel();
+                }
               },
-              activeColor: const Color(0xFF9248D2),
+              child: const Text('Save'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (_isRealTimeEnabled) {
-                _startRealTimeUpdates();
-              } else {
-                _refreshTimer?.cancel();
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   // Platform selection for viewing posts
   void _showPlatformSelectionDialog(List<PlatformConfig> platforms) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Select Platform',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+      builder: (BuildContext sheetContext) {
+        final TextTheme tt = Theme.of(sheetContext).textTheme;
+        final ColorScheme cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Select Platform',
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                ...platforms.map(
+                  (PlatformConfig platform) => ListTile(
+                    leading: Icon(
+                      _getPlatformIconFromString(platform.key),
+                      color: _getPlatformColorFromString(
+                        sheetContext,
+                        platform.key,
+                      ),
+                    ),
+                    title: Text(
+                      _getPlatformNameFromString(platform.key),
+                      style: tt.titleSmall?.copyWith(color: cs.onSurface),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _launchUrl(platform.payload!['url']!);
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            ...platforms.map((platform) => ListTile(
-                  leading: Icon(
-                    _getPlatformIconFromString(platform.key),
-                    color: _getPlatformColorFromString(platform.key),
-                  ),
-                  title: Text(
-                    _getPlatformNameFromString(platform.key),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _launchUrl(platform.payload!['url']!);
-                  },
-                )),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -2283,22 +2465,24 @@ class _ManagePostsViewState extends State<ManagePostsView>
     }
   }
 
-  Color _getPlatformColorFromString(String platform) {
+  Color _getPlatformColorFromString(BuildContext context, String platform) {
+    final Brightness brightness = Theme.of(context).brightness;
+    final ColorScheme cs = Theme.of(context).colorScheme;
     switch (platform) {
       case 'youtube':
         return Colors.red;
       case 'tiktok':
-        return Colors.black;
+        return brightness == Brightness.dark ? cs.onSurface : Colors.black;
       case 'instagram':
         return Colors.purple;
       case 'x':
-        return Colors.blue;
+        return cs.primary;
       case 'facebook':
-        return Colors.blue;
+        return cs.primary;
       case 'linkedin':
-        return Colors.blue;
+        return cs.primary;
       default:
-        return Colors.grey;
+        return cs.outline;
     }
   }
 

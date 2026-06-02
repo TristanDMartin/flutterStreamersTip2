@@ -40,7 +40,8 @@ class FeedBootstrapService {
       final cachedFeed = await _loadCachedFeed();
 
       if (cachedFeed != null && cachedFeed.items.isNotEmpty) {
-        secureLog('✅ Warm start: Found ${cachedFeed.items.length} cached items');
+        secureLog(
+            '✅ Warm start: Found ${cachedFeed.items.length} cached items');
 
         // Prime the first video in background (non-blocking)
         _primeWarmStartCandidate(cachedFeed.items.first).catchError((e) {

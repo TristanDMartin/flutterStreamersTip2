@@ -13,11 +13,48 @@ class AnalyticsService {
   FirebaseCrashlytics? _crashlytics;
   static bool _isInitialized = false;
   static bool _initializationAttempted = false;
+  static bool _crashHandlersInstalled = false;
 
   bool get isInitialized => _isInitialized;
 
   // Safe static getter that doesn't trigger singleton creation
   static bool get isReady => _isInitialized;
+
+  /// Crash handlers only — call from [main] after Firebase init, before runApp.
+  Future<void> installCrashHandlers() async {
+    if (_crashHandlersInstalled || Firebase.apps.isEmpty) {
+      return;
+    }
+    try {
+      _crashlytics ??= FirebaseCrashlytics.instance;
+      await _crashlytics!.setCrashlyticsCollectionEnabled(true);
+      FlutterError.onError = (FlutterErrorDetails details) {
+        if (_isNonFatalFlutterLayoutError(details)) {
+          _crashlytics?.recordFlutterError(details, fatal: false);
+        } else {
+          _crashlytics?.recordFlutterFatalError(details);
+        }
+        if (kDebugMode) {
+          FlutterError.presentError(details);
+        }
+      };
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        _crashlytics?.recordError(error, stack, fatal: true);
+        return true;
+      };
+      _crashHandlersInstalled = true;
+      debugPrint('✅ Crashlytics handlers installed');
+    } catch (e) {
+      debugPrint('❌ installCrashHandlers failed: $e');
+    }
+  }
+
+  bool _isNonFatalFlutterLayoutError(FlutterErrorDetails details) {
+    final String message = details.exceptionAsString();
+    return message.contains('A RenderFlex overflowed') ||
+        message.contains('Incorrect use of ParentDataWidget') ||
+        message.contains('Competing ParentDataWidgets');
+  }
 
   // Initialize analytics
   Future<void> initialize() async {
@@ -34,7 +71,6 @@ class AnalyticsService {
     _initializationAttempted = true;
 
     try {
-      // Wait for Firebase to be fully ready with multiple attempts
       int attempts = 0;
       while (Firebase.apps.isEmpty && attempts < 20) {
         await Future.delayed(const Duration(milliseconds: 50));
@@ -47,37 +83,23 @@ class AnalyticsService {
         return;
       }
 
-      // Additional delay to ensure Firebase is fully ready
       await Future.delayed(const Duration(milliseconds: 200));
 
-      // Initialize Firebase Analytics and Crashlytics with error handling
       try {
         _analytics = FirebaseAnalytics.instance;
-        _crashlytics = FirebaseCrashlytics.instance;
+        _crashlytics ??= FirebaseCrashlytics.instance;
       } catch (e) {
         debugPrint('❌ Error accessing Firebase instances: $e');
         return;
       }
 
-      // Enable crashlytics collection
       await _crashlytics!.setCrashlyticsCollectionEnabled(true);
-
-      // Set up error handling
-      FlutterError.onError = (FlutterErrorDetails details) {
-        _crashlytics?.recordFlutterFatalError(details);
-      };
-
-      // Set up platform error handling
-      PlatformDispatcher.instance.onError = (error, stack) {
-        _crashlytics?.recordError(error, stack, fatal: true);
-        return true;
-      };
+      await installCrashHandlers();
 
       _isInitialized = true;
       debugPrint('✅ Analytics service initialized');
     } catch (e) {
       debugPrint('❌ Error initializing analytics: $e');
-      // Don't throw - let the app continue without analytics
     }
   }
 

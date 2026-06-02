@@ -125,6 +125,7 @@ class StreamerCardDetailsSection extends StatelessWidget {
     required this.onFlip,
     required this.identity,
     required this.tags,
+    this.creatorScoreBreakdown,
     required this.showBio,
     required this.onToggleBio,
     required this.bioBody,
@@ -139,6 +140,7 @@ class StreamerCardDetailsSection extends StatelessWidget {
   final VoidCallback onFlip;
   final Widget identity;
   final Widget tags;
+  final Widget? creatorScoreBreakdown;
   final bool showBio;
   final VoidCallback onToggleBio;
   final Widget bioBody;
@@ -165,6 +167,10 @@ class StreamerCardDetailsSection extends StatelessWidget {
                   SliverToBoxAdapter(child: identity),
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
                   SliverToBoxAdapter(child: tags),
+                  if (creatorScoreBreakdown != null) ...[
+                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                    SliverToBoxAdapter(child: creatorScoreBreakdown),
+                  ],
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   SliverToBoxAdapter(
                     child: _StreamerCardSectionHeader(
@@ -406,9 +412,8 @@ class _StreamerCardActionButton extends StatelessWidget {
                   end: Alignment.centerRight,
                 )
               : null,
-          color: enabled
-              ? null
-              : shell.chipUnselectedBg.withValues(alpha: 0.85),
+          color:
+              enabled ? null : shell.chipUnselectedBg.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: enabled

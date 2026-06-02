@@ -1,6 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/trending_creator.dart';
 import '../models/category.dart';
 import '../models/recommended_content.dart';
@@ -9,7 +14,12 @@ import '../models/video_clip.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart';
 import '../models/user_count_fields.dart';
+import '../services/creator_follower_count_service.dart';
+import '../services/follows_service.dart';
 import '../services/logging_service.dart';
+import '../utils/swallow_non_fatal.dart';
+import '../utils/video_document_rules.dart';
+import '../utils/video_url_resolver.dart';
 import '../services/real_user_data_service.dart';
 
 part 'discover_provider.freezed.dart';
@@ -24,6 +34,7 @@ sealed class DiscoverState with _$DiscoverState {
     @Default(false) bool isSearching,
     @Default([]) List<VideoClip> clips,
     @Default(false) bool isLoadingTrendingCreators,
+    @Default(false) bool trendingCreatorsLoadFailed,
     @Default({}) Map<String, int> userScrollBehavior,
     @Default({}) Map<String, double> lowViewedRatio,
   }) = _DiscoverState;
@@ -45,24 +56,118 @@ enum ResultType { creator, category, content }
 
 class DiscoverNotifier extends StateNotifier<DiscoverState> {
   final RealUserDataService _userDataService = RealUserDataService();
+  final FollowsService _followsService = FollowsService();
+  final CreatorFollowerCountService _followerCountService =
+      CreatorFollowerCountService.instance;
   final Map<String, DocumentSnapshot<Map<String, dynamic>>?>
       _categoryVideoCursors = {};
+  static List<TrendingCreator> _cachedTrendingCreators =
+      const <TrendingCreator>[];
+  static DateTime? _cachedTrendingCreatorsAt;
+  static const Duration _trendingCacheTtl = Duration(minutes: 10);
+  static const String _trendingPrefsKey =
+      'streamerstip.discover.trending_creators.v1';
+  static Future<void>? _trendingLoadInFlight;
 
   DiscoverNotifier() : super(const DiscoverState()) {
     _loadInitialData();
   }
 
   void _loadInitialData() {
-    // Load sample data as fallback
+    final bool hasTrendingCache = _cachedTrendingCreators.isNotEmpty;
     state = state.copyWith(
-      trendingCreators: TrendingCreator.samples,
+      trendingCreators: hasTrendingCache
+          ? _cachedTrendingCreators
+          : const <TrendingCreator>[],
+      trendingCreatorsLoadFailed: false,
       categories: Category.samples,
       recommendedContent: RecommendedContentExtension.samples,
       clips: ClipExtension.samples,
     );
 
-    // Load real trending creators from Firebase
+    unawaited(_restorePersistedTrendingCreators());
+
+    // Load real trending creators from Firebase in the background.
     loadTrendingCreators();
+    loadRecommendedForYou();
+  }
+
+  Future<void> _restorePersistedTrendingCreators() async {
+    if (state.trendingCreators.isNotEmpty) {
+      return;
+    }
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? raw = prefs.getString(_trendingPrefsKey);
+      if (raw == null || raw.isEmpty) {
+        return;
+      }
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return;
+      }
+      final List<TrendingCreator> cached = decoded
+          .whereType<Map>()
+          .map((Map<dynamic, dynamic> item) {
+            final Map<String, dynamic> data = item.cast<String, dynamic>();
+            return TrendingCreator(
+              id: (data['id'] as String?) ?? '',
+              username: (data['username'] as String?) ?? 'Unknown',
+              displayName: data['displayName'] as String?,
+              avatarURL: data['avatarURL'] as String?,
+              followerCount: (data['followerCount'] as num?)?.toInt() ?? 0,
+              isActive: data['isActive'] == true,
+              creatorLevel: (data['creatorLevel'] as num?)?.toInt() ?? 0,
+              tierStatusLabel: data['tierStatusLabel'] as String?,
+              isFollowing: data['isFollowing'] == true,
+            );
+          })
+          .where((TrendingCreator creator) => creator.id.isNotEmpty)
+          .toList(growable: false);
+      if (cached.isEmpty) {
+        return;
+      }
+      _cachedTrendingCreators = cached;
+      state = state.copyWith(
+        trendingCreators: cached,
+        trendingCreatorsLoadFailed: false,
+      );
+    } catch (e) {
+      LoggingService.instance.debug(
+        'Unable to restore cached trending creators: $e',
+        tag: 'DiscoverProvider',
+      );
+    }
+  }
+
+  Future<void> _persistTrendingCreators(List<TrendingCreator> creators) async {
+    if (creators.isEmpty) {
+      return;
+    }
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<Map<String, Object?>> payload = creators
+          .map(
+            (TrendingCreator creator) => <String, Object?>{
+              'id': creator.id,
+              'username': creator.username,
+              'displayName': creator.displayName,
+              'avatarURL': creator.avatarURL,
+              'followerCount': creator.followerCount,
+              'isActive': creator.isActive,
+              'creatorLevel': creator.creatorLevel,
+              'tierStatusLabel': creator.tierStatusLabel,
+              'isFollowing': creator.isFollowing,
+            },
+          )
+          .toList(growable: false);
+      await prefs.setString(_trendingPrefsKey, jsonEncode(payload));
+    } catch (e) {
+      LoggingService.instance.debug(
+        'Unable to persist cached trending creators: $e',
+        tag: 'DiscoverProvider',
+      );
+    }
   }
 
   // removed duplicate placeholder implementation (replaced below)
@@ -83,8 +188,12 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       }
 
       final QuerySnapshot<Map<String, dynamic>> snapshot = await query.get();
-      final List<HomeVideo> videos = snapshot.docs.map((doc) {
+      final List<HomeVideo> videos = snapshot.docs.where((doc) {
+        final data = doc.data();
+        return isVideoVisibleInFeed(data) && hasReadyPlaybackSource(data);
+      }).map((doc) {
         final Map<String, dynamic> data = doc.data();
+        final String playbackUrl = resolveReadyPlaybackUrl(data) ?? '';
 
         final User creator = User(
           id: (data['creator_id'] ?? 'unknown').toString(),
@@ -124,7 +233,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
         return HomeVideo(
           id: doc.id,
           creator: creator,
-          videoURL: (data['video_url'] ?? data['videoURL'] ?? '').toString(),
+          videoURL: playbackUrl,
           thumbnailURL: thumbnailUrl,
           thumbnails: thumbnails,
           likes: (data['likes'] ?? 0) as int,
@@ -136,6 +245,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
           mlScore:
               ((data['score'] ?? data['mlScore'] ?? 0.0) as num).toDouble(),
           categoryId: (data['category_id'] ?? '').toString(),
+          status: (data['status'] as String?) ?? 'ready',
         );
       }).toList();
 
@@ -155,37 +265,195 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     }
   }
 
-  Future<void> loadTrendingCreators() async {
-    if (state.isLoadingTrendingCreators) return;
-    state = state.copyWith(isLoadingTrendingCreators: true);
+  Future<void> loadRecommendedForYou() async {
+    final uid = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
 
     try {
+      final doc = await FirebaseFirestore.instance
+          .collection('userInterests')
+          .doc(uid)
+          .get();
+      final interests = doc.data();
+      if (interests == null || interests.isEmpty) return;
+
+      final items = RecommendedContentExtension.samples.toList()
+        ..sort((a, b) {
+          final scoreA = _recommendedContentScore(a, interests);
+          final scoreB = _recommendedContentScore(b, interests);
+          return scoreB.compareTo(scoreA);
+        });
+      state = state.copyWith(recommendedContent: items);
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error loading personalized recommendations',
+        tag: 'DiscoverProvider',
+        error: e,
+      );
+    }
+  }
+
+  double _recommendedContentScore(
+    RecommendedContent content,
+    Map<String, dynamic> interests,
+  ) {
+    double read(String key) {
+      final value = interests[key];
+      return value is num ? value.toDouble() : 0.0;
+    }
+
+    switch (content.id) {
+      case 'creator-tools':
+        return read('creatorTools') + read('streamingTips') + read('editing');
+      case 'academy':
+        return read('growth') + read('gaming') + read('streamingTips');
+      case 'peripherals':
+        return read('streamingTips') + read('gaming') + read('esports');
+      default:
+        return 0;
+    }
+  }
+
+  Future<void> loadTrendingCreators({bool forceRefresh = false}) async {
+    if (_cachedTrendingCreators.isNotEmpty) {
+      state = state.copyWith(trendingCreators: _cachedTrendingCreators);
+    }
+    final bool hasFreshTrendingCache = _cachedTrendingCreators.isNotEmpty &&
+        _cachedTrendingCreatorsAt != null &&
+        DateTime.now().difference(_cachedTrendingCreatorsAt!) <
+            _trendingCacheTtl;
+    if (!forceRefresh && hasFreshTrendingCache) {
+      state = state.copyWith(
+        isLoadingTrendingCreators: false,
+        trendingCreatorsLoadFailed: false,
+      );
+      return;
+    }
+    if (state.isLoadingTrendingCreators) return;
+    if (_trendingLoadInFlight != null) {
+      await _trendingLoadInFlight;
+      if (_cachedTrendingCreators.isNotEmpty) {
+        state = state.copyWith(
+          trendingCreators: _cachedTrendingCreators,
+          isLoadingTrendingCreators: false,
+          trendingCreatorsLoadFailed: false,
+        );
+      }
+      return;
+    }
+    state = state.copyWith(
+      isLoadingTrendingCreators: true,
+      trendingCreatorsLoadFailed: false,
+    );
+
+    _trendingLoadInFlight = () async {
       LoggingService.instance.debug(
           'Loading trending creators from real data service',
           tag: 'DiscoverProvider');
 
-      // Use real user data service
-      final trending = await _userDataService.getTrendingCreators(limit: 10);
+      final List<TrendingCreator> trending =
+          await _userDataService.getTrendingCreators(limit: 10);
+      final firebase_auth.User? authUser =
+          firebase_auth.FirebaseAuth.instance.currentUser;
+      final List<TrendingCreator> enriched =
+          await _enrichTrendingWithFollowState(trending, authUser?.uid);
 
       state = state.copyWith(
-        trendingCreators: trending,
+        trendingCreators: enriched,
         isLoadingTrendingCreators: false,
+        trendingCreatorsLoadFailed: false,
       );
+      _cachedTrendingCreators = enriched;
+      _cachedTrendingCreatorsAt = DateTime.now();
+      unawaited(_persistTrendingCreators(enriched));
       LoggingService.instance.info(
-          'Successfully loaded ${trending.length} trending creators',
+          'Successfully loaded ${enriched.length} trending creators',
           tag: 'DiscoverProvider');
+    }();
+
+    try {
+      await _trendingLoadInFlight;
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error loading trending creators',
           tag: 'DiscoverProvider', error: e, stackTrace: stackTrace);
       state = state.copyWith(
         isLoadingTrendingCreators: false,
+        trendingCreatorsLoadFailed: true,
+        trendingCreators: _cachedTrendingCreators,
       );
+    } finally {
+      _trendingLoadInFlight = null;
     }
+  }
+
+  Future<List<TrendingCreator>> _enrichTrendingWithFollowState(
+    List<TrendingCreator> creators,
+    String? currentUid,
+  ) async {
+    if (currentUid == null || currentUid.isEmpty) {
+      return creators;
+    }
+    return Future.wait(creators.map((TrendingCreator c) async {
+      if (c.id == currentUid) {
+        return c.copyWith(isFollowing: false);
+      }
+      final bool following = await _followsService.isFollowing(c.id);
+      return c.copyWith(isFollowing: following);
+    }));
+  }
+
+  /// After follow/unfollow from Discover, patch counts and edge state.
+  Future<void> patchTrendingCreatorAfterFollowAction(
+    String creatorId, {
+    required bool isFollowing,
+  }) async {
+    final int idx = state.trendingCreators
+        .indexWhere((TrendingCreator c) => c.id == creatorId);
+    if (idx < 0) {
+      return;
+    }
+    final TrendingCreator current = state.trendingCreators[idx];
+    int nextCount = current.followerCount;
+    try {
+      nextCount =
+          await _followerCountService.getCreatorFollowerCount(creatorId);
+    } catch (_) {
+      final int delta = isFollowing ? 1 : -1;
+      nextCount = (current.followerCount + delta).clamp(0, 1 << 30).toInt();
+    }
+    final List<TrendingCreator> next = List<TrendingCreator>.from(
+      state.trendingCreators,
+    );
+    next[idx] = current.copyWith(
+      isFollowing: isFollowing,
+      followerCount: nextCount < 0 ? 0 : nextCount,
+    );
+    state = state.copyWith(trendingCreators: next);
+  }
+
+  void patchTrendingCreatorOptimistic(
+    String creatorId, {
+    required bool isFollowing,
+    required int followerCount,
+  }) {
+    final int idx = state.trendingCreators
+        .indexWhere((TrendingCreator c) => c.id == creatorId);
+    if (idx < 0) {
+      return;
+    }
+    final List<TrendingCreator> next = List<TrendingCreator>.from(
+      state.trendingCreators,
+    );
+    next[idx] = next[idx].copyWith(
+      isFollowing: isFollowing,
+      followerCount: followerCount < 0 ? 0 : followerCount,
+    );
+    state = state.copyWith(trendingCreators: next);
   }
 
   Future<void> refreshDiscoverData() async {
     _categoryVideoCursors.clear();
-    await loadTrendingCreators();
+    await loadTrendingCreators(forceRefresh: true);
   }
 
   /// 🔥 FIX: Update trending creators from real-time stream
@@ -240,8 +508,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               title: (data['displayName'] ?? data['username'] ?? 'User')
                   .toString(),
               subtitle: '@${(data['username'] ?? '').toString()}',
-              metadata:
-                  followersCount > 0 ? '$followersCount followers' : null,
+              metadata: followersCount > 0 ? '$followersCount followers' : null,
               imageURL: data['avatarURL'] as String?,
               type: ResultType.creator,
             ));
@@ -269,8 +536,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               title: (data['displayName'] ?? data['username'] ?? 'User')
                   .toString(),
               subtitle: '@${(data['username'] ?? '').toString()}',
-              metadata:
-                  followersCount > 0 ? '$followersCount followers' : null,
+              metadata: followersCount > 0 ? '$followersCount followers' : null,
               imageURL: data['avatarURL'] as String?,
               type: ResultType.creator,
             ));
@@ -388,7 +654,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               ));
             }
           }
-        } catch (_) {}
+        } catch (e, st) {
+          swallowNonFatal('DiscoverProvider.hashtagUserSearch', e, st);
+        }
 
         // Search for hashtags in videos
         try {
@@ -418,7 +686,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               ));
             }
           }
-        } catch (_) {}
+        } catch (e, st) {
+          swallowNonFatal('DiscoverProvider.hashtagVideoSearch', e, st);
+        }
 
         return results;
       }

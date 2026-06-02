@@ -1,4 +1,3 @@
-
 /// Model for video insights analytics data
 class InsightsData {
   final String videoId;
@@ -18,7 +17,8 @@ class InsightsData {
   factory InsightsData.fromJson(Map<String, dynamic> json) {
     return InsightsData(
       videoId: json['videoId'] ?? '',
-      dateRange: DateTime.parse(json['dateRange'] ?? DateTime.now().toIso8601String()),
+      dateRange:
+          DateTime.parse(json['dateRange'] ?? DateTime.now().toIso8601String()),
       overview: OverviewMetrics.fromJson(json['overview'] ?? {}),
       viewers: ViewerMetrics.fromJson(json['viewers'] ?? {}),
       engagement: EngagementMetrics.fromJson(json['engagement'] ?? {}),
@@ -64,8 +64,9 @@ class OverviewMetrics {
       comments: json['comments'] ?? 0,
       retentionRate: (json['retentionRate'] ?? 0.0).toDouble(),
       trafficSources: (json['trafficSources'] as List?)
-          ?.map((e) => TrafficSource.fromJson(e))
-          .toList() ?? [],
+              ?.map((e) => TrafficSource.fromJson(e))
+              .toList() ??
+          [],
       searchQueries: List<String>.from(json['searchQueries'] ?? []),
     );
   }
@@ -137,11 +138,13 @@ class ViewerMetrics {
       viewerTypes: ViewerTypes.fromJson(json['viewerTypes'] ?? {}),
       genderBreakdown: GenderBreakdown.fromJson(json['genderBreakdown'] ?? {}),
       ageGroups: (json['ageGroups'] as List?)
-          ?.map((e) => AgeGroup.fromJson(e))
-          .toList() ?? [],
+              ?.map((e) => AgeGroup.fromJson(e))
+              .toList() ??
+          [],
       topLocations: (json['topLocations'] as List?)
-          ?.map((e) => Location.fromJson(e))
-          .toList() ?? [],
+              ?.map((e) => Location.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 
@@ -299,8 +302,9 @@ class EngagementMetrics {
       favorites: json['favorites'] ?? 0,
       engagementRate: (json['engagementRate'] ?? 0.0).toDouble(),
       trends: (json['trends'] as List?)
-          ?.map((e) => EngagementTrend.fromJson(e))
-          .toList() ?? [],
+              ?.map((e) => EngagementTrend.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 

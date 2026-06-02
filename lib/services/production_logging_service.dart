@@ -66,9 +66,8 @@ class ProductionLoggingService {
 
     final String logMessage =
         '$timestamp $level$tagStr: $message$errorStr$stackStr';
-    final String safeMessage = kReleaseMode
-        ? SensitiveDataRedactor.redact(logMessage)
-        : logMessage;
+    final String safeMessage =
+        kReleaseMode ? SensitiveDataRedactor.redact(logMessage) : logMessage;
 
     if (kDebugMode) {
       debugPrint(safeMessage);

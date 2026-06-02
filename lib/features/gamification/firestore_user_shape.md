@@ -2,6 +2,10 @@
 
 Backend owns writes; the app reads via `GamificationMapper` / `DailyMissionModel` (camelCase or snake_case aliases per model).
 
+**Canonical alignment doc:** `docs/GAMIFICATION_ALIGNMENT.md`
+
+**Preferred read path:** `users/{uid}/gamification/state` (merged over legacy `users/{uid}.gamification` in `GamificationRepository`).
+
 ## `gamification` (map)
 
 `GamificationSummaryModel` accepts **preferred or alias** keys per concept:

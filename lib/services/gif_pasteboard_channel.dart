@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/swallow_non_fatal.dart';
+
 /// iOS native channel: reads/writes GIF bytes on the pasteboard so animated GIFs
 /// are preserved (the `pasteboard` package uses PNG on iOS).
 class GifPasteboardChannel {
@@ -18,8 +20,7 @@ class GifPasteboardChannel {
       return null;
     }
     try {
-      final Object? out =
-          await _channel.invokeMethod<Object>('readGifBytes');
+      final Object? out = await _channel.invokeMethod<Object>('readGifBytes');
       if (out is Uint8List && out.isNotEmpty) {
         return out;
       }
@@ -38,6 +39,8 @@ class GifPasteboardChannel {
     }
     try {
       await _channel.invokeMethod<void>('writeGifBytes', bytes);
-    } on PlatformException catch (_) {}
+    } on PlatformException catch (e, st) {
+      swallowNonFatal('GifPasteboardChannel.writeGifBytes', e, st);
+    }
   }
 }

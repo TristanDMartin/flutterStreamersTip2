@@ -8,152 +8,100 @@ import '../status_aware_avatar.dart';
 class ForumPostCard extends StatelessWidget {
   final ForumPost post;
   final VoidCallback onTap;
+  final bool featured;
 
   const ForumPostCard({
     super.key,
     required this.post,
     required this.onTap,
+    this.featured = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: shell.isLight
-              ? null
-              : LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: <Color>[
-                    scheme.surface,
-                    scheme.surfaceContainerLow,
-                  ],
-                ),
-          color: shell.isLight ? shell.surfaceCard : null,
-          border: Border.all(
-            color: shell.surfaceCardBorder,
-            width: 1,
+    final String category = (post.categoryDisplayName ?? '').isNotEmpty
+        ? post.categoryDisplayName!
+        : _threadTypeLabel(post.category);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(featured ? 18 : 14),
+        child: Container(
+          padding: EdgeInsets.fromLTRB(
+            featured ? 16 : 14,
+            featured ? 16 : 12,
+            featured ? 16 : 14,
+            featured ? 15 : 12,
           ),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: shell.isLight
-                  ? scheme.shadow.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.18),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(featured ? 18 : 14),
+            color: shell.surfaceCard.withValues(alpha: featured ? 0.74 : 0.5),
+            border: Border.all(
+              color: shell.surfaceCardBorder.withValues(alpha: 0.58),
+              width: 1,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with gradient accent
-            Container(
-              height: 4,
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
-                gradient: LinearGradient(
-                  colors: <Color>[
-                    scheme.primary,
-                    scheme.secondary,
-                  ],
-                ),
-              ),
-            ),
-
-            // Content
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if ((post.categoryDisplayName ?? '').isNotEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: scheme.primary.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: scheme.primary.withValues(alpha: 0.28),
-                          ),
-                        ),
-                        child: Text(
-                          post.categoryDisplayName!,
-                          style: TextStyle(
-                            color: scheme.primary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    // Title
-                    Text(
-                      post.title,
-                      style: TextStyle(
-                        color: scheme.onSurface,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+            boxShadow: featured
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: shell.shadowSoft.withValues(alpha: 0.65),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
                     ),
-                    const SizedBox(height: 8),
-
-                    // Content preview
-                    Expanded(
-                      child: Text(
-                        post.content,
-                        style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.62),
-                          fontSize: 13,
-                          height: 1.45,
-                        ),
-                        maxLines: 5,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Footer with author and stats
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
-              decoration: BoxDecoration(
-                color: shell.isLight
-                    ? scheme.surfaceContainerHighest.withValues(alpha: 0.65)
-                    : Colors.black.withValues(alpha: 0.16),
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(20),
-                ),
-              ),
-              child: Row(
+                  ]
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  // Avatar - Always show, even if URL is missing
+                  _ThreadTypePill(label: category),
+                  const Spacer(),
+                  Text(
+                    '${post.commentCount} replies',
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.52),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: featured ? 12 : 8),
+              Text(
+                post.title,
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontSize: featured ? 20 : 15.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1.22,
+                  letterSpacing: featured ? -0.2 : 0,
+                ),
+                maxLines: featured ? 3 : 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 7),
+              Text(
+                post.content,
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.62),
+                  fontSize: featured ? 14 : 13,
+                  height: 1.38,
+                ),
+                maxLines: featured ? 3 : 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              SizedBox(height: featured ? 14 : 12),
+              Row(
+                children: [
                   _ThreadPostAvatar(
                     userId: post.author.uid,
                     fallbackAvatarUrl: post.author.avatarUrl,
                   ),
                   const SizedBox(width: 8),
-                  // Author name
                   Expanded(
                     child: StreamBuilder(
                       stream: DiscussionAuthorService()
@@ -164,9 +112,9 @@ class ForumPostCard extends StatelessWidget {
                         return Text(
                           liveAuthor?.displayName ?? post.author.displayName,
                           style: TextStyle(
-                            color: c.onSurface.withValues(alpha: 0.65),
+                            color: c.onSurface.withValues(alpha: 0.72),
                             fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w700,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -174,10 +122,81 @@ class ForumPostCard extends StatelessWidget {
                       },
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.favorite_border_rounded,
+                    size: 14,
+                    color: scheme.onSurface.withValues(alpha: 0.44),
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${post.likes}',
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.52),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _relativeTime(post.createdAt),
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _threadTypeLabel(String category) {
+    final String normalized = category.toLowerCase();
+    if (normalized.contains('growth')) return 'Growth Advice';
+    if (normalized.contains('game')) return 'Gaming Debate';
+    if (normalized.contains('video') || normalized.contains('clip')) {
+      return 'Video Discussion';
+    }
+    if (normalized.contains('setup')) return 'Stream Setup';
+    return 'Creator Talk';
+  }
+
+  String _relativeTime(DateTime date) {
+    final Duration diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m';
+    if (diff.inDays < 1) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return '${date.month}/${date.day}';
+  }
+}
+
+class _ThreadTypePill extends StatelessWidget {
+  const _ThreadTypePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: scheme.primary,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

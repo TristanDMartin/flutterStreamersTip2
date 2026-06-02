@@ -10,6 +10,7 @@ class ContentPlanItem {
     this.type,
     this.status,
     this.notes,
+    this.tags = const <String>[],
     this.platforms = const <Map<String, dynamic>>[],
   });
 
@@ -20,11 +21,17 @@ class ContentPlanItem {
   final String? type;
   final String? status;
   final String? notes;
+  final List<String> tags;
   final List<Map<String, dynamic>> platforms;
 
   factory ContentPlanItem.fromJson(dynamic raw) {
     if (raw == null) {
-      return const ContentPlanItem(id: '', title: '', platforms: <Map<String, dynamic>>[]);
+      return const ContentPlanItem(
+        id: '',
+        title: '',
+        tags: <String>[],
+        platforms: <Map<String, dynamic>>[],
+      );
     }
     final Map<String, dynamic> m = raw is Map<String, dynamic>
         ? raw
@@ -48,8 +55,48 @@ class ContentPlanItem {
       type: _readString(m['type'] ?? m['contentType']),
       status: _readString(m['status']),
       notes: _readString(m['notes']),
+      tags: _readStringList(m['tags']),
       platforms: plats,
     );
+  }
+
+  ContentPlanItem copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? caption,
+    String? type,
+    String? status,
+    String? notes,
+    List<String>? tags,
+    List<Map<String, dynamic>>? platforms,
+  }) {
+    return ContentPlanItem(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      caption: caption ?? this.caption,
+      type: type ?? this.type,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      tags: tags ?? this.tags,
+      platforms: platforms ?? this.platforms,
+    );
+  }
+
+  Map<String, dynamic> toFirestoreMap() {
+    return <String, dynamic>{
+      'id': id,
+      'title': title,
+      if (description != null && description!.trim().isNotEmpty)
+        'description': description,
+      if (caption != null && caption!.trim().isNotEmpty) 'caption': caption,
+      if (type != null && type!.trim().isNotEmpty) 'type': type,
+      if (status != null && status!.trim().isNotEmpty) 'status': status,
+      if (notes != null && notes!.trim().isNotEmpty) 'notes': notes,
+      if (tags.isNotEmpty) 'tags': tags,
+      'platforms': platforms.map(_platformEntryToFirestore).toList(),
+    };
   }
 
   String get platformsSummary {
@@ -62,10 +109,26 @@ class ContentPlanItem {
       String when = '';
       if (at is Timestamp) {
         when = at.toDate().toLocal().toString().split('.').first;
+      } else if (at is DateTime) {
+        when = at.toLocal().toString().split('.').first;
       }
       return when.isEmpty ? plat : '$plat · $when';
     }).join('\n');
   }
+}
+
+Map<String, dynamic> _platformEntryToFirestore(Map<String, dynamic> raw) {
+  final Map<String, dynamic> out = Map<String, dynamic>.from(raw);
+  final Object? at = out['scheduledAt'];
+  if (at is DateTime) {
+    out['scheduledAt'] = Timestamp.fromDate(at);
+  } else if (at is String) {
+    final DateTime? parsed = DateTime.tryParse(at);
+    if (parsed != null) {
+      out['scheduledAt'] = Timestamp.fromDate(parsed.toUtc());
+    }
+  }
+  return out;
 }
 
 class ContentPlan {
@@ -73,16 +136,40 @@ class ContentPlan {
     required this.id,
     required this.title,
     required this.itemCount,
+    required this.userId,
     this.description,
+    this.platform,
+    this.contentType,
+    this.caption,
+    this.hashtags = const <String>[],
+    this.status = 'draft',
+    this.scheduledAt,
+    this.createdAt,
     this.updatedAt,
+    this.source,
+    this.checklist = const <String>[],
+    this.notes,
+    this.draftIdeas = const <String>[],
     this.items = const <ContentPlanItem>[],
   });
 
   final String id;
   final String title;
   final int itemCount;
+  final String userId;
   final String? description;
+  final String? platform;
+  final String? contentType;
+  final String? caption;
+  final List<String> hashtags;
+  final String status;
+  final DateTime? scheduledAt;
+  final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? source;
+  final List<String> checklist;
+  final String? notes;
+  final List<String> draftIdeas;
   final List<ContentPlanItem> items;
 
   factory ContentPlan.fromJson(Map<String, dynamic> json) {
@@ -94,10 +181,88 @@ class ContentPlan {
     return ContentPlan(
       id: _readString(json['id']) ?? _readString(json['planId']) ?? '',
       title: _readString(json['title']) ?? 'Untitled plan',
+      userId: _readString(json['ownerUid'] ?? json['userId']) ?? '',
       description: _readString(json['description']),
+      platform: _readString(json['platform']) ??
+          _firstString(_readStringList(json['platformTargets'])),
+      contentType: _readString(json['contentType'] ?? json['type']),
+      caption: _readString(json['caption']),
+      hashtags: _readStringList(
+          json['hashtags'] ?? json['tags'] ?? json['platformTargets']),
+      status: _readString(json['status']) ?? 'planned',
+      scheduledAt: _readDate(
+        json['scheduledFor'] ?? json['scheduledAt'] ?? json['scheduledAtUtc'],
+      ),
+      createdAt: _readDate(json['createdAt']),
       itemCount: count,
       updatedAt: _readDate(json['updatedAt'] ?? json['createdAt']),
+      source: _readString(json['source']),
+      checklist: _readStringList(json['checklist']),
+      notes: _readString(json['notes']),
+      draftIdeas: _readStringList(json['draftIdeas'] ?? json['ideas']),
       items: parsedItems,
+    );
+  }
+
+  Map<String, dynamic> toUpdateJson() {
+    return <String, dynamic>{
+      'title': title,
+      'ownerUid': userId,
+      'description': description,
+      'platform': platform,
+      'platformTargets': platform == null || platform!.trim().isEmpty
+          ? hashtags
+          : <String>[platform!, ...hashtags.where((h) => h != platform)],
+      'contentType': contentType,
+      'caption': caption,
+      'hashtags': hashtags,
+      'status': status,
+      'scheduledAt':
+          scheduledAt == null ? null : Timestamp.fromDate(scheduledAt!),
+      'scheduledFor':
+          scheduledAt == null ? null : Timestamp.fromDate(scheduledAt!),
+      'checklist': checklist,
+      'notes': notes,
+      'draftIdeas': draftIdeas,
+      'items': items.map((ContentPlanItem e) => e.toFirestoreMap()).toList(),
+      'itemCount': items.isEmpty ? itemCount : items.length,
+    };
+  }
+
+  ContentPlan copyWith({
+    String? title,
+    String? description,
+    String? platform,
+    String? contentType,
+    String? caption,
+    List<String>? hashtags,
+    String? status,
+    DateTime? scheduledAt,
+    List<String>? checklist,
+    String? notes,
+    List<String>? draftIdeas,
+    List<ContentPlanItem>? items,
+    int? itemCount,
+  }) {
+    return ContentPlan(
+      id: id,
+      title: title ?? this.title,
+      userId: userId,
+      description: description ?? this.description,
+      platform: platform ?? this.platform,
+      contentType: contentType ?? this.contentType,
+      caption: caption ?? this.caption,
+      hashtags: hashtags ?? this.hashtags,
+      status: status ?? this.status,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      createdAt: createdAt,
+      itemCount: itemCount ?? this.itemCount,
+      updatedAt: updatedAt,
+      source: source,
+      checklist: checklist ?? this.checklist,
+      notes: notes ?? this.notes,
+      draftIdeas: draftIdeas ?? this.draftIdeas,
+      items: items ?? this.items,
     );
   }
 }
@@ -119,11 +284,23 @@ List<ContentPlanItem> _parseItems(Object? raw) {
   return out;
 }
 
+String? _firstString(List<String> values) {
+  for (final String value in values) {
+    if (value.trim().isNotEmpty) return value;
+  }
+  return null;
+}
+
 String? _readString(Object? raw) {
   if (raw is String && raw.trim().isNotEmpty) {
     return raw.trim();
   }
   return null;
+}
+
+List<String> _readStringList(Object? raw) {
+  if (raw is! List) return const <String>[];
+  return raw.map(_readString).whereType<String>().toList(growable: false);
 }
 
 int _readInt(Object? raw) {

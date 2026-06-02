@@ -4,6 +4,10 @@ import '../models/home_video.dart';
 import '../models/user.dart';
 import '../models/user_count_fields.dart';
 import 'avatar_url_resolver.dart';
+import 'firestore_map_readers.dart';
+import 'swallow_non_fatal.dart';
+import 'video_caption_resolver.dart';
+import 'video_document_rules.dart';
 import 'video_url_resolver.dart';
 
 /// Loads a non-deleted `videos/{id}` document for full-screen playback.
@@ -11,31 +15,18 @@ Future<HomeVideo?> loadHomeVideoForPlayback(String videoId) async {
   if (videoId.isEmpty) {
     return null;
   }
-  final DocumentSnapshot<Map<String, dynamic>> doc = await FirebaseFirestore
-      .instance
-      .collection('videos')
-      .doc(videoId)
-      .get();
+  final DocumentSnapshot<Map<String, dynamic>> doc =
+      await FirebaseFirestore.instance.collection('videos').doc(videoId).get();
   if (!doc.exists) {
     return null;
   }
-  final Map<String, dynamic> data =
-      Map<String, dynamic>.from(doc.data()!);
+  final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data()!);
   data['id'] = videoId;
   data['videoId'] = videoId;
-  if (data['isDeleted'] == true) {
+  if (!isVideoVisibleInFeed(data)) {
     return null;
   }
   return _buildHomeVideoFromDoc(data, videoId);
-}
-
-String? _firstNonEmptyString(List<Object?> values) {
-  for (final Object? v in values) {
-    if (v is String && v.trim().isNotEmpty) {
-      return v.trim();
-    }
-  }
-  return null;
 }
 
 Map<String, dynamic>? _nestedCreator(Map<String, dynamic> data) {
@@ -52,7 +43,7 @@ Map<String, dynamic>? _nestedCreator(Map<String, dynamic> data) {
 User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
   final Map<String, dynamic>? nested = _nestedCreator(data);
   final String id = (ownerId ?? '').trim();
-  final String displayName = _firstNonEmptyString(<Object?>[
+  final String displayName = firstNonEmptyStringFromValues(<Object?>[
         nested?['displayName'],
         nested?['name'],
         data['creatorDisplayName'],
@@ -62,7 +53,7 @@ User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
         data['authorName'],
       ]) ??
       (id.isNotEmpty ? 'Creator' : 'Unknown');
-  final String username = _firstNonEmptyString(<Object?>[
+  final String username = firstNonEmptyStringFromValues(<Object?>[
         nested?['username'],
         nested?['handle'],
         data['creatorUsername'],
@@ -71,7 +62,7 @@ User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
         data['channelUsername'],
       ]) ??
       (id.isNotEmpty ? 'creator' : 'unknown');
-  final String? avatarUrl = _firstNonEmptyString(<Object?>[
+  final String? avatarUrl = firstNonEmptyStringFromValues(<Object?>[
     nested?['avatarURL'],
     nested?['avatarUrl'],
     nested?['photoURL'],
@@ -141,7 +132,9 @@ Future<String?> _resolvePlaybackOwnerId(
       if (trimmed != null && trimmed.isNotEmpty) {
         return trimmed;
       }
-    } catch (_) {}
+    } catch (e, st) {
+      swallowNonFatal('resolveCreatorUidFromUsername', e, st);
+    }
   }
   return null;
 }
@@ -170,9 +163,8 @@ Future<HomeVideo> _buildHomeVideoFromDoc(
           bio: profile.bio ?? creator.bio,
           avatarURL: profileAvatar ?? creator.avatarURL,
           onlineStatus: profile.onlineStatus,
-          hashtags: profile.hashtags.isNotEmpty
-              ? profile.hashtags
-              : creator.hashtags,
+          hashtags:
+              profile.hashtags.isNotEmpty ? profile.hashtags : creator.hashtags,
           followerCount: profile.followerCount,
           followingCount: profile.followingCount,
           postCount: profile.postCount,
@@ -184,11 +176,13 @@ Future<HomeVideo> _buildHomeVideoFromDoc(
       }
     }
   }
+  final String? readyPlaybackUrl = resolveReadyPlaybackUrl(data);
   return HomeVideo(
     id: videoId,
     creator: creator,
-    videoURL: resolveVideoUrl(data),
-    thumbnailURL: data['thumbnailUrl'] as String? ?? data['thumbnailURL'] as String?,
+    videoURL: readyPlaybackUrl ?? '',
+    thumbnailURL:
+        data['thumbnailUrl'] as String? ?? data['thumbnailURL'] as String?,
     likes: (data['likeCount'] as num?)?.toInt() ??
         (data['likes'] as num?)?.toInt() ??
         0,
@@ -198,14 +192,13 @@ Future<HomeVideo> _buildHomeVideoFromDoc(
     views: (data['viewCount'] as num?)?.toInt() ??
         (data['views'] as num?)?.toInt() ??
         0,
-    caption: data['caption'] as String? ??
-        data['title'] as String? ??
-        data['description'] as String? ??
-        '',
+    caption: resolveVideoCaptionFromFirestoreData(data),
+    overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
     categoryId: data['category'] as String? ??
         data['categoryId'] as String? ??
         'general',
-    createdAt: data['timestamp'] as Timestamp? ??
-        data['createdAt'] as Timestamp?,
+    createdAt:
+        data['timestamp'] as Timestamp? ?? data['createdAt'] as Timestamp?,
+    status: data['status'] as String? ?? 'processing',
   );
 }

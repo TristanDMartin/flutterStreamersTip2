@@ -5,7 +5,7 @@ import 'dart:async';
 import '../models/user_model.dart';
 
 /// RelationshipService - Complete implementation with real-time data synchronization
-/// 
+///
 /// This service provides comprehensive relationship management including:
 /// - Real-time data synchronization with Firebase listeners
 /// - Follow/unfollow algorithms with proper error handling
@@ -29,14 +29,14 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   // ======== FIREBASE SETUP ========
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final fa.FirebaseAuth _auth = fa.FirebaseAuth.instance;
-  
+
   // Real-time listeners (matching SwiftUI ListenerRegistration)
   StreamSubscription<QuerySnapshot>? _followingListener;
   StreamSubscription<QuerySnapshot>? _followersListener;
-  
+
   // Cancellables for cleanup
   final Set<StreamSubscription> _cancellables = <StreamSubscription>{};
-  
+
   String? _currentUserId;
   static const String _relationshipsCollection = 'relationships';
   static const String _usersCollection = 'users';
@@ -50,7 +50,8 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   /// Manually refresh current user ID (useful for debugging timing issues)
   void refreshCurrentUserId() {
     final newUserId = _auth.currentUser?.uid;
-    debugPrint('🔄 RelationshipServiceAdvanced: Refreshing currentUserId from $_currentUserId to $newUserId');
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: Refreshing currentUserId from $_currentUserId to $newUserId');
     if (newUserId != _currentUserId) {
       _currentUserId = newUserId;
       if (_currentUserId != null) {
@@ -68,7 +69,8 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
       // Try to refresh one more time
       refreshCurrentUserId();
       if (_currentUserId == null) {
-        debugPrint('❌ RelationshipServiceAdvanced: Still no user ID after refresh');
+        debugPrint(
+            '❌ RelationshipServiceAdvanced: Still no user ID after refresh');
         return false;
       }
     }
@@ -77,27 +79,33 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
 
   void _initializeService() {
     _currentUserId = _auth.currentUser?.uid;
-    debugPrint('🔄 RelationshipServiceAdvanced: Initializing with currentUserId: $_currentUserId');
-    
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: Initializing with currentUserId: $_currentUserId');
+
     // Listen to auth state changes
     _auth.authStateChanges().listen((user) {
-      debugPrint('🔄 RelationshipServiceAdvanced: Auth state changed - user: ${user?.uid}');
+      debugPrint(
+          '🔄 RelationshipServiceAdvanced: Auth state changed - user: ${user?.uid}');
       if (user != null && user.uid != _currentUserId) {
         _currentUserId = user.uid;
-        debugPrint('🔄 RelationshipServiceAdvanced: Setting up listeners for user: $_currentUserId');
+        debugPrint(
+            '🔄 RelationshipServiceAdvanced: Setting up listeners for user: $_currentUserId');
         _setupRealTimeListeners();
       } else if (user == null) {
         _currentUserId = null;
-        debugPrint('🔄 RelationshipServiceAdvanced: User signed out, cleaning up listeners');
+        debugPrint(
+            '🔄 RelationshipServiceAdvanced: User signed out, cleaning up listeners');
         _cleanupListeners();
       }
     });
-    
+
     if (_currentUserId != null) {
-      debugPrint('🔄 RelationshipServiceAdvanced: User already authenticated, setting up listeners');
+      debugPrint(
+          '🔄 RelationshipServiceAdvanced: User already authenticated, setting up listeners');
       _setupRealTimeListeners();
     } else {
-      debugPrint('🔄 RelationshipServiceAdvanced: No authenticated user, waiting for auth state change');
+      debugPrint(
+          '🔄 RelationshipServiceAdvanced: No authenticated user, waiting for auth state change');
     }
   }
 
@@ -105,9 +113,9 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   /// Setup real-time listeners matching SwiftUI implementation
   void _setupRealTimeListeners() {
     if (_currentUserId == null) return;
-    
+
     _cleanupListeners(); // Clean up existing listeners
-    
+
     // Following relationships listener
     _followingListener = _db
         .collection(_relationshipsCollection)
@@ -120,7 +128,7 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
     if (_followingListener != null) {
       _cancellables.add(_followingListener!);
     }
-    
+
     // Followers relationships listener
     _followersListener = _db
         .collection(_relationshipsCollection)
@@ -153,14 +161,14 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
           .map((doc) => doc.data() as Map<String, dynamic>)
           .map((data) => data['followingId'] as String)
           .toList();
-      
+
       if (userIds.isEmpty) {
         _following = [];
         _updateConnections();
         notifyListeners();
         return;
       }
-      
+
       final users = await _fetchUsers(userIds);
       _following = users;
       _updateConnections();
@@ -177,14 +185,14 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
           .map((doc) => doc.data() as Map<String, dynamic>)
           .map((data) => data['followerId'] as String)
           .toList();
-      
+
       if (userIds.isEmpty) {
         _followers = [];
         _updateConnections();
         notifyListeners();
         return;
       }
-      
+
       final users = await _fetchUsers(userIds);
       _followers = users;
       _updateConnections();
@@ -200,7 +208,7 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
     final followingIds = _following.map((user) => user.id).toSet();
     final followerIds = _followers.map((user) => user.id).toSet();
     final mutualIds = followingIds.intersection(followerIds);
-    
+
     final newConnections = <User>[];
     for (final userId in mutualIds) {
       // Prefer the user from the following list since it's more complete
@@ -217,7 +225,7 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
       );
       newConnections.add(user);
     }
-    
+
     _connections = newConnections;
   }
 
@@ -225,22 +233,22 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   /// Fetch users by IDs with batching for performance
   Future<List<User>> _fetchUsers(List<String> userIds) async {
     if (userIds.isEmpty) return [];
-    
+
     const int batchSize = 10;
     final List<User> result = [];
-    
+
     for (int i = 0; i < userIds.length; i += batchSize) {
       final batch = userIds.sublist(
         i,
         (i + batchSize).clamp(0, userIds.length),
       );
-      
+
       try {
         final query = await _db
             .collection(_usersCollection)
             .where(FieldPath.documentId, whereIn: batch)
             .get();
-        
+
         for (final doc in query.docs) {
           final user = User.fromMap({
             'id': doc.id,
@@ -252,36 +260,38 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
         debugPrint('❌ Error fetching users batch: $e');
       }
     }
-    
+
     return result;
   }
 
   // ======== FOLLOW/UNFOLLOW ALGORITHMS ========
   /// Follow user algorithm matching SwiftUI implementation
   Future<void> followUser(User user) async {
-    debugPrint('🔄 RelationshipServiceAdvanced: followUser called with currentUserId: $_currentUserId');
-    debugPrint('🔄 RelationshipServiceAdvanced: Stack trace: ${StackTrace.current}');
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: followUser called with currentUserId: $_currentUserId');
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: Stack trace: ${StackTrace.current}');
     if (!_validateCurrentUser()) {
       debugPrint('❌ No current user for follow operation');
       return;
     }
-    
+
     // Prevent self-following
     if (_currentUserId == user.id) {
       debugPrint('❌ Cannot follow yourself');
       return;
     }
-    
+
     try {
       _setLoading(true);
-      
+
       // Check if already following
       final query = await _db
           .collection(_relationshipsCollection)
           .where('followerId', isEqualTo: _currentUserId)
           .where('followingId', isEqualTo: user.id)
           .get();
-      
+
       if (query.docs.isEmpty) {
         // Create new relationship
         final relationshipData = {
@@ -289,17 +299,17 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
           'followingId': user.id,
           'timestamp': FieldValue.serverTimestamp(),
         };
-        
+
         await _db.collection(_relationshipsCollection).add(relationshipData);
-        
+
         // Update user's follower count
         await _updateUserFollowerCount(user.id, 1);
-        
+
         // Create follow notification
         if (_currentUserId != null) {
           await _createFollowNotification(_currentUserId!, user.id);
         }
-        
+
         debugPrint('✅ Successfully followed user: ${user.displayName}');
       } else {
         debugPrint('ℹ️ Already following user: ${user.displayName}');
@@ -314,36 +324,38 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
 
   /// Unfollow user algorithm matching SwiftUI implementation
   Future<void> unfollowUser(User user) async {
-    debugPrint('🔄 RelationshipServiceAdvanced: unfollowUser called with currentUserId: $_currentUserId');
-    debugPrint('🔄 RelationshipServiceAdvanced: Stack trace: ${StackTrace.current}');
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: unfollowUser called with currentUserId: $_currentUserId');
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: Stack trace: ${StackTrace.current}');
     if (!_validateCurrentUser()) {
       debugPrint('❌ No current user for unfollow operation');
       return;
     }
-    
+
     try {
       _setLoading(true);
-      
+
       // Find the relationship document
       final query = await _db
           .collection(_relationshipsCollection)
           .where('followerId', isEqualTo: _currentUserId)
           .where('followingId', isEqualTo: user.id)
           .get();
-      
+
       // Delete the relationship document
       for (final document in query.docs) {
         await document.reference.delete();
       }
-      
+
       // Update user's follower count
       await _updateUserFollowerCount(user.id, -1);
-      
+
       // Remove follow notification if it exists
       if (_currentUserId != null) {
         await _removeFollowNotification(_currentUserId!, user.id);
       }
-      
+
       debugPrint('✅ Successfully unfollowed user: ${user.displayName}');
     } catch (e) {
       debugPrint('❌ Error unfollowing user: $e');
@@ -355,34 +367,36 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
 
   /// Remove follower algorithm
   Future<void> removeFollower(User user) async {
-    debugPrint('🔄 RelationshipServiceAdvanced: removeFollower called with currentUserId: $_currentUserId');
-    debugPrint('🔄 RelationshipServiceAdvanced: Stack trace: ${StackTrace.current}');
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: removeFollower called with currentUserId: $_currentUserId');
+    debugPrint(
+        '🔄 RelationshipServiceAdvanced: Stack trace: ${StackTrace.current}');
     if (!_validateCurrentUser()) {
       debugPrint('❌ No current user for remove follower operation');
       return;
     }
-    
+
     try {
       _setLoading(true);
-      
+
       // Find the relationship document (reverse direction)
       final query = await _db
           .collection(_relationshipsCollection)
           .where('followerId', isEqualTo: user.id)
           .where('followingId', isEqualTo: _currentUserId)
           .get();
-      
+
       // Delete the relationship document
       for (final document in query.docs) {
         await document.reference.delete();
       }
-      
+
       // Update follower count
       if (_currentUserId != null) {
         await _updateUserFollowerCount(_currentUserId!, -1);
       }
       await _updateUserFollowingCount(user.id, -1);
-      
+
       debugPrint('✅ Successfully removed follower: ${user.displayName}');
     } catch (e) {
       debugPrint('❌ Error removing follower: $e');
@@ -416,19 +430,22 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   }
 
   /// Create follow notification
-  Future<void> _createFollowNotification(String followerId, String followingId) async {
+  Future<void> _createFollowNotification(
+      String followerId, String followingId) async {
     try {
       // Get follower info
-      final followerDoc = await _db.collection(_usersCollection).doc(followerId).get();
+      final followerDoc =
+          await _db.collection(_usersCollection).doc(followerId).get();
       final followerData = followerDoc.data();
-      
+
       if (followerData != null) {
         await _db.collection(_notificationsCollection).add({
           'userId': followingId,
           'type': 'follow',
           'fromUserId': followerId,
           'fromUserName': followerData['displayName'] ?? 'Someone',
-          'message': '${followerData['displayName'] ?? 'Someone'} started following you',
+          'message':
+              '${followerData['displayName'] ?? 'Someone'} started following you',
           'timestamp': FieldValue.serverTimestamp(),
           'read': false,
         });
@@ -440,7 +457,8 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   }
 
   /// Remove follow notification
-  Future<void> _removeFollowNotification(String followerId, String followingId) async {
+  Future<void> _removeFollowNotification(
+      String followerId, String followingId) async {
     try {
       final notificationQuery = await _db
           .collection(_notificationsCollection)
@@ -448,7 +466,7 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
           .where('type', isEqualTo: 'follow')
           .where('fromUserId', isEqualTo: followerId)
           .get();
-      
+
       for (final doc in notificationQuery.docs) {
         await doc.reference.delete();
       }
@@ -468,13 +486,17 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   /// Get non-mutual followers only (excluding connections)
   List<User> get nonMutualFollowers {
     final connectionIds = _connections.map((e) => e.id).toSet();
-    return _followers.where((user) => !connectionIds.contains(user.id)).toList();
+    return _followers
+        .where((user) => !connectionIds.contains(user.id))
+        .toList();
   }
 
   /// Get non-mutual following only (excluding connections)
   List<User> get nonMutualFollowing {
     final connectionIds = _connections.map((e) => e.id).toSet();
-    return _following.where((user) => !connectionIds.contains(user.id)).toList();
+    return _following
+        .where((user) => !connectionIds.contains(user.id))
+        .toList();
   }
 
   // ======== CLEANUP ========

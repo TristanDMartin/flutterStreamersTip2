@@ -14,59 +14,69 @@ final menuRoutes = [
     path: '/menu',
     builder: (context, state) => const MenuView(),
   ),
-  
+
   // Settings & Privacy
   GoRoute(
     path: '/settings',
     builder: (context, state) => const SettingsView(),
   ),
-  
+
   // Settings subsections
   GoRoute(
     path: '/settings/account',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Manage Account'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Manage Account'),
   ),
   GoRoute(
     path: '/settings/privacy',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Privacy Settings'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Privacy Settings'),
   ),
   GoRoute(
     path: '/settings/blocked',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Blocked Accounts'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Blocked Accounts'),
   ),
   GoRoute(
     path: '/settings/mentions',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Mentions & Tags'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Mentions & Tags'),
   ),
   GoRoute(
     path: '/settings/notifications',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Notifications'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Notifications'),
   ),
   GoRoute(
     path: '/settings/preferences',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Content Preferences'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Content Preferences'),
   ),
   GoRoute(
     path: '/settings/report',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Report a Problem'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Report a Problem'),
   ),
   GoRoute(
     path: '/settings/safety',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Safety Center'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Safety Center'),
   ),
   GoRoute(
     path: '/settings/guidelines',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Community Guidelines'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Community Guidelines'),
   ),
   GoRoute(
     path: '/settings/legal',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Terms & Privacy Policy'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Terms & Privacy Policy'),
   ),
   GoRoute(
     path: '/settings/about',
     builder: (context, state) => const PlaceholderSettingsPage(title: 'About'),
   ),
-  
+
   // Account management - TikTok-style instant switching
   GoRoute(
     path: '/account/switch',
@@ -76,26 +86,29 @@ final menuRoutes = [
     path: '/account/add',
     builder: (context, state) => const TikTokAccountSwitcherModal(),
   ),
-  
+
   // Existing pages (keep your current routes)
   GoRoute(
     path: '/bookmarks',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Bookmarks'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Bookmarks'),
   ),
   GoRoute(
     path: '/scheduled',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Scheduled Content'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Scheduled Content'),
   ),
   GoRoute(
     path: '/insights',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Insights'),
+    builder: (context, state) =>
+        const PlaceholderSettingsPage(title: 'Insights'),
   ),
 ];
 
 // Placeholder widget for existing pages
 class PlaceholderSettingsPage extends StatelessWidget {
   final String title;
-  
+
   const PlaceholderSettingsPage({
     super.key,
     required this.title,

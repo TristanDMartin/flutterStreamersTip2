@@ -40,11 +40,9 @@ class StreamerCardRelationshipState {
   }) {
     return StreamerCardRelationshipState(
       isFollowing: isFollowing ?? this.isFollowing,
-      isFollowedByStreamer:
-          isFollowedByStreamer ?? this.isFollowedByStreamer,
+      isFollowedByStreamer: isFollowedByStreamer ?? this.isFollowedByStreamer,
       isConnected: isConnected ?? this.isConnected,
-      isFollowingOperation:
-          isFollowingOperation ?? this.isFollowingOperation,
+      isFollowingOperation: isFollowingOperation ?? this.isFollowingOperation,
       isUnfollowingOperation:
           isUnfollowingOperation ?? this.isUnfollowingOperation,
     );
@@ -61,8 +59,8 @@ class StreamerCardRelationshipController extends ChangeNotifier {
   final FollowsService _followsService;
   final FirebaseFirestore _firestore;
   final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
-      _followGraphSubscriptions = <StreamSubscription<
-          QuerySnapshot<Map<String, dynamic>>>>[];
+      _followGraphSubscriptions =
+      <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
 
   Timer? _relationshipRefreshDebounce;
   String? _currentUserId;
@@ -204,7 +202,8 @@ class StreamerCardRelationshipController extends ChangeNotifier {
     }
 
     final String uid = _currentUserId!;
-    final List<Query<Map<String, dynamic>>> queries = <Query<Map<String, dynamic>>>[
+    final List<Query<Map<String, dynamic>>> queries =
+        <Query<Map<String, dynamic>>>[
       _firestore.collection('follows').where('followerUserId', isEqualTo: uid),
       _firestore.collection('follows').where('targetUserId', isEqualTo: uid),
       _firestore.collection('follows').where('followerId', isEqualTo: uid),
@@ -223,9 +222,9 @@ class StreamerCardRelationshipController extends ChangeNotifier {
     for (final Query<Map<String, dynamic>> query in queries) {
       _followGraphSubscriptions.add(
         query.snapshots().listen(
-          (_) => scheduleRefresh(),
-          onError: (_) {},
-        ),
+              (_) => scheduleRefresh(),
+              onError: (_) {},
+            ),
       );
     }
   }

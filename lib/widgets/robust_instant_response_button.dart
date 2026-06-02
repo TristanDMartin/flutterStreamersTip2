@@ -40,10 +40,12 @@ class RobustInstantResponseButton extends StatefulWidget {
   });
 
   @override
-  State<RobustInstantResponseButton> createState() => _RobustInstantResponseButtonState();
+  State<RobustInstantResponseButton> createState() =>
+      _RobustInstantResponseButtonState();
 }
 
-class _RobustInstantResponseButtonState extends State<RobustInstantResponseButton> {
+class _RobustInstantResponseButtonState
+    extends State<RobustInstantResponseButton> {
   Timer? _debounceTimer;
   Timer? _minimumSpinnerTimer;
   bool _isMinimumSpinnerActive = false;
@@ -59,8 +61,8 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
 
   /// Generate a unique request ID
   String _generateRequestId() {
-    return DateTime.now().millisecondsSinceEpoch.toString() + 
-           (1000 + (DateTime.now().microsecond % 9000)).toString();
+    return DateTime.now().millisecondsSinceEpoch.toString() +
+        (1000 + (DateTime.now().microsecond % 9000)).toString();
   }
 
   /// Start minimum spinner timer
@@ -77,41 +79,44 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
   }
 
   /// Check if we should show loading state
-  bool get shouldShowLoading => widget.isLoading || _isMinimumSpinnerActive || _isRequestInFlight;
+  bool get shouldShowLoading =>
+      widget.isLoading || _isMinimumSpinnerActive || _isRequestInFlight;
 
   /// Debounced button press with single-flight protection
   void _debouncedOnPressed() {
-    if (!widget.enabled || shouldShowLoading || widget.onPressed == null) return;
+    if (!widget.enabled || shouldShowLoading || widget.onPressed == null) {
+      return;
+    }
 
     // Cancel any existing debounce timer
     _debounceTimer?.cancel();
-    
+
     // Generate new request ID
     final requestId = _generateRequestId();
-    
+
     // Start debounce timer
     _debounceTimer = Timer(widget.debounceDelay, () {
       // Check if this is still the latest request
       if (_currentRequestId != null && _currentRequestId != requestId) {
-    // print("🚫 Ignoring stale button press: $requestId (current: $_currentRequestId)");
+        // appLog("🚫 Ignoring stale button press: $requestId (current: $_currentRequestId)");
         return;
       }
-      
+
       _currentRequestId = requestId;
       _isRequestInFlight = true;
       _startMinimumSpinner();
-      
+
       if (mounted) {
         setState(() {});
       }
-      
+
       // Provide haptic feedback
       HapticFeedback.lightImpact();
-      
+
       try {
         // Execute the callback
         widget.onPressed!();
-        
+
         // Clear request state after a short delay
         Timer(const Duration(milliseconds: 50), () {
           if (mounted && _currentRequestId == requestId) {
@@ -135,12 +140,11 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
   @override
   Widget build(BuildContext context) {
     final isDisabled = !widget.enabled || shouldShowLoading;
-    final backgroundColor = isDisabled 
-        ? Colors.grey.withValues(alpha:0.3)
+    final backgroundColor = isDisabled
+        ? Colors.grey.withValues(alpha: 0.3)
         : (widget.backgroundColor ?? Theme.of(context).primaryColor);
-    final textColor = isDisabled 
-        ? Colors.grey[600] 
-        : (widget.textColor ?? Colors.white);
+    final textColor =
+        isDisabled ? Colors.grey[600] : (widget.textColor ?? Colors.white);
 
     return SizedBox(
       height: widget.height ?? 50,
@@ -154,11 +158,14 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
                   borderRadius: BorderRadius.circular(widget.borderRadius),
                 ),
                 child: ElevatedButton(
-                  onPressed: null, // Disable built-in onPressed since we're using GestureDetector
+                  onPressed:
+                      null, // Disable built-in onPressed since we're using GestureDetector
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     foregroundColor: textColor,
-                    padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: widget.padding ??
+                        const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(widget.borderRadius),
                     ),
@@ -174,7 +181,8 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
               style: ElevatedButton.styleFrom(
                 backgroundColor: backgroundColor,
                 foregroundColor: textColor,
-                padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: widget.padding ??
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(widget.borderRadius),
                 ),
@@ -265,7 +273,10 @@ class RobustAuthButton extends StatelessWidget {
       minimumSpinnerTime: const Duration(milliseconds: 100),
       borderRadius: 24, // Match ProfileView pill shape
       gradient: const LinearGradient(
-        colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView gradient
+        colors: [
+          Color(0xFF955CFF),
+          Color(0xFF3D99F7)
+        ], // Match ProfileView gradient
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
       ),

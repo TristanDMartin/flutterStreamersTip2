@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:async';
 
 /// Robust Image Service
-/// 
+///
 /// Handles image loading with proper error handling and fallbacks
 /// to prevent app crashes from network issues
 class RobustImageService {
@@ -14,7 +14,7 @@ class RobustImageService {
   // Reliable placeholder URLs (unused but kept for future reference)
   // static const String _avatarPlaceholder = 'https://via.placeholder.com/100x100/cccccc/000000?text=Avatar';
   // static const String _thumbnailPlaceholder = 'https://via.placeholder.com/300x200/cccccc/000000?text=Video';
-  
+
   // Network timeout settings
   static const Duration _networkTimeout = Duration(seconds: 10);
   static const Duration _retryDelay = Duration(seconds: 2);
@@ -43,7 +43,7 @@ class RobustImageService {
 
     // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
     return _buildPlaceholder(width, height, isAvatar, isThumbnail);
-    
+
     // DISABLED: Image loading causes buffer overflow
     // return Image.network(
     //   imageUrl,
@@ -104,20 +104,22 @@ class RobustImageService {
       final uri = Uri.parse(imageUrl);
       final client = HttpClient();
       client.connectionTimeout = _networkTimeout;
-      
+
       final request = await client.getUrl(uri);
       final response = await request.close();
-      
+
       client.close();
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('⚠️ RobustImageService: Connectivity test failed for $imageUrl: $e');
+      debugPrint(
+          '⚠️ RobustImageService: Connectivity test failed for $imageUrl: $e');
       return false;
     }
   }
 
   /// Build placeholder widget
-  Widget _buildPlaceholder(double width, double height, bool isAvatar, bool isThumbnail) {
+  Widget _buildPlaceholder(
+      double width, double height, bool isAvatar, bool isThumbnail) {
     if (isAvatar) {
       return Container(
         width: width,
@@ -164,13 +166,14 @@ class RobustImageService {
   // Removed unused _buildLoadingPlaceholder method
 
   /// Preload images with retry logic
-  Future<void> preloadImages(List<String> imageUrls, {int maxRetries = 2}) async {
+  Future<void> preloadImages(List<String> imageUrls,
+      {int maxRetries = 2}) async {
     for (final url in imageUrls) {
       if (url.isEmpty) continue;
-      
+
       bool success = false;
       int retries = 0;
-      
+
       while (!success && retries < maxRetries) {
         try {
           // Test connectivity first
@@ -189,7 +192,8 @@ class RobustImageService {
             debugPrint('⚠️ RobustImageService: Retry $retries for $url: $e');
             await Future.delayed(_retryDelay);
           } else {
-            debugPrint('❌ RobustImageService: Failed to preload $url after $maxRetries retries: $e');
+            debugPrint(
+                '❌ RobustImageService: Failed to preload $url after $maxRetries retries: $e');
           }
         }
       }
@@ -197,7 +201,11 @@ class RobustImageService {
   }
 
   /// Get reliable placeholder URL
-  String getPlaceholderUrl({bool isAvatar = false, bool isThumbnail = false, int width = 100, int height = 100}) {
+  String getPlaceholderUrl(
+      {bool isAvatar = false,
+      bool isThumbnail = false,
+      int width = 100,
+      int height = 100}) {
     if (isAvatar) {
       return 'https://via.placeholder.com/$width x$height/cccccc/000000?text=Avatar';
     } else if (isThumbnail) {

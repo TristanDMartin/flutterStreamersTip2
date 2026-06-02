@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:dio/dio.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'video_moderation_service.dart';
@@ -9,9 +9,17 @@ import 'video_processing_service.dart';
 import 'tag_mention_service.dart';
 import 'mux_upload_service.dart';
 import 'cross_post_service.dart';
+import '../features/gamification/daily_activity_service.dart';
 import '../features/gamification/emit_gamification_event.dart';
 import '../features/gamification/gamification_event_types.dart';
+import '../features/publish/publish_firestore_fields.dart';
+import '../core/firebase_app_check_startup.dart';
 import '../utils/category_schema.dart';
+import '../utils/firestore_strip_nulls.dart';
+import '../utils/upload_error_classifier.dart';
+import '../utils/video_caption_resolver.dart';
+import '../utils/video_caption_firestore.dart';
+import 'video_publish_finalize_service.dart';
 
 class VideoUploadResult {
   final bool success;
@@ -94,11 +102,16 @@ class VideoUploadService {
       final durationSeconds = duration.inSeconds.toDouble();
       debugPrint('⏱️ Video duration: $durationSeconds seconds');
 
+      final String resolvedCaption = resolveUploadCaption(
+        caption: caption,
+        additionalMetadata: additionalMetadata,
+      );
+
       // 1. Pre-upload moderation check
       debugPrint('🔍 Starting video moderation...');
       final moderationResult = await _moderationService.moderateVideo(
         videoFile: videoFile,
-        caption: caption,
+        caption: resolvedCaption,
         hashtags: hashtags,
         metadata: additionalMetadata,
       );
@@ -121,6 +134,20 @@ class VideoUploadService {
       }
 
       debugPrint('✅ Video passed moderation checks');
+
+      final AppCheckReadiness appCheck =
+          await ensureAppCheckReadyForFirestore();
+      if (!appCheck.isReady) {
+        final UploadFailureClassification failure =
+            UploadFailureClassification.classify(appCheck.detail);
+        debugPrint(
+          '❌ VideoUploadService [App Check] ${failure.userMessage}',
+        );
+        return VideoUploadResult(
+          success: false,
+          error: failure.userMessage,
+        );
+      }
 
       // 2. Get current user
       final user = _auth.currentUser;
@@ -155,24 +182,46 @@ class VideoUploadService {
         );
       }
 
-      // 3. Generate unique video ID
-      activeVideoId = activeVideoId?.trim().isNotEmpty == true
+      final String? clientHintId = activeVideoId?.trim().isNotEmpty == true
           ? activeVideoId!.trim()
-          : _generateVideoId();
+          : null;
       final userId = user.uid;
-      debugPrint('🎬 Using video ID: $activeVideoId');
+      final rawCategory = additionalMetadata?['category'] as String?;
+      final category = (rawCategory != null && rawCategory.isNotEmpty)
+          ? rawCategory
+          : _detectCategoryFromContent(resolvedCaption, hashtags);
 
-      // 4. Upload video via Mux (Worker creates doc, returns upload URL)
+      // 3–4. Worker allocates canonical videoId + pending Firestore doc + Mux URL
       String? videoUrl;
       String? thumbnailUrl;
       String? muxUploadId;
       try {
         final muxResult = await MuxUploadService.instance.createDirectUpload(
-          videoId: activeVideoId,
+          videoId: clientHintId,
           userId: userId,
           idToken: idToken,
+          caption: resolvedCaption,
+          hashtags: hashtags,
+          privacy: privacy,
+          allowComments: allowComments,
+          category: category,
           isDraft: isDraft,
         );
+        final String canonicalVideoId = muxResult.videoId.trim();
+        if (canonicalVideoId.isEmpty) {
+          return const VideoUploadResult(
+            success: false,
+            error: 'Upload service did not return a video ID',
+          );
+        }
+        activeVideoId = canonicalVideoId;
+        if (clientHintId != null && clientHintId != canonicalVideoId) {
+          debugPrint(
+            '🎬 VideoUploadService: Worker replaced client id '
+            '$clientHintId → $canonicalVideoId',
+          );
+        }
+        debugPrint('🎬 Using canonical video ID: $canonicalVideoId');
         muxUploadId = muxResult.uploadId.isNotEmpty ? muxResult.uploadId : null;
         debugPrint('📤 Uploading video to Mux...');
         await MuxUploadService.instance.uploadToMux(
@@ -183,29 +232,41 @@ class VideoUploadService {
         videoUrl = null;
         thumbnailUrl = _muxPlaceholderThumbnailUrl;
         debugPrint('✅ Video uploaded to Mux (webhook will set playback URL)');
-      } catch (e) {
-        debugPrint('⚠️ Mux upload failed: $e');
-        String errorDetail = e.toString();
-        if (e is DioException) {
-          final code = e.response?.statusCode;
-          final body = e.response?.data;
-          if (body is Map && body['error'] != null) {
-            final msg = body['error'] as String;
-            debugPrint('🔐 Worker $code: $msg');
-            errorDetail = msg;
-          }
+      } on WorkerMuxUploadException catch (e) {
+        debugPrint('⚠️ Mux Worker upload failed: $e');
+        final UploadFailureClassification failure =
+            UploadFailureClassification.classify(e);
+        if (activeVideoId != null && activeVideoId.isNotEmpty) {
+          await _markVideoUploadFailed(
+            videoId: activeVideoId,
+            userId: userId,
+            errorMessage: failure.userMessage,
+          );
         }
-        await _markVideoUploadFailed(
-          videoId: activeVideoId,
-          userId: userId,
-          errorMessage: errorDetail,
-        );
         return VideoUploadResult(
           success: false,
-          error: 'Upload failed: $errorDetail',
-          metadata: {'videoId': activeVideoId},
+          error: failure.userMessage,
+          metadata: activeVideoId == null ? null : {'videoId': activeVideoId},
+        );
+      } catch (e) {
+        debugPrint('⚠️ Mux upload failed: $e');
+        final UploadFailureClassification failure =
+            UploadFailureClassification.classify(e);
+        if (activeVideoId != null && activeVideoId.isNotEmpty) {
+          await _markVideoUploadFailed(
+            videoId: activeVideoId,
+            userId: userId,
+            errorMessage: failure.userMessage,
+          );
+        }
+        return VideoUploadResult(
+          success: false,
+          error: failure.userMessage,
+          metadata: activeVideoId == null ? null : {'videoId': activeVideoId},
         );
       }
+
+      final String resolvedVideoId = activeVideoId;
 
       final canonicalThumbnailUrl = _withSizingParams(thumbnailUrl, width: 720);
       final thumbnails = {
@@ -220,11 +281,6 @@ class VideoUploadService {
       // 6. Create video document in Firestore
       debugPrint('💾 Saving video metadata to Firestore...');
 
-      final rawCategory = additionalMetadata?['category'] as String?;
-      final category = (rawCategory != null && rawCategory.isNotEmpty)
-          ? rawCategory
-          : _detectCategoryFromContent(caption, hashtags);
-
       debugPrint('🔥 VideoUploadService: Category extracted: $category');
       debugPrint(
           '🔥 VideoUploadService: Additional metadata: $additionalMetadata');
@@ -233,7 +289,7 @@ class VideoUploadService {
       debugPrint('🔥 VideoUploadService: UIDs match: ${userId == user.uid}');
 
       final updateData = _buildAllowedVideoMetadataUpdate(
-        caption: caption,
+        caption: resolvedCaption,
         hashtags: hashtags,
         privacy: privacy,
         allowComments: allowComments,
@@ -254,29 +310,59 @@ class VideoUploadService {
       try {
         debugPrint(
             '🔥 VideoUploadService: Attempting to save video document to Firestore...');
-        debugPrint('🔥 VideoUploadService: Video ID: $activeVideoId');
+        debugPrint('🔥 VideoUploadService: Video ID: $resolvedVideoId');
         debugPrint(
             '🔥 VideoUploadService: Update keys: ${updateData.keys.toList()}');
 
         await _upsertVideoDocument(
-          videoId: activeVideoId,
+          videoId: resolvedVideoId,
+          userId: userId,
           updateData: updateData,
+        );
+        await persistVideoCaptionIfMissing(
+          firestore: _firestore,
+          videoId: resolvedVideoId,
+          userId: userId,
+          caption: resolvedCaption,
+        );
+        scheduleVideoCaptionBackfill(
+          firestore: _firestore,
+          videoId: resolvedVideoId,
+          userId: userId,
+          caption: resolvedCaption,
         );
         debugPrint(
             '✅ VideoUploadService: Video document saved to Firestore successfully');
+        await _syncUserVideoMirror(
+          videoId: resolvedVideoId,
+          userId: userId,
+          privacy: privacy,
+          category: category,
+        );
+        unawaited(
+          VideoPublishFinalizeService.instance.waitUntilDiscoverable(
+            videoId: resolvedVideoId,
+            userId: userId,
+            privacy: privacy,
+            category: category,
+          ),
+        );
       } catch (e) {
-        debugPrint('❌ VideoUploadService: Failed to save video document: $e');
-        debugPrint('❌ VideoUploadService: Error type: ${e.runtimeType}');
-        debugPrint('❌ VideoUploadService: Error details: ${e.toString()}');
+        final UploadFailureClassification failure =
+            UploadFailureClassification.classify(e);
+        debugPrint(
+          '❌ VideoUploadService [${failure.logLabel}] ${failure.userMessage}',
+        );
+        debugPrint('❌ VideoUploadService: Raw error: $e');
         await _markVideoUploadFailed(
-          videoId: activeVideoId,
+          videoId: resolvedVideoId,
           userId: userId,
           errorMessage: 'Failed to save video metadata: ${e.toString()}',
         );
         return VideoUploadResult(
           success: false,
-          error: 'Failed to save video metadata: ${e.toString()}',
-          metadata: {'videoId': activeVideoId},
+          error: failure.userMessage,
+          metadata: {'videoId': resolvedVideoId},
         );
       }
 
@@ -288,9 +374,9 @@ class VideoUploadService {
       try {
         debugPrint('🏷️ Processing tags and mentions from caption...');
         await _tagMentionService.processVideoTagsAndMentions(
-          videoId: activeVideoId,
+          videoId: resolvedVideoId,
           videoOwnerId: userId,
-          caption: caption,
+          caption: resolvedCaption,
           postThumbnailUrl: canonicalThumbnailUrl,
         );
         debugPrint('✅ Tags and mentions processed');
@@ -299,18 +385,22 @@ class VideoUploadService {
         // Continue anyway, this is not critical
       }
 
-      debugPrint('🎉 Video uploaded successfully!');
+      debugPrint(
+        '🎉 Video bytes uploaded — waiting for Mux/Firestore finalization',
+      );
       return VideoUploadResult(
         success: true,
         videoUrl: videoUrl,
         thumbnailUrl: canonicalThumbnailUrl,
         metadata: {
-          'videoId': activeVideoId,
+          'videoId': resolvedVideoId,
+          'publishPhase': 'processing',
+          'isVisibleReady': false,
           'moderation_result': {
             'approved': true,
             'confidence': moderationResult.confidence,
             'violations': [],
-          }
+          },
         },
       );
     } catch (e) {
@@ -374,10 +464,10 @@ class VideoUploadService {
         'muxStatus': 'failed',
         'updatedAt': FieldValue.serverTimestamp(),
       };
-      await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .set(failedData, SetOptions(merge: true));
+      await _firestore.collection('videos').doc(videoId).set(
+            stripNullFieldsDeep(failedData),
+            SetOptions(merge: true),
+          );
       await _firestore
           .collection('users')
           .doc(userId)
@@ -396,27 +486,80 @@ class VideoUploadService {
     }
   }
 
+  Future<void> _syncUserVideoMirror({
+    required String videoId,
+    required String userId,
+    required String privacy,
+    required String category,
+  }) async {
+    try {
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('videos')
+          .doc(videoId)
+          .set(<String, dynamic>{
+        'videoId': videoId,
+        'userId': userId,
+        'status': 'processing',
+        'visible': false,
+        'privacy': privacy,
+        'category': category,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('⚠️ VideoUploadService: users/…/videos mirror failed: $e');
+    }
+  }
+
   Future<void> _upsertVideoDocument({
     required String videoId,
+    required String userId,
     required Map<String, dynamic> updateData,
   }) async {
-    final docRef = _firestore.collection('videos').doc(videoId);
-
-    try {
-      await docRef.update(updateData);
-      return;
-    } catch (e) {
-      final isNotFound = e.toString().contains('not-found') ||
-          e.toString().contains('NOT_FOUND');
-      if (!isNotFound) {
-        rethrow;
-      }
-
+    final DocumentReference<Map<String, dynamic>> docRef =
+        _firestore.collection('videos').doc(videoId);
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await docRef.get(
+      const GetOptions(source: Source.server),
+    );
+    final Map<String, dynamic> sanitized = stripNullFieldsDeep(updateData);
+    final Map<String, dynamic> ownerPayload = <String, dynamic>{
+      'userId': userId,
+      'creatorId': userId,
+      'creator_id': userId,
+      ...sanitized,
+    };
+    if (!snapshot.exists || snapshot.data() == null) {
       debugPrint(
-          '⚠️ VideoUploadService: Worker-created video doc not ready yet, retrying with merge set...');
-
-      await docRef.set(updateData, SetOptions(merge: true));
+        '⚠️ VideoUploadService: No videos/$videoId on server — creating owner doc',
+      );
+      await docRef.set(<String, dynamic>{
+        ...ownerPayload,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return;
     }
+    final Map<String, dynamic> existing = snapshot.data()!;
+    final String? storedUserId = existing['userId'] as String?;
+    final String? storedCreatorId = existing['creatorId'] as String?;
+    final String? storedCreatorSnake = existing['creator_id'] as String?;
+    debugPrint(
+      '🔥 VideoUploadService: Server doc owners '
+      'userId=$storedUserId creatorId=$storedCreatorId '
+      'creator_id=$storedCreatorSnake auth=$userId',
+    );
+    if (storedUserId != userId &&
+        storedCreatorId != userId &&
+        storedCreatorSnake != userId) {
+      throw Exception(
+        'Video owner mismatch on videos/$videoId '
+        '(expected $userId)',
+      );
+    }
+    // update() matches firestore.rules isOwnerVideoMetadataUpdateCore tests;
+    // set(merge) can fail if production rules lag behind the repo allowlist.
+    await docRef.update(ownerPayload);
   }
 
   /// Upload to StreamersTip AND cross-post to external platforms concurrently.
@@ -541,13 +684,14 @@ class VideoUploadService {
       'updatedAt': FieldValue.serverTimestamp(),
       'thumbnailUrl': thumbnailUrl,
       'thumbnails': thumbnails,
-      'videoUrl': videoUrl,
       'status': status,
       'visible': false,
       'isReadyForFeed': false,
+      'isDeleted': false,
       'sourcePlatform': 'app', // spec §2 — internal tracking
       'isMux': isMux,
       'muxStatus': muxStatus,
+      if (videoUrl != null && videoUrl.isNotEmpty) 'videoUrl': videoUrl,
       if (muxUploadId != null && muxUploadId.isNotEmpty)
         'muxUploadId': muxUploadId,
       'views': 0,
@@ -579,11 +723,32 @@ class VideoUploadService {
       'fileSize',
     ];
     if (additionalMetadata != null) {
-      for (final k in additionalMetadata.keys) {
-        if (allowedExtras.contains(k)) {
-          data[k] = additionalMetadata[k];
+      for (final String key in additionalMetadata.keys) {
+        if (allowedExtras.contains(key)) {
+          data[key] = additionalMetadata[key];
         }
       }
+      final Map<String, dynamic> metadataMap =
+          Map<String, dynamic>.from(data['metadata'] as Map<String, dynamic>);
+      const List<String> previewMetadataKeys = <String>[
+        'thumbnailTimeSeconds',
+        'isCustomThumbnail',
+        'preview_trim_start_ms',
+        'preview_trim_end_ms',
+        'preview_effective_duration_ms',
+        'preview_crop_mode',
+        'preview_aspect_ratio',
+        'preview_captions_enabled',
+        'preview_manual_caption',
+        PublishFirestoreFields.crossPostSubscriptionTier,
+      ];
+      for (final String key in previewMetadataKeys) {
+        final Object? value = additionalMetadata[key];
+        if (value != null) {
+          metadataMap[key] = value;
+        }
+      }
+      data['metadata'] = metadataMap;
     }
     return data;
   }
@@ -701,11 +866,6 @@ class VideoUploadService {
     } catch (e) {
       debugPrint('Error adding to feeds: $e');
     }
-  }
-
-  /// Generate unique video ID
-  String _generateVideoId() {
-    return '${DateTime.now().millisecondsSinceEpoch}_${(1000 + (9999 - 1000) * (DateTime.now().microsecond / 1000000)).round()}';
   }
 
   /// Detect category from caption and hashtags (website parity).
@@ -846,7 +1006,7 @@ class VideoUploadService {
 
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-      // print('Error getting user videos: $e');
+      // appLog('Error getting user videos: $e');
       return [];
     }
   }
@@ -863,7 +1023,7 @@ class VideoUploadService {
 
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-      // print('Error getting user drafts: $e');
+      // appLog('Error getting user drafts: $e');
       return [];
     }
   }
@@ -927,6 +1087,9 @@ class VideoUploadService {
         GamificationEventTypes.contentPublished,
         entityType: 'video',
         entityId: videoId,
+      );
+      DailyActivityService.instance.maybeEmitDayQualified(
+        source: 'publish',
       );
       return VideoUploadResult(
         success: true,

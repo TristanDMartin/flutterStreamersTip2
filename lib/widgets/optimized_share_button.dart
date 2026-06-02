@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/home_video.dart';
-import '../models/share_payload.dart';
-import '../services/share_service_optimized.dart';
-import 'share_sheet_view.dart';
+import '../services/enhanced_share_service.dart';
+import 'enhanced_share_sheet.dart';
 
 class OptimizedShareButton extends StatefulWidget {
   final HomeVideo video;
@@ -24,27 +25,10 @@ class OptimizedShareButton extends StatefulWidget {
 }
 
 class _OptimizedShareButtonState extends State<OptimizedShareButton> {
-  SharePayload? _cachedPayload;
-
   @override
   void initState() {
     super.initState();
-    // Prefetch share data for instant modal display
-    _prefetchShareData();
-  }
-
-  Future<void> _prefetchShareData() async {
-    try {
-      final payload =
-          await ShareServiceOptimized().fetchSharePayload(widget.video);
-      if (mounted) {
-        setState(() {
-          _cachedPayload = payload;
-        });
-      }
-    } catch (e) {
-      // Silent fail - modal will fetch on demand
-    }
+    unawaited(EnhancedShareService().fetchSharePayload(widget.video));
   }
 
   void _handleShare() {
@@ -58,99 +42,12 @@ class _OptimizedShareButtonState extends State<OptimizedShareButton> {
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
-      builder: (context) => ShareSheetView(
+      builder: (context) => EnhancedShareSheet(
         video: widget.video,
-        payload: _cachedPayload, // Use prefetched data for instant display
-        onDismiss: () {
+        onClose: () {
+          Navigator.of(context).maybePop();
           widget.onShareCompleted?.call();
         },
-        onAction: (action) {
-          // Handle contextual actions
-          _handleShareAction(action);
-        },
-      ),
-    );
-  }
-
-  void _handleShareAction(ShareAction action) {
-    switch (action) {
-      case ShareAction.report:
-        // Show report dialog
-        _showReportDialog();
-        break;
-      case ShareAction.block:
-        // Show block confirmation
-        _showBlockDialog();
-        break;
-      case ShareAction.sendMessage:
-        // Navigate to DM view
-        // TODO: Implement DM navigation
-        break;
-      case ShareAction.notInterested:
-        // Hide similar content
-        break;
-      case ShareAction.favorite:
-        // Add to favorites
-        break;
-    }
-  }
-
-  void _showReportDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A4D),
-        title:
-            const Text('Report Video', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Why are you reporting this video?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Report submitted')),
-              );
-            },
-            child: const Text('Submit', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showBlockDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A4D),
-        title: const Text('Block User', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'Block @${widget.video.creator.username}? You won\'t see their content anymore.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text('@${widget.video.creator.username} blocked')),
-              );
-            },
-            child: const Text('Block', style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
     );
   }

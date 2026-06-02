@@ -44,7 +44,7 @@ class StreamerCardPage extends StatelessWidget {
                 Text(
                   '@${user.username}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha:0.75),
+                    color: Colors.white.withValues(alpha: 0.75),
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -53,7 +53,8 @@ class StreamerCardPage extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _GlassButton(title: 'Follow', onTap: () => _followUser(context)),
+                    _GlassButton(
+                        title: 'Follow', onTap: () => _followUser(context)),
                     const SizedBox(width: 12),
                     _FilledButton(title: 'Share', onTap: () {}),
                   ],
@@ -74,7 +75,7 @@ class StreamerCardPage extends StatelessWidget {
   Future<void> _followUser(BuildContext context) async {
     final uid = fa.FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid == user.id) return;
-    
+
     try {
       // Check if already following
       final existing = await FirebaseFirestore.instance
@@ -82,14 +83,14 @@ class StreamerCardPage extends StatelessWidget {
           .where('followerId', isEqualTo: uid)
           .where('followingId', isEqualTo: user.id)
           .get();
-      
+
       if (existing.docs.isEmpty) {
         await FirebaseFirestore.instance.collection('relationships').add({
           'followerId': uid,
           'followingId': user.id,
           'timestamp': FieldValue.serverTimestamp(),
         });
-        
+
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -156,7 +157,7 @@ class _Avatar extends StatelessWidget {
       height: 112,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.white.withValues(alpha:0.1),
+        color: Colors.white.withValues(alpha: 0.1),
       ),
       child: const Icon(Icons.person, color: Colors.white70, size: 40),
     );
@@ -186,7 +187,8 @@ class _Avatar extends StatelessWidget {
               border: Border.all(color: Colors.white, width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: _getStatusColor(user.onlineStatus).withValues(alpha:0.5),
+                  color:
+                      _getStatusColor(user.onlineStatus).withValues(alpha: 0.5),
                   blurRadius: 6,
                 )
               ],
@@ -228,9 +230,10 @@ class _GlassButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha:0.15),
+          color: Colors.white.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha:0.3), width: 1),
+          border:
+              Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
         ),
         child: Text(
           title,
@@ -289,9 +292,10 @@ class _SegmentedTabsState extends State<_SegmentedTabs> {
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha:0.10),
+            color: Colors.white.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha:0.15), width: 1),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15), width: 1),
           ),
           child: Row(
             children: [
@@ -302,7 +306,12 @@ class _SegmentedTabsState extends State<_SegmentedTabs> {
           ),
         ),
         const SizedBox(height: 16),
-        if (_index == 0) const _EmptyState() else if (_index == 1) const _EmptyState(label: 'No favorites yet.') else const _EmptyState(label: 'No tagged posts.'),
+        if (_index == 0)
+          const _EmptyState()
+        else if (_index == 1)
+          const _EmptyState(label: 'No favorites yet.')
+        else
+          const _EmptyState(label: 'No tagged posts.'),
       ],
     );
   }
@@ -318,15 +327,16 @@ class _SegmentedTabsState extends State<_SegmentedTabs> {
           alignment: Alignment.center,
           decoration: sel
               ? BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha:0.25), width: 1),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.25), width: 1),
                 )
               : null,
           child: Text(
             label,
             style: TextStyle(
-              color: sel ? Colors.white : Colors.white.withValues(alpha:0.7),
+              color: sel ? Colors.white : Colors.white.withValues(alpha: 0.7),
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
@@ -348,13 +358,13 @@ class _EmptyState extends StatelessWidget {
         Icon(
           Icons.video_library_outlined,
           size: 48,
-          color: Colors.white.withValues(alpha:0.5),
+          color: Colors.white.withValues(alpha: 0.5),
         ),
         const SizedBox(height: 16),
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha:0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 16,
           ),
         ),

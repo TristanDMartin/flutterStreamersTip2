@@ -1,17 +1,17 @@
 # Production Readiness Scorecard
 
-**Last updated:** 2026-02-03
+**Last updated:** 2026-06-01
 
 ## On-track summary (at a glance)
 
 | Area | Status | Notes |
 |------|--------|--------|
-| **Feed playback** | 🔴 Not there | Only first video plays; second+ do not. See `TIKTOK_VIDEO_FEED_SPEC.md` and Phase 2.3 / Option B. |
+| **Feed playback** | 🟡 P0 risk | Pixel 6 automated matrix passes; iOS playback **manually verified** on device. Android `BAD_INDEX` telemetry persists. iOS **automated** matrix pending (VM attach). See `PRODUCTION_LAUNCH_CHECKLIST.md`. |
 | **Profile / data alignment** | ✅ Done | Canonical owner (**getOwnerId**); VideoService + RealUserDataService aligned; profile 0→2 mismatch fixed. Optional: backfill **ownerId** in Firestore. |
-| **Home (For You)** | 🟡 Alpha (5/10) | BAD_INDEX / disposal guards; focus/owner consolidated; key strategy stabilized. |
+| **Home (For You)** | 🟡 Beta risk (7-8 warm / 5 cold) | Warm path improved; GPM split into `playback_*` coordinators (~1.5k lines) + player init bootstrap/attach/error modules; unit tests in CI. Remaining: Android `BAD_INDEX` telemetry, device E2E (`RUN_MOBILE_FEED_E2E`), cold-first-install UX. |
 | **Full-screen Player** | 🟢 Beta (7/10) | Shares decoder stack; focus aligned with Home. |
 | **Profile** | 🟢 Beta (7/10) | Stable; canonical owner in place. |
-| **Firestore / rules** | 🟡 In progress | Permission-denied cleanup; rules contract doc pending. |
+| **Firestore / rules** | 🟢 Beta | `tags` read allowed for authed users; contract in `FIRESTORE_CLIENT_RULES_CONTRACT.md`. Client catches permission-denied on tags. |
 
 ---
 
@@ -25,7 +25,7 @@
 
 | Page / Flow | Score | Status | Primary blockers |
 |---|---:|---|---|
-| **Home (For You / Following)** (`HomeView`) | **5/10** | Alpha | Android **MediaCodec/Surface `BAD_INDEX`** (Phase 2.3 disposal guards pending); permission-denied noise; some videos show error screen (missing quality variants). Fixed: focus/auto-play, key strategy, first-video autoplay, swipe-to-next |
+| **Home (For You / Following)** (`HomeView`) | **7/10** | Beta risk | Android **MediaCodec/Surface `BAD_INDEX`** persists (telemetry); iOS playback manually verified, automated matrix pending; some videos may still show error screen if backend quality variants/URLs are missing. Fixed: focus/auto-play, key strategy, first-video autoplay, swipe-to-next, overlay/tab-return (Pixel 6 matrix + manual iOS) |
 | **Full-screen Player** (`PlayerScreen`) | **7/10** | Beta | Shares same decoder stack; needs reduced Firestore listener noise. Focus/owner aligned with Home fixes |
 | **Network** (`NetworkView`) | **6/10** | Alpha | Large stateful widget, many realtime listeners, potential permission-denied + paging edge cases; good: blocks playback immediately |
 | **Discover** (`DiscoverView`) | **6/10** | Alpha | Heavy real-time subscriptions/timers; mixes feed video playback inside discover; needs standardized error UI + permission rules alignment |
@@ -46,6 +46,14 @@
 | **Video Publish** (`VideoPublishingScreen`) | **6/10** | Alpha | Very complex; needs rigorous validation, retry/resume, and better error surfaces |
 | **Insights** (`InsightsView`) | **5/10** | Alpha | Uses mock fallback; analytics pipeline needs production verification and permission rules alignment |
 | **Activity** (`ActivityView`) | **6/10** | Alpha | Uses providers + better error state; needs full navigation coverage + performance pass |
+
+## Playback modularization (2026-06)
+
+- **GPM** (`lib/services/global_playback_manager.dart`): delegates to coordinators for focus, registration, pause/block, visible index, active owner, dispose pool, app resume, eviction, home lifecycle, factory.
+- **Player** (`lib/widgets/video_player_view_optimized.dart`): `VideoCellBootstrap`, attach/error/activation coordinators, publish overlay, thumbnail poster, watchdog tokens.
+- **GPM ensure-ready**: `playback_ensure_ready_coordinator.dart` (health gate + pool warm + seek).
+- **Tests**: `test/unit/services/playback_*`, `test/unit/features/video_player/`; CI runs dedicated playback coordinator step before full `flutter test`.
+- **Device E2E**: `integration_test/home_feed_playback_e2e_test.dart` (requires `--dart-define=RUN_MOBILE_FEED_E2E=true` and QA credentials).
 
 ## TikTok Parity (HomeView) — Current Gaps (Highest priority)
 - **Playback reliability**: eliminate `BAD_INDEX` / surface churn (Phase 2.3 disposal guards pending) and guarantee “first frame within ~300–600ms” for current video.
@@ -70,7 +78,7 @@
     - ✅ Only remount `VideoPlayer` on *controller instance change* or *explicit recovery event* (key format stabilized).
     - ✅ **Phase 2.3 disposal guards** attached state + TTL in GlobalPlaybackManager; disposal gated on not-attached or TTL expired; view disposes old controller on swap; _controllerCreatedAt set on register (prevents “used after disposed” and surface churn on Android and iOS).
     - Add **measurable recovery policy** (Phase 2.4, optional): detect “audio/position advancing but no frames” → try key remount once → recreate controller once → mark video unplayable and auto-skip.
-    - ✅ **Single owner/focus contract**: consolidated `_attemptRequestFocus()` and pending-focus; non-active owners stay muted/paused.
+  - ✅ **Single visible-owner guard**: tab/route visibility now gates owner activation so offscreen Home cannot keep `activeOwner=home` after Network becomes visible.
   - **Android**: eliminate MediaCodec/Surface `BAD_INDEX` and texture reattach instability (Phase 2.3; if still present after Phase 2.3 → Option B on Android).
   - **iOS**: ensure AVPlayer/texture lifecycle does not cause black screens or crashes on iPhone/iPad; same disposal and focus rules apply.
   - **Option B (if Option A insufficient on a platform)**: replace playback stack on that platform with a controllable implementation (e.g. Media3 on Android; platform-native surface lifecycle). Must not regress the other platform.
@@ -78,7 +86,7 @@
   - Remove `PERMISSION_DENIED` ("Missing or insufficient permissions") spam on both Android and iOS by either:
     - adjusting rules for read-only collections the client needs, or
     - gating listeners behind auth + feature flags and using server aggregation where appropriate.
-  - ✅ **Rules**: user_retention_profiles restricted to own doc. **Client**: tags/engagement/creator_stats/scheduled_posts gated behind auth; permission-denied caught, no log spam. **Known failing query** (if still seen): `tags` collection (e.g. `tags where videoId == <id> order by __name__`) — client listens for tags by videoId; rules currently deny. Fix rules or stop querying from client.
+  - ✅ **Rules**: user_retention_profiles restricted to own doc; `tags` readable when authed (`firestore.rules`). **Client**: tags/engagement/creator_stats/scheduled_posts gated behind auth; permission-denied caught, no log spam on happy path.
   - Add a “rules contract” doc: which collections are readable/writable by client, which are server-only.
 - **Consistent error UX (P0)**:
   - Standardize: **screen-level errors in `SelectableText.rich` (red)** with a retry button, not SnackBars (same behavior on Android and iOS).
@@ -119,11 +127,16 @@
 #### Verification status (Pixel 6)
 - **Key/remount strategy**:
   - ✅ Key no longer changes on normal controller initialization (remount reserved for recovery events).
-  - ⚠️ `setOutputSurface ... (6/BAD_INDEX)` still present in logs (not “perfect” yet).
-  - Next checks: `--no-enable-impeller` A/B run; if still present → Option B.
+  - ✅ Home matrix passed on Pixel 6 with `status=0`, `permission_denied_count=0`, `first_frame_failures=0`, `video_errors=0`, `test_failures=0`.
+  - ⚠️ `setOutputSurface ... (6/BAD_INDEX)` still present in logs (informational telemetry): latest texture matrix `bad_index_count=36`, split into `codec_bad_index_count=28` and `surface_bad_index_count=8`. Production matrix gate does **not** fail on these counts unless `STRICT_CODEC_GATE=1`.
+  - ⚠️ Impeller A/B did not clear codec noise: Impeller on `bad_index_count=39`, Impeller off `bad_index_count=39` (telemetry only).
+  - ⚠️ Android Media3 / Option B foothold compiles and passes the Home matrix when feature-flagged (`STREAMERSTIP_ANDROID_MEDIA3_HOME=false` by default), but it is not ready to replace the texture path: current-cell-only Media3 produced higher informational `bad_index_count=104` on Pixel 6 versus `37` on the texture path.
+  - ✅ **iOS (manual QA):** Home feed playback scenarios verified on device (functional gate met).
+  - ⚠️ **iOS (automated matrix):** Build/install artifact exists; Dart VM service was not discovered after launch, so `integration_test` did not run. Repair device runner / VM attach for CI only.
 - **Owner/focus**:
-  - ✅ Moved “active owner” responsibility toward centralized routing (removed local `setActiveOwner` from `HomeView`, `DiscoverView`, `ProfileViewOptimized`).
-  - ⚠️ Still multiple focus/request paths exist (`HomeViewController`, `HomeView` desired focus, `VideoPlayerViewOptimized` focus logic). Needs consolidation.
+  - ✅ Moved “active owner” responsibility toward centralized routing/visible owner (`MainTabView`, `NetworkView`, `GlobalPlaybackManager` guard).
+  - ✅ Pixel 6 tab Network -> Home matrix now keeps ownership aligned.
+  - ⚠️ Still multiple focus/request paths exist (`HomeViewController`, `HomeView` desired focus, `VideoPlayerViewOptimized` focus logic). Needs final consolidation for maintainability.
 - **Gestures**:
   - ✅ Removed custom `onPan*` handler in `VideoPageViewWidget` (reduced gesture arena conflicts).
   - ⚠️ Pull-to-refresh temporarily disabled (stability first).
@@ -165,5 +178,6 @@
 - This scorecard is based on current code, Pixel 6 logs, and `docs/COMPREHENSIVE_APP_AUDIT.md`.
 - Related fix docs: `PRODUCTION_FOCUS_FIX_IMPLEMENTATION.md`, `SURFACE_BAD_INDEX_FIX.md`, `TIKTOK_HOMEVIEW_FIXES_APPLIED.md`, `VIDEO_ERROR_SCREEN_ISSUE.md`, `BLACK_SCREEN_CRITICAL_FIX.md`.
 - **Data alignment:** `TIKTOK_VIDEO_FEED_SPEC.md` section 8 documents canonical owner (getOwnerId) and profile/feed alignment.
-- **Next:** complete Phase 2.3 (disposal guards); re-test BAD_INDEX and consider Option B if needed; address video error screens (URL filtering + transcoding). Optionally backfill ownerId/videoUrl/thumbnailUrl.
-
+- **Launch checklist:** `PRODUCTION_LAUNCH_CHECKLIST.md` is the tracked P0/P1/P2 checklist.
+- **Firestore contract:** `FIRESTORE_CLIENT_RULES_CONTRACT.md` documents allowed client reads/writes and server-only paths.
+- **Next:** keep the texture path for now, pursue a deeper Android-native player/pooling experiment only if it can reduce `setOutputSurface` failures below the texture path, and fix iOS automated matrix (VM attach) for CI. Address video error screens with URL filtering + transcoding and optionally backfill ownerId/videoUrl/thumbnailUrl.

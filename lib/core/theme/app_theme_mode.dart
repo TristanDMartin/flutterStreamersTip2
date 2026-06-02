@@ -13,6 +13,7 @@ class AppThemeMode extends ChangeNotifier {
     _themeMode = await ThemeStorage.readThemeMode();
     notifyListeners();
   }
+
   Future<void> setThemeMode(ThemeMode mode) async {
     if (_themeMode == mode) {
       return;

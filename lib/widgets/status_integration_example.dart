@@ -25,7 +25,7 @@ class ProfileViewWithStatus extends ConsumerWidget {
         children: [
           // Profile header with status
           _buildProfileHeader(ref),
-          
+
           // Other profile content
           const Expanded(
             child: Center(
@@ -39,7 +39,7 @@ class ProfileViewWithStatus extends ConsumerWidget {
 
   Widget _buildProfileHeader(WidgetRef ref) {
     final statusAsync = ref.watch(currentUserStatusProvider);
-    
+
     return Container(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -49,9 +49,9 @@ class ProfileViewWithStatus extends ConsumerWidget {
             radius: 50,
             child: Icon(Icons.person, size: 50),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Name and status
           const Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -68,9 +68,9 @@ class ProfileViewWithStatus extends ConsumerWidget {
               StatusButton(showLabel: true),
             ],
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           // Status details
           statusAsync.when(
             data: (presence) => Text(
@@ -111,10 +111,10 @@ class ProfileViewWithStatus extends ConsumerWidget {
 
   String _formatLastSeen(DateTime? lastSeen) {
     if (lastSeen == null) return 'unknown';
-    
+
     final now = DateTime.now();
     final difference = now.difference(lastSeen);
-    
+
     if (difference.inMinutes < 1) {
       return 'just now';
     } else if (difference.inMinutes < 60) {
@@ -130,7 +130,7 @@ class ProfileViewWithStatus extends ConsumerWidget {
 /// Example of how to integrate status display in StreamerCardView
 class StreamerCardWithStatus extends ConsumerWidget {
   final String userId;
-  
+
   const StreamerCardWithStatus({
     super.key,
     required this.userId,
@@ -139,7 +139,7 @@ class StreamerCardWithStatus extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(userStatusProvider(userId));
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -189,9 +189,9 @@ class StreamerCardWithStatus extends ConsumerWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 8),
-            
+
             // Status text
             statusAsync.when(
               data: (presence) => Text(

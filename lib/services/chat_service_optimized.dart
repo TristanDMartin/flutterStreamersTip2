@@ -1,16 +1,22 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
+import '../features/gamification/emit_engagement_gamification.dart';
+import '../features/gamification/gamification_event_types.dart';
+import 'progression_service.dart';
 
 class ChatServiceOptimized {
-  static final ChatServiceOptimized _instance = ChatServiceOptimized._internal();
+  static final ChatServiceOptimized _instance =
+      ChatServiceOptimized._internal();
   factory ChatServiceOptimized() => _instance;
   ChatServiceOptimized._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
-  
+
   // Expose auth for external access
   firebase_auth.FirebaseAuth get auth => _auth;
 
@@ -38,7 +44,7 @@ class ChatServiceOptimized {
       _messagesCache[chatId] = messages;
       return messages.reversed.toList(); // Return in chronological order
     } catch (e) {
-    // print('Error getting messages: $e');
+      // appLog('Error getting messages: $e');
       return [];
     }
   }
@@ -69,10 +75,76 @@ class ChatServiceOptimized {
         'lastMessage': text,
         'lastTimestamp': FieldValue.serverTimestamp(),
       });
+      scheduleEngagementGamificationEvent(
+        type: GamificationEventTypes.communityMessageSent,
+        entityType: 'chat',
+        entityId: chatId,
+        source: 'messages',
+      );
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstMessageSent,
+        source: 'messages',
+      ));
 
       return true;
     } catch (e) {
-    // print('Error sending message: $e');
+      // appLog('Error sending message: $e');
+      return false;
+    }
+  }
+
+  /// Send a StreamersTip-native video preview card into an inbox chat.
+  Future<bool> sendVideoShare({
+    required String chatId,
+    required String videoId,
+    required String shareToken,
+    required String previewText,
+    String? thumbnailUrl,
+    String? title,
+  }) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return false;
+
+    try {
+      final messageData = <String, dynamic>{
+        'senderId': currentUser.uid,
+        'from': currentUser.uid,
+        'text': previewText,
+        'previewText': previewText,
+        'timestamp': FieldValue.serverTimestamp(),
+        'type': 'video_share',
+        'messageType': 'video_share',
+        'isRead': false,
+        'videoId': videoId,
+        'shareToken': shareToken,
+        if (thumbnailUrl != null && thumbnailUrl.trim().isNotEmpty)
+          'thumbnailUrl': thumbnailUrl.trim(),
+        if (thumbnailUrl != null && thumbnailUrl.trim().isNotEmpty)
+          'videoThumbnailUrl': thumbnailUrl.trim(),
+        if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+        if (title != null && title.trim().isNotEmpty)
+          'videoTitle': title.trim(),
+      };
+
+      await _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .add(messageData);
+
+      await _firestore.collection('chats').doc(chatId).update({
+        'lastMessage': 'Shared a video',
+        'lastTimestamp': FieldValue.serverTimestamp(),
+      });
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstMessageSent,
+        source: 'messages',
+      ));
+
+      return true;
+    } catch (e) {
       return false;
     }
   }
@@ -104,10 +176,15 @@ class ChatServiceOptimized {
         'lastMessage': 'GIF',
         'lastTimestamp': FieldValue.serverTimestamp(),
       });
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstMessageSent,
+        source: 'messages',
+      ));
 
       return true;
     } catch (e) {
-    // print('Error sending GIF message: $e');
+      // appLog('Error sending GIF message: $e');
       return false;
     }
   }
@@ -135,7 +212,7 @@ class ChatServiceOptimized {
       await batch.commit();
       return true;
     } catch (e) {
-    // print('Error marking messages as read: $e');
+      // appLog('Error marking messages as read: $e');
       return false;
     }
   }
@@ -179,7 +256,7 @@ class ChatServiceOptimized {
       }
       return <String, dynamic>{};
     } catch (e) {
-    // print('Error getting user info: $e');
+      // appLog('Error getting user info: $e');
       return null;
     }
   }
@@ -261,13 +338,14 @@ class ChatServiceOptimized {
           .delete();
       return true;
     } catch (e) {
-    // print('Error deleting message: $e');
+      // appLog('Error deleting message: $e');
       return false;
     }
   }
 
   /// Update message
-  Future<bool> updateMessage(String chatId, String messageId, String newText) async {
+  Future<bool> updateMessage(
+      String chatId, String messageId, String newText) async {
     try {
       await _firestore
           .collection('chats')
@@ -277,7 +355,7 @@ class ChatServiceOptimized {
           .update({'text': newText});
       return true;
     } catch (e) {
-    // print('Error updating message: $e');
+      // appLog('Error updating message: $e');
       return false;
     }
   }
@@ -298,7 +376,7 @@ class ChatServiceOptimized {
 
       return query.docs.length;
     } catch (e) {
-    // print('Error getting unread count: $e');
+      // appLog('Error getting unread count: $e');
       return 0;
     }
   }
@@ -316,7 +394,9 @@ class ChatServiceOptimized {
       chatId: '', // Will be set by the calling context
       text: data['text'] ?? (data['previewText'] ?? ''),
       from: senderId,
-      to: senderId == currentUser ? 'other_user' : currentUser, // Simplified for now
+      to: senderId == currentUser
+          ? 'other_user'
+          : currentUser, // Simplified for now
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isRead: data['isRead'] ?? false,
       gifUrl: data['gifUrl'],
@@ -326,18 +406,20 @@ class ChatServiceOptimized {
           data['videoThumbnailUrl'] as String?,
       videoTitle: data['title'] as String? ?? data['videoTitle'] as String?,
       deletedForEveryone: data['deletedForEveryone'] == true,
-      replyToMessageId: (data['replyTo'] as Map<String, dynamic>?)?['messageId']
-          as String?,
-      replyToSenderId: (data['replyTo'] as Map<String, dynamic>?)?['senderId']
-          as String?,
-      replyToSenderName: (data['replyTo'] as Map<String, dynamic>?)?['senderName']
-          as String?,
-      replyToType: (data['replyTo'] as Map<String, dynamic>?)?['type'] as String?,
-      replyPreviewText: (data['replyTo'] as Map<String, dynamic>?)?['previewText']
-          as String?,
-      replyThumbnailUrl: (data['replyTo'] as Map<String, dynamic>?)?['thumbnailUrl']
-          as String?,
-      replyVideoId: (data['replyTo'] as Map<String, dynamic>?)?['videoId'] as String?,
+      replyToMessageId:
+          (data['replyTo'] as Map<String, dynamic>?)?['messageId'] as String?,
+      replyToSenderId:
+          (data['replyTo'] as Map<String, dynamic>?)?['senderId'] as String?,
+      replyToSenderName:
+          (data['replyTo'] as Map<String, dynamic>?)?['senderName'] as String?,
+      replyToType:
+          (data['replyTo'] as Map<String, dynamic>?)?['type'] as String?,
+      replyPreviewText:
+          (data['replyTo'] as Map<String, dynamic>?)?['previewText'] as String?,
+      replyThumbnailUrl: (data['replyTo']
+          as Map<String, dynamic>?)?['thumbnailUrl'] as String?,
+      replyVideoId:
+          (data['replyTo'] as Map<String, dynamic>?)?['videoId'] as String?,
     );
   }
 

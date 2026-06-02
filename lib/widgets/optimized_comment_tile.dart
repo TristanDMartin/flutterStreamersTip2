@@ -19,6 +19,7 @@ class OptimizedCommentTile extends ConsumerStatefulWidget {
   final VoidCallback? onOpenLinkedThread;
   final String? linkedThreadId;
   final bool showReplies;
+  final bool highlightThreadAction;
 
   const OptimizedCommentTile({
     super.key,
@@ -32,6 +33,7 @@ class OptimizedCommentTile extends ConsumerStatefulWidget {
     this.onOpenLinkedThread,
     this.linkedThreadId,
     this.showReplies = true,
+    this.highlightThreadAction = false,
   });
 
   @override
@@ -39,16 +41,20 @@ class OptimizedCommentTile extends ConsumerStatefulWidget {
       _OptimizedCommentTileState();
 }
 
-class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
+class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile>
+    with SingleTickerProviderStateMixin {
   bool _isLiked = false;
   int _likeCount = 0;
   bool _isLoading = false;
+  AnimationController? _threadPulseController;
+  Animation<double>? _threadPulseScale;
 
   @override
   void initState() {
     super.initState();
     _isLiked = widget.comment.isLiked;
     _likeCount = widget.comment.likeCount;
+    _syncThreadPulseAnimation();
   }
 
   @override
@@ -60,6 +66,44 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
     if (oldWidget.comment.likeCount != widget.comment.likeCount) {
       _likeCount = widget.comment.likeCount;
     }
+    if (oldWidget.highlightThreadAction != widget.highlightThreadAction) {
+      _syncThreadPulseAnimation();
+    }
+  }
+
+  @override
+  void dispose() {
+    _threadPulseController?.dispose();
+    super.dispose();
+  }
+
+  void _syncThreadPulseAnimation() {
+    if (widget.highlightThreadAction) {
+      _threadPulseController ??= AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 900),
+      )..repeat(reverse: true);
+      _threadPulseScale ??= Tween<double>(begin: 1, end: 1.1).animate(
+        CurvedAnimation(
+          parent: _threadPulseController!,
+          curve: Curves.easeInOut,
+        ),
+      );
+      if (!_threadPulseController!.isAnimating) {
+        _threadPulseController!.repeat(reverse: true);
+      }
+      return;
+    }
+    _threadPulseController?.stop();
+  }
+
+  Widget _wrapThreadHighlight(Widget child) {
+    if (!widget.highlightThreadAction ||
+        _threadPulseController == null ||
+        _threadPulseScale == null) {
+      return child;
+    }
+    return ScaleTransition(scale: _threadPulseScale!, child: child);
   }
 
   bool _isVideoOwner() {
@@ -86,7 +130,8 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
     if (!mounted) return;
     if (alreadyReported) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You have already reported this comment.')),
+        const SnackBar(
+            content: Text('You have already reported this comment.')),
       );
       return;
     }
@@ -104,7 +149,8 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
               final reason = reasons[index];
               return ListTile(
                 leading: const Icon(Icons.flag_outlined, color: Colors.white70),
-                title: Text(reason, style: const TextStyle(color: Colors.white)),
+                title:
+                    Text(reason, style: const TextStyle(color: Colors.white)),
                 onTap: () => Navigator.of(context).pop(reason),
               );
             },
@@ -124,7 +170,8 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Comment reported. Thanks for letting us know.')),
+        const SnackBar(
+            content: Text('Comment reported. Thanks for letting us know.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -164,7 +211,7 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
         _isLiked = !_isLiked;
         _likeCount += _isLiked ? 1 : -1;
       });
-      // print('Error toggling like: $e');
+      // appLog('Error toggling like: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -174,6 +221,17 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    final Color primaryText = isLight ? const Color(0xFF0F172A) : Colors.white;
+    final Color secondaryText =
+        isLight ? const Color(0xFF334155) : Colors.white70;
+    final Color mutedText = isLight ? const Color(0xFF64748B) : Colors.white54;
+    final Color chipBg = isLight
+        ? const Color(0xFFF1F5F9).withValues(alpha: 0.9)
+        : Colors.white.withValues(alpha: 0.1);
+    final Color chipBorder = isLight
+        ? const Color(0xFF0F172A).withValues(alpha: 0.08)
+        : Colors.white.withValues(alpha: 0.2);
     final showActionRow = !_isDeletedComment &&
         (widget.onReply != null ||
             widget.onDelete != null ||
@@ -216,8 +274,8 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                       children: [
                         Text(
                           widget.comment.user.username,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: primaryText,
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
@@ -225,8 +283,8 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                         const SizedBox(width: 8),
                         Text(
                           widget.comment.relativeTimestamp,
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: mutedText,
                             fontSize: 12,
                           ),
                         ),
@@ -237,8 +295,8 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                     // Comment text
                     Text(
                       widget.comment.text,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: primaryText,
                         fontSize: 14,
                       ),
                     ),
@@ -251,20 +309,18 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                               onTap: widget.onReply,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.1),
+                                  color: chipBg,
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.2),
-                                  ),
+                                  border: Border.all(color: chipBorder),
                                 ),
                                 child: Text(
                                   'Reply',
                                   style: TextStyle(
-                                    color: AppColors.textSecondary,
+                                    color: secondaryText,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -277,11 +333,12 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                               onTap: widget.onDelete,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.error.withValues(alpha: 0.12),
+                                  color:
+                                      AppColors.error.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: AppColors.error.withValues(
@@ -303,32 +360,34 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                           if (_hasLinkedThread &&
                               widget.onOpenLinkedThread != null) ...[
                             const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: widget.onOpenLinkedThread,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
+                            _wrapThreadHighlight(
+                              GestureDetector(
+                                onTap: widget.onOpenLinkedThread,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
                                     vertical: 4,
                                   ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.tertiary.withValues(
-                                    alpha: 0.16,
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
+                                  decoration: BoxDecoration(
                                     color: AppColors.tertiary.withValues(
-                                      alpha: 0.4,
+                                      alpha: 0.16,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: AppColors.tertiary.withValues(
+                                        alpha: 0.4,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                child: Text(
-                                  'View Thread',
-                                  style: TextStyle(
-                                    color: AppColors.accent.withValues(
-                                      alpha: 0.95,
+                                  child: Text(
+                                    'View Thread',
+                                    style: TextStyle(
+                                      color: AppColors.accent.withValues(
+                                        alpha: 0.95,
+                                      ),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -338,30 +397,32 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                               _isVideoOwner() &&
                               widget.onCreateThread != null) ...[
                             const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: widget.onCreateThread,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
+                            _wrapThreadHighlight(
+                              GestureDetector(
+                                onTap: widget.onCreateThread,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
                                     vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.secondary.withValues(
-                                    alpha: 0.22,
                                   ),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: AppColors.primary.withValues(
-                                      alpha: 0.35,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.secondary.withValues(
+                                      alpha: 0.22,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: AppColors.primary.withValues(
+                                        alpha: 0.35,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                child: Text(
-                                  'Thread',
-                                  style: TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
+                                  child: Text(
+                                    'Thread',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -387,7 +448,7 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                           onTap: _reportComment,
                           child: Icon(
                             Icons.flag_outlined,
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: mutedText,
                             size: 18,
                           ),
                         ),
@@ -398,9 +459,7 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                         children: [
                           Icon(
                             _isLiked ? Icons.favorite : Icons.favorite_border,
-                            color: _isLiked
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
+                            color: _isLiked ? AppColors.primary : secondaryText,
                             size: 20,
                           ),
                           if (_isLoading)
@@ -431,7 +490,7 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                     Text(
                       _likeCount.toString(),
                       style: TextStyle(
-                        color: AppColors.textSecondary,
+                        color: secondaryText,
                         fontSize: 12,
                       ),
                     ),
@@ -533,7 +592,7 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
         _isLiked = !_isLiked;
         _likeCount += _isLiked ? 1 : -1;
       });
-      // print('Error toggling like: $e');
+      // appLog('Error toggling like: $e');
     } finally {
       setState(() {
         _isLoading = false;

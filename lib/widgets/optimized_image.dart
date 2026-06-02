@@ -140,14 +140,18 @@ class _OptimizedImageState extends State<OptimizedImage> {
       cacheManager: CacheManager(
         Config(
           'optimized_images',
-          stalePeriod: const Duration(hours: 24), // OPTIMIZED: Increased from 6 to 24 hours
-          maxNrOfCacheObjects: 50, // OPTIMIZED: Increased from 20 to 50 for better caching
+          stalePeriod: const Duration(
+              hours: 24), // OPTIMIZED: Increased from 6 to 24 hours
+          maxNrOfCacheObjects:
+              50, // OPTIMIZED: Increased from 20 to 50 for better caching
           repo: JsonCacheInfoRepository(databaseName: 'optimized_images'),
           fileService: HttpFileService(),
         ),
       ),
-      fadeInDuration: const Duration(milliseconds: 150), // OPTIMIZED: Faster fade-in
-      fadeOutDuration: const Duration(milliseconds: 50), // OPTIMIZED: Faster fade-out
+      fadeInDuration:
+          const Duration(milliseconds: 150), // OPTIMIZED: Faster fade-in
+      fadeOutDuration:
+          const Duration(milliseconds: 50), // OPTIMIZED: Faster fade-out
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'st_theme_tokens.dart';
 
@@ -145,7 +146,7 @@ class StAppTheme {
         foregroundColor: StThemeColors.lightTextPrimary,
         surfaceTintColor: Colors.transparent,
       ),
-      textTheme: _textThemeLight(),
+      textTheme: GoogleFonts.interTextTheme(_textThemeLight()),
       typography: Typography.material2018(
         platform: TargetPlatform.android,
       ),
@@ -194,7 +195,7 @@ class StAppTheme {
         foregroundColor: StThemeColors.darkTextPrimary,
         surfaceTintColor: Colors.transparent,
       ),
-      textTheme: _textThemeDark(),
+      textTheme: GoogleFonts.interTextTheme(_textThemeDark()),
       typography: Typography.material2018(
         platform: TargetPlatform.android,
       ),

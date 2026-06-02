@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:developer' as developer;
 import '../features/gamification/emit_gamification_event.dart';
 import '../features/gamification/gamification_event_types.dart';
 import '../models/scheduled_post.dart';
 import '../utils/category_schema.dart';
 import 'cross_post_service.dart';
 import 'post_counter_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Firestore-based service for managing scheduled posts
 class FirestoreScheduledPostService {
@@ -112,13 +112,32 @@ class FirestoreScheduledPostService {
           .collection('scheduled_posts')
           .doc(scheduledPostId)
           .set(scheduledPostData);
+      await _firestore.collection('contentPlans').doc(scheduledPostId).set({
+        'userId': currentUser.uid,
+        'title': caption.trim().isEmpty ? 'Scheduled post' : caption.trim(),
+        'description': metadata['description'],
+        'platform': platforms.isEmpty ? null : platforms.first.key,
+        'contentType': 'video',
+        'caption': caption,
+        'hashtags': hashtags,
+        'status': 'scheduled',
+        'scheduledAt': Timestamp.fromDate(schedule.scheduledAtUtc),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'source': 'app',
+        'checklist': const <String>[],
+        'notes': metadata['notes'],
+        'draftIdeas': const <String>[],
+        'videoId': videoId,
+        'scheduledPostId': scheduledPostId,
+      }, SetOptions(merge: true));
 
-      developer.log('✅ Scheduled post saved: $scheduledPostId',
+      secureLog('✅ Scheduled post saved: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
 
       return scheduledPostId;
     } catch (e) {
-      developer.log('❌ Error saving scheduled post: $e',
+      secureLog('❌ Error saving scheduled post: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -226,11 +245,28 @@ class FirestoreScheduledPostService {
       };
 
       await _firestore.collection('scheduled_posts').doc(postId).set(postData);
-      developer.log('✅ Immediate publish follow-up saved: $postId',
+      await _firestore.collection('contentPlans').doc(postId).set({
+        'userId': currentUser.uid,
+        'title': caption.trim().isEmpty ? 'Publish follow-up' : caption.trim(),
+        'platform': crossPostRequests.isEmpty
+            ? null
+            : crossPostRequests.first.platformName.toLowerCase(),
+        'contentType': 'video',
+        'caption': caption,
+        'hashtags': hashtags,
+        'status': 'needsReview',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'source': 'app',
+        'notes': 'Cross-post follow-up requires creator attention.',
+        'videoId': videoId,
+        'scheduledPostId': postId,
+      }, SetOptions(merge: true));
+      secureLog('✅ Immediate publish follow-up saved: $postId',
           name: 'FirestoreScheduledPostService');
       return postId;
     } catch (e) {
-      developer.log('❌ Error saving immediate publish follow-up: $e',
+      secureLog('❌ Error saving immediate publish follow-up: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -246,7 +282,7 @@ class FirestoreScheduledPostService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        developer.log('⚠️ No authenticated user',
+        secureLog('⚠️ No authenticated user',
             name: 'FirestoreScheduledPostService');
         return [];
       }
@@ -272,7 +308,7 @@ class FirestoreScheduledPostService {
             e.toString().contains('PERMISSION_DENIED')) {
           return [];
         }
-        developer.log('⚠️ Could not order by createdAt, loading all: $e',
+        secureLog('⚠️ Could not order by createdAt, loading all: $e',
             name: 'FirestoreScheduledPostService');
         Query fallbackQuery = _firestore
             .collection('scheduled_posts')
@@ -280,7 +316,7 @@ class FirestoreScheduledPostService {
             .limit(effectiveLimit);
         snapshot = await fallbackQuery.get();
       }
-      developer.log(
+      secureLog(
           '📋 Loaded ${snapshot.docs.length} scheduled posts from Firestore',
           name: 'FirestoreScheduledPostService');
 
@@ -291,7 +327,7 @@ class FirestoreScheduledPostService {
           final post = _mapToScheduledPost(doc.id, data);
           posts.add(post);
         } catch (e) {
-          developer.log('❌ Error mapping post ${doc.id}: $e',
+          secureLog('❌ Error mapping post ${doc.id}: $e',
               name: 'FirestoreScheduledPostService');
         }
       }
@@ -325,7 +361,7 @@ class FirestoreScheduledPostService {
         }).toList();
       }
 
-      developer.log('✅ Returning ${posts.length} scheduled posts',
+      secureLog('✅ Returning ${posts.length} scheduled posts',
           name: 'FirestoreScheduledPostService');
       return posts;
     } catch (e, stackTrace) {
@@ -333,7 +369,7 @@ class FirestoreScheduledPostService {
           e.toString().contains('PERMISSION_DENIED')) {
         return [];
       }
-      developer.log('❌ Error loading scheduled posts: $e\n$stackTrace',
+      secureLog('❌ Error loading scheduled posts: $e\n$stackTrace',
           name: 'FirestoreScheduledPostService');
       return [];
     }
@@ -353,8 +389,11 @@ class FirestoreScheduledPostService {
         'status': status.name,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      developer.log(
-          '✅ Updated scheduled post status: $scheduledPostId -> $status',
+      await _firestore.collection('contentPlans').doc(scheduledPostId).set({
+        'status': _contentPlanStatusForPostStatus(status),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      secureLog('✅ Updated scheduled post status: $scheduledPostId -> $status',
           name: 'FirestoreScheduledPostService');
       await _appendHistoryEntries(scheduledPostId, [
         _historyEntry(
@@ -363,7 +402,7 @@ class FirestoreScheduledPostService {
         ),
       ]);
     } catch (e) {
-      developer.log('❌ Error updating scheduled post status: $e',
+      secureLog('❌ Error updating scheduled post status: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -376,10 +415,11 @@ class FirestoreScheduledPostService {
           .collection('scheduled_posts')
           .doc(scheduledPostId)
           .delete();
-      developer.log('✅ Deleted scheduled post: $scheduledPostId',
+      await _firestore.collection('contentPlans').doc(scheduledPostId).delete();
+      secureLog('✅ Deleted scheduled post: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
     } catch (e) {
-      developer.log('❌ Error deleting scheduled post: $e',
+      secureLog('❌ Error deleting scheduled post: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -468,7 +508,7 @@ class FirestoreScheduledPostService {
 
       await _firestore.collection('videos').doc(videoId).update(updateData);
 
-      developer.log(
+      secureLog(
           '✅ Updated video document: $videoId with status=published, creatorId=$userId, category=$category',
           name: 'FirestoreScheduledPostService');
 
@@ -513,7 +553,7 @@ class FirestoreScheduledPostService {
         final postCounterService = PostCounterService();
         await postCounterService.incrementPostCount(userId, postId: videoId);
       } catch (e) {
-        developer.log('⚠️ Failed to update PostCounterService: $e',
+        secureLog('⚠️ Failed to update PostCounterService: $e',
             name: 'FirestoreScheduledPostService');
       }
       scheduleGamificationEvent(
@@ -536,12 +576,12 @@ class FirestoreScheduledPostService {
       final updatedData = updatedDoc.data() as Map<String, dynamic>;
       final post = _mapToScheduledPost(scheduledPostId, updatedData);
 
-      developer.log('✅ Published scheduled post: $scheduledPostId',
+      secureLog('✅ Published scheduled post: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
 
       return post;
     } catch (e) {
-      developer.log('❌ Error publishing scheduled post: $e',
+      secureLog('❌ Error publishing scheduled post: $e',
           name: 'FirestoreScheduledPostService');
       // Mark as failed
       try {
@@ -699,12 +739,12 @@ class FirestoreScheduledPostService {
       final data = doc.data() as Map<String, dynamic>;
       final post = _mapToScheduledPost(doc.id, data);
 
-      developer.log('✅ Canceled scheduled post: $scheduledPostId',
+      secureLog('✅ Canceled scheduled post: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
 
       return post;
     } catch (e) {
-      developer.log('❌ Error canceling scheduled post: $e',
+      secureLog('❌ Error canceling scheduled post: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -772,12 +812,12 @@ class FirestoreScheduledPostService {
       final refreshedData = refreshedDoc.data() as Map<String, dynamic>;
       final post = _mapToScheduledPost(refreshedDoc.id, refreshedData);
 
-      developer.log('✅ Retried scheduled post: $scheduledPostId',
+      secureLog('✅ Retried scheduled post: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
 
       return post;
     } catch (e) {
-      developer.log('❌ Error retrying scheduled post: $e',
+      secureLog('❌ Error retrying scheduled post: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -876,7 +916,7 @@ class FirestoreScheduledPostService {
         refreshedDoc.data() as Map<String, dynamic>,
       );
     } catch (e) {
-      developer.log('❌ Error retrying external platforms: $e',
+      secureLog('❌ Error retrying external platforms: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -887,13 +927,13 @@ class FirestoreScheduledPostService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        developer.log('⚠️ No authenticated user - cannot check scheduled posts',
+        secureLog('⚠️ No authenticated user - cannot check scheduled posts',
             name: 'FirestoreScheduledPostService');
         return [];
       }
 
       final now = Timestamp.now();
-      developer.log(
+      secureLog(
           '🔍 Checking for posts ready to publish for user ${currentUser.uid} (now: ${now.toDate()})',
           name: 'FirestoreScheduledPostService');
 
@@ -908,12 +948,12 @@ class FirestoreScheduledPostService {
       QuerySnapshot snapshot;
       try {
         snapshot = await query.get();
-        developer.log(
+        secureLog(
             '✅ Found ${snapshot.docs.length} posts ready to publish (using nested query)',
             name: 'FirestoreScheduledPostService');
       } catch (e) {
         // If nested field query fails (missing index), fall back to client-side filtering
-        developer.log(
+        secureLog(
             '⚠️ Nested field query failed (may need composite index), using fallback: $e',
             name: 'FirestoreScheduledPostService');
 
@@ -940,7 +980,7 @@ class FirestoreScheduledPostService {
           }
         }
 
-        developer.log(
+        secureLog(
             '✅ Found ${readyPosts.length} posts ready to publish (using client-side filtering)',
             name: 'FirestoreScheduledPostService');
 
@@ -957,7 +997,7 @@ class FirestoreScheduledPostService {
       }
       return result;
     } catch (e) {
-      developer.log('❌ Error getting posts ready to publish: $e',
+      secureLog('❌ Error getting posts ready to publish: $e',
           name: 'FirestoreScheduledPostService');
       return [];
     }
@@ -989,10 +1029,10 @@ class FirestoreScheduledPostService {
         'videoId': videoId,
         'addedAt': FieldValue.serverTimestamp(),
       });
-      developer.log('✅ Added video to user profile: $videoId',
+      secureLog('✅ Added video to user profile: $videoId',
           name: 'FirestoreScheduledPostService');
     } catch (e) {
-      developer.log('⚠️ Error adding video to user profile: $e',
+      secureLog('⚠️ Error adding video to user profile: $e',
           name: 'FirestoreScheduledPostService');
       // Don't throw - this is not critical
     }
@@ -1081,15 +1121,15 @@ class FirestoreScheduledPostService {
 
         case 'Private':
           // Private videos don't go to feeds
-          developer.log('⏭️ Skipping feed addition for private video: $videoId',
+          secureLog('⏭️ Skipping feed addition for private video: $videoId',
               name: 'FirestoreScheduledPostService');
           break;
       }
 
-      developer.log('✅ Added video to feeds: $videoId (privacy: $privacy)',
+      secureLog('✅ Added video to feeds: $videoId (privacy: $privacy)',
           name: 'FirestoreScheduledPostService');
     } catch (e) {
-      developer.log('⚠️ Error adding video to feeds: $e',
+      secureLog('⚠️ Error adding video to feeds: $e',
           name: 'FirestoreScheduledPostService');
       // Don't throw - this is not critical
     }
@@ -1255,6 +1295,21 @@ class FirestoreScheduledPostService {
         return 'Post canceled.';
       case PostStatus.draft:
         return 'Post saved as draft.';
+    }
+  }
+
+  String _contentPlanStatusForPostStatus(PostStatus status) {
+    switch (status) {
+      case PostStatus.scheduled:
+      case PostStatus.publishing:
+        return 'scheduled';
+      case PostStatus.published:
+        return 'posted';
+      case PostStatus.failed:
+      case PostStatus.canceled:
+        return 'needsReview';
+      case PostStatus.draft:
+        return 'draft';
     }
   }
 

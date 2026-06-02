@@ -14,6 +14,7 @@ import '../services/video_moderation_service.dart';
 import '../services/enhanced_error_handling_service.dart';
 import '../services/video_watermark_service.dart';
 import '../services/optimistic_video_service.dart';
+import '../utils/upload_error_classifier.dart';
 import '../services/hashtag_lock_service.dart';
 import '../widgets/schedule_post_widget.dart';
 import '../models/scheduled_post.dart';
@@ -21,45 +22,39 @@ import '../services/firebase_ios_service.dart';
 import '../services/network_connectivity_service.dart';
 import '../services/video_processing_service.dart';
 import '../services/upload_status_manager.dart';
+import '../services/video_publish_finalize_service.dart';
 import '../services/cross_post_service.dart';
 import '../providers/publish_provider.dart';
 import '../providers/feed_state_provider.dart';
-import '../providers/video_service_provider.dart' as video_providers;
+import '../providers/home_provider.dart' as hp;
+import '../models/feed_tab.dart';
 import '../routing/app_navigator.dart';
 import '../widgets/platform_row.dart';
 import '../core/feature_flags.dart';
 import '../core/theme/support_shell_style.dart';
+import '../features/billing/debug_studio_bypass.dart';
+import '../features/gamification/gamification_providers.dart';
+import '../features/gamification/models/user_progress_bundle.dart';
+import '../routing/app_routes.dart';
+import '../features/publish/category_picker_sheet.dart';
+import '../features/publish/pending_post.dart';
+import '../features/publish/preview_trim_playback.dart';
+import '../features/publish/preview_video_frame.dart';
+import '../features/publish/publish_flow_tokens.dart';
+import '../features/publish/publish_validation_limits.dart';
+import '../features/publish/publish_firestore_fields.dart';
+import '../features/billing/iap_billing_coordinator.dart';
+import '../features/billing/subscription_tier_provider.dart';
+import '../features/billing/get_user_tier.dart';
+import '../features/gamification/models/subscription_plan.dart';
+import '../features/tippy/tippy_access.dart';
+import '../features/tippy/tippy_chat_service.dart';
+import '../features/tippy/widgets/tippy_publish_assist_row.dart';
 import '../utils/category_schema.dart';
 import '../components/onboarding/onboarding_mission_actions.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:developer' as developer;
-
-// Constants for video publishing validation
-class _VideoPublishingConstants {
-  static const int maxCaptionLength = 500;
-  static const int maxFileSizeMB = 500;
-  static const int minFileSizeBytes = 1024;
-  static const double minVideoDurationSeconds = 1.0;
-  static const double maxVideoDurationSeconds = 300.0;
-  static const int minResolutionHeight = 480;
-
-  static const List<String> allowedExtensions = ['mp4', 'mov', 'webm'];
-
-  // Spec-exact error messages
-  static const String errorFileType =
-      'Please upload an MP4, MOV, or WebM file.';
-  static const String errorFileSize =
-      'File exceeds the 500MB limit. Please compress and retry.';
-  static const String errorDuration =
-      'Videos must be between 1 second and 5 minutes.';
-  static const String errorResolution =
-      'Video resolution is too low. Minimum 480p required.';
-  static const String errorCaption = 'Please add a caption before publishing.';
-  static const String errorCategory = 'Please select a category.';
-  static const String warningAspectRatio =
-      'Vertical video (9:16) performs best in the feed.';
-}
+import 'package:streamers_tip/utils/secure_log.dart';
 
 class VideoPublishingScreen extends ConsumerStatefulWidget {
   final File videoFile;
@@ -69,6 +64,7 @@ class VideoPublishingScreen extends ConsumerStatefulWidget {
   final VoidCallback onCancel;
   final String? draftId;
   final Map<String, dynamic>? draftData;
+  final PendingPost? pendingPost;
 
   const VideoPublishingScreen({
     super.key,
@@ -79,6 +75,7 @@ class VideoPublishingScreen extends ConsumerStatefulWidget {
     required this.onCancel,
     this.draftId,
     this.draftData,
+    this.pendingPost,
   });
 
   @override
@@ -104,11 +101,6 @@ class VideoCategory {
 }
 
 class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
-  static const Set<String> _bypassStudioUids = {
-    'bU0RxyZ2L4ULAv1Co5L4f825yV73',
-    'jsmbQMLQjoUyC5cUFvkrRbi9mkp1',
-  };
-
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -117,7 +109,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   Duration? _videoDuration;
   int _captionCharacterCount = 0;
   final ScrollController _scrollController = ScrollController();
-  double _videoFlex = 3.0; // Initial flex value for video preview
+  PendingPost? _pendingPost;
+  PreviewTrimPlayback? _trimPlayback;
 
   // Available categories
   static const List<VideoCategory> _categories = [
@@ -250,6 +243,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   final VideoWatermarkService _watermarkService = VideoWatermarkService();
   final OptimisticVideoService _optimisticVideoService =
       OptimisticVideoService();
+  final TippyChatService _tippyService = TippyChatService();
+  bool _tippyAssistBusy = false;
+  VoidCallback? _iapVerifiedHandler;
   // Text controllers
   late TextEditingController _captionController;
 
@@ -257,6 +253,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   void initState() {
     super.initState();
     _caption = widget.caption;
+    final String previewCaption =
+        widget.pendingPost?.manualCaptionText.trim() ?? '';
+    if (_caption.trim().isEmpty && previewCaption.isNotEmpty) {
+      _caption = previewCaption;
+    }
     _hashtags = List.from(widget.hashtags);
     _hydrateFromDraftData();
 
@@ -268,11 +269,17 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     _captionController.addListener(_onCaptionChanged);
 
     // Listen to scroll to adjust video size
-    _scrollController.addListener(_onScroll);
 
     _initializeVideo();
     _loadSubscriptionTier();
     _loadConnectedPlatforms();
+    _iapVerifiedHandler = () {
+      if (!mounted) {
+        return;
+      }
+      _loadSubscriptionTier();
+    };
+    IapBillingCoordinator.instance.addVerifiedHandler(_iapVerifiedHandler!);
   }
 
   bool get _isEditingDraft => widget.draftId?.isNotEmpty == true;
@@ -350,7 +357,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     }
 
     try {
-      if (_bypassStudioUids.contains(user.uid)) {
+      if (DebugStudioBypass.grantsStudio(user.uid)) {
         if (!mounted) return;
         setState(() {
           _subscriptionTier = VideoWatermarkService.studioTier;
@@ -364,19 +371,24 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           .doc(user.uid)
           .get();
       final data = doc.data() ?? const <String, dynamic>{};
-      final rawTier = (data['subscriptionTier'] as String?)?.toLowerCase();
-      final status = (data['subscriptionStatus'] as String?)?.toLowerCase();
-      const validTiers = {
-        VideoWatermarkService.starterTier,
-        VideoWatermarkService.proTier,
-        VideoWatermarkService.studioTier,
-      };
-      const activeStatuses = {'active', 'trialing'};
-
-      final resolvedTier =
-          validTiers.contains(rawTier) && activeStatuses.contains(status)
-              ? rawTier!
-              : VideoWatermarkService.starterTier;
+      final BillingTierAccess billing =
+          BillingTierAccess.fromUserDocument(data);
+      String resolvedTier = VideoWatermarkService.starterTier;
+      if (billing.usedCanonicalFields) {
+        resolvedTier = subscriptionPlanToApiValue(billing.effectivePlan);
+      } else {
+        final rawTier = (data['subscriptionTier'] as String?)?.toLowerCase();
+        final status = (data['subscriptionStatus'] as String?)?.toLowerCase();
+        const validTiers = {
+          VideoWatermarkService.starterTier,
+          VideoWatermarkService.proTier,
+          VideoWatermarkService.studioTier,
+        };
+        const activeStatuses = {'active', 'trialing', 'past_due'};
+        if (validTiers.contains(rawTier) && activeStatuses.contains(status)) {
+          resolvedTier = rawTier!;
+        }
+      }
 
       if (!mounted) return;
       setState(() {
@@ -599,17 +611,21 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     );
   }
 
-  void _onScroll() {
-    final scrollOffset = _scrollController.offset;
-    // Calculate new flex based on scroll position
-    // When scrolled down, reduce video flex (min 1.0, max 3.0)
-    final newFlex =
-        (3.0 - (scrollOffset / 200).clamp(0.0, 2.0)).clamp(1.0, 3.0);
-    if ((_videoFlex - newFlex).abs() > 0.1) {
-      setState(() {
-        _videoFlex = newFlex;
-      });
-    }
+  bool get _canPublish {
+    return !_isUploading &&
+        !_isModerating &&
+        !_hasError &&
+        _caption.trim().isNotEmpty &&
+        _selectedCategory.isNotEmpty;
+  }
+
+  int get _postQualityScore {
+    int score = 0;
+    if (_caption.trim().isNotEmpty) score++;
+    if (_selectedCategory.isNotEmpty) score++;
+    if (_isCustomThumbnail || _frameThumbBytes != null) score++;
+    if (_schedule != null) score++;
+    return score;
   }
 
   Future<void> _initializeVideo() async {
@@ -620,11 +636,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
       // Rule 1: File type
       final extension = widget.videoFile.path.split('.').last.toLowerCase();
-      if (!_VideoPublishingConstants.allowedExtensions.contains(extension)) {
+      if (!PublishValidationLimits.allowedExtensions.contains(extension)) {
         if (mounted) {
           setState(() {
             _hasError = true;
-            _initializationError = _VideoPublishingConstants.errorFileType;
+            _initializationError = PublishValidationLimits.errorFileType;
           });
         }
         return;
@@ -632,15 +648,15 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
       // Rule 2: File size
       final fileSize = await widget.videoFile.length();
-      if (fileSize < _VideoPublishingConstants.minFileSizeBytes) {
+      if (fileSize < PublishValidationLimits.minFileSizeBytes) {
         throw Exception('Video file is too small or corrupted');
       }
       final fileSizeMB = fileSize / (1024 * 1024);
-      if (fileSizeMB > _VideoPublishingConstants.maxFileSizeMB) {
+      if (fileSizeMB > PublishValidationLimits.maxFileSizeMB) {
         if (mounted) {
           setState(() {
             _hasError = true;
-            _initializationError = _VideoPublishingConstants.errorFileSize;
+            _initializationError = PublishValidationLimits.errorFileSize;
           });
         }
         return;
@@ -649,33 +665,54 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       _controller = VideoPlayerController.file(widget.videoFile);
       await _controller.initialize();
 
+      final Size videoSize = _controller.value.size;
+
       // Rule 3: Duration
       _videoDuration = _controller.value.duration;
-      final durationSeconds = _videoDuration!.inSeconds.toDouble();
-      if (durationSeconds < _VideoPublishingConstants.minVideoDurationSeconds ||
-          durationSeconds > _VideoPublishingConstants.maxVideoDurationSeconds) {
+      final double videoAspect =
+          videoSize.height > 0 ? videoSize.width / videoSize.height : 9 / 16;
+      _pendingPost = widget.pendingPost ??
+          PendingPost.fromVideoFile(
+            videoFile: widget.videoFile,
+            duration: _videoDuration!,
+            videoAspectRatio: videoAspect,
+          );
+      _trimPlayback?.dispose();
+      _trimPlayback = PreviewTrimPlayback(
+        controller: _controller,
+        pending: _pendingPost!,
+        onTick: () {
+          if (mounted) {
+            setState(() {});
+          }
+        },
+      );
+      await _trimPlayback!.seekToTrimStart();
+      final durationSeconds =
+          _pendingPost!.effectiveDuration.inSeconds.toDouble();
+      if (durationSeconds < PublishValidationLimits.minVideoDurationSeconds ||
+          durationSeconds > PublishValidationLimits.maxVideoDurationSeconds) {
         await _controller.dispose();
         if (mounted) {
           setState(() {
             _hasError = true;
-            _initializationError = _VideoPublishingConstants.errorDuration;
+            _initializationError = PublishValidationLimits.errorDuration;
           });
         }
         return;
       }
 
       // Rule 4: Resolution minimum (480p = shortest side ≥ 480)
-      final videoSize = _controller.value.size;
       final shortSide = videoSize.height < videoSize.width
           ? videoSize.height
           : videoSize.width;
       if (shortSide > 0 &&
-          shortSide < _VideoPublishingConstants.minResolutionHeight) {
+          shortSide < PublishValidationLimits.minResolutionHeight) {
         await _controller.dispose();
         if (mounted) {
           setState(() {
             _hasError = true;
-            _initializationError = _VideoPublishingConstants.errorResolution;
+            _initializationError = PublishValidationLimits.errorResolution;
           });
         }
         return;
@@ -688,7 +725,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         const preferredAr = 9.0 / 16.0; // ~0.5625
         const tolerance = 0.08;
         if ((ar - preferredAr).abs() > tolerance) {
-          arWarning = _VideoPublishingConstants.warningAspectRatio;
+          arWarning = PublishValidationLimits.warningAspectRatio;
         }
       }
 
@@ -702,8 +739,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         });
       }
     } catch (e) {
-      developer.log('Error initializing video: $e',
-          name: 'VideoPublishingScreen');
+      secureLog('Error initializing video: $e', name: 'VideoPublishingScreen');
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -714,11 +750,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     }
   }
 
+  Map<String, dynamic> get _previewEditMetadata =>
+      _pendingPost?.toPublishMetadata() ?? const <String, dynamic>{};
+
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _captionController.removeListener(_onCaptionChanged);
+    _trimPlayback?.dispose();
 
     // Safely dispose video controller
     try {
@@ -727,11 +766,15 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         _controller.dispose();
       }
     } catch (e) {
-      developer.log('Error disposing video controller: $e',
+      secureLog('Error disposing video controller: $e',
           name: 'VideoPublishingScreen');
     }
 
     _captionController.dispose();
+    if (_iapVerifiedHandler != null) {
+      IapBillingCoordinator.instance
+          .removeVerifiedHandler(_iapVerifiedHandler!);
+    }
     super.dispose();
   }
 
@@ -781,6 +824,69 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     _captionController.selection = TextSelection.fromPosition(
       TextPosition(offset: newText.length),
     );
+  }
+
+  String _buildTippyCaptionPrompt({required bool hashtagsOnly}) {
+    final String category = _selectedCategoryName();
+    final String draft = _caption.trim();
+    if (hashtagsOnly) {
+      return 'Suggest 5–8 relevant hashtags for a StreamersTip short-form post. '
+          'Category: $category. '
+          'Caption: ${draft.isEmpty ? "(none yet)" : draft}. '
+          'Prefer niche tags over generic spam.';
+    }
+    return 'Improve this StreamersTip short-form video caption. '
+        'Category: $category. Max 500 characters, authentic voice, strong hook. '
+        'Draft:\n${draft.isEmpty ? "(empty — write a fresh caption for this clip)" : draft}';
+  }
+
+  Future<void> _runTippyCaptionAssist({required bool hashtagsOnly}) async {
+    if (_tippyAssistBusy) {
+      return;
+    }
+    setState(() => _tippyAssistBusy = true);
+    try {
+      final TippyCaptionResult result = await _tippyService.createCaption(
+        prompt: _buildTippyCaptionPrompt(hashtagsOnly: hashtagsOnly),
+      );
+      if (!mounted) {
+        return;
+      }
+      if (!hashtagsOnly && result.caption.trim().isNotEmpty) {
+        _captionController.text = result.caption.trim();
+        _caption = result.caption.trim();
+      }
+      for (final String tag in result.hashtags) {
+        final String normalized =
+            tag.trim().startsWith('#') ? tag.trim() : '#${tag.trim()}';
+        if (normalized.length > 1) {
+          _addHashtagToCaption(normalized);
+        }
+      }
+      if (hashtagsOnly &&
+          result.hashtags.isEmpty &&
+          result.caption.contains('#')) {
+        for (final String part in result.caption.split(RegExp(r'\s+'))) {
+          if (part.startsWith('#')) {
+            _addHashtagToCaption(part);
+          }
+        }
+      }
+    } on TippyChatException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _tippyAssistBusy = false);
+      }
+    }
   }
 
   void _togglePlayPause() {
@@ -871,56 +977,68 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       backgroundColor: shell.scaffold,
       resizeToAvoidBottomInset: true,
       body: Column(
-        children: [
-          // Header
+        children: <Widget>[
           _buildHeader(),
-
-          // Video Player Area (collapsible on scroll)
           Expanded(
-            flex: _videoFlex.round(),
-            child: _buildVideoPreview(),
-          ),
-
-          // Content
-          Expanded(
-            flex: (7 - _videoFlex).round().clamp(3, 6),
             child: SingleChildScrollView(
               controller: _scrollController,
-              padding: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.only(bottom: 16),
               child: Column(
-                children: [
+                children: <Widget>[
+                  const SizedBox(height: 8),
+                  _buildVideoPreview(),
                   const SizedBox(height: 16),
-
-                  // Aspect ratio warning (non-blocking)
                   if (_aspectRatioWarning != null &&
-                      !_aspectRatioWarningDismissed) ...[
+                      !_aspectRatioWarningDismissed) ...<Widget>[
                     _AspectRatioWarningBanner(
-                      message: _aspectRatioWarning!,
-                      onDismiss: () =>
-                          setState(() => _aspectRatioWarningDismissed = true),
+                      message: 'This video may appear letterboxed in the feed.',
+                      onDismiss: () => setState(
+                        () => _aspectRatioWarningDismissed = true,
+                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
-
-                  if (_isEditingDraft) ...[
+                  if (_isEditingDraft) ...<Widget>[
                     _buildDraftContextBanner(),
                     const SizedBox(height: 12),
                   ],
-
-                  // Caption (most important — first)
                   _buildCaptionSection(),
-
-                  const SizedBox(height: 20),
-
-                  // Category chips
+                  const SizedBox(height: 16),
                   _buildCategorySection(),
-
-                  const SizedBox(height: 20),
-
-                  _buildComposerGuidance(),
-
-                  const SizedBox(height: 20),
-
+                  const SizedBox(height: 16),
+                  _buildPostQualitySection(),
+                  const SizedBox(height: 12),
+                  _buildCompactSettingRow(
+                    title: 'Visibility',
+                    value:
+                        '$_selectedPrivacy · comments ${_allowComments ? 'on' : 'off'}',
+                    onTap: () => setState(
+                      () => _showPrivacyOptions = !_showPrivacyOptions,
+                    ),
+                  ),
+                  if (_showPrivacyOptions) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _buildPrivacySection(),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  _buildCompactSettingRow(
+                    title: 'Schedule',
+                    value: _schedule == null ? 'Post now' : 'Scheduled',
+                    onTap: () => setState(
+                      () => _showScheduleOptions = !_showScheduleOptions,
+                    ),
+                  ),
+                  if (_showScheduleOptions) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _buildSchedulePostSection(),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
                   _buildExpandableSection(
                     icon: Icons.image_outlined,
                     title: 'Thumbnail',
@@ -935,24 +1053,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     ),
                     child: _buildThumbnailSection(),
                   ),
-
-                  const SizedBox(height: 16),
-
-                  _buildExpandableSection(
-                    icon: Icons.lock_outline,
-                    title: 'Privacy & comments',
-                    subtitle:
-                        '$_selectedPrivacy · comments ${_allowComments ? 'on' : 'off'}',
-                    isExpanded: _showPrivacyOptions,
-                    onToggle: () => setState(
-                      () => _showPrivacyOptions = !_showPrivacyOptions,
-                    ),
-                    child: _buildPrivacySection(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  if (FeatureFlags.crossPostingEnabled) ...[
+                  const SizedBox(height: 12),
+                  if (FeatureFlags.crossPostingEnabled) ...<Widget>[
                     _buildExpandableSection(
                       icon: Icons.share_outlined,
                       title: 'Cross-posting',
@@ -971,69 +1073,172 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
-
-                  _buildExpandableSection(
-                    icon: Icons.schedule_outlined,
-                    title: 'Schedule',
-                    subtitle: _schedule == null
-                        ? 'Optional: publish later'
-                        : 'Post scheduled',
-                    isExpanded: _showScheduleOptions,
-                    onToggle: () => setState(
-                      () => _showScheduleOptions = !_showScheduleOptions,
-                    ),
-                    child: _buildSchedulePostSection(),
-                  ),
-
-                  const SizedBox(height: 120), // Space for bottom actions
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
           ),
-
-          // Bottom Actions
           _buildBottomActions(),
         ],
       ),
     );
   }
 
-  Widget _buildComposerGuidance() {
+  Widget _buildCompactSettingRow({
+    required String title,
+    required String value,
+    required VoidCallback onTap,
+  }) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: shell.surfaceCardBorder,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: shell.surfaceCard,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: shell.surfaceCardBorder),
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: shell.mutedStrong,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        value,
+                        style: TextStyle(
+                          color: shell.onChrome,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: shell.iconDim),
+              ],
+            ),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPostQualitySection() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final String label = _postQualityScore >= 3
+        ? 'Good'
+        : _postQualityScore >= 2
+            ? 'Fair'
+            : 'Needs work';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: shell.surfaceCard,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: shell.surfaceCardBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Text(
+                  'Post Quality',
+                  style: TextStyle(
+                    color: shell.onChrome,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildQualityLine(
+              done: _caption.trim().isNotEmpty,
+              text: 'Caption added',
+            ),
+            _buildQualityLine(
+              done: _selectedCategory.isNotEmpty,
+              text: 'Category selected',
+            ),
+            _buildQualityLine(
+              done: _isCustomThumbnail || _frameThumbBytes != null,
+              text: 'Thumbnail selected',
+            ),
+            _buildQualityLine(
+              done: _schedule != null,
+              text: 'Scheduled time optimized',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQualityLine({required bool done, required String text}) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.auto_awesome_outlined,
-            color: scheme.primary,
-            size: 18,
+        children: <Widget>[
+          Text(
+            done ? '✓' : '○',
+            style: TextStyle(
+              color: done ? const Color(0xFF7FF0B7) : shell.iconDim,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Start with the basics: add a caption, pick a category, then publish. Everything below is optional.',
-              style: TextStyle(
-                color: shell.muted,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                height: 1.35,
-              ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              color: shell.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _openCategoryPicker() async {
+    final String? picked = await showCategoryPickerSheet(
+      context: context,
+      categories: _categories,
+      selectedCategoryId: _selectedCategory,
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedCategory = picked);
+    }
   }
 
   Widget _buildExpandableSection({
@@ -1320,371 +1525,277 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildVideoPreview() {
-    return GestureDetector(
-      onTap: _togglePlayPause,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: Colors.black,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.10),
-              Colors.white.withValues(alpha: 0.02),
-            ],
-          ),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.16),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            fit: StackFit.expand,
-            alignment: Alignment.center,
-            children: [
-              // Video player or error state
-              if (_hasError && _initializationError != null)
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Colors.red,
-                        size: 48,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _initializationError!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 200,
+            child: GestureDetector(
+              onTap: _togglePlayPause,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.black,
+                  border: Border.all(color: shell.surfaceCardBorder),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    alignment: Alignment.center,
+                    children: <Widget>[
+                      // Video player or error state
+                      if (_hasError && _initializationError != null)
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.red,
+                                size: 48,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _initializationError!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _hasError = false;
+                                    _initializationError = null;
+                                  });
+                                  _initializeVideo();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF9248D2),
+                                ),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (_isInitialized &&
+                          !_hasError &&
+                          _pendingPost != null)
+                        Positioned.fill(
+                          child: ColoredBox(
+                            color: Colors.black,
+                            child: Center(
+                              child: PreviewVideoFrame(
+                                controller: _controller,
+                                pending: _pendingPost!,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        const CircularProgressIndicator(
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _hasError = false;
-                            _initializationError = null;
-                          });
-                          _initializeVideo();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF9248D2),
+
+                      // Play/Pause overlay (only show if no error and video is initialized)
+                      if (!_isPlaying && _isInitialized && !_hasError)
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            color: Colors.white,
+                            size: 40,
+                          ),
                         ),
-                        child: const Text('Retry'),
-                      ),
+
+                      if (_isInitialized &&
+                          !_hasError &&
+                          _pendingPost?.hasCaptionOverlay == true)
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 12,
+                          child: IgnorePointer(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                _pendingPost!.manualCaptionText.trim(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // Upload Progress overlay
+                      if (_isUploading)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.75),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 56,
+                                    height: 56,
+                                    child: CircularProgressIndicator(
+                                      value: _uploadProgress > 0
+                                          ? _uploadProgress
+                                          : null,
+                                      strokeWidth: 4,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                              Color(0xFF9248D2)),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _friendlyUploadStatusMessage(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'You can stay here while we finish everything safely.',
+                                    style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.72),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
-                )
-              else if (_isInitialized && !_hasError)
-                Positioned.fill(
-                  child: ColoredBox(
-                    color: Colors.black,
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        width: _controller.value.size.width,
-                        height: _controller.value.size.height,
-                        child: VideoPlayer(_controller),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
-
-              // Play/Pause overlay (only show if no error and video is initialized)
-              if (!_isPlaying && _isInitialized && !_hasError)
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
-
-              if (_isInitialized && !_hasError)
-                Positioned(
-                  top: 14,
-                  left: 14,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.42),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.12),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.play_circle_outline_rounded,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          _schedule != null
-                              ? 'Scheduled preview'
-                              : 'Ready to post',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              if (_isInitialized && !_hasError)
-                Positioned(
-                  bottom: 14,
-                  left: 14,
-                  right: 14,
-                  child: IgnorePointer(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.15),
-                            Colors.black.withValues(alpha: 0.55),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        _schedule != null
-                            ? 'Your video is queued to go out when you are ready.'
-                            : 'Tap the preview anytime to pause and double-check your post.',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          height: 1.3,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Upload Progress overlay
-              if (_isUploading)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.75),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 56,
-                            height: 56,
-                            child: CircularProgressIndicator(
-                              value:
-                                  _uploadProgress > 0 ? _uploadProgress : null,
-                              strokeWidth: 4,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Color(0xFF9248D2)),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _friendlyUploadStatusMessage(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'You can stay here while we finish everything safely.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.72),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1FBF75).withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: const Color(0xFF1FBF75).withValues(alpha: 0.35),
+                ),
+              ),
+              child: Text(
+                _schedule != null ? 'Scheduled' : 'Ready to post',
+                style: const TextStyle(
+                  color: Color(0xFF7FF0B7),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildCategorySection() {
-    final selectedCategory = _categories.firstWhere(
-      (category) => category.id == _selectedCategory,
+    final VideoCategory selectedCategory = _categories.firstWhere(
+      (VideoCategory category) => category.id == _selectedCategory,
       orElse: () => _categories.first,
     );
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Category',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                '(required)',
-                style: TextStyle(color: Colors.white38, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
+        children: <Widget>[
           Text(
-            'Pick the one that best fits this post. You can always change it before publishing.',
+            'Category',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.62),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
+              color: shell.onChrome,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
+          const SizedBox(height: 8),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _openCategoryPicker,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  selectedCategory.emoji,
-                  style: const TextStyle(fontSize: 18),
+              child: Ink(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: shell.surfaceCard,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: shell.surfaceCardBorder),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'Selected: ${selectedCategory.name}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final chipMaxWidth =
-                  constraints.maxWidth < 180 ? constraints.maxWidth : 180.0;
-              return Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _categories.map((category) {
-                  final isSelected = _selectedCategory == category.id;
-                  return ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: chipMaxWidth),
-                    child: GestureDetector(
-                      onTap: () =>
-                          setState(() => _selectedCategory = category.id),
-                      behavior: HitTestBehavior.opaque,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? category.color.withValues(alpha: 0.25)
-                              : Colors.white.withValues(alpha: 0.07),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? category.color
-                                : Colors.white.withValues(alpha: 0.15),
-                            width: isSelected ? 1.5 : 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              category.emoji,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                category.name,
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? category.color
-                                      : Colors.white70,
-                                  fontSize: 13.5,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                child: Row(
+                  children: <Widget>[
+                    Text(
+                      selectedCategory.emoji,
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        selectedCategory.name,
+                        style: TextStyle(
+                          color: shell.onChrome,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                  );
-                }).toList(),
-              );
-            },
+                    Text(
+                      'Change',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -1693,12 +1804,20 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   Widget _buildCaptionSection() {
     final charCount = _captionCharacterCount;
-    final maxLen = _VideoPublishingConstants.maxCaptionLength;
+    final maxLen = PublishValidationLimits.maxCaptionLength;
     final counterColor = charCount > maxLen
         ? Colors.red
         : charCount >= (maxLen * 0.9).toInt()
             ? Colors.orange
             : Colors.white38;
+    final UserProgressBundle? bundle =
+        ref.watch(userProgressBundleProvider).valueOrNull;
+    final BillingTierAccess? billing =
+        ref.watch(billingTierAccessProvider).valueOrNull;
+    final bool tippyEnabled = resolveTippyEnabledForPublish(
+      bundle: bundle,
+      billing: billing,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -1720,16 +1839,6 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               Text('$charCount/$maxLen',
                   style: TextStyle(color: counterColor, fontSize: 12)),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Tell people what they are about to watch. A clear first line usually performs best.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.62),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-            ),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -1766,6 +1875,20 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               fillColor: Colors.white.withValues(alpha: 0.06),
               counterText: '',
             ),
+          ),
+          const SizedBox(height: 10),
+          TippyPublishAssistRow(
+            enabled: tippyEnabled,
+            busy: _tippyAssistBusy,
+            onImproveCaption: () => _runTippyCaptionAssist(hashtagsOnly: false),
+            onSuggestHashtags: () => _runTippyCaptionAssist(hashtagsOnly: true),
+            onOpenTippy: () {
+              if (tippyEnabled) {
+                AppNavigator.openTippyChat(context);
+              } else {
+                Navigator.of(context).pushNamed(AppRoutes.upgrade);
+              }
+            },
           ),
           const SizedBox(height: 10),
           Row(
@@ -2360,33 +2483,22 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildBottomActions() {
-    final isBlocked = _isUploading || _isModerating || _hasError;
-    final label = _isModerating
+    final bool isBlocked = !_canPublish;
+    final String label = _isModerating
         ? 'Checking your video…'
         : _isUploading
             ? 'Publishing your post…'
             : _schedule != null
                 ? 'Schedule Post'
                 : 'Publish Now';
-    final sublabel = _isModerating
-        ? 'Making sure everything is safe and ready.'
-        : _isUploading
-            ? 'Stay here for a moment while we finish things up.'
-            : _schedule != null
-                ? 'Your post will go live at the time you selected.'
-                : 'Share it to StreamersTip right away.';
 
     return SafeArea(
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              const Color(0xFF1C135D).withValues(alpha: 0.95),
-            ],
+          color: PublishFlowTokens.background.withValues(alpha: 0.92),
+          border: Border(
+            top: BorderSide(color: PublishFlowTokens.border),
           ),
         ),
         child: GestureDetector(
@@ -2397,84 +2509,48 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   _publishVideo();
                 },
           child: Container(
-            height: 72,
+            height: 54,
             decoration: BoxDecoration(
-              gradient: isBlocked
-                  ? null
-                  : const LinearGradient(
-                      colors: [Color(0xFF9248D2), Color(0xFF4E9FD4)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-              color: isBlocked ? Colors.white12 : null,
+              gradient: isBlocked ? null : PublishFlowTokens.primaryGradient,
+              color: isBlocked ? Colors.white.withValues(alpha: 0.08) : null,
               borderRadius: BorderRadius.circular(14),
-              boxShadow: isBlocked
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: const Color(0xFF9248D2).withValues(alpha: 0.45),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
             ),
             child: Center(
               child: _isModerating || _isUploading
                   ? Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
+                      children: <Widget>[
                         const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Flexible(
-                          child: Text(label,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600)),
-                        ),
-                      ],
-                    )
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _schedule != null
-                                  ? Icons.schedule_send_rounded
-                                  : Icons.rocket_launch_outlined,
+                          child: Text(
+                            label,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
                               color: Colors.white,
-                              size: 18,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
                             ),
-                            const SizedBox(width: 8),
-                            Text(label,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700)),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          sublabel,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.78),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
+                    )
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        color: isBlocked ? Colors.white38 : Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
             ),
           ),
@@ -2664,18 +2740,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     }
 
     debugPrint(
-        '✅ VideoPublishingScreen: User authenticated - UID: ${currentUser.uid}');
-    debugPrint('✅ VideoPublishingScreen: User email: ${currentUser.email}');
-    debugPrint(
-        '✅ VideoPublishingScreen: User displayName: ${currentUser.displayName}');
+      '✅ VideoPublishingScreen: User authenticated uid=${currentUser.uid}',
+    );
 
     // Check authentication token and force refresh
     try {
-      final idToken = await currentUser.getIdToken(true); // Force refresh
-      debugPrint(
-          '✅ VideoPublishingScreen: Auth token obtained - Length: ${idToken?.length ?? 0}');
-      debugPrint(
-          '✅ VideoPublishingScreen: Auth token preview: ${idToken?.substring(0, 20) ?? 'null'}...');
+      await currentUser.getIdToken(true);
     } catch (e) {
       debugPrint('❌ VideoPublishingScreen: Failed to get auth token: $e');
       _showUploadErrorDialog(
@@ -2685,18 +2755,18 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
     // Validate caption
     if (_caption.trim().isEmpty) {
-      _showUploadErrorDialog(_VideoPublishingConstants.errorCaption);
+      _showUploadErrorDialog(PublishValidationLimits.errorCaption);
       return;
     }
-    if (_caption.length > _VideoPublishingConstants.maxCaptionLength) {
+    if (_caption.length > PublishValidationLimits.maxCaptionLength) {
       _showUploadErrorDialog(
-          'Caption is too long (maximum ${_VideoPublishingConstants.maxCaptionLength} characters).');
+          'Caption is too long (maximum ${PublishValidationLimits.maxCaptionLength} characters).');
       return;
     }
 
     // Validate category
     if (_selectedCategory.isEmpty) {
-      _showUploadErrorDialog(_VideoPublishingConstants.errorCategory);
+      _showUploadErrorDialog(PublishValidationLimits.errorCategory);
       return;
     }
 
@@ -2781,29 +2851,48 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       // 3. Create optimistic video placeholder
       debugPrint(
           '🎬 VideoPublishingScreen: Creating optimistic video placeholder...');
-      await _optimisticVideoService.createOptimisticVideo(
-        videoId: videoId,
-        caption: _caption,
-        categories: [_selectedCategory],
-        localThumbnailPath: _customThumbnailFile?.path,
-        localVideoPath: videoFileToUpload.path,
-        metadata: {
-          'privacy': _selectedPrivacy,
-          'allowComments': _allowComments,
-          'cross_platform_sharing': selectedPlatforms.toList(),
-          'watermark_applied': _watermarkService.shouldApplyWatermarkForTier(
-            _subscriptionTier,
-            selectedPlatforms,
-          ),
-          'cross_post_subscription_tier': _subscriptionTier,
-          'moderation_confidence': moderationResult.confidence,
-          'moderation_checked_at': DateTime.now().toIso8601String(),
-          'duration': 0, // Will be calculated during processing
-          'fileSize': await videoFileToUpload.length(),
-        },
-      );
-      debugPrint(
-          '✅ VideoPublishingScreen: Optimistic video created successfully');
+      try {
+        await _optimisticVideoService.createOptimisticVideo(
+          videoId: videoId,
+          caption: _caption,
+          categories: [_selectedCategory],
+          localThumbnailPath: _customThumbnailFile?.path,
+          localVideoPath: videoFileToUpload.path,
+          persistToFirestore: false,
+          metadata: {
+            'privacy': _selectedPrivacy,
+            'allowComments': _allowComments,
+            'cross_platform_sharing': selectedPlatforms.toList(),
+            'watermark_applied': _watermarkService.shouldApplyWatermarkForTier(
+              _subscriptionTier,
+              selectedPlatforms,
+            ),
+            PublishFirestoreFields.crossPostSubscriptionTier: _subscriptionTier,
+            'moderation_confidence': moderationResult.confidence,
+            'moderation_checked_at': DateTime.now().toIso8601String(),
+            'duration': _pendingPost?.effectiveDuration.inSeconds ?? 0,
+            'fileSize': await videoFileToUpload.length(),
+            ..._previewEditMetadata,
+          },
+        );
+        debugPrint(
+          '✅ VideoPublishingScreen: Optimistic video created successfully',
+        );
+      } catch (e) {
+        secureLog(
+          '❌ VideoPublishingScreen: Optimistic placeholder failed: $e',
+          name: 'VideoPublishingScreen',
+        );
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isModerating = false;
+          _isUploading = false;
+        });
+        _showUploadErrorDialog(_friendlyUploadError(e.toString()));
+        return;
+      }
 
       // 4. Check if this is a scheduled post
       if (_schedule != null) {
@@ -2824,18 +2913,17 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       });
 
       try {
-        developer.log('🚀 Starting video upload (immediate publish)...',
+        secureLog('🚀 Starting video upload (immediate publish)...',
             name: 'VideoPublishingScreen');
-        developer.log('📁 Video file: ${videoFileToUpload.path}',
+        secureLog('📁 Video file: ${videoFileToUpload.path}',
             name: 'VideoPublishingScreen');
-        developer.log('📝 Caption: $_caption', name: 'VideoPublishingScreen');
-        developer.log('🏷️ Hashtags: $_hashtags',
+        secureLog('📝 Caption: $_caption', name: 'VideoPublishingScreen');
+        secureLog('🏷️ Hashtags: $_hashtags', name: 'VideoPublishingScreen');
+        secureLog('🔒 Privacy: $_selectedPrivacy',
             name: 'VideoPublishingScreen');
-        developer.log('🔒 Privacy: $_selectedPrivacy',
+        secureLog('📂 Category: $_selectedCategory',
             name: 'VideoPublishingScreen');
-        developer.log('📂 Category: $_selectedCategory',
-            name: 'VideoPublishingScreen');
-        developer.log('👤 User ID: ${currentUser.uid}',
+        secureLog('👤 User ID: ${currentUser.uid}',
             name: 'VideoPublishingScreen');
 
         final fileSize = await videoFileToUpload.length();
@@ -2870,13 +2958,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                 _subscriptionTier,
                 selectedPlatforms,
               ),
-              'cross_post_subscription_tier': _subscriptionTier,
+              PublishFirestoreFields.crossPostSubscriptionTier: _subscriptionTier,
               'moderation_confidence': moderationResult.confidence,
               'moderation_checked_at': DateTime.now().toIso8601String(),
-              'duration': 0,
+              'duration': _pendingPost?.effectiveDuration.inSeconds ?? 0,
               'fileSize': fileSize,
               'thumbnailTimeSeconds': _thumbnailTimeSeconds,
               'isCustomThumbnail': _isCustomThumbnail,
+              ..._previewEditMetadata,
             },
             onProgress: (progress) {
               if (mounted) setState(() => _uploadProgress = progress);
@@ -2885,7 +2974,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         );
         final result = execution.publishResult!;
 
-        developer.log(
+        secureLog(
             '📤 ST result: ${result.streamerstipSuccess}, '
             'crossPost ok: ${result.successfulPlatforms.length}, '
             'failed: ${result.failedPlatforms.length}',
@@ -2896,56 +2985,53 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
         if (result.streamerstipSuccess) {
           final uploadedVideoId = execution.uploadedVideoId ?? videoId;
+          if (uploadedVideoId != videoId) {
+            _optimisticVideoService.bindServerVideoId(
+              clientVideoId: videoId,
+              serverVideoId: uploadedVideoId,
+            );
+          }
           UploadStatusManager().enterProcessing(uploadedVideoId);
           unawaited(
             OnboardingMissionActions.complete('upload_first_post'),
           );
-
-          _showCrossPostResultSheet(
-            result: result,
+          await _returnToHomeAfterPublish(
             uploadedVideoId: uploadedVideoId,
-            crossPostRequests: crossPostRequests,
+            privacy: _selectedPrivacy,
+            category: canonicalCategory,
+            crossPostResult: result,
           );
         } else {
-          // StreamersTip failed — do NOT show cross-post UI.
-          final raw =
-              result.streamerstipResult.error ?? 'Failed to publish video';
+          final String raw = result.streamerstipResult.error ??
+              publishController.errorDetails['streamerstip'] ??
+              'Failed to publish video';
           _showUploadErrorDialog(_friendlyUploadError(raw));
         }
       } catch (e) {
-        developer.log('❌ VideoPublishingScreen: upload error: $e',
+        secureLog('❌ VideoPublishingScreen: upload error: $e',
             name: 'VideoPublishingScreen');
         if (!mounted) return;
         setState(() => _isUploading = false);
         _showUploadErrorDialog(_friendlyUploadError(e.toString()));
       }
     } catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _isModerating = false;
+        _isUploading = false;
       });
-
-      // print('❌ Error publishing video: $e');
       _errorHandler.handleUploadError(
         operation: 'video_publishing',
         error: e,
       );
-      _showUploadErrorDialog('Failed to publish video. Please try again.');
+      _showUploadErrorDialog(_friendlyUploadError(e.toString()));
     }
   }
 
   String _friendlyUploadError(String raw) {
-    if (raw.contains('PERMISSION_DENIED')) {
-      return 'Permission denied. Please check your account and try again.';
-    } else if (raw.contains('UNAVAILABLE')) {
-      return 'Service unavailable. Please try again in a few minutes.';
-    } else if (raw.contains('UNAUTHENTICATED')) {
-      return 'Please log in again to publish videos.';
-    } else if (raw.contains('thumbnail')) {
-      return 'Failed to generate thumbnail. Please try again.';
-    } else if (raw.contains('network') || raw.contains('SocketException')) {
-      return 'No internet connection. Please check your network.';
-    }
-    return 'Failed to publish video. Please try again.';
+    return UploadFailureClassification.classify(raw).userMessage;
   }
 
   String _generateVideoId() {
@@ -2962,6 +3048,84 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     );
   }
 
+  Future<void> _returnToHomeAfterPublish({
+    required String uploadedVideoId,
+    required String privacy,
+    required String category,
+    CrossPublishResult? crossPostResult,
+  }) async {
+    ref.read(postPublishFeedPrepProvider.notifier).complete();
+    ref.read(activeFeedProvider.notifier).setActiveFeed(FeedTab.forYou);
+    ref.read(mainTabIndexRequestProvider.notifier).state = 0;
+    ref
+        .read(homeFeedScrollRequestProvider.notifier)
+        .requestScrollToVideo(uploadedVideoId);
+    OptimisticVideoService().requestHomeScrollToVideo(uploadedVideoId);
+
+    final List<CrossPostResult> failedPlatforms =
+        crossPostResult?.failedPlatforms ?? <CrossPostResult>[];
+    if (failedPlatforms.isNotEmpty && mounted) {
+      final String names =
+          failedPlatforms.map((CrossPostResult r) => r.platformName).join(', ');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Posted on StreamersTip. Cross-post failed for: $names',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
+    ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
+
+    unawaited(_finishPostPublishFeedPrep(
+      videoId: uploadedVideoId,
+      privacy: privacy,
+      category: category,
+    ));
+  }
+
+  Future<void> _finishPostPublishFeedPrep({
+    required String videoId,
+    required String privacy,
+    required String category,
+  }) async {
+    try {
+      final String? uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await VideoPublishFinalizeService.instance.waitUntilDiscoverable(
+          videoId: videoId,
+          userId: uid,
+          privacy: privacy,
+          category: category,
+          ref: ref,
+          timeout: const Duration(minutes: 2),
+        );
+      } else {
+        await ref.read(hp.homeProvider.notifier).refreshFeedByTab(
+              FeedTab.forYou,
+            );
+      }
+    } catch (e) {
+      secureLog(
+        '⚠️ VideoPublishingScreen: post-publish feed prep: $e',
+        name: 'VideoPublishingScreen',
+      );
+      try {
+        await ref.read(hp.homeProvider.notifier).refreshFeedByTab(
+              FeedTab.forYou,
+            );
+      } catch (_) {}
+    } finally {
+      ref.read(postPublishFeedPrepProvider.notifier).complete();
+    }
+  }
+
+  // ignore: unused_element
   void _showCrossPostResultSheet({
     required CrossPublishResult result,
     required String uploadedVideoId,
@@ -2989,15 +3153,20 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             initialPlatforms: platforms,
           );
         },
-        onDone: () {
+        onDone: () async {
           final currentUserId = FirebaseAuth.instance.currentUser?.uid;
           if (currentUserId != null) {
-            ref.invalidate(video_providers.userVideosProvider(currentUserId));
-            ref
-                .read(video_providers.videoServiceStateProvider.notifier)
-                .loadAllVideos();
+            await VideoPublishFinalizeService.instance.finalizeDiscoverability(
+              videoId: uploadedVideoId,
+              userId: currentUserId,
+              ref: ref,
+              waitForMux: false,
+            );
           }
           ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
+          if (!ctx.mounted || !mounted) {
+            return;
+          }
           Navigator.of(ctx).pop();
           Navigator.of(context).popUntil((route) => route.isFirst);
         },
@@ -3155,7 +3324,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             _subscriptionTier,
             selectedPlatforms,
           ),
-          'cross_post_subscription_tier': _subscriptionTier,
+          PublishFirestoreFields.crossPostSubscriptionTier: _subscriptionTier,
           'scheduled_at_utc': _schedule?.scheduledAtUtc.toIso8601String(),
           'schedule_timezone': _schedule?.timezone,
           'is_scheduled': _schedule != null,
@@ -3184,7 +3353,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             Future.delayed(const Duration(milliseconds: 300), () {
               // Refresh will happen in HomeView when it becomes visible
-              developer.log(
+              secureLog(
                   '🔄 VideoPublishingScreen: Draft saved, feed will refresh on return to HomeView');
             });
           });
@@ -3237,9 +3406,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     });
 
     try {
-      developer.log('📅 Scheduling video for future publish...',
+      secureLog('📅 Scheduling video for future publish...',
           name: 'VideoPublishingScreen');
-      developer.log('📅 Scheduled time: ${_schedule!.scheduledAtUtc}',
+      secureLog('📅 Scheduled time: ${_schedule!.scheduledAtUtc}',
           name: 'VideoPublishingScreen');
 
       // 1. Upload video to Storage (but don't publish to feeds yet)
@@ -3289,7 +3458,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                       _subscriptionTier,
                       selectedPlatforms,
                     ),
-                    'cross_post_subscription_tier': _subscriptionTier,
+                    PublishFirestoreFields.crossPostSubscriptionTier: _subscriptionTier,
                   },
                   crossPostRequests: _connectedPlatforms
                       .where((_) => FeatureFlags.crossPostingEnabled)
@@ -3303,7 +3472,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               );
       final scheduledPostId = scheduledExecution.scheduledPostId ?? videoId;
 
-      developer.log('✅ Video scheduled successfully: $scheduledPostId',
+      secureLog('✅ Video scheduled successfully: $scheduledPostId',
           name: 'VideoPublishingScreen');
 
       setState(() {
@@ -3329,8 +3498,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
-      developer.log('❌ Error scheduling video: $e',
-          name: 'VideoPublishingScreen');
+      secureLog('❌ Error scheduling video: $e', name: 'VideoPublishingScreen');
       setState(() {
         _isUploading = false;
       });
@@ -3369,7 +3537,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       final snapshot = await uploadTask;
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
-      developer.log('❌ Error uploading video for scheduled post: $e',
+      secureLog('❌ Error uploading video for scheduled post: $e',
           name: 'VideoPublishingScreen');
       return null;
     }
@@ -3387,7 +3555,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       );
       return result.thumbnailUrl.isEmpty ? null : result.thumbnailUrl;
     } catch (e) {
-      developer.log('❌ Error generating thumbnail for scheduled post: $e',
+      secureLog('❌ Error generating thumbnail for scheduled post: $e',
           name: 'VideoPublishingScreen');
       return null;
     }
@@ -3466,10 +3634,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      developer.log('✅ Scheduled video saved to Firestore: $videoId',
+      secureLog('✅ Scheduled video saved to Firestore: $videoId',
           name: 'VideoPublishingScreen');
     } catch (e) {
-      developer.log('❌ Error saving scheduled video to Firestore: $e',
+      secureLog('❌ Error saving scheduled video to Firestore: $e',
           name: 'VideoPublishingScreen');
       rethrow;
     }

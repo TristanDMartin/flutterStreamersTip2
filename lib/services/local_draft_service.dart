@@ -42,9 +42,8 @@ class LocalDraftService {
   ) async {
     final String? draftId = draft['id'] as String?;
     final String? canonicalVideoUrl = (draft['videoUrl'] ??
-            draft['canonicalVideoUrl'] ??
-            draft['videoURL'])
-        as String?;
+        draft['canonicalVideoUrl'] ??
+        draft['videoURL']) as String?;
     if (draftId == null ||
         canonicalVideoUrl == null ||
         canonicalVideoUrl.isEmpty) {
@@ -59,8 +58,7 @@ class LocalDraftService {
         );
         return null;
       }
-      final Directory documentsDir =
-          await getApplicationDocumentsDirectory();
+      final Directory documentsDir = await getApplicationDocumentsDirectory();
       final Directory draftsDir =
           Directory(path.join(documentsDir.path, 'DraftVideos'));
       if (!await draftsDir.exists()) {
@@ -70,8 +68,7 @@ class LocalDraftService {
           path.extension(Uri.parse(canonicalVideoUrl).path).isNotEmpty
               ? path.extension(Uri.parse(canonicalVideoUrl).path)
               : '.mp4';
-      final String localPath =
-          path.join(draftsDir.path, '$draftId$extension');
+      final String localPath = path.join(draftsDir.path, '$draftId$extension');
       final File localFile = File(localPath);
       await localFile.writeAsBytes(response.bodyBytes, flush: true);
       debugPrint('✅ Rebound draft video to: $localPath');
@@ -138,8 +135,7 @@ class LocalDraftService {
         'status': 'draft',
         'isSharedWithConnections':
             existingDraft?['isSharedWithConnections'] ?? false,
-        'sharedConnections':
-            existingDraft?['sharedConnections'] ?? <String>[],
+        'sharedConnections': existingDraft?['sharedConnections'] ?? <String>[],
         'sharedDraftId':
             metadata['sharedDraftId'] ?? existingDraft?['sharedDraftId'],
         'canonicalDraftId':
@@ -210,8 +206,10 @@ class LocalDraftService {
 
           // Regenerate high-quality thumbnail if needed
           if (needsRegeneration) {
-            debugPrint('🖼️ Regenerating high-quality thumbnail for draft: $draftId');
-            final newThumbnailPath = await draftThumbnailService.generateLocalThumbnail(
+            debugPrint(
+                '🖼️ Regenerating high-quality thumbnail for draft: $draftId');
+            final newThumbnailPath =
+                await draftThumbnailService.generateLocalThumbnail(
               videoPath: videoPath,
               videoId: draftId,
             );
@@ -332,11 +330,12 @@ class LocalDraftService {
     final updatedDraft = Map<String, dynamic>.from(drafts[draftIndex]);
     updatedDraft.addAll(updates);
 
-    final existingMetadata =
-        Map<String, dynamic>.from(updatedDraft['metadata'] ?? const <String, dynamic>{});
+    final existingMetadata = Map<String, dynamic>.from(
+        updatedDraft['metadata'] ?? const <String, dynamic>{});
     existingMetadata.addAll(
       updates['metadata'] is Map<String, dynamic>
-          ? Map<String, dynamic>.from(updates['metadata'] as Map<String, dynamic>)
+          ? Map<String, dynamic>.from(
+              updates['metadata'] as Map<String, dynamic>)
           : const <String, dynamic>{},
     );
     updatedDraft['metadata'] = existingMetadata;

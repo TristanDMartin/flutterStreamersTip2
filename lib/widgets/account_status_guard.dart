@@ -18,22 +18,19 @@ class AccountStatusGuard extends ConsumerWidget {
     if (!authState.isLoggedIn) {
       return child;
     }
-    final String? uid = FirebaseAuth.instance.currentUser?.uid ??
-        authState.currentUser?.id;
+    final String? uid =
+        FirebaseAuth.instance.currentUser?.uid ?? authState.currentUser?.id;
     if (uid == null || uid.isEmpty) {
       return child;
     }
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .snapshots(),
+      stream:
+          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snap) {
         if (snap.hasError || !snap.hasData || !snap.data!.exists) {
           return child;
         }
-        final String? st =
-            snap.data!.data()?['accountStatus'] as String?;
+        final String? st = snap.data!.data()?['accountStatus'] as String?;
         if (st == 'banned') {
           return const BannedAccountView();
         }

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class CustomTabPicker extends StatefulWidget {
   final int selectedTab;
   final Function(int) onTabChanged;
-  
+
   const CustomTabPicker({
     super.key,
     required this.selectedTab,
@@ -18,7 +18,7 @@ class _CustomTabPickerState extends State<CustomTabPicker>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   // late Animation<double> _animation; // Unused field commented out
-  
+
   final List<String> tabs = ["Photos", "Video", "Tagged"];
 
   @override
@@ -65,12 +65,11 @@ class _CustomTabPickerState extends State<CustomTabPicker>
                 duration: const Duration(milliseconds: 200),
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight: widget.selectedTab == index 
-                      ? FontWeight.w700 
+                  fontWeight: widget.selectedTab == index
+                      ? FontWeight.w700
                       : FontWeight.w500,
-                  color: widget.selectedTab == index 
-                      ? Colors.white 
-                      : Colors.grey,
+                  color:
+                      widget.selectedTab == index ? Colors.white : Colors.grey,
                 ),
                 child: Text(tabs[index]),
               ),

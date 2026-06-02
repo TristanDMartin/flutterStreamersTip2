@@ -11,5 +11,6 @@ sealed class SuggestedConnection with _$SuggestedConnection {
     required String avatarName,
   }) = _SuggestedConnection;
 
-  factory SuggestedConnection.fromJson(Map<String, dynamic> json) => _$SuggestedConnectionFromJson(json);
+  factory SuggestedConnection.fromJson(Map<String, dynamic> json) =>
+      _$SuggestedConnectionFromJson(json);
 }

@@ -20,27 +20,27 @@ class InsightsOverviewTab extends StatelessWidget {
         children: [
           // Date range info
           _buildDateRangeInfo(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Total metrics cards
           _buildMetricsCards(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Retention rate section
           _buildRetentionSection(context),
-          
+
           const SizedBox(height: 24),
-          
+
           // Traffic sources section
           _buildTrafficSourcesSection(context),
-          
+
           const SizedBox(height: 24),
-          
+
           // Search queries section
           _buildSearchQueriesSection(),
-          
+
           const SizedBox(height: 24),
         ],
       ),
@@ -309,7 +309,8 @@ class InsightsOverviewTab extends StatelessWidget {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: retentionStatus.color.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(20),
@@ -396,7 +397,8 @@ class InsightsOverviewTab extends StatelessWidget {
                   sources: trafficSources,
                 ),
                 const SizedBox(height: 16),
-                ...trafficSources.map((source) => _buildTrafficSourceItem(source)),
+                ...trafficSources
+                    .map((source) => _buildTrafficSourceItem(source)),
               ],
             ],
           ),
@@ -674,18 +676,18 @@ class InsightsOverviewTab extends StatelessWidget {
             width: 24,
             height: 24,
             decoration: BoxDecoration(
-              color: rank <= 3 
-                ? const Color(0xFF9248D2).withValues(alpha: 0.2)
-                : Colors.white.withValues(alpha: 0.1),
+              color: rank <= 3
+                  ? const Color(0xFF9248D2).withValues(alpha: 0.2)
+                  : Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
               child: Text(
                 '$rank',
                 style: TextStyle(
-                  color: rank <= 3 
-                    ? const Color(0xFF9248D2)
-                    : Colors.white.withValues(alpha: 0.7),
+                  color: rank <= 3
+                      ? const Color(0xFF9248D2)
+                      : Colors.white.withValues(alpha: 0.7),
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
@@ -765,7 +767,8 @@ class InsightsOverviewTab extends StatelessWidget {
     if (views == 0) {
       return (
         label: 'No Signal Yet',
-        description: 'Retention will become meaningful once this video has viewers to measure.',
+        description:
+            'Retention will become meaningful once this video has viewers to measure.',
         color: Colors.white70,
       );
     }
@@ -773,7 +776,8 @@ class InsightsOverviewTab extends StatelessWidget {
     if (views < 25) {
       return (
         label: 'Early Signal',
-        description: 'This retention rate is based on a small audience so far and may move quickly.',
+        description:
+            'This retention rate is based on a small audience so far and may move quickly.',
         color: Colors.orange,
       );
     }
@@ -789,14 +793,16 @@ class InsightsOverviewTab extends StatelessWidget {
     if (retentionRate >= 0.35) {
       return (
         label: 'Promising',
-        description: 'Retention looks healthy and there is a solid base to build on.',
+        description:
+            'Retention looks healthy and there is a solid base to build on.',
         color: const Color(0xFF9248D2),
       );
     }
 
     return (
       label: 'Needs Testing',
-      description: 'Viewers are dropping earlier, so the opening may need a stronger hook.',
+      description:
+          'Viewers are dropping earlier, so the opening may need a stronger hook.',
       color: const Color(0xFFE91E63),
     );
   }

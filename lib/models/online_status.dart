@@ -37,5 +37,3 @@ OnlineStatus parseOnlineStatus(dynamic value) {
     _ => OnlineStatus.invisible,
   };
 }
-
-

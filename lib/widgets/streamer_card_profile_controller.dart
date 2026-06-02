@@ -68,11 +68,8 @@ class StreamerCardProfileController extends ChangeNotifier {
         return;
       }
 
-      _subscription = _firestore
-          .collection('users')
-          .doc(resolvedDocId)
-          .snapshots()
-          .listen(
+      _subscription =
+          _firestore.collection('users').doc(resolvedDocId).snapshots().listen(
         (snapshot) {
           if (!snapshot.exists) {
             _setMissingUserState();
@@ -119,12 +116,14 @@ class StreamerCardProfileController extends ChangeNotifier {
     final identifier = rawIdentifier.trim();
     if (identifier.isEmpty) return null;
 
-    final directDoc = await _firestore.collection('users').doc(identifier).get();
+    final directDoc =
+        await _firestore.collection('users').doc(identifier).get();
     if (directDoc.exists) {
       return directDoc.id;
     }
 
-    final usernameDoc = await _firestore.collection('usernames').doc(identifier).get();
+    final usernameDoc =
+        await _firestore.collection('usernames').doc(identifier).get();
     final mappedUid = usernameDoc.data()?['uid'] as String?;
     if (mappedUid != null && mappedUid.trim().isNotEmpty) {
       final mappedDoc =

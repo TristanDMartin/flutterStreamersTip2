@@ -15,22 +15,22 @@ extension ColorExtension on Color {
   static Color get followGradientEnd => fromHex('#4897d2'); // Lightest blue
 
   static List<Color> get followGradientColors => [
-    fromHex('#9248d2'), // Purple
-    fromHex('#7768df'), // Another purple
-    fromHex('#1670de'), // Blue
-    fromHex('#3c8bd6'), // Lighter blue
-    fromHex('#4897d2'), // Lightest
-  ];
+        fromHex('#9248d2'), // Purple
+        fromHex('#7768df'), // Another purple
+        fromHex('#1670de'), // Blue
+        fromHex('#3c8bd6'), // Lighter blue
+        fromHex('#4897d2'), // Lightest
+      ];
 
   static LinearGradient get followGradient => LinearGradient(
-    colors: followGradientColors,
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
+        colors: followGradientColors,
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
 
   static LinearGradient get streamerCardBackground => LinearGradient(
-    colors: followGradientColors,
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
+        colors: followGradientColors,
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      );
 }

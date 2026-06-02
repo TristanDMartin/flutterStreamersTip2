@@ -14,7 +14,6 @@ import '../utils/video_url_resolver.dart';
 import '../utils/video_document_rules.dart';
 import '../widgets/player_screen.dart';
 import '../utils/sensitive_data_redactor.dart';
-import '../utils/user_facing_error.dart';
 import 'logging_service.dart';
 
 class EnhancedDeepLinkingService {
@@ -24,8 +23,7 @@ class EnhancedDeepLinkingService {
   EnhancedDeepLinkingService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final firebase_auth.FirebaseAuth _auth =
-      firebase_auth.FirebaseAuth.instance;
+  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
 
   // Stream controller for deep link events
   final StreamController<DeepLinkEvent> _deepLinkController =
@@ -376,7 +374,8 @@ class EnhancedDeepLinkingService {
       if (currentUser == null) {
         if (context.mounted) {
           PendingAuthRedirectService.instance.setAction((redirectContext) {
-            return _handleChatLink('/chat/$chatId', queryParams, redirectContext);
+            return _handleChatLink(
+                '/chat/$chatId', queryParams, redirectContext);
           });
           if (context.mounted) {
             _replaceWithNamedRoute(context, AppRoutes.auth);
@@ -728,9 +727,8 @@ class EnhancedDeepLinkingService {
     required String id,
     String? username,
   }) {
-    final String normalized = type == 'user' || type == 'profile'
-        ? 'profile'
-        : type;
+    final String normalized =
+        type == 'user' || type == 'profile' ? 'profile' : type;
     if (normalized == 'profile') {
       final String? cleanUsername = username?.trim();
       if (cleanUsername != null &&

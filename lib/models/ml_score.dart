@@ -10,5 +10,6 @@ sealed class MLScore with _$MLScore {
     required String type,
   }) = _MLScore;
 
-  factory MLScore.fromJson(Map<String, dynamic> json) => _$MLScoreFromJson(json);
+  factory MLScore.fromJson(Map<String, dynamic> json) =>
+      _$MLScoreFromJson(json);
 }

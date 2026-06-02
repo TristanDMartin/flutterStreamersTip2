@@ -44,11 +44,12 @@ class OptimizedAvatarImage extends StatelessWidget {
       width: size,
       height: size,
       color: backgroundColor ?? Colors.grey[800],
-      child: placeholder ?? const Icon(
-        Icons.person,
-        color: Colors.white,
-        size: 28,
-      ),
+      child: placeholder ??
+          const Icon(
+            Icons.person,
+            color: Colors.white,
+            size: 28,
+          ),
     );
   }
 
@@ -57,11 +58,12 @@ class OptimizedAvatarImage extends StatelessWidget {
       width: size,
       height: size,
       color: backgroundColor ?? Colors.grey[800],
-      child: errorWidget ?? const Icon(
-        Icons.error_outline,
-        color: Colors.white,
-        size: 28,
-      ),
+      child: errorWidget ??
+          const Icon(
+            Icons.error_outline,
+            color: Colors.white,
+            size: 28,
+          ),
     );
   }
 }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 /// Image CDN Service
-/// 
+///
 /// This service provides optimized image delivery using CDN with:
 /// - Automatic image resizing
 /// - Format optimization (WebP, AVIF)
@@ -15,8 +15,9 @@ class ImageCDNService {
 
   // CDN configuration
   static const String _cdnBaseUrl = 'https://cdn.streamerstip.com';
-  static const String _fallbackBaseUrl = 'https://via.placeholder.com'; // More reliable than picsum.photos
-  
+  static const String _fallbackBaseUrl =
+      'https://via.placeholder.com'; // More reliable than picsum.photos
+
   // Image quality settings
   static const int _defaultQuality = 80;
   static const int _thumbnailQuality = 60;
@@ -45,27 +46,30 @@ class ImageCDNService {
     // Build CDN URL with parameters
     final cdnUrl = StringBuffer(_cdnBaseUrl);
     cdnUrl.write('/image');
-    
+
     // Add source URL
     cdnUrl.write('?url=${Uri.encodeComponent(originalUrl)}');
-    
+
     // Add dimensions
     if (width != null) cdnUrl.write('&w=$width');
     if (height != null) cdnUrl.write('&h=$height');
-    
+
     // Add quality
-    final finalQuality = isThumbnail ? _thumbnailQuality : 
-                        isAvatar ? _avatarQuality : quality;
+    final finalQuality = isThumbnail
+        ? _thumbnailQuality
+        : isAvatar
+            ? _avatarQuality
+            : quality;
     cdnUrl.write('&q=$finalQuality');
-    
+
     // Add format
     cdnUrl.write('&f=$format');
-    
+
     // Add optimization flags
     cdnUrl.write('&auto=format,compress');
     cdnUrl.write('&fit=crop');
     cdnUrl.write('&crop=faces,center');
-    
+
     return cdnUrl.toString();
   }
 
@@ -74,7 +78,7 @@ class ImageCDNService {
     if (originalUrl == null || originalUrl.isEmpty) {
       return '$_fallbackBaseUrl/$size/$size/cccccc/000000?text=Avatar'; // More reliable placeholder
     }
-    
+
     return getOptimizedImageUrl(
       originalUrl: originalUrl,
       width: size,
@@ -84,11 +88,12 @@ class ImageCDNService {
   }
 
   /// Get thumbnail image URL
-  String getThumbnailUrl(String? originalUrl, {int width = 300, int height = 200}) {
+  String getThumbnailUrl(String? originalUrl,
+      {int width = 300, int height = 200}) {
     if (originalUrl == null || originalUrl.isEmpty) {
       return '$_fallbackBaseUrl/$width/$height/cccccc/000000?text=Thumbnail'; // More reliable placeholder
     }
-    
+
     return getOptimizedImageUrl(
       originalUrl: originalUrl,
       width: width,
@@ -98,11 +103,12 @@ class ImageCDNService {
   }
 
   /// Get video thumbnail URL
-  String getVideoThumbnailUrl(String? videoUrl, {int width = 400, int height = 300}) {
+  String getVideoThumbnailUrl(String? videoUrl,
+      {int width = 400, int height = 300}) {
     if (videoUrl == null || videoUrl.isEmpty) {
       return '$_fallbackBaseUrl/$width/$height?random=${DateTime.now().millisecondsSinceEpoch}';
     }
-    
+
     // For video thumbnails, we might need to extract the thumbnail
     // This is a simplified implementation
     return getOptimizedImageUrl(
@@ -114,11 +120,12 @@ class ImageCDNService {
   }
 
   /// Get banner image URL
-  String getBannerUrl(String? originalUrl, {int width = 800, int height = 400}) {
+  String getBannerUrl(String? originalUrl,
+      {int width = 800, int height = 400}) {
     if (originalUrl == null || originalUrl.isEmpty) {
       return '$_fallbackBaseUrl/$width/$height?random=${DateTime.now().millisecondsSinceEpoch}';
     }
-    
+
     return getOptimizedImageUrl(
       originalUrl: originalUrl,
       width: width,
@@ -127,11 +134,12 @@ class ImageCDNService {
   }
 
   /// Get profile cover image URL
-  String getProfileCoverUrl(String? originalUrl, {int width = 1200, int height = 400}) {
+  String getProfileCoverUrl(String? originalUrl,
+      {int width = 1200, int height = 400}) {
     if (originalUrl == null || originalUrl.isEmpty) {
       return '$_fallbackBaseUrl/$width/$height?random=${DateTime.now().millisecondsSinceEpoch}';
     }
-    
+
     return getOptimizedImageUrl(
       originalUrl: originalUrl,
       width: width,
@@ -152,7 +160,7 @@ class ImageCDNService {
   }) {
     // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
     return _buildDefaultErrorWidget();
-    
+
     // DISABLED: Image loading causes buffer overflow
     // return CachedNetworkImage(
     //   imageUrl: optimizedUrl,
@@ -223,7 +231,8 @@ class ImageCDNService {
   }
 
   /// Preload images for better performance
-  Future<void> preloadImages(List<String> imageUrls, BuildContext context) async {
+  Future<void> preloadImages(
+      List<String> imageUrls, BuildContext context) async {
     for (final url in imageUrls) {
       try {
         final optimizedUrl = getOptimizedImageUrl(originalUrl: url);

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import '../models/category.dart';
 
@@ -17,90 +15,96 @@ class CategoryCard extends StatelessWidget {
     required this.onTap,
   });
 
-  static const double _iconSizeSelected = 80;
-  static const double _iconSizeUnselected = 56;
-  static const double _iconInnerSelected = 32;
-  static const double _iconInnerUnselected = 22;
-
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final ColorScheme cs = Theme.of(context).colorScheme;
         final bool isDark = Theme.of(context).brightness == Brightness.dark;
-        final useCompactSize = hasCategorySelected && !isSelected;
-        final targetIconSize =
-            useCompactSize ? _iconSizeUnselected : _iconSizeSelected;
-        final targetInnerSize =
-            useCompactSize ? _iconInnerUnselected : _iconInnerSelected;
-        final textScale = MediaQuery.textScalerOf(context);
-        final labelReserve = textScale.scale(useCompactSize ? 18 : 22);
-        final gap = useCompactSize ? 6.0 : 8.0;
-        final maxWidth = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : targetIconSize;
-        final maxHeight =
-            constraints.maxHeight.isFinite ? constraints.maxHeight : 120.0;
-        final availableForIcon = math.max(40.0, maxHeight - labelReserve - gap);
-        final containerSize = math.min(
-          targetIconSize,
-          math.min(maxWidth, availableForIcon),
-        );
-        final innerIconSize =
-            math.min(targetInnerSize, math.max(20.0, containerSize * 0.4));
-
         return GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
-          child: SizedBox.expand(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                Container(
-                  width: containerSize,
-                  height: containerSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+          child: AnimatedScale(
+            scale: isSelected ? 0.98 : 1,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? cs.primary.withValues(alpha: isDark ? 0.22 : 0.12)
+                    : (isDark
+                        ? const Color(0xFF0F172A).withValues(alpha: 0.70)
+                        : Colors.white.withValues(alpha: 0.92)),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected
+                      ? cs.primary
+                      : (isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : const Color(0xFF0F172A).withValues(alpha: 0.08)),
+                  width: isSelected ? 1.4 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
                     color: isSelected
-                        ? cs.primary.withValues(alpha: 0.2)
-                        : cs.surfaceContainerHighest,
-                    border: isSelected
-                        ? Border.all(color: cs.primary, width: 2)
-                        : null,
-                    boxShadow: [
-                      BoxShadow(
-                        color: isSelected
-                            ? cs.primary.withValues(alpha: 0.28)
-                            : cs.shadow.withValues(alpha: isDark ? 0.35 : 0.1),
-                        blurRadius: isSelected ? 12 : 8,
-                        offset: const Offset(0, 4),
+                        ? cs.primary.withValues(alpha: 0.25)
+                        : cs.shadow.withValues(alpha: isDark ? 0.18 : 0.07),
+                    blurRadius: isSelected ? 18 : 12,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        _getIconData(category.icon),
+                        color: _getIconColor(category.id),
+                        size: 22,
+                      ),
+                      const Spacer(),
+                      if (isSelected)
+                        Icon(
+                          Icons.check_circle_rounded,
+                          color: cs.primary,
+                          size: 18,
+                        ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        category.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              isSelected ? FontWeight.w800 : FontWeight.w700,
+                          color: isSelected ? cs.primary : cs.onSurface,
+                          height: 1.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Explore clips',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface.withValues(alpha: 0.55),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
-                  child: Icon(
-                    _getIconData(category.icon),
-                    color: _getIconColor(category.id),
-                    size: innerIconSize,
-                  ),
-                ),
-                SizedBox(height: gap),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Text(
-                    category.name,
-                    style: TextStyle(
-                      fontSize: useCompactSize ? 11 : 14,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: isSelected ? cs.primary : cs.onSurface,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

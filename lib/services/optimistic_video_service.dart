@@ -2,8 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../core/firebase_app_check_startup.dart';
 import '../models/optimistic_video.dart';
 import '../utils/category_schema.dart';
+import '../utils/firestore_strip_nulls.dart';
+import '../utils/upload_error_classifier.dart';
+import '../utils/video_caption_firestore.dart';
 
 class OptimisticVideoService extends ChangeNotifier {
   static final OptimisticVideoService _instance =
@@ -14,24 +18,70 @@ class OptimisticVideoService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Optimistic videos cache
   final Map<String, OptimisticVideo> _optimisticVideos = {};
   final Map<String, StreamSubscription> _videoListeners = {};
+  final Map<String, String> _publishedCaptionByVideoId = <String, String>{};
 
-  // Feed refresh triggers
   final StreamController<String> _feedRefreshController =
       StreamController<String>.broadcast();
   final StreamController<List<String>> _categoryRefreshController =
       StreamController<List<String>>.broadcast();
 
-  // Getters
+  String? _pendingHomeScrollVideoId;
+
   List<OptimisticVideo> get optimisticVideos =>
       _optimisticVideos.values.toList();
   Stream<String> get feedRefreshStream => _feedRefreshController.stream;
   Stream<List<String>> get categoryRefreshStream =>
       _categoryRefreshController.stream;
 
-  /// Create optimistic video placeholder
+  void requestFeedRefresh({List<String>? categories}) {
+    _feedRefreshController.add('home');
+    if (categories != null && categories.isNotEmpty) {
+      _categoryRefreshController.add(categories);
+    }
+  }
+
+  void requestHomeScrollToVideo(String videoId) {
+    if (videoId.isEmpty) {
+      return;
+    }
+    _pendingHomeScrollVideoId = videoId;
+  }
+
+  String? consumePendingHomeScrollVideoId() {
+    final String? videoId = _pendingHomeScrollVideoId;
+    _pendingHomeScrollVideoId = null;
+    return videoId;
+  }
+
+  String? peekPendingHomeScrollVideoId() => _pendingHomeScrollVideoId;
+
+  void rememberPublishedCaption({
+    required String videoId,
+    required String caption,
+  }) {
+    final String trimmed = caption.trim();
+    if (videoId.isEmpty || trimmed.isEmpty) {
+      return;
+    }
+    _publishedCaptionByVideoId[videoId] = trimmed;
+  }
+
+  String? peekPublishedCaption(String videoId) {
+    final String? cached = _publishedCaptionByVideoId[videoId];
+    if (cached != null && cached.trim().isNotEmpty) {
+      return cached.trim();
+    }
+    return null;
+  }
+
+  void clearPublishedCaption(String videoId) {
+    _publishedCaptionByVideoId.remove(videoId);
+  }
+
+  /// In-memory optimistic row. Set [persistToFirestore] false during publish so
+  /// the Worker owns the canonical `videos/{id}` create (avoids 409 collisions).
   Future<OptimisticVideo> createOptimisticVideo({
     required String videoId,
     required String caption,
@@ -39,14 +89,14 @@ class OptimisticVideoService extends ChangeNotifier {
     String? localThumbnailPath,
     String? localVideoPath,
     Map<String, dynamic>? metadata,
+    bool persistToFirestore = true,
   }) async {
-    final user = _auth.currentUser;
+    final User? user = _auth.currentUser;
     if (user == null) {
       throw Exception('User not authenticated');
     }
 
-    // Create optimistic video
-    final optimisticVideo = OptimisticVideoFactory.createPlaceholder(
+    final OptimisticVideo pending = OptimisticVideoFactory.createPlaceholder(
       videoId: videoId,
       ownerId: user.uid,
       caption: caption,
@@ -56,208 +106,196 @@ class OptimisticVideoService extends ChangeNotifier {
       metadata: metadata,
     );
 
-    // Add to cache
-    _optimisticVideos[videoId] = optimisticVideo;
+    final AppCheckReadiness appCheck = await ensureAppCheckReadyForFirestore();
+    if (!appCheck.isReady) {
+      final UploadFailureClassification failure = UploadFailureClassification(
+        kind: UploadFailureKind.appCheck,
+        logLabel: 'App Check',
+        userMessage: appCheck.detail.contains('attestation')
+            ? UploadFailureClassification.classify(appCheck.detail).userMessage
+            : 'App Check token unavailable. ${appCheck.detail}',
+      );
+      _logUploadFailure('optimistic_placeholder', failure);
+      throw Exception(failure.userMessage);
+    }
 
-    // Create placeholder documents in Firestore
-    await _createPlaceholderDocuments(optimisticVideo);
+    if (persistToFirestore) {
+      try {
+        await _createPlaceholderDocuments(pending);
+      } catch (e) {
+        final UploadFailureClassification failure =
+            UploadFailureClassification.classify(e);
+        _logUploadFailure('optimistic_placeholder', failure);
+        final OptimisticVideo rejected = pending.copyWith(
+          status: VideoStatus.placeholderRejected,
+          errorMessage: failure.userMessage,
+          isOptimistic: false,
+        );
+        _optimisticVideos[videoId] = rejected;
+        notifyListeners();
+        rethrow;
+      }
+    }
 
-    // Set up listener for this video
+    final OptimisticVideo verified = pending.copyWith(
+      status: VideoStatus.processing,
+    );
+    _optimisticVideos[videoId] = verified;
+    rememberPublishedCaption(videoId: videoId, caption: caption);
     _setupVideoListener(videoId);
-
     notifyListeners();
-    return optimisticVideo;
+    return verified;
   }
 
-  /// Create placeholder documents in Firestore
+  /// Re-key optimistic UI after Worker allocates the canonical videoId.
+  void bindServerVideoId({
+    required String clientVideoId,
+    required String serverVideoId,
+  }) {
+    if (clientVideoId == serverVideoId) {
+      return;
+    }
+    final OptimisticVideo? existing = _optimisticVideos.remove(clientVideoId);
+    _videoListeners[clientVideoId]?.cancel();
+    _videoListeners.remove(clientVideoId);
+    if (existing == null) {
+      return;
+    }
+    final OptimisticVideo rebound = existing.copyWith(videoId: serverVideoId);
+    _optimisticVideos[serverVideoId] = rebound;
+    rememberPublishedCaption(
+      videoId: serverVideoId,
+      caption: existing.caption,
+    );
+    _setupVideoListener(serverVideoId);
+    notifyListeners();
+  }
+
+  void _logUploadFailure(String stage, UploadFailureClassification failure) {
+    debugPrint(
+      '❌ OptimisticVideoService [$stage] ${failure.logLabel}: '
+      '${failure.userMessage}',
+    );
+  }
+
   Future<void> _createPlaceholderDocuments(OptimisticVideo video) async {
-    final user = _auth.currentUser;
+    final User? user = _auth.currentUser;
     if (user == null) {
       throw Exception('User not authenticated');
     }
 
     debugPrint(
-        '🔥 OptimisticVideoService: Creating placeholder document for video: ${video.videoId}');
-    debugPrint(
-        '🔥 OptimisticVideoService: Authenticated user UID: ${user.uid}');
-    debugPrint('🔥 OptimisticVideoService: Video owner ID: ${video.ownerId}');
-    debugPrint(
-        '🔥 OptimisticVideoService: UIDs match: ${user.uid == video.ownerId}');
+      '🔥 OptimisticVideoService: placeholder write videos/${video.videoId}',
+    );
 
-    final rawCategory = video.categories.isNotEmpty ? video.categories.first : 'gaming';
-    final categoryFields = buildCanonicalCategoryFields(rawCategory);
-    final canonicalCategory = categoryFields['category'] as String;
+    final String rawCategory =
+        video.categories.isNotEmpty ? video.categories.first : 'gaming';
+    final Map<String, dynamic> categoryFields =
+        buildCanonicalCategoryFields(rawCategory);
+    final String canonicalCategory = categoryFields['category'] as String;
 
-    final videoData = {
+    final Map<String, dynamic> metadata = {
+      ...(video.metadata ?? <String, dynamic>{}),
+      'categoryOriginal': rawCategory,
+      'categoryCanonical': canonicalCategory,
+    };
+    metadata.removeWhere((_, dynamic v) => v == null);
+
+    final Map<String, dynamic> videoData = <String, dynamic>{
       'userId': video.ownerId,
-      'creatorId': video.ownerId, // Add for web/cross-platform compatibility
-      'creator_id':
-          video.ownerId, // Snake case variant for website compatibility
+      'creatorId': video.ownerId,
+      'creator_id': video.ownerId,
       'caption': video.caption,
       ...categoryFields,
-      'createdAt': video.createdAt,
+      'createdAt': FieldValue.serverTimestamp(),
       'status': 'processing',
-      'thumbnailUrl': video.localThumbnailPath, // Use local thumbnail initially
-      'videoUrl': null,
-      'hlsUrl': null,
+      'visibility': 'public',
+      'isDeleted': false,
+      'isReadyForFeed': false,
       'duration': video.duration ?? 0,
       'fileSize': video.fileSize ?? 0,
-      'metadata': {
-        ...(video.metadata ?? {}),
-        'categoryOriginal': rawCategory,
-        'categoryCanonical': canonicalCategory,
-      },
+      'metadata': metadata,
     };
-
-    debugPrint(
-        '🔥 OptimisticVideoService: Video data keys: ${videoData.keys.toList()}');
-    debugPrint(
-        '🔥 OptimisticVideoService: Video data values: ${videoData.values.map((v) => v.toString()).toList()}');
-
-    // Check Firestore auth context
-    debugPrint('🔥 OptimisticVideoService: Checking Firestore auth context...');
-    try {
-      final firestoreUser = _auth.currentUser;
-      debugPrint(
-          '🔥 OptimisticVideoService: Firestore auth user: ${firestoreUser?.uid}');
-      debugPrint(
-          '🔥 OptimisticVideoService: Firestore auth user email: ${firestoreUser?.email}');
-      debugPrint(
-          '🔥 OptimisticVideoService: Firestore auth user displayName: ${firestoreUser?.displayName}');
-
-      if (firestoreUser != null) {
-        final firestoreToken = await firestoreUser.getIdToken(true);
-        debugPrint(
-            '🔥 OptimisticVideoService: Firestore auth token length: ${firestoreToken?.length ?? 0}');
-        debugPrint(
-            '🔥 OptimisticVideoService: Firestore auth token preview: ${firestoreToken?.substring(0, 20) ?? 'null'}...');
-
-        // Force refresh the Firestore client authentication
-        debugPrint(
-            '🔥 OptimisticVideoService: Forcing Firestore client auth refresh...');
-        try {
-          // Wait a moment for auth to propagate
-          await Future.delayed(const Duration(milliseconds: 500));
-
-          // Force refresh the auth token
-          final refreshedToken = await firestoreUser.getIdToken(true);
-          debugPrint(
-              '🔥 OptimisticVideoService: Refreshed auth token length: ${refreshedToken?.length ?? 0}');
-
-          // Wait for auth to propagate to Firestore
-          await Future.delayed(const Duration(milliseconds: 1000));
-          debugPrint(
-              '🔥 OptimisticVideoService: Firestore client should be authenticated');
-        } catch (e) {
-          debugPrint(
-              '🔥 OptimisticVideoService: Error refreshing Firestore auth: $e');
-        }
-      }
-    } catch (e) {
-      debugPrint(
-          '🔥 OptimisticVideoService: Error checking Firestore auth: $e');
+    if (video.localThumbnailPath != null &&
+        video.localThumbnailPath!.isNotEmpty) {
+      videoData['thumbnailUrl'] = video.localThumbnailPath;
     }
 
-    // Create main video document
+    final DocumentReference<Map<String, dynamic>> videoRef =
+        _firestore.collection('videos').doc(video.videoId);
+
+    await videoRef.set(stripNullFieldsDeep(videoData));
+    await _verifyVideoDocumentExists(videoRef, video.ownerId);
+
     debugPrint(
-        '🔥 OptimisticVideoService: Attempting to write to Firestore...');
-    try {
-      // First, try to delete any existing document to avoid conflicts
-      try {
-        await _firestore.collection('videos').doc(video.videoId).delete();
-        debugPrint('🔥 OptimisticVideoService: Deleted existing document');
-      } catch (e) {
-        // Document doesn't exist, that's fine
-        debugPrint('🔥 OptimisticVideoService: No existing document to delete');
-      }
+      '✅ OptimisticVideoService: verified videos/${video.videoId} in Firestore',
+    );
 
-      // Now create the new document
-      await _firestore.collection('videos').doc(video.videoId).set(videoData);
-      debugPrint('🔥 OptimisticVideoService: Successfully wrote to Firestore!');
-    } catch (e) {
-      debugPrint('❌ OptimisticVideoService: Failed to write to Firestore: $e');
-      debugPrint('❌ OptimisticVideoService: Error type: ${e.runtimeType}');
-      debugPrint('❌ OptimisticVideoService: Error details: ${e.toString()}');
-
-      // Check if user is still authenticated
-      final currentUser = _auth.currentUser;
-      debugPrint(
-          '❌ OptimisticVideoService: Current user after error: ${currentUser?.uid}');
-      debugPrint(
-          '❌ OptimisticVideoService: User email after error: ${currentUser?.email}');
-
-      rethrow;
-    }
-
-    // Add to user's video list
-    debugPrint(
-        '🔥 OptimisticVideoService: Adding to user video list: ${video.ownerId}/videos/${video.videoId}');
     try {
       await _firestore
           .collection('users')
           .doc(video.ownerId)
           .collection('videos')
           .doc(video.videoId)
-          .set({
-        'createdAt': video.createdAt,
+          .set(<String, dynamic>{
+        'createdAt': FieldValue.serverTimestamp(),
         'status': 'processing',
       });
-      debugPrint(
-          '🔥 OptimisticVideoService: Successfully added to user video list!');
     } catch (e) {
+      final UploadFailureClassification failure =
+          UploadFailureClassification.classify(e);
       debugPrint(
-          '🔥 OptimisticVideoService: Error adding to user video list: $e');
-      rethrow;
-    }
-
-    // Keep processing placeholders out of Home/Following until the backend
-    // marks them ready. UploadStatusManager already communicates progress.
-    final privacy = video.metadata?['privacy'] as String? ?? 'Everyone';
-    debugPrint('🔥 OptimisticVideoService: Privacy setting: $privacy');
-    debugPrint(
-        '🔥 OptimisticVideoService: Skipping feed insertion while video is processing');
-
-    if (privacy == 'Private' || privacy != 'Everyone' && privacy != 'Connections') {
-      await _firestore
-          .collection('users')
-          .doc(video.ownerId)
-          .collection('private_videos')
-          .doc(video.videoId)
-          .set({
-        'videoId': video.videoId,
-        'userId': video.ownerId,
-        'privacy': privacy,
-        'status': 'processing',
-        'addedAt': video.createdAt,
-      });
+        '⚠️ OptimisticVideoService: users/…/videos mirror failed '
+        '(${failure.logLabel}): ${failure.userMessage}',
+      );
     }
   }
 
-  /// Set up listener for video status changes
+  Future<void> _verifyVideoDocumentExists(
+    DocumentReference<Map<String, dynamic>> videoRef,
+    String ownerId,
+  ) async {
+    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+        await videoRef.get(const GetOptions(source: Source.server));
+    if (!snapshot.exists || snapshot.data() == null) {
+      throw Exception(
+        'Firestore placeholder missing after write (${videoRef.path})',
+      );
+    }
+    final Map<String, dynamic> data = snapshot.data()!;
+    final String? storedUserId = data['userId'] as String?;
+    if (storedUserId == null || storedUserId != ownerId) {
+      throw Exception(
+        'Firestore placeholder owner mismatch (expected $ownerId, '
+        'got $storedUserId)',
+      );
+    }
+  }
+
   void _setupVideoListener(String videoId) {
     _videoListeners[videoId] = _firestore
         .collection('videos')
         .doc(videoId)
         .snapshots()
-        .listen((snapshot) {
-      if (snapshot.exists) {
-        final data = snapshot.data()!;
-        _handleVideoUpdate(videoId, data);
+        .listen((DocumentSnapshot<Map<String, dynamic>> snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
+        _handleVideoUpdate(videoId, snapshot.data()!);
       }
     });
   }
 
-  /// Handle video status update
   void _handleVideoUpdate(String videoId, Map<String, dynamic> data) {
-    final status = data['status'] as String?;
-    final optimisticVideo = _optimisticVideos[videoId];
+    final OptimisticVideo? optimisticVideo = _optimisticVideos[videoId];
+    if (optimisticVideo == null) {
+      return;
+    }
 
-    if (optimisticVideo == null) return;
-
+    final VideoStatus status =
+        VideoStatusExtension.fromFirestoreStatus(data['status'] as String?);
     OptimisticVideo updatedVideo;
 
     switch (status) {
-      case 'ready':
+      case VideoStatus.uploadSucceeded:
         updatedVideo = OptimisticVideoFactory.markAsReady(
           optimisticVideo: optimisticVideo,
           videoUrl: data['videoUrl'] as String? ?? '',
@@ -266,37 +304,56 @@ class OptimisticVideoService extends ChangeNotifier {
           duration: data['duration'] as int?,
           fileSize: data['fileSize'] as int?,
         );
-
-        // Remove from optimistic cache after a delay
+        rememberPublishedCaption(
+          videoId: videoId,
+          caption: optimisticVideo.caption,
+        );
+        final String? uid = _auth.currentUser?.uid;
+        if (uid != null) {
+          unawaited(
+            persistVideoCaptionIfMissing(
+              firestore: _firestore,
+              videoId: videoId,
+              userId: uid,
+              caption: optimisticVideo.caption,
+            ),
+          );
+          scheduleVideoCaptionBackfill(
+            firestore: _firestore,
+            videoId: videoId,
+            userId: uid,
+            caption: optimisticVideo.caption,
+          );
+        }
         Timer(const Duration(seconds: 5), () {
           _optimisticVideos.remove(videoId);
           _videoListeners[videoId]?.cancel();
           _videoListeners.remove(videoId);
         });
         break;
-
-      case 'failed':
+      case VideoStatus.uploadFailed:
         updatedVideo = OptimisticVideoFactory.markAsFailed(
           optimisticVideo: optimisticVideo,
-          errorMessage: data['errorMessage'] as String? ?? 'Upload failed',
+          errorMessage: data['errorMessage'] as String? ??
+              data['uploadError'] as String? ??
+              'Upload failed',
         );
         break;
-
       default:
-        return; // No update needed
+        return;
     }
 
     _optimisticVideos[videoId] = updatedVideo;
     notifyListeners();
-
-    // Trigger feed refresh
+    if (status == VideoStatus.uploadSucceeded) {
+      requestHomeScrollToVideo(videoId);
+    }
     _feedRefreshController.add('home');
     _categoryRefreshController.add(updatedVideo.categories);
   }
 
-  /// Update upload progress
   void updateUploadProgress(String videoId, double progress) {
-    final optimisticVideo = _optimisticVideos[videoId];
+    final OptimisticVideo? optimisticVideo = _optimisticVideos[videoId];
     if (optimisticVideo != null) {
       _optimisticVideos[videoId] = OptimisticVideoFactory.updateProgress(
         optimisticVideo: optimisticVideo,
@@ -306,33 +363,31 @@ class OptimisticVideoService extends ChangeNotifier {
     }
   }
 
-  /// Get optimistic video by ID
   OptimisticVideo? getOptimisticVideo(String videoId) {
     return _optimisticVideos[videoId];
   }
 
-  /// Check if video is optimistic
   bool isOptimisticVideo(String videoId) {
     return _optimisticVideos.containsKey(videoId);
   }
 
-  /// Get optimistic videos for a specific user
   List<OptimisticVideo> getOptimisticVideosForUser(String userId) {
     return _optimisticVideos.values
-        .where((video) => video.ownerId == userId)
+        .where((OptimisticVideo video) => video.ownerId == userId)
         .toList();
   }
 
-  /// Get optimistic videos for specific categories
   List<OptimisticVideo> getOptimisticVideosForCategories(
-      List<String> categories) {
+    List<String> categories,
+  ) {
     return _optimisticVideos.values
         .where(
-            (video) => video.categories.any((cat) => categories.contains(cat)))
+          (OptimisticVideo video) =>
+              video.categories.any((String cat) => categories.contains(cat)),
+        )
         .toList();
   }
 
-  /// Remove optimistic video (when upload fails permanently)
   void removeOptimisticVideo(String videoId) {
     _optimisticVideos.remove(videoId);
     _videoListeners[videoId]?.cancel();
@@ -340,9 +395,8 @@ class OptimisticVideoService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clean up all optimistic videos
   void clearAllOptimisticVideos() {
-    for (final listener in _videoListeners.values) {
+    for (final StreamSubscription<dynamic> listener in _videoListeners.values) {
       listener.cancel();
     }
     _videoListeners.clear();
@@ -350,32 +404,30 @@ class OptimisticVideoService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Get combined video list (optimistic + regular videos)
   List<OptimisticVideo> getCombinedVideos(
-      List<Map<String, dynamic>> regularVideos) {
-    final combinedVideos = <OptimisticVideo>[];
+    List<Map<String, dynamic>> regularVideos,
+  ) {
+    final List<OptimisticVideo> combinedVideos = <OptimisticVideo>[];
 
-    // Add regular videos
-    for (final videoData in regularVideos) {
-      final videoId =
+    for (final Map<String, dynamic> videoData in regularVideos) {
+      final String? videoId =
           videoData['id'] as String? ?? videoData['videoId'] as String?;
       if (videoId != null && !_optimisticVideos.containsKey(videoId)) {
         combinedVideos.add(OptimisticVideo.fromJson(videoData));
       }
     }
 
-    // Add optimistic videos
     combinedVideos.addAll(_optimisticVideos.values);
-
-    // Sort by creation date (newest first)
-    combinedVideos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
+    combinedVideos.sort(
+      (OptimisticVideo a, OptimisticVideo b) =>
+          b.createdAt.compareTo(a.createdAt),
+    );
     return combinedVideos;
   }
 
   @override
   void dispose() {
-    for (final listener in _videoListeners.values) {
+    for (final StreamSubscription<dynamic> listener in _videoListeners.values) {
       listener.cancel();
     }
     _videoListeners.clear();

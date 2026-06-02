@@ -80,7 +80,8 @@ class R2MediaService {
         // Try the alternate endpoint only when route is missing.
         if (statusCode == 404) {
           if (kDebugMode) {
-            debugPrint('R2MediaService: $path returned 404, trying fallback path');
+            debugPrint(
+                'R2MediaService: $path returned 404, trying fallback path');
           }
           continue;
         }

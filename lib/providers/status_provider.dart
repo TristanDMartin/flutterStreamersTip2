@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,14 +11,14 @@ import '../models/user_status.dart';
 final currentUserStatusProvider = StreamProvider<UserPresence>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
-    // print('❌ StatusProvider: No authenticated user');
+    // appLog('❌ StatusProvider: No authenticated user');
     return Stream.value(const UserPresence(
       status: UserStatus.offline,
       lastSeen: null,
     ));
   }
 
-  // print('✅ StatusProvider: Listening to status for user ${user.uid}');
+  // appLog('✅ StatusProvider: Listening to status for user ${user.uid}');
 
   return FirebaseFirestore.instance
       .collection('users')
@@ -27,10 +27,10 @@ final currentUserStatusProvider = StreamProvider<UserPresence>((ref) {
       .doc('status')
       .snapshots()
       .map((snapshot) {
-    // print('📊 StatusProvider: Snapshot received - exists: ${snapshot.exists}');
+    // appLog('📊 StatusProvider: Snapshot received - exists: ${snapshot.exists}');
 
     if (!snapshot.exists) {
-      // print('⚠️ StatusProvider: Status document does not exist, returning offline');
+      // appLog('⚠️ StatusProvider: Status document does not exist, returning offline');
       return const UserPresence(
         status: UserStatus.offline,
         lastSeen: null,
@@ -39,17 +39,17 @@ final currentUserStatusProvider = StreamProvider<UserPresence>((ref) {
 
     try {
       final presence = UserPresence.fromMap(snapshot.data()!);
-      // print('✅ StatusProvider: Status loaded - ${presence.status.value}');
+      // appLog('✅ StatusProvider: Status loaded - ${presence.status.value}');
       return presence;
     } catch (e) {
-      // print('❌ StatusProvider: Error parsing status data: $e');
+      // appLog('❌ StatusProvider: Error parsing status data: $e');
       return const UserPresence(
         status: UserStatus.offline,
         lastSeen: null,
       );
     }
   }).handleError((error) {
-    // print('❌ StatusProvider: Stream error: $error');
+    // appLog('❌ StatusProvider: Stream error: $error');
     return const UserPresence(
       status: UserStatus.offline,
       lastSeen: null,
@@ -61,7 +61,7 @@ final currentUserStatusProvider = StreamProvider<UserPresence>((ref) {
 // ✅ DUAL LISTENING: Listens to BOTH website and app status locations
 final userStatusProvider =
     StreamProvider.family<UserPresence, String>((ref, userId) {
-  // print('✅ UserStatusProvider: Listening to status for user $userId');
+  // appLog('✅ UserStatusProvider: Listening to status for user $userId');
 
   final firestore = FirebaseFirestore.instance;
 
@@ -159,7 +159,7 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
   void _initializeStatus() {
     final user = _auth.currentUser;
     if (user == null) {
-      // print('❌ StatusNotifier: No authenticated user');
+      // appLog('❌ StatusNotifier: No authenticated user');
       state = const AsyncValue.data(UserPresence(
         status: UserStatus.offline,
         lastSeen: null,
@@ -167,13 +167,14 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
       return;
     }
 
-    // print('✅ StatusNotifier: Initializing status for user ${user.uid}');
+    // appLog('✅ StatusNotifier: Initializing status for user ${user.uid}');
 
     _userDocSub?.cancel();
     _presenceSub?.cancel();
 
     // LOCATION 1: Listen to main user document (where website writes)
-    _userDocSub = _firestore.collection('users').doc(user.uid).snapshots().listen(
+    _userDocSub =
+        _firestore.collection('users').doc(user.uid).snapshots().listen(
       (snapshot) {
         if (snapshot.exists && snapshot.data() != null) {
           final data = snapshot.data()!;
@@ -189,10 +190,10 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
                 lastSeen: lastSeen?.toDate(),
                 lastActive: lastSeen?.toDate(),
               );
-              log('🌐 Website → App: Status updated to ${status.value}');
+              secureLog('🌐 Website → App: Status updated to ${status.value}');
               state = AsyncValue.data(presence);
             } catch (e) {
-              // print('❌ Error parsing status from main document: $e');
+              // appLog('❌ Error parsing status from main document: $e');
             }
           }
         }
@@ -208,10 +209,10 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
         .snapshots()
         .listen(
       (snapshot) {
-        // print('📊 StatusNotifier: Snapshot received - exists: ${snapshot.exists}');
+        // appLog('📊 StatusNotifier: Snapshot received - exists: ${snapshot.exists}');
 
         if (!snapshot.exists) {
-          // print('⚠️ StatusNotifier: Status document does not exist, initializing as online');
+          // appLog('⚠️ StatusNotifier: Status document does not exist, initializing as online');
           // Initialize status as online if it doesn't exist
           _initializeUserStatus(user.uid);
           state = const AsyncValue.data(UserPresence(
@@ -223,15 +224,15 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
 
         try {
           final presence = UserPresence.fromMap(snapshot.data()!);
-          log('📱 App: Status updated to ${presence.status.value}');
+          secureLog('📱 App: Status updated to ${presence.status.value}');
           state = AsyncValue.data(presence);
         } catch (e) {
-          // print('❌ StatusNotifier: Error parsing status data: $e');
+          // appLog('❌ StatusNotifier: Error parsing status data: $e');
           state = AsyncValue.error(e, StackTrace.current);
         }
       },
       onError: (error) {
-        // print('❌ StatusNotifier: Stream error: $error');
+        // appLog('❌ StatusNotifier: Stream error: $error');
         state = AsyncValue.error(error, StackTrace.current);
       },
     );
@@ -274,9 +275,9 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
         'updated_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // print('✅ StatusNotifier: Initialized status for user $userId in all locations');
+      // appLog('✅ StatusNotifier: Initialized status for user $userId in all locations');
     } catch (e) {
-      // print('❌ StatusNotifier: Error initializing status: $e');
+      // appLog('❌ StatusNotifier: Error initializing status: $e');
     }
   }
 
@@ -334,11 +335,11 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
         'updated_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // print('✅ Status updated to ${newStatus.value} in all locations');
+      // appLog('✅ Status updated to ${newStatus.value} in all locations');
     } catch (error) {
       // Revert optimistic update on error
       _initializeStatus();
-      // print('❌ Error updating status: $error');
+      // appLog('❌ Error updating status: $error');
       rethrow;
     }
   }
@@ -395,7 +396,7 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
         }, SetOptions(merge: true)),
       ]);
     } catch (error) {
-      // print('❌ Error setting offline: $error');
+      // appLog('❌ Error setting offline: $error');
     }
   }
 
@@ -414,7 +415,7 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
         'lastActive': FieldValue.serverTimestamp(),
       });
     } catch (error) {
-      // print('❌ Error updating last active: $error');
+      // appLog('❌ Error updating last active: $error');
     }
   }
 

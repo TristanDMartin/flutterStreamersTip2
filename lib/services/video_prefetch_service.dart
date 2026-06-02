@@ -8,7 +8,8 @@ import 'package:streamers_tip/utils/secure_log.dart';
 /// This intentionally does not create or own VideoPlayerController instances.
 /// Playback controller ownership stays with the active player path.
 class VideoPrefetchService {
-  static final VideoPrefetchService _instance = VideoPrefetchService._internal();
+  static final VideoPrefetchService _instance =
+      VideoPrefetchService._internal();
   factory VideoPrefetchService() => _instance;
   VideoPrefetchService._internal();
 
@@ -30,10 +31,10 @@ class VideoPrefetchService {
   }) async {
     try {
       secureLog('🎯 Priming video for instant play: $videoId');
-      
+
       // Prefetch poster immediately
       await _prefetchPoster(posterUrl);
-      
+
       // Prefetch first segment of video
       await _prefetchFirstSegment(videoUrl);
 
@@ -53,17 +54,17 @@ class VideoPrefetchService {
 
       // Calculate prefetch targets
       final targets = _calculatePrefetchTargets(currentIndex, items.length);
-      
+
       secureLog('🔄 Prefetching window around index $currentIndex: $targets');
 
       // Prefetch each target
       for (final index in targets) {
         if (index < items.length) {
           final item = items[index];
-          await _prefetchItem(item, priority: _getPrefetchPriority(index, currentIndex));
+          await _prefetchItem(item,
+              priority: _getPrefetchPriority(index, currentIndex));
         }
       }
-
     } catch (e) {
       secureLog('❌ Error prefetching window: $e');
     }
@@ -72,12 +73,12 @@ class VideoPrefetchService {
   /// Calculate which items to prefetch
   Set<int> _calculatePrefetchTargets(int currentIndex, int totalItems) {
     final targets = <int>{};
-    
+
     // Keep one behind for back navigation
     if (currentIndex > 0) {
       targets.add(currentIndex - 1);
     }
-    
+
     // Prefetch ahead
     for (int i = 1; i <= _prefetchWindowSize; i++) {
       final targetIndex = currentIndex + i;
@@ -85,7 +86,7 @@ class VideoPrefetchService {
         targets.add(targetIndex);
       }
     }
-    
+
     return targets;
   }
 
@@ -99,7 +100,8 @@ class VideoPrefetchService {
   }
 
   /// Prefetch a single item
-  Future<void> _prefetchItem(PrefetchItem item, {required double priority}) async {
+  Future<void> _prefetchItem(PrefetchItem item,
+      {required double priority}) async {
     try {
       // Check if already prefetching
       if (_prefetchingVideos.contains(item.videoId)) {
@@ -108,7 +110,8 @@ class VideoPrefetchService {
 
       // Check network policy
       if (!_networkPolicy.canPrefetch(priority)) {
-        secureLog('⏸️ Skipping prefetch due to network policy: ${item.videoId}');
+        secureLog(
+            '⏸️ Skipping prefetch due to network policy: ${item.videoId}');
         return;
       }
 
@@ -126,7 +129,8 @@ class VideoPrefetchService {
         await _prefetchPlaylist(item.videoUrl);
       }
 
-      secureLog('✅ Prefetched item: ${item.videoId} (priority: ${priority.toStringAsFixed(1)})');
+      secureLog(
+          '✅ Prefetched item: ${item.videoId} (priority: ${priority.toStringAsFixed(1)})');
     } catch (e) {
       secureLog('❌ Error prefetching item ${item.videoId}: $e');
     } finally {
@@ -138,7 +142,7 @@ class VideoPrefetchService {
   Future<void> _prefetchPoster(String posterUrl) async {
     try {
       if (posterUrl.isEmpty) return;
-      
+
       // Check if already cached
       if (_cacheService.isVideoCached(posterUrl)) {
         return;
@@ -159,7 +163,7 @@ class VideoPrefetchService {
   Future<void> _prefetchFirstSegment(String videoUrl) async {
     try {
       if (videoUrl.isEmpty) return;
-      
+
       // For HLS, prefetch the first segment
       if (videoUrl.contains('.m3u8')) {
         await _prefetchHLSFirstSegment(videoUrl);
@@ -180,11 +184,11 @@ class VideoPrefetchService {
       if (playlistResponse.statusCode != 200) return;
 
       final playlist = playlistResponse.body;
-      
+
       // Find the lowest quality stream
       final lines = playlist.split('\n');
       String? segmentUrl;
-      
+
       for (int i = 0; i < lines.length; i++) {
         if (lines[i].startsWith('#EXT-X-STREAM-INF:')) {
           // This is a stream info line, next line should be the URL
@@ -207,7 +211,8 @@ class VideoPrefetchService {
   }
 
   /// Prefetch video chunk
-  Future<void> _prefetchVideoChunk(String videoUrl, int start, int length) async {
+  Future<void> _prefetchVideoChunk(
+      String videoUrl, int start, int length) async {
     try {
       final response = await http.get(
         Uri.parse(videoUrl),
@@ -216,7 +221,8 @@ class VideoPrefetchService {
         },
       );
 
-      if (response.statusCode == 206) { // Partial content
+      if (response.statusCode == 206) {
+        // Partial content
         // For now, just log the chunk - would need to implement chunk caching
         secureLog('📦 Video chunk downloaded: ${videoUrl.split('/').last}');
       }

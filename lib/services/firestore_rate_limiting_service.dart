@@ -53,9 +53,8 @@ class FirestoreRateLimitingService {
 
       // Check if we're outside the time window
       if (lastOperationTime != null) {
-        final timeSinceLastOp = DateTime.now()
-            .difference(lastOperationTime.toDate())
-            .inSeconds;
+        final timeSinceLastOp =
+            DateTime.now().difference(lastOperationTime.toDate()).inSeconds;
 
         if (timeSinceLastOp > timeWindowSeconds) {
           // Reset count - outside time window
@@ -115,9 +114,8 @@ class FirestoreRateLimitingService {
       if (lastOperationTime == null) return true;
 
       // Check if we're outside the time window
-      final timeSinceLastOp = DateTime.now()
-          .difference(lastOperationTime.toDate())
-          .inSeconds;
+      final timeSinceLastOp =
+          DateTime.now().difference(lastOperationTime.toDate()).inSeconds;
 
       if (timeSinceLastOp > timeWindowSeconds) {
         return true; // Outside window, allow
@@ -160,4 +158,3 @@ class FirestoreRateLimitingService {
     }
   }
 }
-

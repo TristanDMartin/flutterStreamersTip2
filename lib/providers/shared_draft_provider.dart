@@ -42,7 +42,7 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
     String? message,
   }) async {
     state = const AsyncValue.loading();
-    
+
     try {
       final success = await _service.shareDraft(
         draftId: draftId,
@@ -52,7 +52,7 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
         draftDuration: draftDuration,
         message: message,
       );
-      
+
       if (success) {
         state = const AsyncValue.data(null);
       } else {
@@ -119,7 +119,8 @@ class SharedDraftNotifier extends StateNotifier<AsyncValue<void>> {
   }
 }
 
-final sharedDraftNotifierProvider = StateNotifierProvider<SharedDraftNotifier, AsyncValue<void>>((ref) {
+final sharedDraftNotifierProvider =
+    StateNotifierProvider<SharedDraftNotifier, AsyncValue<void>>((ref) {
   final service = ref.watch(sharedDraftServiceProvider);
   return SharedDraftNotifier(service);
 });

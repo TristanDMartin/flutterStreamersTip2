@@ -188,24 +188,6 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
           ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: () {
-            // TODO: Implement "Can't reset your password?" functionality
-            setState(() {
-              _alertMessage = "Password reset functionality coming soon!";
-              _showAlert = true;
-            });
-          },
-          child: const Text(
-            "Can't reset your password?",
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.blue,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
         const SizedBox(height: 32),
         _buildTextField(),
         const SizedBox(height: 16),
@@ -219,24 +201,6 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
         ),
         const SizedBox(height: 32),
         _buildContinueButton(),
-        const SizedBox(height: 16),
-        TextButton(
-          onPressed: () {
-            // TODO: Implement "Search by mobile number" functionality
-            setState(() {
-              _alertMessage = "Mobile number search coming soon!";
-              _showAlert = true;
-            });
-          },
-          child: const Text(
-            "Search by mobile number instead",
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
         const SizedBox(height: 32),
         _buildDivider(),
         const SizedBox(height: 32),

@@ -6,13 +6,14 @@ class ForgotPasswordDialog extends ConsumerStatefulWidget {
   const ForgotPasswordDialog({super.key});
 
   @override
-  ConsumerState<ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+  ConsumerState<ForgotPasswordDialog> createState() =>
+      _ForgotPasswordDialogState();
 }
 
 class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
   final TextEditingController _emailController = TextEditingController();
   final FocusNode _emailFocus = FocusNode();
-  
+
   String? _errorMessage;
   bool _isLoading = false;
   bool _emailSent = false;
@@ -56,9 +57,9 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             if (!_emailSent) ...[
               // Email input section
               Text(
@@ -68,9 +69,9 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                   color: Colors.grey[600],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               TextField(
                 controller: _emailController,
                 focusNode: _emailFocus,
@@ -85,9 +86,9 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _sendResetEmail(),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Error message
               if (_errorMessage != null) ...[
                 Container(
@@ -99,7 +100,8 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.error_outline, color: Colors.red[600], size: 20),
+                      Icon(Icons.error_outline,
+                          color: Colors.red[600], size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -115,13 +117,14 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                 ),
                 const SizedBox(height: 16),
               ],
-              
+
               // Buttons
               Row(
                 children: [
                   Expanded(
                     child: TextButton(
-                      onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                      onPressed:
+                          _isLoading ? null : () => Navigator.of(context).pop(),
                       child: const Text('Cancel'),
                     ),
                   ),
@@ -143,7 +146,8 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : const Text('Send Reset Link'),
@@ -188,9 +192,9 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Close button
               SizedBox(
                 width: double.infinity,
@@ -216,7 +220,7 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
 
   Future<void> _sendResetEmail() async {
     final email = _emailController.text.trim();
-    
+
     if (email.isEmpty || !email.contains('@')) {
       setState(() {
         _errorMessage = 'Please enter a valid email address';

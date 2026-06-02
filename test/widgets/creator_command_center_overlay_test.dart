@@ -61,7 +61,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('renders expanded panel with live values', (WidgetTester tester) async {
+  testWidgets('renders expanded panel with live values',
+      (WidgetTester tester) async {
     await pumpOverlay(tester, state: CreatorCommandCenterState.expanded);
 
     expect(find.text('TechnQs • Level 7'), findsOneWidget);
@@ -71,7 +72,8 @@ void main() {
     expect(find.text('2 scheduled'), findsOneWidget);
   });
 
-  testWidgets('tapping outside expanded panel dismisses it', (WidgetTester tester) async {
+  testWidgets('tapping outside expanded panel dismisses it',
+      (WidgetTester tester) async {
     int dismissCount = 0;
     await pumpOverlay(
       tester,

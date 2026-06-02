@@ -5,7 +5,6 @@ import 'package:streamers_tip/views/network_view.dart';
 
 void main() {
   group('NetworkView Tests', () {
-
     testWidgets('NetworkView displays correctly', (WidgetTester tester) async {
       await tester.pumpWidget(
         const ProviderScope(
@@ -75,5 +74,4 @@ void main() {
       expect(find.text('Refresh network'), findsOneWidget);
     });
   });
-
 }

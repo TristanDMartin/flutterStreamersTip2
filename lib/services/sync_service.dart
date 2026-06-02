@@ -35,7 +35,8 @@ class SyncService {
       // Perform initial sync
       await _performSync();
 
-      LoggingService.instance.info('Sync service initialized', tag: 'SyncService');
+      LoggingService.instance
+          .info('Sync service initialized', tag: 'SyncService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to initialize sync service',
@@ -47,17 +48,19 @@ class SyncService {
   }
 
   Future<void> _onConnectivityChanged(List<ConnectivityResult> results) async {
-    final isConnected = results.any((result) => 
-      result == ConnectivityResult.mobile || 
-      result == ConnectivityResult.wifi ||
-      result == ConnectivityResult.ethernet
-    );
+    final isConnected = results.any((result) =>
+        result == ConnectivityResult.mobile ||
+        result == ConnectivityResult.wifi ||
+        result == ConnectivityResult.ethernet);
 
     if (isConnected) {
-      LoggingService.instance.info('Network connected, starting sync', tag: 'SyncService');
+      LoggingService.instance
+          .info('Network connected, starting sync', tag: 'SyncService');
       await _performSync();
     } else {
-      LoggingService.instance.info('Network disconnected, entering offline mode', tag: 'SyncService');
+      LoggingService.instance.info(
+          'Network disconnected, entering offline mode',
+          tag: 'SyncService');
       await _offlineStorage.setOfflineMode(true);
     }
   }
@@ -67,14 +70,13 @@ class SyncService {
 
     try {
       _isSyncing = true;
-      
+
       // Check if we're online
       final connectivityResults = await _connectivity.checkConnectivity();
-      final isOnline = connectivityResults.any((result) => 
-        result == ConnectivityResult.mobile || 
-        result == ConnectivityResult.wifi ||
-        result == ConnectivityResult.ethernet
-      );
+      final isOnline = connectivityResults.any((result) =>
+          result == ConnectivityResult.mobile ||
+          result == ConnectivityResult.wifi ||
+          result == ConnectivityResult.ethernet);
 
       if (!isOnline) {
         await _offlineStorage.setOfflineMode(true);
@@ -91,7 +93,8 @@ class SyncService {
 
       await _offlineStorage.setLastSyncTime(DateTime.now());
 
-      LoggingService.instance.info('Sync completed successfully', tag: 'SyncService');
+      LoggingService.instance
+          .info('Sync completed successfully', tag: 'SyncService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Sync failed',
@@ -107,7 +110,7 @@ class SyncService {
   Future<void> _syncPendingChanges() async {
     try {
       final pendingItems = await _offlineStorage.getPendingSyncItems();
-      
+
       for (final item in pendingItems) {
         try {
           await _syncItem(item);
@@ -147,7 +150,8 @@ class SyncService {
     }
   }
 
-  Future<void> _syncScheduledPost(String operation, Map<String, dynamic> data) async {
+  Future<void> _syncScheduledPost(
+      String operation, Map<String, dynamic> data) async {
     switch (operation) {
       case 'upsert':
         final post = ScheduledPost.fromJson(data);
@@ -180,7 +184,8 @@ class SyncService {
         await _offlineStorage.saveScheduledPost(post);
       }
 
-      LoggingService.instance.info('Data synced from server', tag: 'SyncService');
+      LoggingService.instance
+          .info('Data synced from server', tag: 'SyncService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to sync from server',
@@ -204,11 +209,10 @@ class SyncService {
   Future<bool> isOnline() async {
     try {
       final connectivityResults = await _connectivity.checkConnectivity();
-      return connectivityResults.any((result) => 
-        result == ConnectivityResult.mobile || 
-        result == ConnectivityResult.wifi ||
-        result == ConnectivityResult.ethernet
-      );
+      return connectivityResults.any((result) =>
+          result == ConnectivityResult.mobile ||
+          result == ConnectivityResult.wifi ||
+          result == ConnectivityResult.ethernet);
     } catch (e) {
       return false;
     }

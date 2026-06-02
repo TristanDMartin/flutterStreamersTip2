@@ -46,7 +46,7 @@ class OptimisticVideo {
       categories: List<String>.from(json['categories'] as List),
       createdAt: DateTime.parse(json['createdAt'] as String),
       status: VideoStatus.values.firstWhere(
-        (e) => e.name == json['status'] as String,
+        (VideoStatus e) => e.name == json['status'] as String,
         orElse: () => VideoStatus.processing,
       ),
       videoUrl: json['videoUrl'] as String?,
@@ -127,26 +127,50 @@ class OptimisticVideo {
 }
 
 enum VideoStatus {
+  placeholderPending,
+  placeholderRejected,
   processing,
-  ready,
-  failed,
+  uploadSucceeded,
+  uploadFailed,
 }
 
 extension VideoStatusExtension on VideoStatus {
   String get displayName {
     switch (this) {
+      case VideoStatus.placeholderPending:
+        return 'Saving placeholder';
+      case VideoStatus.placeholderRejected:
+        return 'Placeholder failed';
       case VideoStatus.processing:
         return 'Processing';
-      case VideoStatus.ready:
-        return 'Ready';
-      case VideoStatus.failed:
+      case VideoStatus.uploadSucceeded:
+        return 'Published';
+      case VideoStatus.uploadFailed:
         return 'Failed';
     }
   }
 
+  bool get isPlaceholderPending => this == VideoStatus.placeholderPending;
+  bool get isPlaceholderRejected => this == VideoStatus.placeholderRejected;
   bool get isProcessing => this == VideoStatus.processing;
-  bool get isReady => this == VideoStatus.ready;
-  bool get hasFailed => this == VideoStatus.failed;
+  bool get isReady => this == VideoStatus.uploadSucceeded;
+  bool get hasFailed =>
+      this == VideoStatus.uploadFailed ||
+      this == VideoStatus.placeholderRejected;
+
+  static VideoStatus fromFirestoreStatus(String? raw) {
+    switch (raw) {
+      case 'ready':
+        return VideoStatus.uploadSucceeded;
+      case 'failed':
+        return VideoStatus.uploadFailed;
+      case 'processing':
+      case 'uploading':
+        return VideoStatus.processing;
+      default:
+        return VideoStatus.processing;
+    }
+  }
 }
 
 /// Factory for creating optimistic video placeholders
@@ -167,7 +191,7 @@ class OptimisticVideoFactory {
       caption: caption,
       categories: categories,
       createdAt: DateTime.now(),
-      status: VideoStatus.processing,
+      status: VideoStatus.placeholderPending,
       isOptimistic: true,
       localThumbnailPath: localThumbnailPath,
       localVideoPath: localVideoPath,
@@ -186,7 +210,7 @@ class OptimisticVideoFactory {
     int? fileSize,
   }) {
     return optimisticVideo.copyWith(
-      status: VideoStatus.ready,
+      status: VideoStatus.uploadSucceeded,
       videoUrl: videoUrl,
       thumbnailUrl: thumbnailUrl,
       hlsUrl: hlsUrl,
@@ -203,7 +227,7 @@ class OptimisticVideoFactory {
     required String errorMessage,
   }) {
     return optimisticVideo.copyWith(
-      status: VideoStatus.failed,
+      status: VideoStatus.uploadFailed,
       errorMessage: errorMessage,
       isOptimistic: false,
     );

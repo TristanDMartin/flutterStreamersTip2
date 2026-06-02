@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import '../models/home_video.dart';
 import '../services/thumbnail_service.dart';
+import '../utils/swallow_non_fatal.dart';
 
 /// Single source of truth for all video thumbnail rendering
 /// Handles cache busting, fallbacks, and consistent placeholder behavior
@@ -103,12 +104,12 @@ class ThumbnailTile extends StatelessWidget {
       imageUrl: thumbnailUrl,
       cacheKey: cacheKey,
       fit: BoxFit.cover,
-      memCacheWidth: ((width ?? 200) *
-              _thumbnailService.getDevicePixelRatio(context))
-          .round(),
-      memCacheHeight: ((height ?? 300) *
-              _thumbnailService.getDevicePixelRatio(context))
-          .round(),
+      memCacheWidth:
+          ((width ?? 200) * _thumbnailService.getDevicePixelRatio(context))
+              .round(),
+      memCacheHeight:
+          ((height ?? 300) * _thumbnailService.getDevicePixelRatio(context))
+              .round(),
       filterQuality: FilterQuality.high,
       placeholder: (context, url) {
         debugPrint('🖼️ ThumbnailTile: Loading placeholder for $url');
@@ -147,7 +148,8 @@ class ThumbnailTile extends StatelessWidget {
 
   bool _isLocalFilePath(String path) {
     // Check if path starts with / (absolute path) or doesn't start with http/https
-    return path.startsWith('/') || (!path.startsWith('http://') && !path.startsWith('https://'));
+    return path.startsWith('/') ||
+        (!path.startsWith('http://') && !path.startsWith('https://'));
   }
 
   Widget _buildLocalFileImage(String filePath) {
@@ -173,7 +175,8 @@ class ThumbnailTile extends StatelessWidget {
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) {
-          debugPrint('🖼️ ThumbnailTile: Error loading local file $filePath: $error');
+          debugPrint(
+              '🖼️ ThumbnailTile: Error loading local file $filePath: $error');
           return Container(
             color: Colors.grey[900],
             child: const Center(
@@ -187,7 +190,8 @@ class ThumbnailTile extends StatelessWidget {
         },
       );
     } catch (e) {
-      debugPrint('🖼️ ThumbnailTile: Exception loading local file $filePath: $e');
+      debugPrint(
+          '🖼️ ThumbnailTile: Exception loading local file $filePath: $e');
       return Container(
         color: Colors.grey[900],
         child: const Center(
@@ -305,7 +309,9 @@ class ThumbnailTile extends StatelessWidget {
               (resolvedWidth * devicePixelRatio).round().clamp(360, 1440);
           return 'https://image.mux.com/$playbackId/thumbnail.jpg?width=$requestedWidth&time=0';
         }
-      } catch (_) {}
+      } catch (e, st) {
+        swallowNonFatal('ThumbnailTile.muxThumbnailUrl', e, st);
+      }
     }
 
     return null;

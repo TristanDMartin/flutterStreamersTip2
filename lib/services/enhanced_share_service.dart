@@ -100,7 +100,8 @@ class EnhancedShareService {
           ShareVideoPayload.fromHomeVideo(video, videoDoc: videoDoc);
 
       ConnectionsService().getConnectionsPreview().catchError((Object e) {
-        secureLog('⚠️ EnhancedShareService: Failed to prefetch connections: $e');
+        secureLog(
+            '⚠️ EnhancedShareService: Failed to prefetch connections: $e');
         return <ConnectionLite>[];
       });
 
@@ -278,17 +279,16 @@ class EnhancedShareService {
     }
     try {
       final Uri uri = Uri.parse(url);
-      final http.Response response = await http
-          .get(uri)
-          .timeout(const Duration(seconds: 50));
+      final http.Response response =
+          await http.get(uri).timeout(const Duration(seconds: 50));
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
         return null;
       }
       final Directory dir = await getTemporaryDirectory();
-      final String ext =
-          lower.contains('.mp4') ? 'mp4' : (lower.contains('.mov') ? 'mov' : 'bin');
-      final File file =
-          File('${dir.path}/st_share_${payload.videoId}.$ext');
+      final String ext = lower.contains('.mp4')
+          ? 'mp4'
+          : (lower.contains('.mov') ? 'mov' : 'bin');
+      final File file = File('${dir.path}/st_share_${payload.videoId}.$ext');
       await file.writeAsBytes(response.bodyBytes, flush: true);
       return XFile(file.path);
     } catch (e, st) {

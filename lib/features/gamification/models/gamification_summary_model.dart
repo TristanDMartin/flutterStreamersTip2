@@ -9,6 +9,9 @@ class GamificationSummaryModel {
   final int streakDays;
   final double creatorScore;
   final String rankTitle;
+  final String? streakStatus;
+  final String? streakLabel;
+  final String? lastActiveDate;
   final String? nextActionHint;
   final DateTime? lastQualifiedActivityAt;
 
@@ -18,6 +21,9 @@ class GamificationSummaryModel {
     required this.streakDays,
     required this.creatorScore,
     required this.rankTitle,
+    this.streakStatus,
+    this.streakLabel,
+    this.lastActiveDate,
     this.nextActionHint,
     this.lastQualifiedActivityAt,
   });
@@ -36,12 +42,14 @@ class GamificationSummaryModel {
     final int totalXp =
         _readInt(raw, <String>['totalXp', 'total_xp', 'xp']) ?? 0;
     final int streak =
-        _readInt(raw, <String>['streakDays', 'streak_days']) ?? 0;
+        _readInt(raw, <String>['streakCount', 'streakDays', 'streak_days']) ??
+            0;
     final double score =
         _readDouble(raw, <String>['creatorScore', 'creator_score']) ?? 0;
     final String? storedRank = _readString(raw, <String>[
       'rank_title',
       'rankTitle',
+      'rankName',
     ]);
     final String title = (storedRank != null && storedRank.isNotEmpty)
         ? storedRank
@@ -57,12 +65,33 @@ class GamificationSummaryModel {
       streakDays: streak,
       creatorScore: score,
       rankTitle: title,
+      streakStatus: _readString(raw, <String>['streakStatus']),
+      streakLabel: _readString(raw, <String>['streakLabel']),
+      lastActiveDate: _readString(raw, <String>['lastActiveDate']),
       nextActionHint: next,
       lastQualifiedActivityAt: _readTimestamp(raw, <String>[
         'lastQualifiedActivityAt',
         'last_qualified_activity_at',
       ]),
     );
+  }
+
+  bool get isActiveToday {
+    final String today =
+        DateTime.now().toUtc().toIso8601String().split('T').first;
+    return streakStatus == 'Active today' || lastActiveDate == today;
+  }
+
+  String get displayStreakValue {
+    if (streakDays > 0) return '$streakDays days';
+    return isActiveToday ? 'Active today' : 'Start today';
+  }
+
+  String get displayStreakHelper {
+    if (streakLabel != null && streakLabel!.isNotEmpty && streakDays > 0) {
+      return streakLabel!;
+    }
+    return isActiveToday ? 'Active today' : 'Complete activity to begin';
   }
 
   int get xpIntoLevel {

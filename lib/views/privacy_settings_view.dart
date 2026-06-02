@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/support_shell_style.dart';
+
 class PrivacySettingsView extends ConsumerStatefulWidget {
   const PrivacySettingsView({super.key});
 
@@ -140,20 +142,20 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
-    final ColorScheme cs = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return AppBar(
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
-        icon: Icon(Icons.arrow_back, color: cs.onSurface),
+        icon: Icon(Icons.arrow_back_rounded, color: shell.onChrome),
         onPressed: () => Navigator.of(context).pop(),
       ),
       title: Text(
         'Privacy Settings',
         style: TextStyle(
-          color: cs.onSurface,
-          fontWeight: FontWeight.bold,
+          color: shell.onChrome,
+          fontWeight: FontWeight.w800,
           fontSize: _isIos ? 17 : 22,
         ),
       ),
@@ -166,11 +168,22 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     if (_isLoading) {
       return _wrapIosTextScale(
         context,
-        Scaffold(
-          backgroundColor: cs.surface,
-          appBar: _buildAppBar(context),
-          body: Center(
-            child: CircularProgressIndicator(color: cs.primary),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: StSupportShellStyle.of(context).pageGradient,
+            ),
+          ),
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: _buildAppBar(context),
+            body: Center(
+              child: CircularProgressIndicator(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
           ),
         ),
       );
@@ -178,18 +191,18 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
 
     return _wrapIosTextScale(
       context,
-      Scaffold(
-        backgroundColor: cs.surface,
-        appBar: _buildAppBar(context),
-        body: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: <Color>[cs.surface, cs.surfaceContainerLow],
-            ),
+      DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: StSupportShellStyle.of(context).pageGradient,
           ),
-          child: SingleChildScrollView(
+        ),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: _buildAppBar(context),
+          body: SingleChildScrollView(
             padding: EdgeInsets.all(_isIos ? 16 : 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,126 +212,126 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                     backgroundColor: cs.surfaceContainerLow,
                     color: cs.primary,
                   ),
-            _buildSection(
-              context,
-              'Profile',
-              [
-                _buildDropdownSetting(
+                _buildSection(
                   context,
-                  icon: Icons.visibility,
-                  title: 'Profile Visibility',
-                  subtitle: 'Who can see your profile',
-                  value: _profileVisibility,
-                  options: const ['public', 'followers', 'private'],
-                  onChanged: (String? value) {
-                    setState(() => _profileVisibility = value!);
-                    _updateSetting('profileVisibility', value);
-                  },
+                  'Profile',
+                  [
+                    _buildDropdownSetting(
+                      context,
+                      icon: Icons.visibility,
+                      title: 'Profile Visibility',
+                      subtitle: 'Who can see your profile',
+                      value: _profileVisibility,
+                      options: const ['public', 'followers', 'private'],
+                      onChanged: (String? value) {
+                        setState(() => _profileVisibility = value!);
+                        _updateSetting('profileVisibility', value);
+                      },
+                    ),
+                    _buildSwitchSetting(
+                      context,
+                      icon: Icons.people_outline,
+                      title: 'Allow Followers',
+                      subtitle: 'Let people follow your account',
+                      value: _allowFollowers,
+                      onChanged: (bool value) {
+                        setState(() => _allowFollowers = value);
+                        _updateSetting('allowFollowers', value);
+                      },
+                    ),
+                  ],
                 ),
-                _buildSwitchSetting(
+                const SizedBox(height: 32),
+                _buildSection(
                   context,
-                  icon: Icons.people_outline,
-                  title: 'Allow Followers',
-                  subtitle: 'Let people follow your account',
-                  value: _allowFollowers,
-                  onChanged: (bool value) {
-                    setState(() => _allowFollowers = value);
-                    _updateSetting('allowFollowers', value);
-                  },
+                  'Content',
+                  [
+                    _buildDropdownSetting(
+                      context,
+                      icon: Icons.video_library,
+                      title: 'Video Privacy',
+                      subtitle: 'Default privacy for new videos',
+                      value: _videoPrivacy,
+                      options: const ['public', 'followers', 'private'],
+                      onChanged: (String? value) {
+                        setState(() => _videoPrivacy = value!);
+                        _updateSetting('videoPrivacy', value);
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildSection(
-              context,
-              'Content',
-              [
-                _buildDropdownSetting(
+                const SizedBox(height: 32),
+                _buildSection(
                   context,
-                  icon: Icons.video_library,
-                  title: 'Video Privacy',
-                  subtitle: 'Default privacy for new videos',
-                  value: _videoPrivacy,
-                  options: const ['public', 'followers', 'private'],
-                  onChanged: (String? value) {
-                    setState(() => _videoPrivacy = value!);
-                    _updateSetting('videoPrivacy', value);
-                  },
+                  'Social',
+                  [
+                    _buildDropdownSetting(
+                      context,
+                      icon: Icons.alternate_email,
+                      title: 'Mentions',
+                      subtitle: 'Who can mention you',
+                      value: _allowMentions,
+                      options: const ['everyone', 'followers', 'nobody'],
+                      onChanged: (String? value) {
+                        setState(() => _allowMentions = value!);
+                        _updateSetting('allowMentions', value);
+                      },
+                    ),
+                    _buildSwitchSetting(
+                      context,
+                      icon: Icons.label_outline,
+                      title: 'Allow Tags',
+                      subtitle: 'Let people tag you',
+                      value: _allowTags,
+                      onChanged: (bool value) {
+                        setState(() => _allowTags = value);
+                        _updateSetting('allowTags', value);
+                      },
+                    ),
+                    _buildDropdownSetting(
+                      context,
+                      icon: Icons.message_outlined,
+                      title: 'Messages',
+                      subtitle: 'Who can send you messages',
+                      value: _allowMessagesFrom,
+                      options: const ['everyone', 'followers', 'nobody'],
+                      onChanged: (String? value) {
+                        setState(() => _allowMessagesFrom = value!);
+                        _updateSetting('allowMessagesFrom', value);
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildSection(
-              context,
-              'Social',
-              [
-                _buildDropdownSetting(
+                const SizedBox(height: 32),
+                _buildSection(
                   context,
-                  icon: Icons.alternate_email,
-                  title: 'Mentions',
-                  subtitle: 'Who can mention you',
-                  value: _allowMentions,
-                  options: const ['everyone', 'followers', 'nobody'],
-                  onChanged: (String? value) {
-                    setState(() => _allowMentions = value!);
-                    _updateSetting('allowMentions', value);
-                  },
+                  'Activity',
+                  [
+                    _buildSwitchSetting(
+                      context,
+                      icon: Icons.circle,
+                      title: 'Show Online Status',
+                      subtitle: 'Let others see when you\'re online',
+                      value: _showOnlineStatus,
+                      onChanged: (bool value) {
+                        setState(() => _showOnlineStatus = value);
+                        _updateSetting('showOnlineStatus', value);
+                      },
+                    ),
+                    _buildSwitchSetting(
+                      context,
+                      icon: Icons.done_all,
+                      title: 'Read Receipts',
+                      subtitle:
+                          'Let others know when you\'ve read their messages',
+                      value: _readReceipts,
+                      onChanged: (bool value) {
+                        setState(() => _readReceipts = value);
+                        _updateSetting('readReceipts', value);
+                      },
+                    ),
+                  ],
                 ),
-                _buildSwitchSetting(
-                  context,
-                  icon: Icons.label_outline,
-                  title: 'Allow Tags',
-                  subtitle: 'Let people tag you',
-                  value: _allowTags,
-                  onChanged: (bool value) {
-                    setState(() => _allowTags = value);
-                    _updateSetting('allowTags', value);
-                  },
-                ),
-                _buildDropdownSetting(
-                  context,
-                  icon: Icons.message_outlined,
-                  title: 'Messages',
-                  subtitle: 'Who can send you messages',
-                  value: _allowMessagesFrom,
-                  options: const ['everyone', 'followers', 'nobody'],
-                  onChanged: (String? value) {
-                    setState(() => _allowMessagesFrom = value!);
-                    _updateSetting('allowMessagesFrom', value);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildSection(
-              context,
-              'Activity',
-              [
-                _buildSwitchSetting(
-                  context,
-                  icon: Icons.circle,
-                  title: 'Show Online Status',
-                  subtitle: 'Let others see when you\'re online',
-                  value: _showOnlineStatus,
-                  onChanged: (bool value) {
-                    setState(() => _showOnlineStatus = value);
-                    _updateSetting('showOnlineStatus', value);
-                  },
-                ),
-                _buildSwitchSetting(
-                  context,
-                  icon: Icons.done_all,
-                  title: 'Read Receipts',
-                  subtitle:
-                      'Let others know when you\'ve read their messages',
-                  value: _readReceipts,
-                  onChanged: (bool value) {
-                    setState(() => _readReceipts = value);
-                    _updateSetting('readReceipts', value);
-                  },
-                ),
-              ],
-            ),
                 const SizedBox(height: 40),
               ],
             ),
@@ -333,27 +346,31 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     String title,
     List<Widget> children,
   ) {
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    final Color on = cs.onSurface;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+      children: <Widget>[
         Text(
           title,
           style: TextStyle(
-            color: on,
+            color: shell.onChrome,
             fontSize: _isIos ? 17 : 20,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            color: on.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: cs.outline.withValues(alpha: 0.35),
-            ),
+            color: shell.surfaceCard,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: shell.surfaceCardBorder),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: shell.shadowSoft,
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Column(
             children: children,
@@ -373,45 +390,46 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     required ValueChanged<String?> onChanged,
   }) {
     final ColorScheme cs = Theme.of(context).colorScheme;
-    final Color on = cs.onSurface;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: EdgeInsets.all(_isIos ? 14 : 20),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: on.withValues(alpha: 0.08),
+            color: cs.outlineVariant.withValues(alpha: 0.45),
             width: 1,
           ),
         ),
       ),
       child: Row(
-        children: [
+        children: <Widget>[
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: on.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
+              color: shell.chipUnselectedBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: shell.chipUnselectedBorder),
             ),
-            child: Icon(icon, color: on, size: _isIos ? 18 : 20),
+            child: Icon(icon, color: shell.onChrome, size: _isIos ? 18 : 20),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 Text(
                   title,
                   style: TextStyle(
-                    color: on,
+                    color: shell.onChrome,
                     fontSize: _isIos ? 14 : 16,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: on.withValues(alpha: 0.65),
+                    color: shell.muted,
                     fontSize: _isIos ? 11 : 12,
                   ),
                 ),
@@ -422,17 +440,17 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: on.withValues(alpha: 0.06),
+              color: shell.chipUnselectedBg,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: cs.outline.withValues(alpha: 0.4),
+                color: shell.chipUnselectedBorder,
               ),
             ),
             child: DropdownButton<String>(
               value: value,
               dropdownColor: cs.surfaceContainerHigh,
               style: TextStyle(
-                color: on,
+                color: shell.onChrome,
                 fontSize: _isIos ? 13 : 14,
               ),
               underline: const SizedBox(),
@@ -441,7 +459,7 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                   value: option,
                   child: Text(
                     _formatOption(option),
-                    style: TextStyle(color: on),
+                    style: TextStyle(color: shell.onChrome),
                   ),
                 );
               }).toList(),
@@ -462,45 +480,46 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     required ValueChanged<bool> onChanged,
   }) {
     final ColorScheme cs = Theme.of(context).colorScheme;
-    final Color on = cs.onSurface;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: EdgeInsets.all(_isIos ? 14 : 20),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: on.withValues(alpha: 0.08),
+            color: cs.outlineVariant.withValues(alpha: 0.45),
             width: 1,
           ),
         ),
       ),
       child: Row(
-        children: [
+        children: <Widget>[
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: on.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
+              color: shell.chipUnselectedBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: shell.chipUnselectedBorder),
             ),
-            child: Icon(icon, color: on, size: _isIos ? 18 : 20),
+            child: Icon(icon, color: shell.onChrome, size: _isIos ? 18 : 20),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 Text(
                   title,
                   style: TextStyle(
-                    color: on,
+                    color: shell.onChrome,
                     fontSize: _isIos ? 14 : 16,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: on.withValues(alpha: 0.65),
+                    color: shell.muted,
                     fontSize: _isIos ? 11 : 12,
                   ),
                 ),
@@ -512,8 +531,8 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
             onChanged: onChanged,
             activeThumbColor: cs.primary,
             activeTrackColor: cs.primary.withValues(alpha: 0.45),
-            inactiveTrackColor: on.withValues(alpha: 0.18),
-            inactiveThumbColor: on.withValues(alpha: 0.65),
+            inactiveTrackColor: shell.muted.withValues(alpha: 0.22),
+            inactiveThumbColor: shell.iconDim,
           ),
         ],
       ),

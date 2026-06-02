@@ -79,11 +79,11 @@ class SharedDraftService {
         .where('status', isEqualTo: 'shared')
         .snapshots()
         .listen(
-      (_) => _refreshSharedDrafts(),
-      onError: (error) => debugPrint(
-        '❌ SharedDraftService: received drafts listener error: $error',
-      ),
-    );
+          (_) => _refreshSharedDrafts(),
+          onError: (error) => debugPrint(
+            '❌ SharedDraftService: received drafts listener error: $error',
+          ),
+        );
 
     _sentDraftsSubscription = _firestore
         .collection('shared_drafts')
@@ -91,11 +91,11 @@ class SharedDraftService {
         .where('status', isEqualTo: 'shared')
         .snapshots()
         .listen(
-      (_) => _refreshSharedDrafts(),
-      onError: (error) => debugPrint(
-        '❌ SharedDraftService: sent drafts listener error: $error',
-      ),
-    );
+          (_) => _refreshSharedDrafts(),
+          onError: (error) => debugPrint(
+            '❌ SharedDraftService: sent drafts listener error: $error',
+          ),
+        );
 
     _connectionsSubscription = _firestore
         .collection('users')
@@ -216,10 +216,10 @@ class SharedDraftService {
   }) {
     return _draftSharingService
         .shareDraftWithConnections(
-      draftId: draftId,
-      connectionIds: [receiverId],
-      message: message,
-    )
+          draftId: draftId,
+          connectionIds: [receiverId],
+          message: message,
+        )
         .then((result) => result.isSuccess);
   }
 
@@ -322,7 +322,8 @@ class SharedDraftService {
     required String currentUserId,
     required String receiverId,
   }) {
-    final senderId = data['sharerId'] as String? ?? data['senderId'] as String? ?? '';
+    final senderId =
+        data['sharerId'] as String? ?? data['senderId'] as String? ?? '';
     final sharedAt = (data['createdAt'] as Timestamp?)?.toDate() ??
         (data['sharedAt'] as Timestamp?)?.toDate() ??
         DateTime.now();
@@ -374,7 +375,8 @@ class SharedDraftService {
         List<String>.from(data['acceptedBy'] as List<dynamic>? ?? const []);
     final viewedBy =
         List<String>.from(data['viewedBy'] as List<dynamic>? ?? const []);
-    final targetUserId = currentUserId == receiverId ? currentUserId : receiverId;
+    final targetUserId =
+        currentUserId == receiverId ? currentUserId : receiverId;
 
     if (declinedBy.contains(targetUserId)) {
       return SharedDraftStatus.declined;
@@ -404,7 +406,8 @@ class SharedDraftService {
   }
 
   Connection _mapConnection(String id, Map<String, dynamic> data) {
-    final lastSeen = (data['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final lastSeen =
+        (data['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now();
     return Connection(
       id: data['id'] as String? ?? id,
       displayName: data['displayName'] as String? ?? 'User',

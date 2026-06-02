@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/backend/http_api_base_url.dart';
 import 'content_scheduler_models.dart';
 
 class ContentSchedulerException implements Exception {
@@ -25,7 +26,10 @@ class HttpContentSchedulerRepository implements ContentSchedulerRepository {
   HttpContentSchedulerRepository({
     String? apiBase,
     http.Client? client,
-  })  : _apiBase = _resolveApiBase(apiBase),
+  })  : _apiBase = resolveHttpApiBaseUrl(
+          explicitOverride: apiBase,
+          envDefineValue: _envApiBase,
+        ),
         _client = client ?? http.Client();
 
   static const String _envApiBase = String.fromEnvironment(
@@ -35,12 +39,6 @@ class HttpContentSchedulerRepository implements ContentSchedulerRepository {
 
   final String _apiBase;
   final http.Client _client;
-
-  static String _resolveApiBase(String? explicit) {
-    final String configured = (explicit ?? _envApiBase).trim();
-    if (configured.isNotEmpty) return configured;
-    return 'https://streamerstip.com';
-  }
 
   @override
   Future<List<SchedulerQueueItem>> loadQueue({

@@ -49,8 +49,10 @@ class GamificationEventService {
   /// Event types must match website + worker contract (e.g. `content.video_uploaded`).
   Future<void> emitTrustedEvent({
     required String type,
+    String source = 'app',
     String? entityType,
     String? entityId,
+    String? eventId,
     Map<String, dynamic>? metadata,
   }) async {
     final User? user = FirebaseAuth.instance.currentUser;
@@ -61,13 +63,16 @@ class GamificationEventService {
     if (token == null || token.isEmpty) {
       throw StateError('No ID token');
     }
-    final String eventId = const Uuid().v4();
+    final String resolvedEventId =
+        (eventId != null && eventId.trim().isNotEmpty)
+            ? eventId.trim()
+            : const Uuid().v4();
     final Uri uri = _gamificationEventsUri(_baseUrl);
     final Map<String, dynamic> body = <String, dynamic>{
-      'eventId': eventId,
+      'eventId': resolvedEventId,
       'uid': user.uid,
       'type': type,
-      'source': 'app',
+      'source': source,
       'entityType': entityType,
       'entityId': entityId,
       'timestamp': DateTime.now().toUtc().toIso8601String(),

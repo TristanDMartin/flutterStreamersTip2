@@ -38,11 +38,21 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Flutter analyze
+        run: flutter analyze
+
       - name: Firestore rules + follows emulator tests
         run: bash scripts/ci_tests.sh
 
       - name: Counter reconciliation (emulator, blocking)
         run: npm --prefix cloud_functions run reconcile:counters:emulator
 
+      - name: Playback coordinator unit tests
+        run: |
+          flutter test test/unit/services/playback_*_test.dart \
+            test/unit/services/global_playback_manager_test.dart \
+            test/unit/features/video_player/ \
+            --reporter expanded
+
       - name: Flutter tests
-        run: flutter test
+        run: flutter test --reporter expanded

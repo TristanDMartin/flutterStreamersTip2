@@ -68,9 +68,10 @@ class ProfileLinkService {
     if (uri == null) return rawUrl;
 
     final host = uri.host.toLowerCase();
-    final isStreamersTipHost =
-        host == 'streamerstip.app' || host == 'www.streamerstip.app' ||
-        host == 'streamerstip.com' || host == 'www.streamerstip.com';
+    final isStreamersTipHost = host == 'streamerstip.app' ||
+        host == 'www.streamerstip.app' ||
+        host == 'streamerstip.com' ||
+        host == 'www.streamerstip.com';
 
     if ((uri.scheme == 'http' || uri.scheme == 'https') && isStreamersTipHost) {
       return '$appScheme${uri.path.startsWith('/') ? uri.path.substring(1) : uri.path}'

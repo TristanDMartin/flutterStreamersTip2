@@ -90,7 +90,8 @@ class UnifiedAlgorithmService {
   }) async {
     if (videos.isEmpty) return [];
 
-    secureLog('🎯 Unified Algorithm: Scoring ${videos.length} videos for user $userId');
+    secureLog(
+        '🎯 Unified Algorithm: Scoring ${videos.length} videos for user $userId');
 
     final List<ScoredVideo> scoredVideos = [];
 
@@ -202,7 +203,8 @@ class UnifiedAlgorithmService {
       return original;
     }).toList();
 
-    secureLog('✅ Unified Algorithm: Final ranking complete - ${diversifiedScored.length} videos');
+    secureLog(
+        '✅ Unified Algorithm: Final ranking complete - ${diversifiedScored.length} videos');
 
     return diversifiedScored;
   }
@@ -230,7 +232,8 @@ class UnifiedAlgorithmService {
         await _retentionPrediction.predictDailyReturn(userId);
     final churnRisk = await _retentionPrediction.calculateChurnRisk(userId);
 
-    secureLog('📊 Retention scores: nextVideo=${nextVideoProb.toStringAsFixed(2)}, '
+    secureLog(
+        '📊 Retention scores: nextVideo=${nextVideoProb.toStringAsFixed(2)}, '
         'daily=${dailyReturnProb.toStringAsFixed(2)}, '
         'churnRisk=${churnRisk.toStringAsFixed(2)}');
 
@@ -269,7 +272,8 @@ class UnifiedAlgorithmService {
     required bool isReplay,
     required bool didComplete,
   }) async {
-    secureLog('📊 Tracking engagement: $videoId (${watchPercentage.toStringAsFixed(1)}%)');
+    secureLog(
+        '📊 Tracking engagement: $videoId (${watchPercentage.toStringAsFixed(1)}%)');
 
     // 1. Track watch time
     _advancedEngagement.trackWatchTime(

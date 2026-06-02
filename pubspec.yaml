@@ -38,6 +38,7 @@ dependencies:
   video_player: ^2.8.1
   video_thumbnail: ^0.5.6
   cached_network_image: ^3.3.0
+  google_fonts: ^6.2.1
   image_picker: ^1.0.4
   flutter_hooks: ^0.21.3+1
   hooks_riverpod: ^2.4.9
@@ -74,6 +75,7 @@ dependencies:
   share_plus: ^12.0.0
   connectivity_plus: ^7.0.0
   mobile_scanner: ^7.0.1
+  # Release: --dart-define=GIPHY_API_KEY=... (see docs/DEPENDENCY_UPGRADE_SCHEDULE.md)
   giphy_picker: ^3.0.2
   pasteboard: ^0.3.0
   csv: ^6.0.0
@@ -88,6 +90,7 @@ dependencies:
   flutter_cache_manager: ^3.3.1
   in_app_purchase: ^3.2.3
   flutter_staggered_grid_view: ^0.7.0
+  firebase_app_check: ^0.4.4+1
 
 dev_dependencies:
   flutter_test:
@@ -119,6 +122,6 @@ flutter:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/091225_ST_logo_white.PNG"
+  image_path: "assets/app_icon_ios.png"
   min_sdk_android: 21
   remove_alpha_ios: true

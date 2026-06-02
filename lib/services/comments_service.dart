@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import 'event_trigger_service.dart';
+import '../features/gamification/emit_engagement_gamification.dart';
+import '../features/gamification/gamification_event_types.dart';
+import 'progression_service.dart';
 
 class VideoCommentsSnapshot {
   final List<Comment> comments;
@@ -371,14 +374,14 @@ class CommentsService {
   Future<List<Comment>> fetchCommentsForVideo(String videoId) async {
     try {
       if (_auth.currentUser == null) {
-        // print('User not authenticated, returning mock data');
+        // appLog('User not authenticated, returning mock data');
         return CommentMockData.mockData();
       }
 
       final snapshot = await _commentsCollection(videoId).get();
 
       if (snapshot.docs.isEmpty) {
-        // print('No comments found for video $videoId, returning mock data');
+        // appLog('No comments found for video $videoId, returning mock data');
         return CommentMockData.mockData();
       }
 
@@ -396,7 +399,7 @@ class CommentsService {
       );
       return commentsSnapshot.comments;
     } catch (e) {
-      // print('Error fetching comments: $e');
+      // appLog('Error fetching comments: $e');
       // Return mock data as fallback for better UX
       return CommentMockData.mockData();
     }
@@ -441,10 +444,21 @@ class CommentsService {
 
       // Trigger comment event for notifications
       await _triggerCommentEvent(videoId, currentUser.uid, text);
+      scheduleEngagementGamificationEvent(
+        type: GamificationEventTypes.engagementCommentCreated,
+        entityType: 'video',
+        entityId: videoId,
+        source: 'comments',
+      );
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstCommentMade,
+        source: 'comments',
+      ));
 
       return commentWithId;
     } catch (e) {
-      // print('Error adding comment: $e');
+      // appLog('Error adding comment: $e');
       // Provide more specific error messages
       if (e.toString().contains('permission-denied')) {
         throw Exception(
@@ -506,10 +520,21 @@ class CommentsService {
       });
 
       unawaited(_incrementReplyCount(parentRef));
+      scheduleEngagementGamificationEvent(
+        type: GamificationEventTypes.engagementReplyCreated,
+        entityType: 'comment',
+        entityId: replyRef.id,
+        source: 'comments',
+      );
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUser.uid,
+        ProgressionTaskIds.firstCommentMade,
+        source: 'comments',
+      ));
 
       return reply.copyWith(id: replyRef.id);
     } catch (e) {
-      // print('Error adding reply: $e');
+      // appLog('Error adding reply: $e');
       // Provide more specific error messages
       if (e.toString().contains('permission-denied')) {
         throw Exception(
@@ -586,7 +611,7 @@ class CommentsService {
 
       return true;
     } catch (e) {
-      // print('Error toggling like: $e');
+      // appLog('Error toggling like: $e');
       return false;
     }
   }
@@ -672,7 +697,7 @@ class CommentsService {
       if (e is CommentError) {
         rethrow;
       }
-      // print('Error deleting comment: $e');
+      // appLog('Error deleting comment: $e');
       return false;
     }
   }

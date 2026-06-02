@@ -52,9 +52,7 @@ class AppearanceSettingsView extends ConsumerWidget {
               selected: <ThemeMode>{appTheme.themeMode},
               onSelectionChanged: (Set<ThemeMode> selected) {
                 if (selected.isNotEmpty) {
-                  ref
-                      .read(appThemeModeProvider)
-                      .setThemeMode(selected.first);
+                  ref.read(appThemeModeProvider).setThemeMode(selected.first);
                 }
               },
             ),

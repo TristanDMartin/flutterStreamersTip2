@@ -52,7 +52,8 @@ class EnhancedAlgorithmService {
     );
 
     if (filteredVideos.isEmpty) {
-      secureLog('⚠️ Enhanced Algorithm: No videos after filtering, returning original candidates');
+      secureLog(
+          '⚠️ Enhanced Algorithm: No videos after filtering, returning original candidates');
       // Return first candidates if filtering removed everything
       final fallback = candidateVideos.take(limit).toList();
       return fallback;
@@ -81,7 +82,8 @@ class EnhancedAlgorithmService {
       limit,
     );
 
-    secureLog('✅ Enhanced Algorithm: Perfect feed generated - ${finalScored.length} videos');
+    secureLog(
+        '✅ Enhanced Algorithm: Perfect feed generated - ${finalScored.length} videos');
 
     return finalScored.take(limit).map((sv) => sv.video).toList();
   }
@@ -120,7 +122,8 @@ class EnhancedAlgorithmService {
       filtered.add(video);
     }
 
-    secureLog('🎯 Enhanced Algorithm: Filtered ${videos.length} → ${filtered.length} videos');
+    secureLog(
+        '🎯 Enhanced Algorithm: Filtered ${videos.length} → ${filtered.length} videos');
     return filtered;
   }
 
@@ -136,11 +139,11 @@ class EnhancedAlgorithmService {
     // Use parallel processing for better performance
     final scoredVideos = await Future.wait(
       videos.map((video) => _scoreSingleVideo(
-        video,
-        userId,
-        userLocation,
-        cache,
-      )),
+            video,
+            userId,
+            userLocation,
+            cache,
+          )),
     );
 
     // Sort by score
@@ -293,8 +296,8 @@ class EnhancedAlgorithmService {
         final recencyScore = _calculateRecencyScore(video);
 
         // Get engagement score
-        final engagementScore = (video.likes + video.comments) /
-            math.max(video.views, 1);
+        final engagementScore =
+            (video.likes + video.comments) / math.max(video.views, 1);
 
         // Get social affinity (from cache)
         final socialScore = cache.followingIds.contains(video.creator.id)
@@ -305,10 +308,9 @@ class EnhancedAlgorithmService {
         final contentScore = _calculateContentSimilarity(video, cache);
 
         // Get user preference (from cache)
-        final preferenceScore = (cache.categoryPreferences[video.categoryId] ??
-                0.5) *
-            0.5 +
-            (cache.creatorPreferences[video.creator.id] ?? 0.5) * 0.5;
+        final preferenceScore =
+            (cache.categoryPreferences[video.categoryId] ?? 0.5) * 0.5 +
+                (cache.creatorPreferences[video.creator.id] ?? 0.5) * 0.5;
 
         // Weighted enhancement (matching MLRecommendationService weights)
         final enhancedScore = (recencyScore * 0.25) +
@@ -329,10 +331,9 @@ class EnhancedAlgorithmService {
           ? 1.0
           : (cache.networkAffinity[video.creator.id] ?? 0.5);
       final contentScore = _calculateContentSimilarity(video, cache);
-      final preferenceScore = (cache.categoryPreferences[video.categoryId] ??
-              0.5) *
-          0.5 +
-          (cache.creatorPreferences[video.creator.id] ?? 0.5) * 0.5;
+      final preferenceScore =
+          (cache.categoryPreferences[video.categoryId] ?? 0.5) * 0.5 +
+              (cache.creatorPreferences[video.creator.id] ?? 0.5) * 0.5;
 
       final mlScore = (recencyScore * 0.25) +
           (engagementScore.clamp(0.0, 1.0) * 0.30) +
@@ -342,7 +343,8 @@ class EnhancedAlgorithmService {
 
       return mlScore.clamp(0.0, 1.0);
     } catch (e) {
-      secureLog('⚠️ Enhanced Algorithm: Error calculating ML score, using default: $e');
+      secureLog(
+          '⚠️ Enhanced Algorithm: Error calculating ML score, using default: $e');
       return video.mlScore > 0 ? video.mlScore : 0.5;
     }
   }
@@ -394,7 +396,8 @@ class EnhancedAlgorithmService {
 
     // Penalize if user has low watch percentage for this creator
     final creatorWatchData = cache.creatorWatchData[video.creator.id];
-    if (creatorWatchData != null && creatorWatchData.averageWatchPercentage < 30) {
+    if (creatorWatchData != null &&
+        creatorWatchData.averageWatchPercentage < 30) {
       penalty *= 0.8; // 20% penalty for low engagement with creator
     }
 
@@ -460,7 +463,8 @@ class EnhancedAlgorithmService {
     final videoKeywords = _extractKeywords(video.caption);
     if (videoKeywords.isEmpty) return 0.5;
 
-    final intersection = videoKeywords.intersection(cache.preferredKeywords).length;
+    final intersection =
+        videoKeywords.intersection(cache.preferredKeywords).length;
     final union = videoKeywords.union(cache.preferredKeywords).length;
 
     return intersection / union;
@@ -497,7 +501,8 @@ class EnhancedAlgorithmService {
 
     // Adjust for cold start users (users with < 10 watched videos)
     if (cache.totalVideosWatched < 10) {
-      secureLog('🌱 Enhanced Algorithm: Cold start user - boosting trending content');
+      secureLog(
+          '🌱 Enhanced Algorithm: Cold start user - boosting trending content');
       // Boost trending/velocity for new users
       for (int i = 0; i < finalScored.length; i++) {
         final sv = finalScored[i];
@@ -591,23 +596,20 @@ class EnhancedAlgorithmService {
           .toSet();
 
       // Load following list
-      final userDoc =
-          await _firestore.collection('users').doc(userId).get();
+      final userDoc = await _firestore.collection('users').doc(userId).get();
       final followingIds = (userDoc.data()?['following'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toSet() ??
           <String>{};
 
       // Load category and creator preferences from engagement data
-      final preferencesDoc = await _firestore
-          .collection('user_preferences')
-          .doc(userId)
-          .get();
+      final preferencesDoc =
+          await _firestore.collection('user_preferences').doc(userId).get();
 
       final preferencesData = preferencesDoc.data() ?? {};
 
-      final categoryPreferences =
-          Map<String, double>.from(preferencesData['categoryPreferences'] ?? {});
+      final categoryPreferences = Map<String, double>.from(
+          preferencesData['categoryPreferences'] ?? {});
       final creatorPreferences =
           Map<String, double>.from(preferencesData['creatorPreferences'] ?? {});
 
@@ -616,10 +618,11 @@ class EnhancedAlgorithmService {
           Map<String, double>.from(preferencesData['networkAffinity'] ?? {});
 
       // Load preferred keywords
-      final preferredKeywords = (preferencesData['preferredKeywords'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toSet() ??
-          <String>{};
+      final preferredKeywords =
+          (preferencesData['preferredKeywords'] as List<dynamic>?)
+                  ?.map((e) => e.toString())
+                  .toSet() ??
+              <String>{};
 
       // Load creator watch data
       final creatorWatchData = <String, CreatorWatchData>{};
@@ -692,7 +695,8 @@ class EnhancedAlgorithmService {
       _userCaches.remove(userId);
       _lastCacheUpdate.remove(userId);
 
-      secureLog('⏭️ Enhanced Algorithm: Tracked skip for video $videoId (watched ${watchPercentage.toStringAsFixed(1)}%)');
+      secureLog(
+          '⏭️ Enhanced Algorithm: Tracked skip for video $videoId (watched ${watchPercentage.toStringAsFixed(1)}%)');
     } catch (e) {
       secureLog('❌ Enhanced Algorithm: Error tracking skip: $e');
     }
@@ -719,7 +723,8 @@ class EnhancedAlgorithmService {
       _userCaches.remove(userId);
       _lastCacheUpdate.remove(userId);
 
-      secureLog('👁️ Enhanced Algorithm: Tracked watch for video $videoId (${watchPercentage.toStringAsFixed(1)}%)');
+      secureLog(
+          '👁️ Enhanced Algorithm: Tracked watch for video $videoId (${watchPercentage.toStringAsFixed(1)}%)');
     } catch (e) {
       secureLog('❌ Enhanced Algorithm: Error tracking watch: $e');
     }

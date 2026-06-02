@@ -96,8 +96,10 @@ enum UploadJobState {
   processing,
   ready,
   failed,
+
   /// Legacy alias kept for JSON backwards-compat; treated as [uploading].
   queued,
+
   /// Legacy alias kept for JSON backwards-compat; treated as [ready].
   done,
 }

@@ -12,7 +12,8 @@ class QRScannerView extends StatefulWidget {
   State<QRScannerView> createState() => _QRScannerViewState();
 }
 
-class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateMixin {
+class _QRScannerViewState extends State<QRScannerView>
+    with TickerProviderStateMixin {
   late MobileScannerController _controller;
   bool _handled = false;
   bool _isLoading = true;
@@ -21,11 +22,11 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
   late AnimationController _scanLineController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _scanLineAnimation;
-  
+
   // Define the scanning area (center square)
   static const double _scanAreaSize = 300.0;
   static const double _cornerRadius = 20.0;
-  
+
   // Cache screen dimensions to avoid repeated MediaQuery calls
   late Size _screenSize;
   late double _centerX;
@@ -34,7 +35,7 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
   late double _rightBound;
   late double _topBound;
   late double _bottomBound;
-  
+
   // Extract gradient to constant for better performance
   static const LinearGradient _profileGradient = LinearGradient(
     colors: [
@@ -71,7 +72,7 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
       duration: const Duration(seconds: 1),
       vsync: this,
     );
-    
+
     _pulseAnimation = Tween<double>(
       begin: 0.8,
       end: 1.0,
@@ -79,7 +80,7 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
       parent: _pulseController,
       curve: Curves.easeInOut,
     ));
-    
+
     _scanLineAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -87,7 +88,7 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
       parent: _scanLineController,
       curve: Curves.easeInOut,
     ));
-    
+
     _pulseController.repeat(reverse: true);
     _scanLineController.repeat();
   }
@@ -130,37 +131,48 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
     for (final corner in barcode.corners) {
       final double x = corner.dx;
       final double y = corner.dy;
-      
+
       // Quick bounds check first
-      if (x < _leftBound || x > _rightBound || y < _topBound || y > _bottomBound) {
+      if (x < _leftBound ||
+          x > _rightBound ||
+          y < _topBound ||
+          y > _bottomBound) {
         continue;
       }
-      
+
       // Check if point is in rounded corner areas
-      final bool inTopLeftCorner = x < _leftBound + _cornerRadius && y < _topBound + _cornerRadius;
-      final bool inTopRightCorner = x > _rightBound - _cornerRadius && y < _topBound + _cornerRadius;
-      final bool inBottomLeftCorner = x < _leftBound + _cornerRadius && y > _bottomBound - _cornerRadius;
-      final bool inBottomRightCorner = x > _rightBound - _cornerRadius && y > _bottomBound - _cornerRadius;
-      
+      final bool inTopLeftCorner =
+          x < _leftBound + _cornerRadius && y < _topBound + _cornerRadius;
+      final bool inTopRightCorner =
+          x > _rightBound - _cornerRadius && y < _topBound + _cornerRadius;
+      final bool inBottomLeftCorner =
+          x < _leftBound + _cornerRadius && y > _bottomBound - _cornerRadius;
+      final bool inBottomRightCorner =
+          x > _rightBound - _cornerRadius && y > _bottomBound - _cornerRadius;
+
       // If in corner area, check if within rounded rectangle
-      if (inTopLeftCorner || inTopRightCorner || inBottomLeftCorner || inBottomRightCorner) {
-        final double cornerCenterX = inTopLeftCorner || inBottomLeftCorner 
-            ? _leftBound + _cornerRadius 
+      if (inTopLeftCorner ||
+          inTopRightCorner ||
+          inBottomLeftCorner ||
+          inBottomRightCorner) {
+        final double cornerCenterX = inTopLeftCorner || inBottomLeftCorner
+            ? _leftBound + _cornerRadius
             : _rightBound - _cornerRadius;
-        final double cornerCenterY = inTopLeftCorner || inTopRightCorner 
-            ? _topBound + _cornerRadius 
+        final double cornerCenterY = inTopLeftCorner || inTopRightCorner
+            ? _topBound + _cornerRadius
             : _bottomBound - _cornerRadius;
-        
-        final double distanceSquared = (x - cornerCenterX) * (x - cornerCenterX) + 
-                                     (y - cornerCenterY) * (y - cornerCenterY);
+
+        final double distanceSquared =
+            (x - cornerCenterX) * (x - cornerCenterX) +
+                (y - cornerCenterY) * (y - cornerCenterY);
         if (distanceSquared > _cornerRadius * _cornerRadius) {
           continue;
         }
       }
-      
+
       return true;
     }
-    
+
     return false;
   }
 
@@ -184,7 +196,7 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
   Widget build(BuildContext context) {
     // Cache screen dimensions for performance
     _cacheScreenDimensions();
-    
+
     final bool unsupported = kIsWeb || (!Platform.isAndroid && !Platform.isIOS);
     if (unsupported) {
       return _buildUnsupportedView();
@@ -213,7 +225,10 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
               const SizedBox(height: 16),
               const Text(
                 'QR Scanner',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -227,7 +242,8 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                 ),
                 child: const Text('Go Back'),
               ),
@@ -276,7 +292,10 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
                   const SizedBox(height: 16),
                   const Text(
                     'Camera Error',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -296,7 +315,8 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
                           });
                           // Dispose and recreate the controller
                           await _controller.dispose();
-                          _controller = MobileScannerController(torchEnabled: false);
+                          _controller =
+                              MobileScannerController(torchEnabled: false);
                           await _initializeScanner();
                         },
                         style: ElevatedButton.styleFrom(
@@ -350,7 +370,7 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
 
   void _handleBarcodeDetection(BarcodeCapture capture) {
     if (_handled) return;
-    
+
     final List<Barcode> barcodes = capture.barcodes;
     for (final barcode in barcodes) {
       if (_isQRCodeInScanArea(barcode)) {
@@ -432,7 +452,8 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
                       // Camera view clipped to the scanning area
                       Positioned.fill(
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(_cornerRadius - 3),
+                          borderRadius:
+                              BorderRadius.circular(_cornerRadius - 3),
                           child: MobileScanner(
                             controller: _controller,
                             onDetect: _handleBarcodeDetection,
@@ -587,23 +608,22 @@ class CutoutPainter extends CustomPainter {
     // Calculate the center position of the scanning area
     final double centerX = screenSize.width / 2;
     final double centerY = screenSize.height / 2;
-    
+
     // Create rounded rectangle path for the cutout
     final Rect scanRect = Rect.fromCenter(
       center: Offset(centerX, centerY),
       width: scanAreaSize,
       height: scanAreaSize,
     );
-    
+
     final RRect roundedRect = RRect.fromRectAndRadius(
       scanRect,
       Radius.circular(cornerRadius),
     );
-    
+
     // Create the cutout path
-    final Path cutoutPath = Path()
-      ..addRRect(roundedRect);
-    
+    final Path cutoutPath = Path()..addRRect(roundedRect);
+
     // Apply the cutout
     canvas.drawPath(cutoutPath, paint);
   }
@@ -611,8 +631,7 @@ class CutoutPainter extends CustomPainter {
   @override
   bool shouldRepaint(CutoutPainter oldDelegate) {
     return oldDelegate.scanAreaSize != scanAreaSize ||
-           oldDelegate.screenSize != screenSize ||
-           oldDelegate.cornerRadius != cornerRadius;
+        oldDelegate.screenSize != screenSize ||
+        oldDelegate.cornerRadius != cornerRadius;
   }
 }
-

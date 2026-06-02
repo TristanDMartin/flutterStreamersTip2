@@ -24,7 +24,7 @@ class TrendingCreatorCard extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min, // Prevent column from expanding
           children: [
             const SizedBox(height: 8),
-            
+
             // Avatar with gradient ring - matching example exactly
             Stack(
               children: [
@@ -41,12 +41,13 @@ class TrendingCreatorCard extends ConsumerWidget {
                         Color(0xFF1670DE), // Blue
                         Color(0xFF3C8BD6), // Lighter blue
                         Color(0xFF4897D2), // Lightest blue
-                        Color(0xFF9248D2), // Back to purple for smooth transition
+                        Color(
+                            0xFF9248D2), // Back to purple for smooth transition
                       ],
                     ),
                   ),
                 ),
-                
+
                 // Inner white circle for separation
                 Center(
                   child: Container(
@@ -58,7 +59,7 @@ class TrendingCreatorCard extends ConsumerWidget {
                     ),
                   ),
                 ),
-                
+
                 // Avatar circle - much smaller
                 Center(
                   child: Container(
@@ -89,7 +90,7 @@ class TrendingCreatorCard extends ConsumerWidget {
                           ),
                   ),
                 ),
-                
+
                 // Dynamic online status indicator
                 OnlineStatusIndicator(
                   userId: creator.id,
@@ -105,11 +106,12 @@ class TrendingCreatorCard extends ConsumerWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 8), // Reduced spacing
-            
+
             // Username
-            Expanded( // Use Expanded to take remaining space
+            Expanded(
+              // Use Expanded to take remaining space
               child: Center(
                 child: Text(
                   creator.username,
@@ -124,12 +126,11 @@ class TrendingCreatorCard extends ConsumerWidget {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 8), // Bottom padding
           ],
         ),
       ),
     );
   }
-
 }

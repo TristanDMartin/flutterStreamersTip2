@@ -15,5 +15,6 @@ sealed class SavedAccount with _$SavedAccount {
     required DateTime lastLoginDate,
   }) = _SavedAccount;
 
-  factory SavedAccount.fromJson(Map<String, dynamic> json) => _$SavedAccountFromJson(json);
+  factory SavedAccount.fromJson(Map<String, dynamic> json) =>
+      _$SavedAccountFromJson(json);
 }

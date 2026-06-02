@@ -5,7 +5,8 @@ import '../services/content_moderation_service.dart';
 
 /// Service for server-side content validation
 class ServerValidationService {
-  static final ServerValidationService _instance = ServerValidationService._internal();
+  static final ServerValidationService _instance =
+      ServerValidationService._internal();
   factory ServerValidationService() => _instance;
   ServerValidationService._internal();
 
@@ -22,7 +23,7 @@ class ServerValidationService {
       }
 
       final token = await user.getIdToken();
-      
+
       final response = await http.post(
         Uri.parse('$_baseUrl$_validationEndpoint'),
         headers: {
@@ -49,7 +50,7 @@ class ServerValidationService {
         return await ContentModerationService().check(content);
       }
     } catch (e) {
-    // print('Server validation error: $e');
+      // appLog('Server validation error: $e');
       // Fall back to client-side validation
       return await ContentModerationService().check(content);
     }
@@ -68,7 +69,7 @@ class ServerValidationService {
       }
 
       final token = await user.getIdToken();
-      
+
       final response = await http.post(
         Uri.parse('$_baseUrl/submit-review'),
         headers: {
@@ -86,7 +87,7 @@ class ServerValidationService {
 
       return response.statusCode == 200;
     } catch (e) {
-    // print('Error submitting for review: $e');
+      // appLog('Error submitting for review: $e');
       return false;
     }
   }
@@ -100,7 +101,7 @@ class ServerValidationService {
       }
 
       final token = await user.getIdToken();
-      
+
       final response = await http.get(
         Uri.parse('$_baseUrl/moderation-rules'),
         headers: {
@@ -114,7 +115,7 @@ class ServerValidationService {
         throw Exception('Failed to fetch moderation rules');
       }
     } catch (e) {
-    // print('Error fetching moderation rules: $e');
+      // appLog('Error fetching moderation rules: $e');
       return {};
     }
   }
@@ -132,7 +133,7 @@ class ServerValidationService {
       }
 
       final token = await user.getIdToken();
-      
+
       final response = await http.post(
         Uri.parse('$_baseUrl/report-false-positive'),
         headers: {
@@ -150,7 +151,7 @@ class ServerValidationService {
 
       return response.statusCode == 200;
     } catch (e) {
-    // print('Error reporting false positive: $e');
+      // appLog('Error reporting false positive: $e');
       return false;
     }
   }

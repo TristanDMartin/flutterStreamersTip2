@@ -37,8 +37,8 @@ class AdminAuditLogView extends StatelessWidget {
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, i) {
             final d = docs[i].data();
-            final ts = d['timestamp'] as Timestamp? ??
-                d['createdAt'] as Timestamp?;
+            final ts =
+                d['timestamp'] as Timestamp? ?? d['createdAt'] as Timestamp?;
             final String time =
                 ts != null ? ts.toDate().toIso8601String() : '—';
             return ListTile(

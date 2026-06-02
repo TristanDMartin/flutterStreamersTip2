@@ -14,7 +14,8 @@ sealed class Platform with _$Platform {
     String? url,
   }) = _Platform;
 
-  factory Platform.fromJson(Map<String, dynamic> json) => _$PlatformFromJson(json);
+  factory Platform.fromJson(Map<String, dynamic> json) =>
+      _$PlatformFromJson(json);
 }
 
 enum PlatformType {

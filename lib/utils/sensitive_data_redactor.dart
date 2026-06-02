@@ -20,7 +20,9 @@ class SensitiveDataRedactor {
   static final RegExp _labeledIdPattern = RegExp(
     r'(uid|userId|user_id|targetUid|creatorId|reporterUserId|'
     r'reportedUserId|followerId|followingId|senderId|recipientId)'
-    r'\s*[:=]\s*["' "'" r']?([a-zA-Z0-9\-]{20,128})',
+    r'\s*[:=]\s*["'
+    "'"
+    r']?([a-zA-Z0-9\-]{20,128})',
     caseSensitive: false,
   );
 

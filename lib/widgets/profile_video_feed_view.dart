@@ -14,11 +14,13 @@ import '../models/user.dart';
 import '../services/video_service.dart';
 import '../services/local_draft_service.dart';
 import '../services/optimistic_video_service.dart';
+import '../services/video_deletion_service.dart';
 import '../models/optimistic_video.dart';
 import '../providers/video_service_provider.dart' as providers;
 import 'profile_view/profile_post_count_reconcile.dart';
 import '../routing/app_navigator.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/video_document_rules.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
@@ -65,6 +67,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   bool _bootstrapLoadScheduled = false;
   String? _mergedProfileVideosForUserId;
   Set<String> _lastSyncedListenerVideoIds = const <String>{};
+  bool _isSelectionMode = false;
+  final Set<String> _selectedVideoIds = <String>{};
+  bool _isBulkDeleting = false;
 
   bool get _isViewingOwnProfile {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
@@ -129,7 +134,20 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   @override
   Widget build(BuildContext context) {
-    return _buildGridLayout();
+    final bool showSelectionChrome = _isSelectionMode &&
+        _isViewingOwnProfile &&
+        widget.feedType == ProfileVideoFeedType.videos;
+    if (!showSelectionChrome) {
+      return _buildGridLayout();
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        _buildSelectionToolbar(),
+        _buildGridLayout(),
+        _buildSelectionBottomBar(),
+      ],
+    );
   }
 
   void _resetCachedFutures() {
@@ -271,13 +289,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         }
 
         final data = snapshot.data();
-        final status = (data?['status'] as String?)?.toLowerCase();
-
-        // Published videos in this app commonly use `active`, so keep those
-        // mounted instead of treating them like deleted content.
-        const visibleStatuses = {'published', 'ready', 'active'};
-        if (status == 'deleted' ||
-            (status != null && !visibleStatuses.contains(status))) {
+        if (data == null || !isVideoVisibleInFeed(data)) {
           _handleVideoDeletion(video.id);
         }
       });
@@ -286,17 +298,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     }
   }
 
-  /// Handle video deletion by invalidating the provider
+  /// Sync profile grid when Firestore marks a video deleted.
+  /// Do not invalidate [videoServiceStateProvider]: that disposes [VideoService]
+  /// while [VideoDeletionService] may still be refreshing after bulk delete.
   void _handleVideoDeletion(String videoId) {
     if (!mounted) return;
-
-    // Cancel listener for deleted video
     _videoListeners[videoId]?.cancel();
     _videoListeners.remove(videoId);
-
-    // Invalidate providers to refresh the feed
-    ref.invalidate(userVideosProvider(widget.userId ?? ''));
-    ref.invalidate(providers.videoServiceStateProvider);
+    ref.read(providers.videoServiceStateProvider.notifier).removeVideo(videoId);
   }
 
   /// Check if favorites should be visible based on privacy settings
@@ -339,6 +348,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           .collection('users')
           .doc(userId)
           .collection('favorites')
+          .orderBy('favoritedAt', descending: true)
           .get();
 
       final favorites = favoritesSnapshot.docs.map((doc) => doc.id).toList();
@@ -396,7 +406,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           final List<OptimisticVideo> optimisticVideos = _isViewingOwnProfile
               ? (OptimisticVideoService()
                   .getOptimisticVideosForUser(widget.userId ?? '')
-                  .where((video) => video.status.isProcessing)
+                  .where((video) =>
+                      video.status.isProcessing || video.status.hasFailed)
                   .where((video) =>
                       !userVideos.any((item) => item.id == video.videoId))
                   .toList()
@@ -514,53 +525,21 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         final isViewingOwnProfile = widget.userId == currentUser?.uid;
 
         if (isViewingOwnProfile) {
-          // Use current user's favorites from unified bookmark service
-          final bookmarkService = UnifiedBookmarkService.instance;
+          return ListenableBuilder(
+            listenable: UnifiedBookmarkService.instance,
+            builder: (BuildContext context, Widget? child) {
+              final UnifiedBookmarkService bookmarkService =
+                  UnifiedBookmarkService.instance;
+              final List<String> favorites =
+                  bookmarkService.orderedBookmarkedVideoIds;
 
-          // Get bookmarked video IDs from the service
-          final bookmarkedStates = bookmarkService.bookmarkStates;
-          final favorites = bookmarkedStates.entries
-              .where((entry) => entry.value.isBookmarked)
-              .map((entry) => entry.key)
-              .toList();
-
-          if (kDebugMode) {
-            debugPrint(
-                '📚 ProfileVideoFeedView: Found ${favorites.length} bookmarked videos');
-          }
-
-          if (favorites.isEmpty) {
-            return _buildEmptyState(
-              icon: Icons.bookmark_border,
-              title: 'No Saved Videos',
-              subtitle: 'Videos you save will appear here',
-            );
-          }
-
-          // Fetch real video data from Firebase for favorite video IDs
-          return FutureBuilder<List<Map<String, dynamic>>>(
-            future: _fetchFavoriteVideos(favorites),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return Center(
-                  child: CircularProgressIndicator(
-                    color: Theme.of(context).colorScheme.primary,
-                    strokeWidth: 2,
-                  ),
+              if (kDebugMode) {
+                debugPrint(
+                  '📚 ProfileVideoFeedView: Found ${favorites.length} bookmarked videos',
                 );
               }
 
-              if (snapshot.hasError) {
-                return _buildEmptyState(
-                  icon: Icons.error_outline,
-                  title: 'Error Loading Videos',
-                  subtitle: 'Unable to load your saved videos',
-                );
-              }
-
-              final favoriteVideos = snapshot.data ?? [];
-
-              if (favoriteVideos.isEmpty) {
+              if (favorites.isEmpty) {
                 return _buildEmptyState(
                   icon: Icons.bookmark_border,
                   title: 'No Saved Videos',
@@ -568,7 +547,27 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                 );
               }
 
-              return _buildVideoGridContent(favoriteVideos);
+              return _ProfileOwnFavoritesVideoBody(
+                videoIds: favorites,
+                fetchFavoriteVideos: _fetchFavoriteVideos,
+                onLoading: Center(
+                  child: CircularProgressIndicator(
+                    color: Theme.of(context).colorScheme.primary,
+                    strokeWidth: 2,
+                  ),
+                ),
+                onError: _buildEmptyState(
+                  icon: Icons.error_outline,
+                  title: 'Error Loading Videos',
+                  subtitle: 'Unable to load your saved videos',
+                ),
+                onEmpty: _buildEmptyState(
+                  icon: Icons.bookmark_border,
+                  title: 'No Saved Videos',
+                  subtitle: 'Videos you save will appear here',
+                ),
+                onVideos: _buildVideoGridContent,
+              );
             },
           );
         } else {
@@ -815,118 +814,176 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       );
     }
 
+    final bool failed = video.status.hasFailed;
     final progress = ((video.uploadProgress ?? 0.0) * 100).clamp(0, 100);
 
-    return AspectRatio(
-      aspectRatio: _resolveAspectRatioFromOptimisticVideo(video),
-      child: Opacity(
-        opacity: 0.92,
-        child: Container(
-          width: tileWidth,
-          decoration: BoxDecoration(
-            color: const Color(0xFF161616),
-            borderRadius: BorderRadius.circular(12),
-            image: backgroundImage,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.12),
-                        Colors.black.withValues(alpha: 0.22),
-                        Colors.black.withValues(alpha: 0.62),
+    return GestureDetector(
+      onTap: failed ? () => _retryOptimisticUpload(video) : null,
+      child: AspectRatio(
+        aspectRatio: _resolveAspectRatioFromOptimisticVideo(video),
+        child: Opacity(
+          opacity: 0.92,
+          child: Container(
+            width: tileWidth,
+            decoration: BoxDecoration(
+              color: const Color(0xFF161616),
+              borderRadius: BorderRadius.circular(12),
+              image: backgroundImage,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.12),
+                          Colors.black.withValues(alpha: 0.22),
+                          Colors.black.withValues(alpha: 0.62),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (failed
+                                ? const Color(0xFFDC2626)
+                                : const Color(0xFF1670DE))
+                            .withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        failed ? 'Failed' : 'Processing',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.38),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        failed
+                            ? Icons.error_outline_rounded
+                            : Icons.hourglass_top_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 10,
+                    right: 10,
+                    bottom: 10,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (video.caption.isNotEmpty)
+                          Text(
+                            video.caption,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        if (video.caption.isNotEmpty) const SizedBox(height: 8),
+                        if (failed)
+                          Text(
+                            'Upload failed. Please try again.',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                        else
+                          LinearProgressIndicator(
+                            value:
+                                (video.uploadProgress ?? 0.0).clamp(0.0, 1.0),
+                            minHeight: 4,
+                            borderRadius: BorderRadius.circular(999),
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.18),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF9248D2),
+                            ),
+                          ),
+                        const SizedBox(height: 6),
+                        Text(
+                          failed
+                              ? (video.localVideoPath?.isNotEmpty == true
+                                  ? 'Tap to retry'
+                                  : 'Retry from your original video')
+                              : progress <= 0
+                                  ? 'Processing your video...'
+                                  : 'Transcoding ${progress.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.86),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1670DE).withValues(alpha: 0.92),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Processing',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.38),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.hourglass_top_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 10,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (video.caption.isNotEmpty)
-                        Text(
-                          video.caption,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      if (video.caption.isNotEmpty) const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: (video.uploadProgress ?? 0.0).clamp(0.0, 1.0),
-                        minHeight: 4,
-                        borderRadius: BorderRadius.circular(999),
-                        backgroundColor: Colors.white.withValues(alpha: 0.18),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF9248D2),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        progress <= 0
-                            ? 'Preparing your post...'
-                            : 'Transcoding ${progress.toStringAsFixed(0)}%',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.86),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _retryOptimisticUpload(OptimisticVideo video) {
+    final String? localPath = video.localVideoPath;
+    if (localPath == null ||
+        localPath.isEmpty ||
+        !File(localPath).existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Upload failed. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => VideoPublishingScreen(
+          videoFile: File(localPath),
+          caption: video.caption,
+          hashtags: const <String>[],
+          onPublish: () {
+            OptimisticVideoService().removeOptimisticVideo(video.videoId);
+            Navigator.of(context).pop();
+            setState(() {});
+          },
+          onCancel: () {
+            Navigator.of(context).pop();
+          },
         ),
       ),
     );
@@ -1195,16 +1252,78 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       debugPrint('  - isDraft: ${video.isDraft}');
       debugPrint('  - createdAt: ${video.createdAt}');
     }
-    return GridThumbnail(
-      video: video,
-      aspectRatio: _resolveAspectRatioFromHomeVideo(video),
-      onTap: () {
-        widget.onVideoTap?.call();
-        // ✅ FIX: Pass all videos so user can swipe up/down to see other videos
-        _openVideoPlayer(video, index, allVideos);
-      },
-      showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
-      showDurationBadge: true,
+    final bool isSelected = _selectedVideoIds.contains(video.id);
+    final bool selectionActive = _isSelectionMode &&
+        _isViewingOwnProfile &&
+        widget.feedType == ProfileVideoFeedType.videos;
+    return GestureDetector(
+      onLongPress:
+          _isViewingOwnProfile && widget.feedType == ProfileVideoFeedType.videos
+              ? () => _enterSelectionMode(video.id)
+              : null,
+      child: Stack(
+        children: <Widget>[
+          GridThumbnail(
+            video: video,
+            aspectRatio: _resolveAspectRatioFromHomeVideo(video),
+            onTap: () {
+              if (selectionActive) {
+                _toggleVideoSelection(video.id);
+                return;
+              }
+              widget.onVideoTap?.call();
+              _openVideoPlayer(video, index, allVideos);
+            },
+            showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
+            showDurationBadge: true,
+          ),
+          if (selectionActive)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      width: isSelected ? 3 : 1.5,
+                      color: isSelected
+                          ? const Color(0xFF8B5CF6)
+                          : Colors.white.withValues(alpha: 0.35),
+                    ),
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: <Color>[
+                              const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+                              const Color(0xFFEC4899).withValues(alpha: 0.25),
+                            ],
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          if (selectionActive)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IgnorePointer(
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected
+                        ? const Color(0xFF8B5CF6)
+                        : Colors.black.withValues(alpha: 0.45),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  child: isSelected
+                      ? const Icon(Icons.check, size: 14, color: Colors.white)
+                      : null,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1498,25 +1617,32 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             '🏷️ ProfileVideoFeedView: Fetching tagged videos for user: $userId');
       }
 
-      // Keep this query index-light. Some production tag documents were created
-      // before the current schema, so filter the user field locally instead of
-      // relying on a composite taggedUserId + createdAt query.
       QuerySnapshot<Map<String, dynamic>> tagsSnapshot;
       try {
         tagsSnapshot = await FirebaseFirestore.instance
             .collection('tags')
+            .where('taggedUserId', isEqualTo: userId)
             .orderBy('createdAt', descending: true)
-            .limit(250)
+            .limit(100)
             .get();
       } catch (e) {
         if (kDebugMode) {
           debugPrint(
               '🏷️ ProfileVideoFeedView: Ordered tags query failed, using fallback: $e');
         }
-        tagsSnapshot = await FirebaseFirestore.instance
-            .collection('tags')
-            .limit(250)
-            .get();
+        try {
+          tagsSnapshot = await FirebaseFirestore.instance
+              .collection('tags')
+              .where('taggedUserId', isEqualTo: userId)
+              .limit(100)
+              .get();
+        } catch (_) {
+          tagsSnapshot = await FirebaseFirestore.instance
+              .collection('tags')
+              .where('taggerId', isEqualTo: userId)
+              .limit(100)
+              .get();
+        }
       }
 
       if (tagsSnapshot.docs.isEmpty) {
@@ -1565,8 +1691,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           if (!doc.exists) continue;
           final data = doc.data();
           if (data == null) continue;
-          final status = (data['status'] ?? 'published').toString();
-          if (!{'published', 'ready', 'active'}.contains(status)) continue;
+          if (!isVideoVisibleInFeed(data)) continue;
           final videoCreatorId = data['userId'] ?? data['creatorId'] ?? '';
 
           // Fetch creator data
@@ -1677,6 +1802,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
         for (final doc in querySnapshot.docs) {
           final data = doc.data();
+          if (!isVideoVisibleInFeed(data)) {
+            continue;
+          }
           videos.add({
             'id': doc.id,
             'videoURL': data['videoURL'] ?? data['videoUrl'] ?? '',
@@ -1814,6 +1942,283 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       initialIndex: index,
       videoIds: videoIds,
       videos: homeVideos,
+    );
+  }
+
+  void _enterSelectionMode(String videoId) {
+    if (!_isViewingOwnProfile ||
+        widget.feedType != ProfileVideoFeedType.videos) {
+      return;
+    }
+    setState(() {
+      _isSelectionMode = true;
+      _selectedVideoIds
+        ..clear()
+        ..add(videoId);
+    });
+  }
+
+  void _toggleVideoSelection(String videoId) {
+    setState(() {
+      if (_selectedVideoIds.contains(videoId)) {
+        _selectedVideoIds.remove(videoId);
+        if (_selectedVideoIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedVideoIds.add(videoId);
+      }
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedVideoIds.clear();
+    });
+  }
+
+  void _selectAllVideos(List<HomeVideo> videos) {
+    setState(() {
+      _selectedVideoIds
+        ..clear()
+        ..addAll(
+          videos
+              .where((HomeVideo v) => v.status != 'deleted')
+              .map((HomeVideo v) => v.id),
+        );
+    });
+  }
+
+  Widget _buildSelectionToolbar() {
+    final int count = _selectedVideoIds.length;
+    final List<HomeVideo> allVideos =
+        ref.watch(userVideosProvider(widget.userId ?? ''));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        children: <Widget>[
+          TextButton(
+            onPressed: _isBulkDeleting ? null : _exitSelectionMode,
+            child: const Text('Cancel'),
+          ),
+          Expanded(
+            child: Text(
+              count == 0 ? 'Select videos' : '$count selected',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed:
+                _isBulkDeleting ? null : () => _selectAllVideos(allVideos),
+            child: const Text('Select All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionBottomBar() {
+    final int count = _selectedVideoIds.length;
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
+          border: Border(
+            top: BorderSide(
+              color: Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _isBulkDeleting ? null : _exitSelectionMode,
+                child: const Text('Cancel'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                ),
+                onPressed:
+                    count == 0 || _isBulkDeleting ? null : _confirmBulkDelete,
+                child: _isBulkDeleting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text('Delete ($count)'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmBulkDelete() async {
+    final int count = _selectedVideoIds.length;
+    if (count == 0) {
+      return;
+    }
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: Text(
+          'Delete $count video${count == 1 ? '' : 's'}?',
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This will remove them from your profile and feeds.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    await _performBulkDelete();
+  }
+
+  Future<void> _performBulkDelete() async {
+    final List<String> ids = _selectedVideoIds.toList();
+    if (ids.isEmpty) {
+      return;
+    }
+    final List<HomeVideo> rollbackVideos = ref
+        .read(userVideosProvider(widget.userId ?? ''))
+        .where(
+          (HomeVideo v) => ids.contains(v.id),
+        )
+        .toList();
+    final String? profileUserId = widget.userId;
+    setState(() {
+      _isBulkDeleting = true;
+    });
+    _exitSelectionMode();
+    try {
+      await ref.read(videoDeletionServiceProvider).deleteVideosWithOptimisticUi(
+            videoIds: ids,
+            rollbackVideos: rollbackVideos,
+            profileUserId: profileUserId,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Deleted ${ids.length} video${ids.length == 1 ? '' : 's'}',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not delete videos: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBulkDeleting = false;
+        });
+      }
+    }
+  }
+}
+
+/// Own-profile favorites: keeps a stable [Future] for [FutureBuilder] so
+/// [ListenableBuilder] rebuilds do not dispose/restart in-flight work every
+/// frame (which can trip framework inherited-widget assertions).
+class _ProfileOwnFavoritesVideoBody extends StatefulWidget {
+  const _ProfileOwnFavoritesVideoBody({
+    required this.videoIds,
+    required this.fetchFavoriteVideos,
+    required this.onLoading,
+    required this.onError,
+    required this.onEmpty,
+    required this.onVideos,
+  });
+
+  final List<String> videoIds;
+  final Future<List<Map<String, dynamic>>> Function(List<String>)
+      fetchFavoriteVideos;
+  final Widget onLoading;
+  final Widget onError;
+  final Widget onEmpty;
+  final Widget Function(List<Map<String, dynamic>>) onVideos;
+
+  @override
+  State<_ProfileOwnFavoritesVideoBody> createState() =>
+      _ProfileOwnFavoritesVideoBodyState();
+}
+
+class _ProfileOwnFavoritesVideoBodyState
+    extends State<_ProfileOwnFavoritesVideoBody> {
+  late Future<List<Map<String, dynamic>>> _future;
+  late List<String> _boundIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _boundIds = List<String>.from(widget.videoIds);
+    _future = widget.fetchFavoriteVideos(_boundIds);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfileOwnFavoritesVideoBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(widget.videoIds, _boundIds)) {
+      _boundIds = List<String>.from(widget.videoIds);
+      _future = widget.fetchFavoriteVideos(_boundIds);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _future,
+      builder: (BuildContext context,
+          AsyncSnapshot<List<Map<String, dynamic>>> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return widget.onLoading;
+        }
+        if (snapshot.hasError) {
+          return widget.onError;
+        }
+        final List<Map<String, dynamic>> favoriteVideos =
+            snapshot.data ?? <Map<String, dynamic>>[];
+        if (favoriteVideos.isEmpty) {
+          return widget.onEmpty;
+        }
+        return widget.onVideos(favoriteVideos);
+      },
     );
   }
 }

@@ -5,6 +5,11 @@ const FieldValue = admin.firestore.FieldValue;
 const DEV_MOCK_ENABLED = String(process.env.TIPPY_DEV_MOCK || 'false') === 'true';
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_REQUESTS_PER_WINDOW = 20;
+const DAILY_REQUEST_LIMITS = {
+  starter: 10,
+  pro: 75,
+  studio: 200,
+};
 const {buildUserAccess} = require('../shared/user_tippy_access');
 const {
   buildCreditWrite,
@@ -246,6 +251,7 @@ function normalizeContentPlanType(raw) {
 function sanitizeGeneratedPlan(raw, uid) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const now = new Date();
+  const nestedTimestamp = admin.firestore.Timestamp.fromDate(now);
   const rawItems = Array.isArray(source.items) ? source.items : [];
   const title = sanitizeText(
     source.title,
@@ -255,6 +261,14 @@ function sanitizeGeneratedPlan(raw, uid) {
     source.description,
     'AI-generated content plan created by Tippy.',
   );
+  const contentType = normalizeContentPlanType(
+    source.contentType || source.type || (rawItems[0] && rawItems[0].contentType),
+  );
+  const platformTargets = Array.isArray(source.platformTargets)
+    ? source.platformTargets.map((p) => sanitizeText(p, '')).filter(Boolean).slice(0, 5)
+    : Array.isArray(source.platforms)
+      ? source.platforms.map((p) => sanitizeText(p, '')).filter(Boolean).slice(0, 5)
+      : ['StreamersTip'];
   const safeItems = rawItems.slice(0, 31).map((item, index) => {
     const data = item && typeof item === 'object' ? item : {};
     const scheduledAt = addDays(now, index);
@@ -290,8 +304,8 @@ function sanitizeGeneratedPlan(raw, uid) {
       status: 'scheduled',
       profileCalendar: 'public',
       source: 'tippy_ai',
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: nestedTimestamp,
+      updatedAt: nestedTimestamp,
     };
   });
   if (safeItems.length === 0) {
@@ -316,17 +330,25 @@ function sanitizeGeneratedPlan(raw, uid) {
       status: 'scheduled',
       profileCalendar: 'public',
       source: 'tippy_ai',
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: nestedTimestamp,
+      updatedAt: nestedTimestamp,
     });
   }
   const startDate = safeItems[0].platforms[0].scheduledAt;
   const endDate = safeItems[safeItems.length - 1].platforms[0].scheduledAt;
   return {
     plan: {
+      id: null,
       userId: uid,
+      ownerUid: uid,
       title,
       description,
+      contentType,
+      platformTargets,
+      platform: platformTargets[0] || 'StreamersTip',
+      status: 'planned',
+      scheduledFor: null,
+      scheduledAt: null,
       startDate,
       endDate,
       items: safeItems,
@@ -337,6 +359,8 @@ function sanitizeGeneratedPlan(raw, uid) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       createdBy: 'tippy_ai',
+      aiPromptId: sanitizeText(source.aiPromptId, '') || null,
+      tippyConversationId: sanitizeText(source.tippyConversationId, '') || null,
     },
   };
 }
@@ -372,13 +396,24 @@ async function writeContentPlan(uid, generatedPlan) {
     .doc(uid)
     .collection('contentPlans')
     .doc();
-  await planRef.set(sanitized.plan);
+  const plan = {
+    ...sanitized.plan,
+    id: planRef.id,
+    ownerUid: uid,
+    userId: uid,
+    source: 'tippy_ai',
+    status: sanitized.plan.status || 'planned',
+    createdBy: 'tippy_ai',
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  console.log(`Tippy content plan save uid=${uid} path=users/${uid}/contentPlans/${planRef.id}`);
+  await planRef.set(plan);
   return {
     planId: planRef.id,
-    itemCount: sanitized.plan.items.length,
-    title: sanitized.plan.title,
-    description: sanitized.plan.description,
-    items: serializeContentPlanItemsForClient(sanitized.plan.items),
+    itemCount: plan.items.length,
+    title: plan.title,
+    description: plan.description,
+    items: serializeContentPlanItemsForClient(plan.items),
   };
 }
 
@@ -479,6 +514,7 @@ async function rollbackReservedCreditAtomically(uid, email = '') {
 
 async function executeAiAction({
   uid,
+  email = '',
   path,
   body,
   requestId,
@@ -522,11 +558,30 @@ async function executeAiAction({
   }
   const apiKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
   if (apiKey.length > 0) {
+    let snapshot = null;
+    try {
+      snapshot = await readCurrentCredits(uid, email);
+    } catch (err) {
+      console.warn(
+        'Tippy creator context load failed:',
+        err && err.message ? err.message : err,
+      );
+    }
+    const userData = snapshot ? snapshot.userData : {};
+    const access = snapshot ? snapshot.access : buildUserAccess(userData, {uid, email});
     return runAnthropicTippy({
       apiKey,
       path,
       body,
       requestId,
+      tippyContext: {
+        tier: access.tier,
+        creatorName: readCreatorName(userData),
+        userData,
+        extras: {
+          category: typeof body.category === 'string' ? body.category : undefined,
+        },
+      },
     });
   }
   return {
@@ -569,6 +624,43 @@ async function ensureRateLimit(uid) {
       {merge: true},
     );
     return {ok: true};
+  });
+}
+
+function dailyLimitKey(uid, date = new Date()) {
+  const day = date.toISOString().slice(0, 10);
+  return {day, key: `${uid}_${day}`};
+}
+
+function dailyRequestLimitForTier(tier) {
+  const normalized = String(tier || '').trim().toLowerCase();
+  return DAILY_REQUEST_LIMITS[normalized] || DAILY_REQUEST_LIMITS.starter;
+}
+
+async function ensureDailyRequestLimit(uid, tier) {
+  const limit = dailyRequestLimitForTier(tier);
+  const {day, key} = dailyLimitKey(uid);
+  const dailyRef = firestore.collection('tippy_daily_limits').doc(key);
+  return firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(dailyRef);
+    const data = snap.data() || {};
+    const count = Number(data.count || 0);
+    if (count >= limit) {
+      return {ok: false, limit, count};
+    }
+    tx.set(
+      dailyRef,
+      {
+        uid,
+        day,
+        tier,
+        limit,
+        count: count + 1,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+    );
+    return {ok: true, limit, count: count + 1};
   });
 }
 
@@ -819,6 +911,41 @@ async function handleAiAction({
     });
     return;
   }
+  const dailyLimit = await ensureDailyRequestLimit(uid, tier);
+  if (!dailyLimit.ok) {
+    await writeTelemetrySafe({
+      uid,
+      path,
+      status: 429,
+      code: 'RATE_LIMITED',
+      tier,
+      requestId,
+    });
+    res.status(429).json(
+      buildErrorResponse({
+        code: 'RATE_LIMITED',
+        message:
+          `Daily Tippy limit reached (${dailyLimit.limit}/day). ` +
+          'Try again tomorrow.',
+        status: 429,
+        retryable: true,
+        requestId,
+      }),
+    );
+    emitRequestLog({
+      requestId,
+      endpoint: effectivePath,
+      uid,
+      tier,
+      creditsBefore,
+      creditsAfter: creditsBefore,
+      status: 429,
+      latencyMs: Date.now() - startedAtMs,
+      errorCode: 'RATE_LIMITED',
+      failureReason: 'per_user_daily_limit',
+    });
+    return;
+  }
   const reservation = await reserveCreditAtomically(uid, email);
   if (!reservation.ok) {
     const isUpgradeRequired = reservation.reason === 'UPGRADE_REQUIRED';
@@ -872,6 +999,7 @@ async function handleAiAction({
   try {
     aiResult = await executeAiAction({
       uid,
+      email,
       path: effectivePath,
       body,
       requestId,

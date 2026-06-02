@@ -26,7 +26,8 @@ abstract final class GamificationEventTypes {
   static const String contentPlanCreated = 'content.plan_created';
   static const String contentPlanItemCreated = 'content.plan_item_created';
   static const String contentPlanItemCompleted = 'content.plan_item_completed';
-  static const String contentPlanItemRescheduled = 'content.plan_item_rescheduled';
+  static const String contentPlanItemRescheduled =
+      'content.plan_item_rescheduled';
 
   static const String engagementCommentCreated = 'engagement.comment_created';
   static const String engagementReplyCreated = 'engagement.reply_created';
@@ -82,8 +83,7 @@ abstract final class GamificationEventTypes {
   static const String goalConsistencyTargetHit = 'goal.consistency_target_hit';
   static const String goalActiveDaysTargetHit = 'goal.active_days_target_hit';
   static const String goalPostingStreakHit = 'goal.posting_streak_hit';
-  static const String goalEngagementStreakHit =
-      'goal.engagement_streak_hit';
+  static const String goalEngagementStreakHit = 'goal.engagement_streak_hit';
 
   static const String levelUp = 'level.up';
   static const String achievementUnlocked = 'achievement.unlocked';

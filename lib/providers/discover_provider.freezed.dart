@@ -21,6 +21,7 @@ mixin _$DiscoverState {
   bool get isSearching;
   List<VideoClip> get clips;
   bool get isLoadingTrendingCreators;
+  bool get trendingCreatorsLoadFailed;
   Map<String, int> get userScrollBehavior;
   Map<String, double> get lowViewedRatio;
 
@@ -51,6 +52,10 @@ mixin _$DiscoverState {
             (identical(other.isLoadingTrendingCreators,
                     isLoadingTrendingCreators) ||
                 other.isLoadingTrendingCreators == isLoadingTrendingCreators) &&
+            (identical(other.trendingCreatorsLoadFailed,
+                    trendingCreatorsLoadFailed) ||
+                other.trendingCreatorsLoadFailed ==
+                    trendingCreatorsLoadFailed) &&
             const DeepCollectionEquality()
                 .equals(other.userScrollBehavior, userScrollBehavior) &&
             const DeepCollectionEquality()
@@ -67,12 +72,13 @@ mixin _$DiscoverState {
       isSearching,
       const DeepCollectionEquality().hash(clips),
       isLoadingTrendingCreators,
+      trendingCreatorsLoadFailed,
       const DeepCollectionEquality().hash(userScrollBehavior),
       const DeepCollectionEquality().hash(lowViewedRatio));
 
   @override
   String toString() {
-    return 'DiscoverState(trendingCreators: $trendingCreators, categories: $categories, recommendedContent: $recommendedContent, searchResults: $searchResults, isSearching: $isSearching, clips: $clips, isLoadingTrendingCreators: $isLoadingTrendingCreators, userScrollBehavior: $userScrollBehavior, lowViewedRatio: $lowViewedRatio)';
+    return 'DiscoverState(trendingCreators: $trendingCreators, categories: $categories, recommendedContent: $recommendedContent, searchResults: $searchResults, isSearching: $isSearching, clips: $clips, isLoadingTrendingCreators: $isLoadingTrendingCreators, trendingCreatorsLoadFailed: $trendingCreatorsLoadFailed, userScrollBehavior: $userScrollBehavior, lowViewedRatio: $lowViewedRatio)';
   }
 }
 
@@ -90,6 +96,7 @@ abstract mixin class $DiscoverStateCopyWith<$Res> {
       bool isSearching,
       List<VideoClip> clips,
       bool isLoadingTrendingCreators,
+      bool trendingCreatorsLoadFailed,
       Map<String, int> userScrollBehavior,
       Map<String, double> lowViewedRatio});
 }
@@ -114,6 +121,7 @@ class _$DiscoverStateCopyWithImpl<$Res>
     Object? isSearching = null,
     Object? clips = null,
     Object? isLoadingTrendingCreators = null,
+    Object? trendingCreatorsLoadFailed = null,
     Object? userScrollBehavior = null,
     Object? lowViewedRatio = null,
   }) {
@@ -145,6 +153,10 @@ class _$DiscoverStateCopyWithImpl<$Res>
       isLoadingTrendingCreators: null == isLoadingTrendingCreators
           ? _self.isLoadingTrendingCreators
           : isLoadingTrendingCreators // ignore: cast_nullable_to_non_nullable
+              as bool,
+      trendingCreatorsLoadFailed: null == trendingCreatorsLoadFailed
+          ? _self.trendingCreatorsLoadFailed
+          : trendingCreatorsLoadFailed // ignore: cast_nullable_to_non_nullable
               as bool,
       userScrollBehavior: null == userScrollBehavior
           ? _self.userScrollBehavior
@@ -257,6 +269,7 @@ extension DiscoverStatePatterns on DiscoverState {
             bool isSearching,
             List<VideoClip> clips,
             bool isLoadingTrendingCreators,
+            bool trendingCreatorsLoadFailed,
             Map<String, int> userScrollBehavior,
             Map<String, double> lowViewedRatio)?
         $default, {
@@ -273,6 +286,7 @@ extension DiscoverStatePatterns on DiscoverState {
             _that.isSearching,
             _that.clips,
             _that.isLoadingTrendingCreators,
+            _that.trendingCreatorsLoadFailed,
             _that.userScrollBehavior,
             _that.lowViewedRatio);
       case _:
@@ -303,6 +317,7 @@ extension DiscoverStatePatterns on DiscoverState {
             bool isSearching,
             List<VideoClip> clips,
             bool isLoadingTrendingCreators,
+            bool trendingCreatorsLoadFailed,
             Map<String, int> userScrollBehavior,
             Map<String, double> lowViewedRatio)
         $default,
@@ -318,6 +333,7 @@ extension DiscoverStatePatterns on DiscoverState {
             _that.isSearching,
             _that.clips,
             _that.isLoadingTrendingCreators,
+            _that.trendingCreatorsLoadFailed,
             _that.userScrollBehavior,
             _that.lowViewedRatio);
     }
@@ -345,6 +361,7 @@ extension DiscoverStatePatterns on DiscoverState {
             bool isSearching,
             List<VideoClip> clips,
             bool isLoadingTrendingCreators,
+            bool trendingCreatorsLoadFailed,
             Map<String, int> userScrollBehavior,
             Map<String, double> lowViewedRatio)?
         $default,
@@ -360,6 +377,7 @@ extension DiscoverStatePatterns on DiscoverState {
             _that.isSearching,
             _that.clips,
             _that.isLoadingTrendingCreators,
+            _that.trendingCreatorsLoadFailed,
             _that.userScrollBehavior,
             _that.lowViewedRatio);
       case _:
@@ -379,6 +397,7 @@ class _DiscoverState implements DiscoverState {
       this.isSearching = false,
       final List<VideoClip> clips = const [],
       this.isLoadingTrendingCreators = false,
+      this.trendingCreatorsLoadFailed = false,
       final Map<String, int> userScrollBehavior = const {},
       final Map<String, double> lowViewedRatio = const {}})
       : _trendingCreators = trendingCreators,
@@ -442,6 +461,9 @@ class _DiscoverState implements DiscoverState {
   @override
   @JsonKey()
   final bool isLoadingTrendingCreators;
+  @override
+  @JsonKey()
+  final bool trendingCreatorsLoadFailed;
   final Map<String, int> _userScrollBehavior;
   @override
   @JsonKey()
@@ -488,6 +510,10 @@ class _DiscoverState implements DiscoverState {
             (identical(other.isLoadingTrendingCreators,
                     isLoadingTrendingCreators) ||
                 other.isLoadingTrendingCreators == isLoadingTrendingCreators) &&
+            (identical(other.trendingCreatorsLoadFailed,
+                    trendingCreatorsLoadFailed) ||
+                other.trendingCreatorsLoadFailed ==
+                    trendingCreatorsLoadFailed) &&
             const DeepCollectionEquality()
                 .equals(other._userScrollBehavior, _userScrollBehavior) &&
             const DeepCollectionEquality()
@@ -504,12 +530,13 @@ class _DiscoverState implements DiscoverState {
       isSearching,
       const DeepCollectionEquality().hash(_clips),
       isLoadingTrendingCreators,
+      trendingCreatorsLoadFailed,
       const DeepCollectionEquality().hash(_userScrollBehavior),
       const DeepCollectionEquality().hash(_lowViewedRatio));
 
   @override
   String toString() {
-    return 'DiscoverState(trendingCreators: $trendingCreators, categories: $categories, recommendedContent: $recommendedContent, searchResults: $searchResults, isSearching: $isSearching, clips: $clips, isLoadingTrendingCreators: $isLoadingTrendingCreators, userScrollBehavior: $userScrollBehavior, lowViewedRatio: $lowViewedRatio)';
+    return 'DiscoverState(trendingCreators: $trendingCreators, categories: $categories, recommendedContent: $recommendedContent, searchResults: $searchResults, isSearching: $isSearching, clips: $clips, isLoadingTrendingCreators: $isLoadingTrendingCreators, trendingCreatorsLoadFailed: $trendingCreatorsLoadFailed, userScrollBehavior: $userScrollBehavior, lowViewedRatio: $lowViewedRatio)';
   }
 }
 
@@ -529,6 +556,7 @@ abstract mixin class _$DiscoverStateCopyWith<$Res>
       bool isSearching,
       List<VideoClip> clips,
       bool isLoadingTrendingCreators,
+      bool trendingCreatorsLoadFailed,
       Map<String, int> userScrollBehavior,
       Map<String, double> lowViewedRatio});
 }
@@ -553,6 +581,7 @@ class __$DiscoverStateCopyWithImpl<$Res>
     Object? isSearching = null,
     Object? clips = null,
     Object? isLoadingTrendingCreators = null,
+    Object? trendingCreatorsLoadFailed = null,
     Object? userScrollBehavior = null,
     Object? lowViewedRatio = null,
   }) {
@@ -584,6 +613,10 @@ class __$DiscoverStateCopyWithImpl<$Res>
       isLoadingTrendingCreators: null == isLoadingTrendingCreators
           ? _self.isLoadingTrendingCreators
           : isLoadingTrendingCreators // ignore: cast_nullable_to_non_nullable
+              as bool,
+      trendingCreatorsLoadFailed: null == trendingCreatorsLoadFailed
+          ? _self.trendingCreatorsLoadFailed
+          : trendingCreatorsLoadFailed // ignore: cast_nullable_to_non_nullable
               as bool,
       userScrollBehavior: null == userScrollBehavior
           ? _self._userScrollBehavior

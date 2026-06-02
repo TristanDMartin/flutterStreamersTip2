@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/support_shell_style.dart';
 import 'content_scheduler_models.dart';
 import 'content_scheduler_provider.dart';
 
@@ -11,56 +12,62 @@ class ContentSchedulerView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<List<SchedulerQueueItem>> queue =
         ref.watch(contentSchedulerQueueProvider);
-    final ThemeData theme = Theme.of(context);
-    final bool dark = theme.brightness == Brightness.dark;
-    final Color background =
-        dark ? const Color(0xFF050816) : const Color(0xFFF8FAFC);
-    final Color card = dark ? const Color(0xFF0B1220) : Colors.white;
-    final Color text = theme.colorScheme.onSurface;
-    final Color muted =
-        dark ? Colors.white.withValues(alpha: 0.64) : const Color(0xFF475569);
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final Color card = shell.surfaceCard;
+    final Color text = shell.onChrome;
+    final Color muted = shell.muted;
 
-    return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
-        title: const Text('Content Scheduler'),
-        backgroundColor: background,
-        foregroundColor: text,
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Refresh queue',
-            onPressed: () => ref.invalidate(contentSchedulerQueueProvider),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: shell.pageGradient,
+        ),
       ),
-      body: queue.when(
-        data: (List<SchedulerQueueItem> rows) {
-          return _SchedulerQueueBody(
-            rows: rows,
-            card: card,
-            text: text,
-            muted: muted,
-            onRefresh: () async {
-              ref.invalidate(contentSchedulerQueueProvider);
-              await ref.read(contentSchedulerQueueProvider.future);
-            },
-          );
-        },
-        loading: () => _SchedulerLoadingBody(card: card, muted: muted),
-        error: (Object error, StackTrace stackTrace) {
-          return _SchedulerQueueBody(
-            rows: const <SchedulerQueueItem>[],
-            card: card,
-            text: text,
-            muted: muted,
-            error: 'Could not load the scheduler queue.',
-            onRefresh: () async {
-              ref.invalidate(contentSchedulerQueueProvider);
-              await ref.read(contentSchedulerQueueProvider.future);
-            },
-          );
-        },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Content Scheduler'),
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: shell.onChrome,
+          actions: <Widget>[
+            IconButton(
+              tooltip: 'Refresh queue',
+              onPressed: () => ref.invalidate(contentSchedulerQueueProvider),
+              icon: Icon(Icons.refresh_rounded, color: shell.onChrome),
+            ),
+          ],
+        ),
+        body: queue.when(
+          data: (List<SchedulerQueueItem> rows) {
+            return _SchedulerQueueBody(
+              rows: rows,
+              card: card,
+              text: text,
+              muted: muted,
+              onRefresh: () async {
+                ref.invalidate(contentSchedulerQueueProvider);
+                await ref.read(contentSchedulerQueueProvider.future);
+              },
+            );
+          },
+          loading: () => _SchedulerLoadingBody(card: card, muted: muted),
+          error: (Object error, StackTrace stackTrace) {
+            return _SchedulerQueueBody(
+              rows: const <SchedulerQueueItem>[],
+              card: card,
+              text: text,
+              muted: muted,
+              error: 'Could not load the scheduler queue.',
+              onRefresh: () async {
+                ref.invalidate(contentSchedulerQueueProvider);
+                await ref.read(contentSchedulerQueueProvider.future);
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -99,6 +106,8 @@ class _SchedulerQueueBody extends StatelessWidget {
         .length;
 
     return RefreshIndicator(
+      color: Theme.of(context).colorScheme.primary,
+      backgroundColor: StSupportShellStyle.of(context).refreshBackground,
       onRefresh: onRefresh,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -157,12 +166,14 @@ class _SchedulerSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: muted.withValues(alpha: 0.14)),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,13 +185,11 @@ class _SchedulerSummaryCard extends StatelessWidget {
                 height: 42,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(13),
-                  gradient: const LinearGradient(
-                    colors: <Color>[Color(0xFF9248D2), Color(0xFF4897D2)],
-                  ),
+                  color: cs.primaryContainer,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.queue_play_next_rounded,
-                  color: Colors.white,
+                  color: cs.onPrimaryContainer,
                   size: 22,
                 ),
               ),
@@ -212,18 +221,34 @@ class _SchedulerSummaryCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: <Widget>[
-              _SummaryPill(label: 'Total', value: '$total', muted: muted),
+              _SummaryPill(
+                label: 'Total',
+                value: '$total',
+                muted: muted,
+                onStrong: text,
+              ),
               const SizedBox(width: 8),
               _SummaryPill(
                 label: 'Scheduled',
                 value: '$scheduled',
                 muted: muted,
+                onStrong: text,
               ),
               const SizedBox(width: 8),
-              _SummaryPill(label: 'Drafts', value: '$drafts', muted: muted),
+              _SummaryPill(
+                label: 'Drafts',
+                value: '$drafts',
+                muted: muted,
+                onStrong: text,
+              ),
               if (failed > 0) ...<Widget>[
                 const SizedBox(width: 8),
-                _SummaryPill(label: 'Failed', value: '$failed', muted: muted),
+                _SummaryPill(
+                  label: 'Failed',
+                  value: '$failed',
+                  muted: muted,
+                  onStrong: text,
+                ),
               ],
             ],
           ),
@@ -238,28 +263,33 @@ class _SummaryPill extends StatelessWidget {
     required this.label,
     required this.value,
     required this.muted,
+    required this.onStrong,
   });
 
   final String label;
   final String value;
   final Color muted;
+  final Color onStrong;
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
-          color: muted.withValues(alpha: 0.08),
+          color: shell.chipUnselectedBg,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: shell.chipUnselectedBorder),
         ),
         child: Column(
           children: <Widget>[
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
+                color: onStrong,
               ),
             ),
             Text(
@@ -296,13 +326,23 @@ class _SchedulerQueueRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final MaterialLocalizations l10n = MaterialLocalizations.of(context);
     final DateTime localTime = row.sortTime.toLocal();
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: card,
         borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: _statusColor(row.status).withValues(alpha: 0.3)),
+        border: Border.all(
+          color: _schedulerStatusColor(cs, row.status).withValues(alpha: 0.35),
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: shell.shadowSoft,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,7 +422,8 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color color = _statusColor(status);
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color color = _schedulerStatusColor(cs, status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -414,12 +455,13 @@ class _SchedulerEmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: muted.withValues(alpha: 0.14)),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Column(
         children: <Widget>[
@@ -457,26 +499,28 @@ class _SchedulerLoadingBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Center(
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: card,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: muted.withValues(alpha: 0.14)),
+          border: Border.all(color: shell.surfaceCardBorder),
         ),
-        child: const CircularProgressIndicator(),
+        child: CircularProgressIndicator(color: cs.primary),
       ),
     );
   }
 }
 
-Color _statusColor(SchedulerQueueStatus status) {
+Color _schedulerStatusColor(ColorScheme cs, SchedulerQueueStatus status) {
   return switch (status) {
-    SchedulerQueueStatus.scheduled => const Color(0xFF4897D2),
-    SchedulerQueueStatus.publishing => const Color(0xFFF59E0B),
-    SchedulerQueueStatus.published => const Color(0xFF22C55E),
-    SchedulerQueueStatus.failed => const Color(0xFFEF4444),
-    SchedulerQueueStatus.draft => const Color(0xFF9248D2),
+    SchedulerQueueStatus.scheduled => cs.primary,
+    SchedulerQueueStatus.publishing => cs.tertiary,
+    SchedulerQueueStatus.published => cs.secondary,
+    SchedulerQueueStatus.failed => cs.error,
+    SchedulerQueueStatus.draft => cs.outline,
   };
 }

@@ -4,7 +4,8 @@ import '../models/user.dart' as app_user;
 import '../models/user_count_fields.dart';
 
 class NetworkServiceOptimized {
-  static final NetworkServiceOptimized _instance = NetworkServiceOptimized._internal();
+  static final NetworkServiceOptimized _instance =
+      NetworkServiceOptimized._internal();
   factory NetworkServiceOptimized() => _instance;
   NetworkServiceOptimized._internal();
 
@@ -32,7 +33,7 @@ class NetworkServiceOptimized {
 
       return following.where((user) => mutualIds.contains(user.id)).toList();
     } catch (e) {
-    // print('Error getting connections: $e');
+      // appLog('Error getting connections: $e');
       return [];
     }
   }
@@ -45,7 +46,7 @@ class NetworkServiceOptimized {
     try {
       return await _getFollowers(currentUser.uid);
     } catch (e) {
-    // print('Error getting followers: $e');
+      // appLog('Error getting followers: $e');
       return [];
     }
   }
@@ -58,7 +59,7 @@ class NetworkServiceOptimized {
     try {
       return await _getFollowing(currentUser.uid);
     } catch (e) {
-    // print('Error getting following: $e');
+      // appLog('Error getting following: $e');
       return [];
     }
   }
@@ -67,7 +68,7 @@ class NetworkServiceOptimized {
   Future<List<app_user.User>> getNonMutualFollowers() async {
     final connections = await getConnections();
     final followers = await getFollowers();
-    
+
     final connectionIds = connections.map((u) => u.id).toSet();
     return followers.where((user) => !connectionIds.contains(user.id)).toList();
   }
@@ -76,7 +77,7 @@ class NetworkServiceOptimized {
   Future<List<app_user.User>> getNonMutualFollowing() async {
     final connections = await getConnections();
     final following = await getFollowing();
-    
+
     final connectionIds = connections.map((u) => u.id).toSet();
     return following.where((user) => !connectionIds.contains(user.id)).toList();
   }
@@ -88,7 +89,7 @@ class NetworkServiceOptimized {
 
     try {
       final batch = _firestore.batch();
-      
+
       // Create relationship document
       final relationshipRef = _firestore.collection('relationships').doc();
       batch.set(relationshipRef, {
@@ -104,19 +105,20 @@ class NetworkServiceOptimized {
       });
 
       // Update following count
-      final currentUserRef = _firestore.collection('users').doc(currentUser.uid);
+      final currentUserRef =
+          _firestore.collection('users').doc(currentUser.uid);
       batch.update(currentUserRef, {
         'followingCount': FieldValue.increment(1),
       });
 
       await batch.commit();
-      
+
       // Clear cache
       _clearCache();
-      
+
       return true;
     } catch (e) {
-    // print('Error following user: $e');
+      // appLog('Error following user: $e');
       return false;
     }
   }
@@ -128,7 +130,7 @@ class NetworkServiceOptimized {
 
     try {
       final batch = _firestore.batch();
-      
+
       // Find and delete relationship
       final relationshipQuery = await _firestore
           .collection('relationships')
@@ -147,19 +149,20 @@ class NetworkServiceOptimized {
       });
 
       // Update following count
-      final currentUserRef = _firestore.collection('users').doc(currentUser.uid);
+      final currentUserRef =
+          _firestore.collection('users').doc(currentUser.uid);
       batch.update(currentUserRef, {
         'followingCount': FieldValue.increment(-1),
       });
 
       await batch.commit();
-      
+
       // Clear cache
       _clearCache();
-      
+
       return true;
     } catch (e) {
-    // print('Error unfollowing user: $e');
+      // appLog('Error unfollowing user: $e');
       return false;
     }
   }
@@ -171,7 +174,7 @@ class NetworkServiceOptimized {
 
     try {
       final batch = _firestore.batch();
-      
+
       // Find and delete relationship (reverse direction)
       final relationshipQuery = await _firestore
           .collection('relationships')
@@ -184,7 +187,8 @@ class NetworkServiceOptimized {
       }
 
       // Update follower count
-      final currentUserRef = _firestore.collection('users').doc(currentUser.uid);
+      final currentUserRef =
+          _firestore.collection('users').doc(currentUser.uid);
       batch.update(currentUserRef, {
         'followerCount': FieldValue.increment(-1),
       });
@@ -196,13 +200,13 @@ class NetworkServiceOptimized {
       });
 
       await batch.commit();
-      
+
       // Clear cache
       _clearCache();
-      
+
       return true;
     } catch (e) {
-    // print('Error removing follower: $e');
+      // appLog('Error removing follower: $e');
       return false;
     }
   }
@@ -216,7 +220,7 @@ class NetworkServiceOptimized {
       // Get users that the current user doesn't follow
       final following = await getFollowing();
       final followingIds = following.map((u) => u.id).toSet();
-      
+
       final query = await _firestore
           .collection('users')
           .where(FieldPath.documentId, isNotEqualTo: currentUser.uid)
@@ -233,7 +237,7 @@ class NetworkServiceOptimized {
 
       return suggestions;
     } catch (e) {
-    // print('Error getting user suggestions: $e');
+      // appLog('Error getting user suggestions: $e');
       return [];
     }
   }
@@ -246,10 +250,11 @@ class NetworkServiceOptimized {
           .where('followingId', isEqualTo: userId)
           .get();
 
-      final followerIds = query.docs.map((doc) => doc.data()['followerId'] as String).toList();
+      final followerIds =
+          query.docs.map((doc) => doc.data()['followerId'] as String).toList();
       return await _fetchUsers(followerIds);
     } catch (e) {
-    // print('Error getting followers: $e');
+      // appLog('Error getting followers: $e');
       return [];
     }
   }
@@ -262,10 +267,11 @@ class NetworkServiceOptimized {
           .where('followerId', isEqualTo: userId)
           .get();
 
-      final followingIds = query.docs.map((doc) => doc.data()['followingId'] as String).toList();
+      final followingIds =
+          query.docs.map((doc) => doc.data()['followingId'] as String).toList();
       return await _fetchUsers(followingIds);
     } catch (e) {
-    // print('Error getting following: $e');
+      // appLog('Error getting following: $e');
       return [];
     }
   }
@@ -297,8 +303,9 @@ class NetworkServiceOptimized {
       final limitedIds = uncachedIds.take(50).toList(); // Limit to 50 users max
 
       for (int i = 0; i < limitedIds.length; i += batchSize) {
-        final batch = limitedIds.sublist(i, (i + batchSize).clamp(0, limitedIds.length));
-        
+        final batch =
+            limitedIds.sublist(i, (i + batchSize).clamp(0, limitedIds.length));
+
         try {
           final query = await _firestore
               .collection('users')
@@ -318,7 +325,7 @@ class NetworkServiceOptimized {
 
       return [...cachedUsers, ...fetchedUsers];
     } catch (e) {
-    // print('Error fetching users: $e');
+      // appLog('Error fetching users: $e');
       return cachedUsers;
     }
   }
@@ -361,7 +368,7 @@ class NetworkServiceOptimized {
       }
       return null;
     } catch (e) {
-    // print('Error getting user by ID: $e');
+      // appLog('Error getting user by ID: $e');
       return null;
     }
   }

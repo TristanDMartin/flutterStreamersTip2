@@ -1,10 +1,71 @@
-import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import '../services/device_capability_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Mobile must NEVER play original.mp4 (ExoPlayer OOM, codec errors).
 bool containsOriginalMp4(String url) =>
     url.toLowerCase().contains('original.mp4');
+
+bool looksLikeImageUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.contains('.png') ||
+      lower.contains('.jpg') ||
+      lower.contains('.jpeg') ||
+      lower.contains('.webp') ||
+      lower.contains('.gif') ||
+      lower.contains('/thumbnail');
+}
+
+bool looksLikeLocalOrPlaceholderVideoUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.startsWith('file://') ||
+      lower.startsWith('/') ||
+      lower.contains('placehold.co') ||
+      lower.contains('placeholder');
+}
+
+bool isReadyPlaybackStatus(String? rawStatus, {bool isReadyForFeed = false}) {
+  final status = (rawStatus ?? '').trim().toLowerCase();
+  return isReadyForFeed &&
+      (status == 'ready' || status == 'active' || status == 'published');
+}
+
+String? resolveReadyPlaybackUrl(Map<String, dynamic> video) {
+  final bool isReadyForFeed = video['isReadyForFeed'] != false;
+  final String? rawStatus = video['status'] as String?;
+  if (!isReadyPlaybackStatus(rawStatus, isReadyForFeed: isReadyForFeed)) {
+    return null;
+  }
+
+  final String? url = firstNonEmpty(<dynamic>[
+    video['canonicalPlaybackUrl'],
+    video['hlsUrl'],
+    video['hls_url'],
+    video['playbackUrl'],
+    video['videoUrl'],
+    video['videoURL'],
+  ]);
+  if (url == null ||
+      looksLikeImageUrl(url) ||
+      looksLikeLocalOrPlaceholderVideoUrl(url) ||
+      containsOriginalMp4(url)) {
+    final String? playbackId = firstNonEmpty(<dynamic>[
+      video['muxPlaybackId'],
+      video['playbackId'],
+      video['mux_playback_id'],
+    ]);
+    if (playbackId == null) {
+      return null;
+    }
+    return _rejectOriginalOnMobile(
+      normalizeMuxHlsUrl('https://stream.mux.com/$playbackId.m3u8'),
+    );
+  }
+  return _rejectOriginalOnMobile(normalizeMuxHlsUrl(url));
+}
+
+bool hasReadyPlaybackSource(Map<String, dynamic> video) =>
+    resolveReadyPlaybackUrl(video) != null;
 
 /// Normalize Mux playback URLs to the adaptive master manifest.
 String normalizeMuxHlsUrl(String url) {
@@ -50,6 +111,13 @@ Future<String> resolveVideoUrlWithQuality(
   Map<String, dynamic> data, {
   String? preferredResolution,
 }) async {
+  final resolvedPlaybackUrl = resolvePlaybackUrl(data);
+  if (resolvedPlaybackUrl != null &&
+      resolvedPlaybackUrl.trim().isNotEmpty &&
+      !containsOriginalMp4(resolvedPlaybackUrl)) {
+    return _rejectOriginalOnMobile(resolvedPlaybackUrl.trim());
+  }
+
   final status = data['status'];
   if (status is String && status.isNotEmpty) {
     if (status != 'ready' &&
@@ -62,25 +130,32 @@ Future<String> resolveVideoUrlWithQuality(
 
   final playbackId = data['muxPlaybackId'] as String?;
   if (playbackId != null && playbackId.trim().isNotEmpty) {
-    return normalizeMuxHlsUrl('https://stream.mux.com/${playbackId.trim()}.m3u8');
+    return normalizeMuxHlsUrl(
+        'https://stream.mux.com/${playbackId.trim()}.m3u8');
   }
 
   final renditions = data['renditions'];
   if (renditions is Map<String, dynamic>) {
     final mp4720 = renditions['mp4_720'];
     final url720 = mp4720 is Map ? mp4720['url'] as String? : null;
-    if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720)) {
+    if (url720 != null &&
+        url720.trim().isNotEmpty &&
+        !containsOriginalMp4(url720)) {
       return _rejectOriginalOnMobile(normalizeMuxHlsUrl(url720.trim()));
     }
     final mp41080 = renditions['mp4_1080'];
     final url1080 = mp41080 is Map ? mp41080['url'] as String? : null;
-    if (url1080 != null && url1080.trim().isNotEmpty && !containsOriginalMp4(url1080)) {
+    if (url1080 != null &&
+        url1080.trim().isNotEmpty &&
+        !containsOriginalMp4(url1080)) {
       return _rejectOriginalOnMobile(normalizeMuxHlsUrl(url1080.trim()));
     }
   }
 
   final canonical = data['canonicalPlaybackUrl'];
-  if (canonical is String && canonical.trim().isNotEmpty && !containsOriginalMp4(canonical)) {
+  if (canonical is String &&
+      canonical.trim().isNotEmpty &&
+      !containsOriginalMp4(canonical)) {
     return _rejectOriginalOnMobile(normalizeMuxHlsUrl(canonical.trim()));
   }
 
@@ -89,17 +164,23 @@ Future<String> resolveVideoUrlWithQuality(
 
   final resolutionKey = 'mp4_${resolution}_url';
   final preferredUrl = data[resolutionKey] as String?;
-  if (preferredUrl != null && preferredUrl.trim().isNotEmpty && !containsOriginalMp4(preferredUrl)) {
+  if (preferredUrl != null &&
+      preferredUrl.trim().isNotEmpty &&
+      !containsOriginalMp4(preferredUrl)) {
     return _rejectOriginalOnMobile(normalizeMuxHlsUrl(preferredUrl.trim()));
   }
 
   if (resolution == '720') {
     final fallback480 = data['mp4_480_url'] as String?;
-    if (fallback480 != null && fallback480.trim().isNotEmpty && !containsOriginalMp4(fallback480)) {
+    if (fallback480 != null &&
+        fallback480.trim().isNotEmpty &&
+        !containsOriginalMp4(fallback480)) {
       return _rejectOriginalOnMobile(normalizeMuxHlsUrl(fallback480.trim()));
     }
     final fallback1080 = data['mp4_1080_url'] as String?;
-    if (fallback1080 != null && fallback1080.trim().isNotEmpty && !containsOriginalMp4(fallback1080)) {
+    if (fallback1080 != null &&
+        fallback1080.trim().isNotEmpty &&
+        !containsOriginalMp4(fallback1080)) {
       return _rejectOriginalOnMobile(normalizeMuxHlsUrl(fallback1080.trim()));
     }
   }
@@ -109,14 +190,77 @@ Future<String> resolveVideoUrlWithQuality(
 
 String _rejectOriginalOnMobile(String url) {
   if (!kIsWeb && containsOriginalMp4(url)) {
-    developer.log('FATAL: original.mp4 attempted on mobile - rejecting');
+    secureLog('FATAL: original.mp4 attempted on mobile - rejecting');
     return '';
   }
   return toFirebaseStorageUrlIfNeeded(url);
 }
 
+/// First non-empty string from a list of dynamic field values.
+String? firstNonEmpty(List<dynamic> values) {
+  for (final dynamic value in values) {
+    if (value == null) {
+      continue;
+    }
+    final String text = value.toString().trim();
+    if (text.isNotEmpty) {
+      return text;
+    }
+  }
+  return null;
+}
+
 /// Resolve video URL with standard priority (backward compatible).
+String? resolvePlaybackUrl(Map<String, dynamic> video) {
+  String firstString(List<String> keys) {
+    for (final key in keys) {
+      final value = video[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  final muxPlaybackId = firstString(
+    const ['muxPlaybackId', 'playbackId', 'mux_playback_id'],
+  );
+  if (muxPlaybackId.isNotEmpty) {
+    return normalizeMuxHlsUrl('https://stream.mux.com/$muxPlaybackId.m3u8');
+  }
+
+  final hlsUrl = firstString(
+    const ['hlsUrl', 'playbackUrl', 'streamUrl', 'hls_url', 'playbackURL'],
+  );
+  if (hlsUrl.isNotEmpty) {
+    return looksLikeImageUrl(hlsUrl) ? null : normalizeMuxHlsUrl(hlsUrl);
+  }
+
+  final videoUrl = firstString(
+    const [
+      'videoUrl',
+      'downloadUrl',
+      'url',
+      'fileUrl',
+      'videoURL',
+      'video_url'
+    ],
+  );
+  if (videoUrl.isNotEmpty) {
+    return looksLikeImageUrl(videoUrl) ? null : normalizeMuxHlsUrl(videoUrl);
+  }
+
+  return null;
+}
+
 String resolveVideoUrl(Map<String, dynamic> data) {
+  final resolvedPlaybackUrl = resolvePlaybackUrl(data);
+  if (resolvedPlaybackUrl != null &&
+      resolvedPlaybackUrl.trim().isNotEmpty &&
+      !containsOriginalMp4(resolvedPlaybackUrl)) {
+    return _rejectOriginalOnMobile(resolvedPlaybackUrl.trim());
+  }
+
   final status = data['status'];
   if (status is String && status.isNotEmpty) {
     if (status != 'ready' &&
@@ -129,25 +273,32 @@ String resolveVideoUrl(Map<String, dynamic> data) {
 
   final playbackId = data['muxPlaybackId'] as String?;
   if (playbackId != null && playbackId.trim().isNotEmpty) {
-    return normalizeMuxHlsUrl('https://stream.mux.com/${playbackId.trim()}.m3u8');
+    return normalizeMuxHlsUrl(
+        'https://stream.mux.com/${playbackId.trim()}.m3u8');
   }
 
   final renditions = data['renditions'];
   if (renditions is Map<String, dynamic>) {
     final mp4720 = renditions['mp4_720'];
     final url720 = mp4720 is Map ? mp4720['url'] as String? : null;
-    if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720)) {
+    if (url720 != null &&
+        url720.trim().isNotEmpty &&
+        !containsOriginalMp4(url720)) {
       return _rejectOriginalOnMobile(normalizeMuxHlsUrl(url720.trim()));
     }
     final mp41080 = renditions['mp4_1080'];
     final url1080 = mp41080 is Map ? mp41080['url'] as String? : null;
-    if (url1080 != null && url1080.trim().isNotEmpty && !containsOriginalMp4(url1080)) {
+    if (url1080 != null &&
+        url1080.trim().isNotEmpty &&
+        !containsOriginalMp4(url1080)) {
       return _rejectOriginalOnMobile(normalizeMuxHlsUrl(url1080.trim()));
     }
   }
 
   final canonical = data['canonicalPlaybackUrl'];
-  if (canonical is String && canonical.trim().isNotEmpty && !containsOriginalMp4(canonical)) {
+  if (canonical is String &&
+      canonical.trim().isNotEmpty &&
+      !containsOriginalMp4(canonical)) {
     return _rejectOriginalOnMobile(normalizeMuxHlsUrl(canonical.trim()));
   }
 
@@ -166,7 +317,9 @@ String resolveVideoUrl(Map<String, dynamic> data) {
   final rawCandidates = <String>[];
   for (final key in candidateKeys) {
     final value = data[key];
-    if (value is String && value.trim().isNotEmpty && !containsOriginalMp4(value)) {
+    if (value is String &&
+        value.trim().isNotEmpty &&
+        !containsOriginalMp4(value)) {
       rawCandidates.add(normalizeMuxHlsUrl(value.trim()));
     }
   }
@@ -188,7 +341,9 @@ String resolveVideoUrl(Map<String, dynamic> data) {
     if (nested.isNotEmpty) return _rejectOriginalOnMobile(nested);
   }
 
-  if (rawCandidates.isNotEmpty) return _rejectOriginalOnMobile(rawCandidates.first);
+  if (rawCandidates.isNotEmpty) {
+    return _rejectOriginalOnMobile(rawCandidates.first);
+  }
   return '';
 }
 

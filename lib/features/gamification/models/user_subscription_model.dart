@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../billing/debug_studio_bypass.dart';
 import '../../billing/get_user_tier.dart';
 import '../../entitlements/subscription_tier_resolver.dart';
 import '../gamification_firestore_utils.dart';
@@ -7,11 +8,6 @@ import 'subscription_plan.dart';
 
 /// Read model for `users/{uid}.subscription` (or root fields mirrored from billing).
 class UserSubscriptionModel {
-  static const Set<String> _bypassStudioUids = <String>{
-    'bU0RxyZ2L4ULAv1Co5L4f825yV73',
-    'jsmbQMLQjoUyC5cUFvkrRbi9mkp1',
-  };
-
   final SubscriptionPlan plan;
   final String status;
   final DateTime? currentPeriodEnd;
@@ -57,8 +53,9 @@ class UserSubscriptionModel {
       willCancel: raw['cancelAtPeriodEnd'] as bool? ??
           raw['willCancel'] as bool? ??
           false,
-      isProTrialing: subscriptionPlanFromString(planStr) == SubscriptionPlan.pro &&
-          status.trim().toLowerCase() == 'trialing',
+      isProTrialing:
+          subscriptionPlanFromString(planStr) == SubscriptionPlan.pro &&
+              status.trim().toLowerCase() == 'trialing',
       subscriptionTrialEndAt: readFirestoreDate(raw['subscriptionTrialEndAt']),
     );
   }
@@ -94,7 +91,7 @@ class UserSubscriptionModel {
       );
     }
 
-    if (uid != null && _bypassStudioUids.contains(uid)) {
+    if (DebugStudioBypass.grantsStudio(uid)) {
       debugPrint(
         '🔐 ProgressionSubscription: bypass studio override for uid=$uid',
       );
@@ -153,8 +150,9 @@ class UserSubscriptionModel {
         return UserSubscriptionModel(
           plan: billing.effectivePlan,
           status: st,
-          currentPeriodEnd: readFirestoreDate(raw['subscriptionCurrentPeriodEnd']) ??
-              readFirestoreDate(raw['currentPeriodEnd']),
+          currentPeriodEnd:
+              readFirestoreDate(raw['subscriptionCurrentPeriodEnd']) ??
+                  readFirestoreDate(raw['currentPeriodEnd']),
           willCancel: raw['cancelAtPeriodEnd'] as bool? ?? false,
           isProTrialing: billing.isProTrialing,
           subscriptionTrialEndAt: billing.subscriptionTrialEndAt,
@@ -172,7 +170,8 @@ class UserSubscriptionModel {
           status: st,
           isProTrialing: p == SubscriptionPlan.pro &&
               st.trim().toLowerCase() == 'trialing',
-          subscriptionTrialEndAt: readFirestoreDate(raw['subscriptionTrialEndAt']),
+          subscriptionTrialEndAt:
+              readFirestoreDate(raw['subscriptionTrialEndAt']),
         );
       }
       debugPrint(

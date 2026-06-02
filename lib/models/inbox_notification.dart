@@ -12,7 +12,8 @@ sealed class InboxNotification with _$InboxNotification {
     required NotificationType type,
   }) = _InboxNotification;
 
-  factory InboxNotification.fromJson(Map<String, dynamic> json) => _$InboxNotificationFromJson(json);
+  factory InboxNotification.fromJson(Map<String, dynamic> json) =>
+      _$InboxNotificationFromJson(json);
 }
 
 enum NotificationType {

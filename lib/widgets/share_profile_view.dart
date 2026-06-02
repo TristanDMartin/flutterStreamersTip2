@@ -28,8 +28,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   bool _isLoadingQR = true;
 
   String _buildProfileUrl() {
-    final String username =
-        (widget.user['username'] ?? '').toString().trim();
+    final String username = (widget.user['username'] ?? '').toString().trim();
     final String userId = (widget.user['id'] ?? '').toString().trim();
     return ProfileLinkService.publicProfileUrl(
       username: username,

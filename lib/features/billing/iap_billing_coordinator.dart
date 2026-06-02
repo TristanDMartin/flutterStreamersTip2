@@ -16,7 +16,8 @@ class IapBillingCoordinator {
       onUiChanged: _notifyListeners,
       onRecoverableMessage: (_) {},
       onVerified: () {
-        for (final VoidCallback h in List<VoidCallback>.from(_verifiedHandlers)) {
+        for (final VoidCallback h
+            in List<VoidCallback>.from(_verifiedHandlers)) {
           h();
         }
         _notifyListeners();
@@ -53,6 +54,21 @@ class IapBillingCoordinator {
       return;
     }
     await facade.initialize();
-    await facade.loadProducts();
+    if (facade.storeAvailable) {
+      await facade.loadProducts();
+    }
+  }
+
+  /// Reload store catalog (e.g. after returning to Upgrade).
+  Future<void> refreshStoreCatalog() async {
+    if (kIsWeb) {
+      return;
+    }
+    if (!facade.storeAvailable) {
+      await facade.initialize();
+    }
+    if (facade.storeAvailable) {
+      await facade.loadProducts();
+    }
   }
 }

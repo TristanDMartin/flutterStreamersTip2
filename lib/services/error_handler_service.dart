@@ -337,9 +337,8 @@ class ErrorHandlerService {
   // ✅ FIX: Safe error tracking that only works if Firebase is initialized
   void _safeTrackError(String error, StackTrace? stackTrace,
       {bool fatal = false}) {
-    final String safeError = kReleaseMode
-        ? SensitiveDataRedactor.redact(error)
-        : error;
+    final String safeError =
+        kReleaseMode ? SensitiveDataRedactor.redact(error) : error;
     if (!AnalyticsService.isReady) {
       debugPrint('📊 Error (Crashlytics not ready): $safeError');
       return;

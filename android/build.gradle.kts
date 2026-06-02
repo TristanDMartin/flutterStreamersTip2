@@ -29,6 +29,18 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// FlutterFire Kotlin plugins must not reuse cached partial compiles.
+subprojects {
+    tasks.whenTaskAdded {
+        if (
+            name.contains("compileDebugKotlin") ||
+            name.contains("compileReleaseKotlin")
+        ) {
+            outputs.cacheIf { false }
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

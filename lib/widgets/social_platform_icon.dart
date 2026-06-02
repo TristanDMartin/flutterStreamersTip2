@@ -30,7 +30,7 @@ class SocialPlatformIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconWidget = _buildIconWidget();
-    
+
     if (onTap == null) {
       return iconWidget;
     }
@@ -47,12 +47,13 @@ class SocialPlatformIcon extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: backgroundColor ?? platform.brandColor.withValues(alpha:0.1),
+          color: backgroundColor ?? platform.brandColor.withValues(alpha: 0.1),
           borderRadius: borderRadius ?? BorderRadius.circular(size * 0.2),
-          border: border ?? Border.all(
-            color: platform.brandColor.withValues(alpha:0.3),
-            width: 1.0,
-          ),
+          border: border ??
+              Border.all(
+                color: platform.brandColor.withValues(alpha: 0.3),
+                width: 1.0,
+              ),
         ),
         padding: padding ?? EdgeInsets.all(size * 0.15),
         child: _buildIcon(),
@@ -128,7 +129,7 @@ class SocialPlatformIconsRow extends StatelessWidget {
       children: platforms.asMap().entries.map((entry) {
         final index = entry.key;
         final platform = entry.value;
-        
+
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -138,8 +139,7 @@ class SocialPlatformIconsRow extends StatelessWidget {
               showBackground: showBackground,
               onTap: onPlatformTap?.call(platform),
             ),
-            if (index < platforms.length - 1) 
-              SizedBox(width: spacing),
+            if (index < platforms.length - 1) SizedBox(width: spacing),
           ],
         );
       }).toList(),
@@ -232,10 +232,11 @@ class SocialPlatformIconWithLabel extends StatelessWidget {
           SizedBox(height: spacing),
           Text(
             platform.displayName,
-            style: labelStyle ?? const TextStyle(
-              fontSize: 12.0,
-              fontWeight: FontWeight.w500,
-            ),
+            style: labelStyle ??
+                const TextStyle(
+                  fontSize: 12.0,
+                  fontWeight: FontWeight.w500,
+                ),
           ),
         ],
       ),
@@ -279,10 +280,10 @@ class SocialPlatformChip extends StatelessWidget {
           vertical: height * 0.2,
         ),
         decoration: BoxDecoration(
-          color: backgroundColor ?? platform.brandColor.withValues(alpha:0.1),
+          color: backgroundColor ?? platform.brandColor.withValues(alpha: 0.1),
           borderRadius: borderRadius ?? BorderRadius.circular(height * 0.5),
           border: Border.all(
-            color: platform.brandColor.withValues(alpha:0.3),
+            color: platform.brandColor.withValues(alpha: 0.3),
             width: 1.0,
           ),
         ),

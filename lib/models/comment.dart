@@ -18,7 +18,8 @@ sealed class Comment with _$Comment {
     List<Comment>? replies,
   }) = _Comment;
 
-  factory Comment.fromJson(Map<String, dynamic> json) => _$CommentFromJson(json);
+  factory Comment.fromJson(Map<String, dynamic> json) =>
+      _$CommentFromJson(json);
 }
 
 // Extension for relative timestamp and mock data
@@ -26,7 +27,7 @@ extension CommentExtension on Comment {
   String get relativeTimestamp {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
-    
+
     if (difference.inDays > 0) {
       if (difference.inDays == 1) {
         return '1d ago';
@@ -62,13 +63,14 @@ extension CommentMockData on Comment {
   static List<Comment> mockData() {
     final users = UserSamples.samples;
     if (users.length < 3) return [];
-    
+
     return [
       Comment(
         id: 'mock-comment-1',
         user: users[1],
         text: "It's always the dhurty wine for me😂",
-        timestamp: DateTime.now().subtract(const Duration(days: 21)), // 3 weeks ago
+        timestamp:
+            DateTime.now().subtract(const Duration(days: 21)), // 3 weeks ago
         likeCount: 6618,
         isLiked: false,
         replies: [],
@@ -77,7 +79,8 @@ extension CommentMockData on Comment {
         id: 'mock-comment-2',
         user: users[2],
         text: "There he go swiveling that box again! 😂😂😂",
-        timestamp: DateTime.now().subtract(const Duration(days: 21)), // 3 weeks ago
+        timestamp:
+            DateTime.now().subtract(const Duration(days: 21)), // 3 weeks ago
         likeCount: 1958,
         isLiked: false,
         replies: [],
@@ -86,7 +89,8 @@ extension CommentMockData on Comment {
         id: 'mock-comment-3',
         user: users[0],
         text: "Roblox Trey a menace 😂😂😂😂",
-        timestamp: DateTime.now().subtract(const Duration(days: 21)), // 3 weeks ago
+        timestamp:
+            DateTime.now().subtract(const Duration(days: 21)), // 3 weeks ago
         likeCount: 4008,
         isLiked: false,
         replies: [],

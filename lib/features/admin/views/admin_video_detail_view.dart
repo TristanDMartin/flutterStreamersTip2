@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../../../utils/sensitive_data_redactor.dart';
 import '../../../utils/user_facing_error.dart';
 import '../admin_backend_service.dart';
 import '../widgets/admin_action_confirm_sheet.dart';
@@ -26,8 +25,8 @@ class AdminVideoDetailView extends StatelessWidget {
             return const Center(child: Text('Video not found.'));
           }
           final d = snap.data!.data()!;
-          final thumb = (d['thumbnailUrl'] ?? d['thumbnail_url'] ?? '')
-              .toString();
+          final thumb =
+              (d['thumbnailUrl'] ?? d['thumbnail_url'] ?? '').toString();
           final cap = (d['caption'] ?? '').toString();
           final st = (d['status'] ?? '').toString();
           final vis = (d['visibility'] ?? '').toString();
@@ -60,8 +59,7 @@ class AdminVideoDetailView extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton.tonal(
                   onPressed: () async {
-                    final reason =
-                        await showAdminRemoveVideoSheet(context);
+                    final reason = await showAdminRemoveVideoSheet(context);
                     if (reason == null || !context.mounted) {
                       return;
                     }

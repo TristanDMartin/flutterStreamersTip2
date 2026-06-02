@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/models/feed_tab.dart';
+import 'package:streamers_tip/qa/qa_keys.dart';
 import 'package:streamers_tip/widgets/home_view_components/feed_selector_widget.dart';
 
 Widget _buildSelector({
@@ -35,12 +36,11 @@ void main() {
 
     expect(find.text('Progression'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('feed-selector-overlay-barrier')),
+      find.byKey(QaKeys.feedSelectorBarrier),
       findsOneWidget,
     );
 
-    await tester
-        .tap(find.byKey(const ValueKey('feed-selector-overlay-barrier')));
+    await tester.tap(find.byKey(QaKeys.feedSelectorBarrier));
     await tester.pumpAndSettle();
 
     expect(find.text('Progression'), findsNothing);

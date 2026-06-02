@@ -4,12 +4,13 @@ import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Service for managing network policies based on connectivity, battery, and user preferences
 class NetworkPolicyService {
-  static final NetworkPolicyService _instance = NetworkPolicyService._internal();
+  static final NetworkPolicyService _instance =
+      NetworkPolicyService._internal();
   factory NetworkPolicyService() => _instance;
   NetworkPolicyService._internal();
 
   final Connectivity _connectivity = Connectivity();
-  
+
   // Policy state
   bool _isInitialized = false;
   ConnectivityResult _currentConnectivity = ConnectivityResult.none;
@@ -26,16 +27,19 @@ class NetworkPolicyService {
     try {
       // Get initial connectivity
       final results = await _connectivity.checkConnectivity();
-      _currentConnectivity = results.isNotEmpty ? results.first : ConnectivityResult.none;
-      
+      _currentConnectivity =
+          results.isNotEmpty ? results.first : ConnectivityResult.none;
+
       // Load user preferences
       await _loadPreferences();
-      
+
       // Listen to connectivity changes
-      _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
-        _onConnectivityChanged(results.isNotEmpty ? results.first : ConnectivityResult.none);
+      _connectivity.onConnectivityChanged
+          .listen((List<ConnectivityResult> results) {
+        _onConnectivityChanged(
+            results.isNotEmpty ? results.first : ConnectivityResult.none);
       });
-      
+
       _isInitialized = true;
       secureLog('📡 Network policy service initialized');
       secureLog('📊 Policy: ${getPolicyInfo()}');
@@ -48,22 +52,22 @@ class NetworkPolicyService {
   bool canPrefetch(double priority) {
     if (!_prefetchEnabled) return false;
     if (priority < _prefetchThreshold) return false;
-    
+
     // Check connectivity
     if (_currentConnectivity == ConnectivityResult.none) return false;
-    
+
     // Check battery level
     if (_batteryLevel < 20) return false;
-    
+
     // Check low power mode
     if (_isLowPowerMode) return false;
-    
+
     // Check cellular vs WiFi
     if (_currentConnectivity == ConnectivityResult.mobile) {
       // On cellular, only prefetch high priority items
       return priority >= 0.8;
     }
-    
+
     return true;
   }
 
@@ -73,7 +77,7 @@ class NetworkPolicyService {
     if (_currentConnectivity == ConnectivityResult.mobile) return false;
     if (_batteryLevel < 30) return false;
     if (_isLowPowerMode) return false;
-    
+
     return true;
   }
 
@@ -81,21 +85,20 @@ class NetworkPolicyService {
   void _onConnectivityChanged(ConnectivityResult result) {
     _currentConnectivity = result;
     secureLog('📡 Connectivity changed: $result');
-    
+
     // Update prefetch settings based on connectivity
     _updatePrefetchSettings();
   }
 
-
   /// Update prefetch settings based on current conditions
   void _updatePrefetchSettings() {
     final oldMediaSegments = _prefetchMediaSegments;
-    
+
     // Update media segment prefetching
     _prefetchMediaSegments = _currentConnectivity == ConnectivityResult.wifi &&
-                           _batteryLevel >= 30 &&
-                           !_isLowPowerMode;
-    
+        _batteryLevel >= 30 &&
+        !_isLowPowerMode;
+
     if (oldMediaSegments != _prefetchMediaSegments) {
       secureLog('🔄 Media segment prefetching: $_prefetchMediaSegments');
     }
@@ -105,11 +108,12 @@ class NetworkPolicyService {
   Future<void> _loadPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       _prefetchEnabled = prefs.getBool('prefetch_enabled') ?? true;
       _prefetchThreshold = prefs.getDouble('prefetch_threshold') ?? 0.5;
-      
-      secureLog('⚙️ Loaded preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
+
+      secureLog(
+          '⚙️ Loaded preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
     } catch (e) {
       secureLog('❌ Error loading preferences: $e');
     }
@@ -122,18 +126,19 @@ class NetworkPolicyService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       if (prefetchEnabled != null) {
         _prefetchEnabled = prefetchEnabled;
         await prefs.setBool('prefetch_enabled', prefetchEnabled);
       }
-      
+
       if (prefetchThreshold != null) {
         _prefetchThreshold = prefetchThreshold;
         await prefs.setDouble('prefetch_threshold', prefetchThreshold);
       }
-      
-      secureLog('💾 Saved preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
+
+      secureLog(
+          '💾 Saved preferences: enabled=$_prefetchEnabled, threshold=$_prefetchThreshold');
     } catch (e) {
       secureLog('❌ Error saving preferences: $e');
     }
@@ -157,24 +162,24 @@ class NetworkPolicyService {
     if (_currentConnectivity == ConnectivityResult.none) {
       return NetworkQuality.none;
     }
-    
+
     if (_currentConnectivity == ConnectivityResult.mobile) {
       if (_batteryLevel < 20) return NetworkQuality.poor;
       return NetworkQuality.medium;
     }
-    
+
     if (_currentConnectivity == ConnectivityResult.wifi) {
       if (_batteryLevel < 30) return NetworkQuality.medium;
       return NetworkQuality.excellent;
     }
-    
+
     return NetworkQuality.unknown;
   }
 
   /// Get recommended prefetch strategy
   PrefetchStrategy getPrefetchStrategy() {
     final quality = getNetworkQuality();
-    
+
     switch (quality) {
       case NetworkQuality.excellent:
         return PrefetchStrategy.aggressive;
@@ -201,8 +206,8 @@ enum NetworkQuality {
 
 /// Prefetch strategies
 enum PrefetchStrategy {
-  offline,      // No prefetching
+  offline, // No prefetching
   conservative, // Only posters, no media
-  moderate,     // Posters + playlists
-  aggressive,   // Posters + playlists + first segments
+  moderate, // Posters + playlists
+  aggressive, // Posters + playlists + first segments
 }

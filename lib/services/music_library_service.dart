@@ -74,9 +74,10 @@ class MusicLibraryService {
   MusicLibraryService._internal();
 
   // Free music sources
-  static const String _freesoundApiKey = 'YOUR_FREESOUND_API_KEY'; // Get from https://freesound.org/
+  static const String _freesoundApiKey =
+      'YOUR_FREESOUND_API_KEY'; // Get from https://freesound.org/
   static const String _freesoundBaseUrl = 'https://freesound.org/apiv2';
-  
+
   // Curated free music collection (no API key required)
   static const List<Map<String, dynamic>> _curatedMusic = [
     {
@@ -85,7 +86,8 @@ class MusicLibraryService {
       'artist': 'Free Music Archive',
       'genre': 'Upbeat',
       'duration': 120,
-      'downloadUrl': 'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/ccCommunity/Chad_Crouch/Arps/Chad_Crouch_-_01_-_Bicycle_Ride.mp3',
+      'downloadUrl':
+          'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/ccCommunity/Chad_Crouch/Arps/Chad_Crouch_-_01_-_Bicycle_Ride.mp3',
       'license': 'CC BY',
       'requiresAttribution': true,
       'attributionText': 'Music by Chad Crouch',
@@ -97,7 +99,8 @@ class MusicLibraryService {
       'artist': 'Incompetech',
       'genre': 'Ambient',
       'duration': 180,
-      'downloadUrl': 'https://incompetech.com/music/royalty-free/music/Ambient_Chill.mp3',
+      'downloadUrl':
+          'https://incompetech.com/music/royalty-free/music/Ambient_Chill.mp3',
       'license': 'CC BY',
       'requiresAttribution': true,
       'attributionText': 'Music by Kevin MacLeod',
@@ -109,7 +112,8 @@ class MusicLibraryService {
       'artist': 'Bensound',
       'genre': 'Electronic',
       'duration': 150,
-      'downloadUrl': 'https://www.bensound.com/bensound-music/bensound-sunny.mp3',
+      'downloadUrl':
+          'https://www.bensound.com/bensound-music/bensound-sunny.mp3',
       'license': 'Royalty Free',
       'requiresAttribution': true,
       'attributionText': 'Music by Bensound',
@@ -121,7 +125,8 @@ class MusicLibraryService {
       'artist': 'Free Music Archive',
       'genre': 'Acoustic',
       'duration': 200,
-      'downloadUrl': 'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/ccCommunity/Chad_Crouch/Arps/Chad_Crouch_-_02_-_Acoustic_Guitar.mp3',
+      'downloadUrl':
+          'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/ccCommunity/Chad_Crouch/Arps/Chad_Crouch_-_02_-_Acoustic_Guitar.mp3',
       'license': 'CC BY',
       'requiresAttribution': true,
       'attributionText': 'Music by Chad Crouch',
@@ -133,7 +138,8 @@ class MusicLibraryService {
       'artist': 'Incompetech',
       'genre': 'Cinematic',
       'duration': 240,
-      'downloadUrl': 'https://incompetech.com/music/royalty-free/music/Cinematic_Epic.mp3',
+      'downloadUrl':
+          'https://incompetech.com/music/royalty-free/music/Cinematic_Epic.mp3',
       'license': 'CC BY',
       'requiresAttribution': true,
       'attributionText': 'Music by Kevin MacLeod',
@@ -145,7 +151,8 @@ class MusicLibraryService {
       'artist': 'Bensound',
       'genre': 'Jazz',
       'duration': 160,
-      'downloadUrl': 'https://www.bensound.com/bensound-music/bensound-jazz.mp3',
+      'downloadUrl':
+          'https://www.bensound.com/bensound-music/bensound-jazz.mp3',
       'license': 'Royalty Free',
       'requiresAttribution': true,
       'attributionText': 'Music by Bensound',
@@ -163,30 +170,30 @@ class MusicLibraryService {
     try {
       // For now, return curated music filtered by criteria
       List<Map<String, dynamic>> filteredMusic = List.from(_curatedMusic);
-      
+
       if (query != null && query.isNotEmpty) {
         filteredMusic = filteredMusic.where((track) {
           final searchQuery = query.toLowerCase();
           return track['title'].toLowerCase().contains(searchQuery) ||
-                 track['artist'].toLowerCase().contains(searchQuery) ||
-                 track['genre'].toLowerCase().contains(searchQuery);
+              track['artist'].toLowerCase().contains(searchQuery) ||
+              track['genre'].toLowerCase().contains(searchQuery);
         }).toList();
       }
-      
+
       if (genre != null && genre.isNotEmpty) {
         filteredMusic = filteredMusic.where((track) {
           return track['genre'].toLowerCase() == genre.toLowerCase();
         }).toList();
       }
-      
+
       // Apply limit
       if (filteredMusic.length > limit) {
         filteredMusic = filteredMusic.take(limit).toList();
       }
-      
+
       return filteredMusic.map((json) => MusicTrack.fromJson(json)).toList();
     } catch (e) {
-    // print('Error searching music: $e');
+      // appLog('Error searching music: $e');
       return [];
     }
   }
@@ -213,7 +220,7 @@ class MusicLibraryService {
       'dramatic': 'Cinematic',
       'funky': 'Jazz',
     };
-    
+
     final genre = moodToGenre[mood.toLowerCase()] ?? 'Upbeat';
     return getMusicByGenre(genre);
   }
@@ -222,21 +229,22 @@ class MusicLibraryService {
   Future<String?> downloadTrack(MusicTrack track) async {
     try {
       final tempDir = await getTemporaryDirectory();
-      final fileName = '${track.id}_${DateTime.now().millisecondsSinceEpoch}.mp3';
+      final fileName =
+          '${track.id}_${DateTime.now().millisecondsSinceEpoch}.mp3';
       final filePath = path.join(tempDir.path, fileName);
-      
+
       final response = await http.get(Uri.parse(track.downloadUrl));
-      
+
       if (response.statusCode == 200) {
         final file = File(filePath);
         await file.writeAsBytes(response.bodyBytes);
         return filePath;
       } else {
-    // print('Failed to download track: ${response.statusCode}');
+        // appLog('Failed to download track: ${response.statusCode}');
         return null;
       }
     } catch (e) {
-    // print('Error downloading track: $e');
+      // appLog('Error downloading track: $e');
       return null;
     }
   }
@@ -248,7 +256,15 @@ class MusicLibraryService {
 
   /// Get available moods
   List<String> getAvailableMoods() {
-    return ['Happy', 'Sad', 'Energetic', 'Calm', 'Romantic', 'Dramatic', 'Funky'];
+    return [
+      'Happy',
+      'Sad',
+      'Energetic',
+      'Calm',
+      'Romantic',
+      'Dramatic',
+      'Funky'
+    ];
   }
 
   /// Get track preview URL (if available)
@@ -286,14 +302,15 @@ class MusicLibraryService {
     int limit = 20,
   }) async {
     if (_freesoundApiKey == 'YOUR_FREESOUND_API_KEY') {
-    // print('Freesound API key not configured. Using curated music instead.');
+      // appLog('Freesound API key not configured. Using curated music instead.');
       return searchMusic(query: query, genre: genre, limit: limit);
     }
 
     try {
       final searchQuery = query ?? 'music';
-      final url = '$_freesoundBaseUrl/search/text/?query=$searchQuery&filter=type:mp3&page_size=$limit';
-      
+      final url =
+          '$_freesoundBaseUrl/search/text/?query=$searchQuery&filter=type:mp3&page_size=$limit';
+
       final response = await http.get(
         Uri.parse(url),
         headers: {'Authorization': 'Token $_freesoundApiKey'},
@@ -302,7 +319,7 @@ class MusicLibraryService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final results = data['results'] as List;
-        
+
         return results.map((item) {
           return MusicTrack(
             id: item['id'].toString(),
@@ -319,11 +336,11 @@ class MusicLibraryService {
           );
         }).toList();
       } else {
-    // print('Freesound API error: ${response.statusCode}');
+        // appLog('Freesound API error: ${response.statusCode}');
         return searchMusic(query: query, genre: genre, limit: limit);
       }
     } catch (e) {
-    // print('Freesound API error: $e');
+      // appLog('Freesound API error: $e');
       return searchMusic(query: query, genre: genre, limit: limit);
     }
   }
@@ -333,14 +350,14 @@ class MusicLibraryService {
     try {
       final tempDir = await getTemporaryDirectory();
       final files = tempDir.listSync();
-      
+
       for (final file in files) {
         if (file is File && file.path.endsWith('.mp3')) {
           await file.delete();
         }
       }
     } catch (e) {
-    // print('Error cleaning up downloaded tracks: $e');
+      // appLog('Error cleaning up downloaded tracks: $e');
     }
   }
 }

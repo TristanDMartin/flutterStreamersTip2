@@ -10,6 +10,7 @@ import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
 import '../models/trending_creator.dart';
+import '../utils/user_facing_error.dart';
 import '../models/category.dart' as discover_models;
 import 'category_card.dart';
 import 'recommended_content_card.dart';
@@ -17,9 +18,8 @@ import '../services/logging_service.dart';
 import '../services/caching_service.dart';
 import '../services/accessibility_service.dart';
 import '../services/global_playback_manager.dart';
-import '../utils/avatar_url_resolver.dart';
-import 'status_aware_avatar.dart';
 import '../constants/playback_owners.dart';
+import '../core/feature_flags.dart';
 import '../core/theme/st_theme_tokens.dart';
 import 'instant_response_button.dart';
 import 'video_player_view_optimized.dart';
@@ -31,48 +31,22 @@ import 'comments_view2.dart';
 import 'enhanced_share_sheet.dart';
 import '../routing/app_navigator.dart';
 import '../components/onboarding/product_tour_target_keys.dart';
+import '../features/discover/presentation/widgets/trending_creators_section.dart';
+import '../features/discover/domain/discover_field_mapper.dart';
 import '../providers/product_tour_ui_provider.dart';
+import '../utils/video_document_rules.dart';
+import '../utils/video_url_resolver.dart';
 // import 'video_thumbnail_view.dart'; // Removed - unused
 
-/// 🔥 FIX: Field mapping utility for data model consistency
-class FieldMapper {
-  static String getUserId(Map<String, dynamic> data) {
-    return data['userId'] ?? data['creatorId'] ?? data['creator_id'] ?? '';
-  }
-
-  static String getDisplayName(Map<String, dynamic> data) {
-    return data['displayName'] ?? data['username'] ?? 'Unknown';
-  }
-
-  static String getAvatarUrl(Map<String, dynamic> data) {
-    return resolveAvatarUrl(data) ?? '';
-  }
-
-  static String getThumbnailUrl(Map<String, dynamic> data) {
-    return data['thumbnailUrl'] ?? data['thumbnailURL'] ?? '';
-  }
-
-  static String getVideoUrl(Map<String, dynamic> data) {
-    return data['videoUrl'] ?? data['videoURL'] ?? '';
-  }
-
-  static int safeInt(dynamic value) {
-    if (value is int) return value;
-    if (value is double) return value.round();
-    if (value is String) return int.tryParse(value) ?? 0;
-    return 0;
-  }
-
-  static double safeDouble(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
-  }
-
-  static String safeString(dynamic value) {
-    return value?.toString() ?? '';
-  }
+class STDiscoverTokens {
+  static const double pagePadding = 20.0;
+  static const double sectionGap = 24.0;
+  static const double cardRadius = 24.0;
+  static const double compactCardRadius = 18.0;
+  static const double creatorCardHeight = 163.0;
+  static const double categoryCardHeight = 82.0;
+  static const double heroHeight = 164.0;
+  static const double searchHeight = 56.0;
 }
 
 class _DiscoverPageStyle {
@@ -119,21 +93,21 @@ class _DiscoverPageStyle {
       return _DiscoverPageStyle(
         isLight: true,
         scaffold: t.scaffoldBackgroundColor,
-        appBar: t.scaffoldBackgroundColor,
+        appBar: Colors.transparent,
         onAppBar: c.onSurface,
         refreshColor: c.primary,
         refreshBackground: t.scaffoldBackgroundColor,
         heroGradient: <Color>[
-          c.primary.withValues(alpha: 0.10),
-          c.primary.withValues(alpha: 0.18),
+          StThemeColors.brandPurple,
+          StThemeColors.brandBlue,
         ],
-        heroBorder: c.outline.withValues(alpha: 0.45),
-        searchFill: c.surfaceContainerLow,
-        searchBorder: c.outline.withValues(alpha: 0.4),
-        searchPlaceholder: c.onSurface.withValues(alpha: 0.5),
+        heroBorder: c.outline.withValues(alpha: 0.35),
+        searchFill: c.surfaceContainerHighest.withValues(alpha: 0.92),
+        searchBorder: c.outline.withValues(alpha: 0.18),
+        searchPlaceholder: c.onSurface.withValues(alpha: 0.55),
         searchChevron: c.onSurface.withValues(alpha: 0.35),
         cardFill: c.surface,
-        cardBorder: c.outline.withValues(alpha: 0.45),
+        cardBorder: c.outline.withValues(alpha: 0.14),
         onCard: c.onSurface,
         muted: c.onSurface.withValues(alpha: 0.62),
       );
@@ -141,22 +115,21 @@ class _DiscoverPageStyle {
     return _DiscoverPageStyle(
       isLight: false,
       scaffold: t.scaffoldBackgroundColor,
-      appBar: t.scaffoldBackgroundColor,
+      appBar: Colors.transparent,
       onAppBar: c.onSurface,
       refreshColor: c.primary,
       refreshBackground: t.scaffoldBackgroundColor,
       heroGradient: <Color>[
-        StThemeColors.darkBackground,
-        c.surfaceContainerLow,
-        c.surface,
+        StThemeColors.brandPurple,
+        StThemeColors.brandBlue,
       ],
-      heroBorder: c.outline.withValues(alpha: 0.35),
-      searchFill: c.surfaceContainerLow,
-      searchBorder: c.outline.withValues(alpha: 0.4),
+      heroBorder: c.outline.withValues(alpha: 0.28),
+      searchFill: c.surfaceContainerHigh.withValues(alpha: 0.88),
+      searchBorder: c.outline.withValues(alpha: 0.22),
       searchPlaceholder: c.onSurfaceVariant,
       searchChevron: c.onSurface.withValues(alpha: 0.4),
-      cardFill: c.surface.withValues(alpha: 0.42),
-      cardBorder: c.outline.withValues(alpha: 0.35),
+      cardFill: c.surfaceContainerHigh.withValues(alpha: 0.72),
+      cardBorder: c.outline.withValues(alpha: 0.2),
       onCard: c.onSurface,
       muted: c.onSurfaceVariant,
     );
@@ -172,18 +145,40 @@ class DiscoverView extends ConsumerStatefulWidget {
   /// When false (e.g. main tab shell), hide the app bar back action.
   final bool showAppBarBackButton;
 
+  /// Full-screen category swipe feed. Kept on [DiscoverView] instead of
+  /// [AppNavigator] to avoid a circular import (discover already imports
+  /// navigator for other routes).
+  static Future<T?> openCategoryVideoSwipeFeed<T>(
+    BuildContext context, {
+    required List<HomeVideo> videos,
+    required int startIndex,
+    required String categoryId,
+  }) {
+    return Navigator.of(context).push<T>(
+      MaterialPageRoute<T>(
+        builder: (BuildContext context) => DiscoverCategoryVideoFeedPage(
+          videos: videos,
+          startIndex: startIndex,
+          categoryId: categoryId,
+        ),
+      ),
+    );
+  }
+
   @override
   ConsumerState<DiscoverView> createState() => _DiscoverViewState();
 }
 
 class _DiscoverViewState extends ConsumerState<DiscoverView> {
   static const int _videosPerPage = 20;
-  static const List<String> _allowedVideoStatuses = [
+  static const List<String> _allowedVideoStatuses = <String>[
     'published',
     'ready',
     'active',
+    'processing',
   ];
   String? _selectedCategory;
+  int _categoryPageIndex = 0;
   final ScrollController _discoverScrollController = ScrollController();
   final Map<String, Future<List<Map<String, dynamic>>>> _categoryFeedFutures =
       {};
@@ -298,8 +293,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }) async {
       Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('videos')
-          .where(field, whereIn: categoryValues)
-          .where('status', whereIn: _allowedVideoStatuses);
+          .where(field, whereIn: categoryValues);
 
       if (rangeField != null && isGreaterThan != null) {
         query = query.where(rangeField, isGreaterThan: isGreaterThan);
@@ -350,8 +344,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     try {
       Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('videos')
-          .where('categories', arrayContainsAny: categoryValues)
-          .where('status', whereIn: _allowedVideoStatuses);
+          .where('categories', arrayContainsAny: categoryValues);
 
       if (rangeField != null && isGreaterThan != null) {
         query = query.where(rangeField, isGreaterThan: isGreaterThan);
@@ -389,8 +382,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     for (final doc in docs) {
       final data = doc.data();
-      final status = data['status'] as String? ?? '';
-      if (!_allowedVideoStatuses.contains(status)) {
+      if (!isVideoVisibleInFeed(data)) {
+        continue;
+      }
+      final status = data['status'] as String?;
+      if (status == 'failed') {
         continue;
       }
 
@@ -398,13 +394,132 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         continue;
       }
 
-      videos.add({
-        'docId': doc.id,
-        'data': data,
-      });
+      videos.add(_fullCategoryVideoMap(
+        docId: doc.id,
+        data: data,
+        categoryId: categoryId,
+      ));
     }
 
     return videos;
+  }
+
+  Map<String, dynamic> _fullCategoryVideoMap({
+    required String docId,
+    required Map<String, dynamic> data,
+    Map<String, dynamic>? userData,
+    required String categoryId,
+    bool isNew = false,
+    double trendingScore = 0.0,
+  }) {
+    final muxPlaybackId = _firstString(data, const [
+      'muxPlaybackId',
+      'playbackId',
+      'mux_playback_id',
+    ]);
+    final hlsUrl = _firstString(data, const [
+      'hlsUrl',
+      'playbackUrl',
+      'streamUrl',
+      'hls_url',
+      'playbackURL',
+    ]);
+    final videoUrl = _firstString(data, const [
+      'videoUrl',
+      'downloadUrl',
+      'url',
+      'fileUrl',
+      'videoURL',
+      'video_url',
+    ]);
+    final thumbnailUrl = _firstString(data, const [
+      'thumbnailUrl',
+      'thumbnail',
+      'muxThumbnailUrl',
+      'thumbnailURL',
+    ]);
+    final userId = _firstString(data, const [
+      'userId',
+      'creatorId',
+      'creator_id',
+      'uid',
+      'ownerId',
+    ]);
+    final profile = userData ?? data;
+    final durationValue = data['duration'] ??
+        (data['metadata'] is Map ? data['metadata']['duration'] : null);
+    final caption = DiscoverFieldMapper.safeString(
+      data['caption'] ??
+          data['title'] ??
+          (data['metadata'] is Map ? data['metadata']['title'] : null) ??
+          'Untitled',
+    );
+    final categoryValue =
+        _firstString(data, const ['category', 'categoryId', 'category_id']);
+    final categoryIdValue =
+        _firstString(data, const ['categoryId', 'category', 'category_id']);
+
+    return {
+      'id': docId,
+      'docId': docId,
+      'videoId': docId,
+      'userId': userId,
+      'creatorId': userId,
+      'caption': caption,
+      'title': caption,
+      'muxPlaybackId': muxPlaybackId,
+      'hlsUrl': hlsUrl,
+      'videoUrl': videoUrl,
+      'thumbnailUrl': thumbnailUrl,
+      'thumbnail': thumbnailUrl,
+      'thumbnailURL': thumbnailUrl,
+      'status': DiscoverFieldMapper.safeString(data['status']),
+      'createdAt': data['createdAt'],
+      'category': categoryValue.isNotEmpty ? categoryValue : categoryId,
+      'categoryId': categoryIdValue.isNotEmpty ? categoryIdValue : categoryId,
+      'likeCount': DiscoverFieldMapper.safeCount(
+          data, const ['likeCount', 'likesCount', 'likes']),
+      'bookmarkCount': DiscoverFieldMapper.safeCount(data, const [
+        'bookmarkCount',
+        'bookmarksCount',
+        'savesCount',
+        'bookmarks',
+        'favoriteCount',
+        'favorites',
+      ]),
+      'commentCount': DiscoverFieldMapper.safeCount(
+          data, const ['commentCount', 'commentsCount', 'comments']),
+      'likes': DiscoverFieldMapper.safeCount(
+          data, const ['likeCount', 'likesCount', 'likes']),
+      'comments': DiscoverFieldMapper.safeCount(
+          data, const ['commentCount', 'commentsCount', 'comments']),
+      'views': DiscoverFieldMapper.safeCount(
+          data, const ['viewCount', 'views', 'viewsCount']),
+      'duration': DiscoverFieldMapper.safeDouble(durationValue),
+      'creator': DiscoverFieldMapper.getDisplayName(profile),
+      'creatorAvatar': DiscoverFieldMapper.getAvatarUrl(profile),
+      'creatorUsername': DiscoverFieldMapper.safeString(profile['username']),
+      'creatorDisplayName': DiscoverFieldMapper.getDisplayName(profile),
+      'creatorBio': DiscoverFieldMapper.safeString(profile['bio']),
+      'creatorHashtags': profile['hashtags'] ?? const [],
+      'creatorFollowers': DiscoverFieldMapper.safeCount(profile, const [
+        'followerCount',
+        'followersCount',
+        'followers',
+      ]),
+      'creatorFollowing': DiscoverFieldMapper.safeCount(profile, const [
+        'followingCount',
+        'following',
+      ]),
+      'creatorVideos':
+          DiscoverFieldMapper.safeCount(profile, const ['postCount', 'videos']),
+      'isLiked': data['isLiked'] == true,
+      'isFavorited':
+          data['isFavorited'] == true || data['isBookmarked'] == true,
+      'trendingScore': trendingScore,
+      'isNew': isNew,
+      'isTrending': trendingScore > 100.0,
+    };
   }
 
   // ✅ FIX #5: Removed unused _cachedVideos - cache implementation reserved for future
@@ -486,6 +601,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     if (selectedCategory != null) {
       _primeCategoryFeed(selectedCategory);
     }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Discover updated'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1200),
+        backgroundColor: StThemeColors.darkSurface.withValues(alpha: 0.94),
+      ),
+    );
   }
 
   /// 🔥 FIX: Set up real-time updates for trending creators and notifications
@@ -610,178 +734,87 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     _categoryFeedFutures[categoryId] = _getCategoryVideosForFeed(categoryId);
   }
 
-  Widget _buildTrendingCreatorCard(
-    BuildContext context,
-    TrendingCreator creator,
-    int index,
-  ) {
-    return KeyedSubtree(
-      key: ValueKey('trending_creator_${creator.id}_$index'),
-      child: _accessibilityService.createAccessibleListItem(
-        semanticLabel:
-            'Trending creator ${creator.displayName ?? creator.username}',
-        semanticHint: 'Tap to view profile',
-        onTap: () => _onCreatorTapped(creator),
-        hapticFeedbackType: AccessibilityHapticFeedbackType.light,
-        child: _buildTrendingCreatorItem(context, creator),
-      ),
-    );
-  }
-
-  bool _isSampleCreatorId(String id) {
-    return ['1', '2', '3', '4', '5', '6'].contains(id);
-  }
-
   void _onCreatorTapped(TrendingCreator creator) {
     HapticFeedback.lightImpact();
     LoggingService.instance.debug(
       'Creator tapped: ${creator.username} (ID: ${creator.id})',
       tag: 'DiscoverView',
     );
-
-    // Prevent navigation for sample data with fake IDs
-    if (_isSampleCreatorId(creator.id)) {
+    if (creator.id.isEmpty) {
       LoggingService.instance.warning(
-        'Cannot navigate to sample creator with fake ID: ${creator.id}',
-        tag: 'DiscoverView',
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'This is sample data. Real profiles will be available when creators are trending.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    // Validate that the creator ID is a valid Firebase user ID format
-    if (creator.id.isEmpty || creator.id.length < 20) {
-      LoggingService.instance.warning(
-        'Invalid creator ID format: ${creator.id}',
+        'Invalid creator ID: empty',
         tag: 'DiscoverView',
       );
       return;
     }
-
     AppNavigator.openStreamerCard(
       context,
       userId: creator.id,
       currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
       onDismiss: () => Navigator.of(context).pop(),
-      onMessage: (userId) {
+      onMessage: (String userId) {
         HapticFeedback.lightImpact();
         LoggingService.instance.debug(
           'Message action for user: $userId',
           tag: 'DiscoverView',
         );
       },
-      onNavigateToTab: (tabName) {
+      onNavigateToTab: (String tabName) {
         HapticFeedback.lightImpact();
       },
-      onShare: (userId) {
+      onShare: (String userId) {
         HapticFeedback.lightImpact();
       },
     );
   }
 
-  Widget _buildTrendingCreatorItem(
-    BuildContext context,
-    TrendingCreator creator,
-  ) {
-    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
-    return SizedBox(
-      width: double.infinity,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildLiveAvatar(
-              context, creator.id, creator.avatarURL, creator.username),
-          const SizedBox(height: 8),
-          Text(
-            creator.displayName ?? creator.username,
-            style: TextStyle(
-              color: s.onCard,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          _buildLiveFollowerCount(context, creator.id, creator.followerCount),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLiveAvatar(
-    BuildContext context,
-    String userId,
-    String? initialAvatarURL,
-    String username,
-  ) {
-    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
-    final TextStyle placeholdStyle = TextStyle(
-      color: s.onCard,
-      fontSize: 20,
-      fontWeight: FontWeight.bold,
-    );
-    final Widget? placeholder = username.isNotEmpty
-        ? Text(
-            username[0].toUpperCase(),
-            style: placeholdStyle,
-          )
-        : null;
-    return StatusAwareAvatar(
-      userId: userId,
-      avatarURL: initialAvatarURL,
-      radius: 30,
-      showOnlineIndicator: true,
-      placeholder: placeholder,
-    );
-  }
-
-  Widget _buildLiveFollowerCount(
-    BuildContext context,
-    String userId,
-    int initialCount,
-  ) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        final data = snapshot.data?.data();
-        final liveCount = math.max(
-          0,
-          FieldMapper.safeInt(
-            data?['followerCount'] ?? data?['followersCount'] ?? initialCount,
-          ),
-        );
-        final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
-        return Text(
-          _formatFollowerCount(liveCount),
-          style: TextStyle(
-            color: s.muted,
-            fontSize: 10,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        );
-      },
-    );
-  }
-
-  String _formatFollowerCount(int count) {
+  String _formatCompactCount(int count) {
     if (count >= 1000000) {
-      return '${(count / 1000000).toStringAsFixed(1)}M followers';
-    } else if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(0)}K followers';
-    } else {
-      return '$count followers';
+      return '${(count / 1000000).toStringAsFixed(1)}M';
     }
+    if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
+    return '$count';
+  }
+
+  Widget _buildVideoGridSkeleton(BuildContext context) {
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 4,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.64,
+      ),
+      itemBuilder: (context, index) {
+        return Container(
+          decoration: BoxDecoration(
+            color: s.isLight
+                ? StThemeColors.darkSurface.withValues(alpha: 0.06)
+                : Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: Container(
+              width: 76,
+              height: 12,
+              margin: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: s.isLight
+                    ? Colors.white.withValues(alpha: 0.75)
+                    : Colors.white.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildErrorState(BuildContext context, String error) {
@@ -814,27 +847,37 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  void _onCategorySelected(String? categoryId) {
+  void _onCategorySelected(discover_models.Category category) {
     try {
-      // Add haptic feedback
       HapticFeedback.lightImpact();
-
-      setState(() {
-        _selectedCategory = categoryId;
-      });
-      if (categoryId != null) {
-        _primeCategoryFeed(categoryId);
-        final discoverState = ref.read(discoverProvider);
-        final category = discoverState.categories.firstWhere(
-          (cat) => cat.id == categoryId,
-          orElse: () => discoverState.categories.first,
-        );
-
-        LoggingService.instance.debug(
-          'Category selected: ${category.name}',
-          tag: 'DiscoverView',
+      final String categoryId = category.id;
+      final String? previousSelectedCategory = _selectedCategory;
+      if (_selectedCategory == categoryId) {
+        if (kDebugMode) {
+          debugPrint(
+            'Discover category deselect: selectedCategoryId=$categoryId '
+            'selectedCategoryLabel=${category.name} '
+            'previousSelectedCategory=$previousSelectedCategory',
+          );
+        }
+        setState(() {
+          _selectedCategory = null;
+        });
+        return;
+      }
+      if (kDebugMode) {
+        debugPrint(
+          'Discover category select: selectedCategoryId=$categoryId '
+          'selectedCategoryLabel=${category.name} '
+          'previousSelectedCategory=$previousSelectedCategory '
+          'didForceRefresh=true',
         );
       }
+      setState(() {
+        _selectedCategory = categoryId;
+        _categoryFeedFutures[categoryId] =
+            _getCategoryVideosForFeed(categoryId);
+      });
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Error selecting category',
@@ -842,7 +885,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         error: e,
         stackTrace: stackTrace,
       );
-      // Safe error handling - don't call ErrorHandlerService during startup
       if (kDebugMode) {
         debugPrint('❌ DiscoverView category selection error: $e');
       }
@@ -904,32 +946,169 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   /// Convert video data from DiscoverView format to HomeVideo model
   HomeVideo _convertToHomeVideo(Map<String, dynamic> video) {
+    final raw = _normalizedVideoData(video);
+    final docId = DiscoverFieldMapper.safeString(video['docId']);
+    final muxPlaybackId = _firstString(raw, const [
+      'muxPlaybackId',
+      'playbackId',
+      'mux_playback_id',
+    ]);
+    final playbackUrl = _playbackUrlFor(raw);
+    final thumbnailUrl = _firstString(raw, const [
+      'thumbnailUrl',
+      'thumbnailURL',
+      'thumbnail',
+      'muxThumbnailUrl',
+    ]);
+    final fallbackThumbnail = muxPlaybackId.isEmpty
+        ? ''
+        : 'https://image.mux.com/$muxPlaybackId/thumbnail.jpg?width=720&time=0';
+    final creatorData = raw['creator'];
+    final creatorMap =
+        creatorData is Map ? Map<String, dynamic>.from(creatorData) : raw;
+    final creatorId = _firstString(raw, const [
+      'userId',
+      'creatorId',
+      'creator_id',
+      'uid',
+      'ownerId',
+    ]);
+    final creatorName = _firstString(creatorMap, const [
+      'creatorUsername',
+      'username',
+      'displayName',
+      'name',
+      'creator',
+    ]);
+    final creatorDisplayName = _firstString(creatorMap, const [
+      'creatorDisplayName',
+      'displayName',
+      'name',
+      'creator',
+      'username',
+    ]);
+    final caption = _firstString(raw, const [
+      'caption',
+      'description',
+      'title',
+    ]);
+    final id = _firstString(raw, const [
+      'id',
+      'videoId',
+      'docId',
+    ]);
+
     return HomeVideo(
-      id: video['id'] ?? 'discover_${DateTime.now().millisecondsSinceEpoch}',
-      videoURL: video['videoUrl'] ?? video['videoURL'] ?? '',
-      thumbnailURL: video['thumbnailUrl'] ?? video['thumbnailURL'] ?? '',
-      caption: video['title'] ?? 'Discover Video',
+      id: id.isNotEmpty
+          ? id
+          : (docId.isNotEmpty
+              ? docId
+              : 'discover_${DateTime.now().millisecondsSinceEpoch}'),
+      videoURL: playbackUrl,
+      thumbnailURL: thumbnailUrl.isNotEmpty ? thumbnailUrl : fallbackThumbnail,
+      caption: caption.isNotEmpty ? caption : 'Discover Video',
       creator: User(
-        id: video['creatorId'] ?? 'unknown_creator',
-        username: video['creator'] ?? 'Unknown Creator',
-        displayName: video['creatorDisplayName'] ??
-            video['creator'] ??
-            'Unknown Creator',
-        avatarURL: video['creatorAvatar'] ?? '',
-        bio: video['creatorBio'] ?? '',
-        hashtags: _safeCastToStringList(video['creatorHashtags']),
-        followerCount: FieldMapper.safeInt(video['creatorFollowers']),
-        followingCount: FieldMapper.safeInt(video['creatorFollowing']),
-        postCount: FieldMapper.safeInt(video['creatorVideos']),
+        id: creatorId.isNotEmpty ? creatorId : 'unknown_creator',
+        username: creatorName.isNotEmpty ? creatorName : 'Unknown Creator',
+        displayName: creatorDisplayName.isNotEmpty
+            ? creatorDisplayName
+            : 'Unknown Creator',
+        avatarURL: _firstString(creatorMap, const [
+          'creatorAvatar',
+          'avatarUrl',
+          'avatarURL',
+          'profileImageUrl',
+          'photoUrl',
+        ]),
+        bio: DiscoverFieldMapper.safeString(creatorMap['creatorBio'] ?? raw['bio']),
+        hashtags: _safeCastToStringList(
+          creatorMap['creatorHashtags'] ?? raw['hashtags'] ?? raw['tags'],
+        ),
+        followerCount: DiscoverFieldMapper.safeCount(creatorMap, const [
+          'creatorFollowers',
+          'followers',
+          'followerCount',
+        ]),
+        followingCount: DiscoverFieldMapper.safeCount(creatorMap, const [
+          'creatorFollowing',
+          'following',
+          'followingCount',
+        ]),
+        postCount: DiscoverFieldMapper.safeCount(creatorMap, const [
+          'creatorVideos',
+          'videos',
+          'postCount',
+        ]),
       ),
-      likes: FieldMapper.safeInt(video['likes']),
-      comments: FieldMapper.safeInt(video['comments']),
-      views: FieldMapper.safeInt(video['views']),
-      duration: FieldMapper.safeDouble(video['duration']),
-      isLiked: video['isLiked'] ?? false,
-      isFavorited: video['isFavorited'] ?? false,
-      createdAt: video['createdAt'] ?? Timestamp.now(),
+      likes: DiscoverFieldMapper.safeCount(
+          raw, const ['likeCount', 'likesCount', 'likes']),
+      comments: DiscoverFieldMapper.safeCount(
+          raw, const ['commentCount', 'commentsCount', 'comments']),
+      views: DiscoverFieldMapper.safeCount(raw, const ['viewCount', 'views']),
+      duration: DiscoverFieldMapper.safeDouble(
+        raw['duration'] ??
+            (raw['metadata'] is Map
+                ? (raw['metadata'] as Map)['duration']
+                : null),
+      ),
+      isLiked: raw['isLiked'] == true,
+      isFavorited: raw['isFavorited'] == true || raw['isBookmarked'] == true,
+      categoryId:
+          _firstString(raw, const ['categoryId', 'category', 'category_id']),
+      status: _firstString(raw, const ['status']).isNotEmpty
+          ? _firstString(raw, const ['status'])
+          : 'ready',
+      createdAt:
+          raw['createdAt'] is Timestamp ? raw['createdAt'] : Timestamp.now(),
     );
+  }
+
+  Map<String, dynamic> _normalizedVideoData(Map<String, dynamic> video) {
+    final raw = video['data'];
+    if (raw is Map) {
+      return <String, dynamic>{
+        ...Map<String, dynamic>.from(raw),
+        if (video['docId'] != null) 'docId': video['docId'],
+      };
+    }
+    return video;
+  }
+
+  String _firstString(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  String _playbackUrlFor(Map<String, dynamic> data) {
+    return resolveReadyPlaybackUrl(data) ?? '';
+  }
+
+  String _playbackSourceFor(Map<String, dynamic> data) {
+    if (_firstString(
+            data, const ['muxPlaybackId', 'playbackId', 'mux_playback_id'])
+        .isNotEmpty) {
+      return 'mux';
+    }
+    if (_firstString(
+            data, const ['hlsUrl', 'hlsURL', 'playbackUrl', 'streamUrl'])
+        .isNotEmpty) {
+      return 'hls';
+    }
+    if (_firstString(data, const [
+      'videoUrl',
+      'videoURL',
+      'downloadUrl',
+      'url',
+      'fileUrl'
+    ]).isNotEmpty) {
+      return 'videoUrl';
+    }
+    return 'missing';
   }
 
   Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
@@ -984,10 +1163,18 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         _navigateToActivity(context);
       },
       child: Container(
-        key: ProductTourTargetKeys.discoverActivity,
-        margin: const EdgeInsets.only(right: 16),
-        padding: const EdgeInsets.all(8),
+        key: ProductTourTargetKeys.maybe(
+          ProductTourTargetKeys.discoverActivity,
+        ),
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: s.searchFill,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: s.searchBorder),
+        ),
         child: Stack(
+          alignment: Alignment.center,
           children: <Widget>[
             Icon(
               Icons.notifications_outlined,
@@ -997,8 +1184,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Notification badge
             if (totalUnreadCount > 0)
               Positioned(
-                right: 0,
-                top: 0,
+                right: 7,
+                top: 7,
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: const BoxDecoration(
@@ -1054,7 +1241,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     final discoverState = ref.watch(discoverProvider);
     final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
     final bool isDark = theme.brightness == Brightness.dark;
     final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return Scaffold(
@@ -1066,427 +1252,676 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             end: Alignment.bottomCenter,
             colors: isDark
                 ? <Color>[
+                    const Color(0xFF121A35),
                     StThemeColors.darkBackground,
-                    scheme.surfaceContainerLow,
-                    scheme.surface,
                   ]
                 : <Color>[
-                    scheme.primary.withValues(alpha: 0.12),
-                    scheme.surfaceContainerLow,
-                    scheme.surface,
+                    Colors.white,
+                    StThemeColors.lightBackground,
                   ],
           ),
         ),
-        child: RefreshIndicator(
-          color: s.refreshColor,
-          backgroundColor: s.refreshBackground,
-          onRefresh: _refreshDiscoverView,
-          child: CustomScrollView(
-            controller: _discoverScrollController,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-              // App Bar
-              SliverAppBar(
-                backgroundColor: s.appBar,
-                elevation: 0,
-                automaticallyImplyLeading: widget.showAppBarBackButton,
-                leading: widget.showAppBarBackButton
-                    ? InstantIconButton(
-                        icon: Icon(
-                          Icons.arrow_back,
-                          color: s.onAppBar,
-                        ),
-                        onPressed: () => Navigator.of(context).pop(),
-                        hapticType: HapticFeedbackType.lightImpact,
-                      )
-                    : const SizedBox(width: 8),
-                title: Text(
-                  'Discover',
-                  style: TextStyle(
-                    color: s.onAppBar,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+        child: Stack(
+          children: [
+            Positioned(
+              top: -80,
+              right: -60,
+              child: IgnorePointer(
+                child: Container(
+                  width: 220,
+                  height: 220,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: <Color>[
+                        StThemeColors.brandPurple.withValues(alpha: 0.22),
+                        Colors.transparent,
+                      ],
+                    ),
                   ),
                 ),
-                centerTitle: true,
-                actions: [_buildNotificationButton(context, ref)],
               ),
-
-              // Search Bar
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                  child: Column(
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          AppNavigator.openSearch(context);
-                        },
-                        child: Container(
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: s.searchFill,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: s.searchBorder,
-                              width: 1,
-                            ),
-                            boxShadow: s.isLight
-                                ? <BoxShadow>[
-                                    BoxShadow(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.shadow.withValues(
-                                            alpha: 0.08,
-                                          ),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 10),
-                                    ),
-                                  ]
-                                : <BoxShadow>[
-                                    BoxShadow(
-                                      color: scheme.shadow.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 10),
-                                    ),
-                                  ],
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: <Widget>[
-                              Icon(
-                                Icons.search,
-                                color: scheme.primary,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 10),
-                              Flexible(
-                                child: Text(
-                                  'Search creators, videos, hashtags…',
-                                  style: TextStyle(
-                                    color: s.searchPlaceholder,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
+            ),
+            SafeArea(
+              bottom: false,
+              child: RefreshIndicator(
+                color: s.refreshColor,
+                backgroundColor: s.refreshBackground,
+                onRefresh: _refreshDiscoverView,
+                child: CustomScrollView(
+                  controller: _discoverScrollController,
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverAppBar(
+                      expandedHeight: 108,
+                      pinned: false,
+                      floating: false,
+                      snap: false,
+                      backgroundColor: Colors.transparent,
+                      surfaceTintColor: Colors.transparent,
+                      elevation: 0,
+                      automaticallyImplyLeading: false,
+                      flexibleSpace: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          STDiscoverTokens.pagePadding,
+                          8,
+                          STDiscoverTokens.pagePadding,
+                          12,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (widget.showAppBarBackButton) ...[
+                              InstantIconButton(
+                                icon: Icon(
+                                  Icons.arrow_back,
+                                  color: s.onAppBar,
                                 ),
+                                onPressed: () => Navigator.of(context).pop(),
+                                hapticType: HapticFeedbackType.lightImpact,
                               ),
                               const SizedBox(width: 8),
-                              Icon(
-                                Icons.arrow_forward_ios,
-                                color: s.searchChevron,
-                                size: 14,
-                              ),
                             ],
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Discover',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: s.onAppBar,
+                                      fontSize: 34,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.8,
+                                      height: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    'Find creators, clips, and growth tools',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: s.onAppBar.withValues(alpha: 0.72),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            _buildNotificationButton(context, ref),
+                            if (FeatureFlags.discoverFilters) ...[
+                              const SizedBox(width: 10),
+                              _buildDiscoverFilterButton(context),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    SliverToBoxAdapter(
+                      child: _buildDiscoverSearchBar(context, s),
+                    ),
+
+                    SliverToBoxAdapter(
+                      child: _buildDiscoverHeroCard(context, s),
+                    ),
+
+                    // Trending Creators
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                          left: STDiscoverTokens.pagePadding,
+                          right: STDiscoverTokens.pagePadding,
+                          top: 0,
+                          bottom: STDiscoverTokens.sectionGap,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(0, 16, 0, 18),
+                          decoration: BoxDecoration(
+                            color: s.cardFill,
+                            borderRadius: BorderRadius.circular(
+                              STDiscoverTokens.cardRadius,
+                            ),
+                            border: Border.all(
+                              color: s.cardBorder,
+                            ),
+                            boxShadow: _discoverShadow(context, s, heavy: true),
+                          ),
+                          child: TrendingCreatorsSection(
+                            isDark: !s.isLight,
+                            onCreatorTap: _onCreatorTapped,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Trending Creators Section with Lazy Loading
-              SliverToBoxAdapter(
-                child: KeyedSubtree(
-                  key: ProductTourTargetKeys.discoverTrending,
-                  child: Padding(
-                  padding: const EdgeInsets.only(
-                    left: 20,
-                    right: 20,
-                    top: 12,
-                    bottom: 16,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                    decoration: BoxDecoration(
-                      color: s.cardFill,
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: s.cardBorder,
-                      ),
-                      boxShadow: s.isLight
-                          ? <BoxShadow>[
-                              BoxShadow(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.shadow.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ]
-                          : null,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildSectionHeading(
-                          context,
-                          'Trending Creators',
-                          'People gaining momentum right now',
+
+                    SliverToBoxAdapter(
+                      child: KeyedSubtree(
+                        key: ProductTourTargetKeys.maybe(
+                          ProductTourTargetKeys.discoverCategories,
                         ),
-                        const SizedBox(height: 16),
-                        if (discoverState.isLoadingTrendingCreators &&
-                            discoverState.trendingCreators.isEmpty)
-                          _buildLoadingState(context)
-                        else if (discoverState.trendingCreators.isEmpty)
-                          _buildEmptyTrendingCreatorsState(context)
-                        else
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: 0.78,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left: STDiscoverTokens.pagePadding,
+                            right: STDiscoverTokens.pagePadding,
+                            top: 0,
+                            bottom: STDiscoverTokens.sectionGap,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                            decoration: BoxDecoration(
+                              color: s.cardFill,
+                              borderRadius: BorderRadius.circular(
+                                  STDiscoverTokens.cardRadius),
+                              border: Border.all(
+                                color: s.cardBorder,
                               ),
-                              itemCount: discoverState.trendingCreators.length,
-                              itemBuilder: (context, index) {
-                                final creator =
-                                    discoverState.trendingCreators[index];
-                                return _buildTrendingCreatorCard(
+                              boxShadow:
+                                  _discoverShadow(context, s, heavy: true),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildSectionHeading(
                                   context,
-                                  creator,
-                                  index,
-                                );
-                              },
+                                  'Categories',
+                                  'Swipe into creator lanes',
+                                ),
+                                const SizedBox(height: 14),
+                                SizedBox(
+                                  height: 196,
+                                  width: double.infinity,
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final pages =
+                                          <List<discover_models.Category>>[];
+                                      for (int i = 0;
+                                          i < discoverState.categories.length;
+                                          i += 6) {
+                                        pages.add(
+                                          discoverState.categories
+                                              .skip(i)
+                                              .take(6)
+                                              .toList(growable: false),
+                                        );
+                                      }
+                                      return PageView.builder(
+                                        clipBehavior: Clip.none,
+                                        physics: const PageScrollPhysics(
+                                          parent: BouncingScrollPhysics(),
+                                        ),
+                                        itemCount: pages.length,
+                                        onPageChanged: (index) {
+                                          if (!mounted) return;
+                                          setState(
+                                              () => _categoryPageIndex = index);
+                                        },
+                                        itemBuilder: (context, pageIndex) {
+                                          final page = pages[pageIndex];
+                                          return Padding(
+                                            padding: EdgeInsets.only(
+                                              right:
+                                                  pageIndex == pages.length - 1
+                                                      ? 0
+                                                      : 10,
+                                            ),
+                                            child: GridView.builder(
+                                              physics:
+                                                  const NeverScrollableScrollPhysics(),
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 4),
+                                              gridDelegate:
+                                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                                crossAxisCount: 3,
+                                                crossAxisSpacing: 10,
+                                                mainAxisSpacing: 10,
+                                                childAspectRatio: 1.22,
+                                              ),
+                                              itemCount: page.length,
+                                              itemBuilder: (context, index) {
+                                                final category = page[index];
+                                                return _accessibilityService
+                                                    .createAccessibleButton(
+                                                  semanticLabel:
+                                                      'Category ${category.name}',
+                                                  semanticHint: _selectedCategory ==
+                                                          category.id
+                                                      ? 'Currently selected category. '
+                                                          'Tap to deselect.'
+                                                      : 'Tap to select this category',
+                                                  onPressed: () =>
+                                                      _onCategorySelected(
+                                                    category,
+                                                  ),
+                                                  hapticFeedbackType:
+                                                      AccessibilityHapticFeedbackType
+                                                          .light,
+                                                  child: CategoryCard(
+                                                    key: ValueKey(category.id),
+                                                    category: category,
+                                                    isSelected:
+                                                        _selectedCategory ==
+                                                            category.id,
+                                                    hasCategorySelected:
+                                                        _selectedCategory !=
+                                                            null,
+                                                    onTap: () =>
+                                                        _onCategorySelected(
+                                                      category,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                _buildCategoryPageDots(
+                                    discoverState.categories),
+                              ],
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                ),
-                ),
-              ),
-
-              SliverToBoxAdapter(
-                child: KeyedSubtree(
-                  key: ProductTourTargetKeys.discoverCategories,
-                  child: Padding(
-                  padding: EdgeInsets.only(
-                    left: 20,
-                    right: 20,
-                    top: 0,
-                    bottom: 16 + MediaQuery.paddingOf(context).bottom,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                    decoration: BoxDecoration(
-                      color: s.cardFill,
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: s.cardBorder,
+                        ),
                       ),
-                      boxShadow: s.isLight
-                          ? <BoxShadow>[
-                              BoxShadow(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.shadow.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
+                    ),
+
+                    // Content based on category selection
+                    if (_selectedCategory == null) ...[
+                      // Default view - show resources
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            STDiscoverTokens.pagePadding,
+                            0,
+                            STDiscoverTokens.pagePadding,
+                            STDiscoverTokens.sectionGap,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                            decoration: BoxDecoration(
+                              color: s.cardFill,
+                              borderRadius: BorderRadius.circular(
+                                  STDiscoverTokens.cardRadius),
+                              border: Border.all(
+                                color: s.cardBorder,
                               ),
-                            ]
-                          : null,
-                    ),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeading(
-                            context,
-                            'Categories',
-                            'Jump into the corner of the app that fits your mood',
-                          ),
-                          const SizedBox(height: 14),
-                          SizedBox(
-                            height: 196,
-                            width: double.infinity,
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                              final pages = <List<discover_models.Category>>[];
-                              for (int i = 0;
-                                  i < discoverState.categories.length;
-                                  i += 6) {
-                                pages.add(
-                                  discoverState.categories
-                                      .skip(i)
-                                      .take(6)
-                                      .toList(growable: false),
-                                );
-                              }
-                              return PageView.builder(
-                                clipBehavior: Clip.none,
-                                physics: const PageScrollPhysics(
-                                  parent: BouncingScrollPhysics(),
+                              boxShadow:
+                                  _discoverShadow(context, s, heavy: true),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildSectionHeading(
+                                  context,
+                                  'Creator Resources',
+                                  'Tools to help you grow faster',
                                 ),
-                                itemCount: pages.length,
-                                itemBuilder: (context, pageIndex) {
-                                  final page = pages[pageIndex];
-                                  return Padding(
-                                    padding: EdgeInsets.only(
-                                      right: pageIndex == pages.length - 1
-                                          ? 0
-                                          : 10,
-                                    ),
-                                    child: GridView.builder(
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      padding: const EdgeInsets.only(bottom: 4),
-                                      gridDelegate:
-                                          const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 3,
-                                        crossAxisSpacing: 10,
-                                        mainAxisSpacing: 10,
-                                        childAspectRatio: 1.22,
+                                const SizedBox(height: 12),
+                                ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount:
+                                      discoverState.recommendedContent.length,
+                                  itemBuilder: (context, index) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: RecommendedContentCard(
+                                        content: discoverState
+                                            .recommendedContent[index],
                                       ),
-                                      itemCount: page.length,
-                                      itemBuilder: (context, index) {
-                                        final category = page[index];
-                                        return _accessibilityService
-                                            .createAccessibleButton(
-                                          semanticLabel:
-                                              'Category ${category.name}',
-                                          semanticHint: _selectedCategory ==
-                                                  category.id
-                                              ? 'Currently selected category. '
-                                                  'Tap to deselect.'
-                                              : 'Tap to select this category',
-                                          onPressed: () => _onCategorySelected(
-                                            _selectedCategory == category.id
-                                                ? null
-                                                : category.id,
-                                          ),
-                                          hapticFeedbackType:
-                                              AccessibilityHapticFeedbackType
-                                                  .light,
-                                          child: CategoryCard(
-                                            key: ValueKey(category.id),
-                                            category: category,
-                                            isSelected: _selectedCategory ==
-                                                category.id,
-                                            hasCategorySelected:
-                                                _selectedCategory != null,
-                                            onTap: () => _onCategorySelected(
-                                              _selectedCategory == category.id
-                                                  ? null
-                                                  : category.id,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  );
-                                },
-                              );
-                            },
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              ),
+                      ),
+                    ] else ...[
+                      // Category selected - show 3-column video grid with tap to open swipeable feed
+                      _buildCategoryVideoGridSliver(context, s, discoverState),
+                    ],
 
-              // Content based on category selection
-              if (_selectedCategory == null) ...[
-                // Default view - show resources
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                      decoration: BoxDecoration(
-                        color: s.cardFill,
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: s.cardBorder,
+                    if (discoverState.recommendedContent.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: _buildRecommendedForYouSection(
+                          context,
+                          s,
+                          discoverState,
                         ),
-                        boxShadow: s.isLight
-                            ? <BoxShadow>[
-                                BoxShadow(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.shadow.withValues(
-                                        alpha: 0.08,
-                                      ),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ]
-                            : null,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeading(
-                            context,
-                            'Resources',
-                            'Helpful picks, tools, and ideas to explore next',
-                          ),
-                          const SizedBox(height: 12),
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: discoverState.recommendedContent.length,
-                            itemBuilder: (context, index) {
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: RecommendedContentCard(
-                                  content:
-                                      discoverState.recommendedContent[index],
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+
+                    // Bottom padding for tab bar
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 92 + MediaQuery.paddingOf(context).bottom,
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDiscoverSearchBar(BuildContext context, _DiscoverPageStyle s) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        STDiscoverTokens.pagePadding,
+        8,
+        STDiscoverTokens.pagePadding,
+        0,
+      ),
+      child: Semantics(
+        button: true,
+        label: 'Search creators, clips, games, and resources',
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            AppNavigator.openSearch(context);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            height: STDiscoverTokens.searchHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: s.searchFill,
+              borderRadius:
+                  BorderRadius.circular(STDiscoverTokens.compactCardRadius),
+              border: Border.all(color: s.searchBorder),
+              boxShadow: _discoverShadow(context, s, heavy: false),
+            ),
+            child: Row(
+              children: <Widget>[
+                const Icon(
+                  Icons.search_rounded,
+                  color: StThemeColors.brandBlue,
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Search creators, clips, games, resources...',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: s.searchPlaceholder,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              ] else ...[
-                // Category selected - show 3-column video grid with tap to open swipeable feed
-                _buildCategoryVideoGridSliver(context, s, discoverState),
+                Icon(
+                  Icons.north_east_rounded,
+                  color: s.searchChevron,
+                  size: 18,
+                ),
               ],
-
-              // Bottom padding for tab bar
-              const SliverToBoxAdapter(child: SizedBox(height: 60)),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSectionHeading(
+  Widget _buildDiscoverHeroCard(BuildContext context, _DiscoverPageStyle s) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        STDiscoverTokens.pagePadding,
+        12,
+        STDiscoverTokens.pagePadding,
+        STDiscoverTokens.sectionGap,
+      ),
+      child: Container(
+        height: STDiscoverTokens.heroHeight,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: s.heroGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: s.heroBorder),
+          boxShadow: [
+            BoxShadow(
+              color: StThemeColors.brandPurple.withValues(alpha: 0.24),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -24,
+              top: -30,
+              child: Icon(
+                Icons.travel_explore_rounded,
+                size: 150,
+                color: Colors.white.withValues(alpha: 0.13),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: const Text(
+                      'Creator Match',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'Find streamers who fit your content style.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      height: 1.05,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<BoxShadow> _discoverShadow(
     BuildContext context,
-    String title,
-    String subtitle,
+    _DiscoverPageStyle s, {
+    required bool heavy,
+  }) {
+    final color = Theme.of(context).colorScheme.shadow;
+    if (s.isLight) {
+      return [
+        BoxShadow(
+          color: color.withValues(alpha: heavy ? 0.10 : 0.07),
+          blurRadius: heavy ? 24 : 16,
+          offset: Offset(0, heavy ? 14 : 8),
+        ),
+      ];
+    }
+    return [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: heavy ? 0.28 : 0.18),
+        blurRadius: heavy ? 24 : 16,
+        offset: Offset(0, heavy ? 14 : 8),
+      ),
+    ];
+  }
+
+  Widget _buildDiscoverFilterButton(BuildContext context) {
+    if (!FeatureFlags.discoverFilters) {
+      return const SizedBox.shrink();
+    }
+    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
+    return Semantics(
+      button: true,
+      label: 'Open Discover filters',
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+        },
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: s.searchFill,
+            shape: BoxShape.circle,
+            border: Border.all(color: s.searchBorder),
+          ),
+          child: Icon(
+            Icons.tune_rounded,
+            color: s.onAppBar,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryPageDots(List<discover_models.Category> categories) {
+    final pageCount = (categories.length / 6).ceil();
+    if (pageCount <= 1) return const SizedBox.shrink();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(pageCount, (index) {
+        final isActive = index == _categoryPageIndex.clamp(0, pageCount - 1);
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          width: isActive ? 18 : 6,
+          height: 6,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: isActive
+                ? StThemeColors.brandPurple
+                : _DiscoverPageStyle.of(context).muted.withValues(alpha: 0.28),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildRecommendedForYouSection(
+    BuildContext context,
+    _DiscoverPageStyle s,
+    DiscoverState discoverState,
   ) {
+    final items = discoverState.recommendedContent.take(2).toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        STDiscoverTokens.pagePadding,
+        0,
+        STDiscoverTokens.pagePadding,
+        STDiscoverTokens.sectionGap,
+      ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        decoration: BoxDecoration(
+          color: s.cardFill,
+          borderRadius: BorderRadius.circular(STDiscoverTokens.cardRadius),
+          border: Border.all(color: s.cardBorder),
+          boxShadow: _discoverShadow(context, s, heavy: true),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeading(
+              context,
+              'Recommended For You',
+              'Based on your creator activity',
+            ),
+            const SizedBox(height: 12),
+            ...items.map(
+              (content) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: RecommendedContentCard(content: content),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeading(
+      BuildContext context, String title, String subtitle,
+      {String? actionLabel, VoidCallback? onAction}) {
     final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          title,
-          style: TextStyle(
-            color: s.onCard,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: s.onCard,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ),
+            if (actionLabel != null && onAction != null)
+              TextButton(
+                onPressed: onAction,
+                style: TextButton.styleFrom(
+                  foregroundColor: StThemeColors.brandPurple,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: Text(
+                  actionLabel,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
@@ -1494,6 +1929,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           style: TextStyle(
             color: s.muted,
             fontSize: 13,
+            fontWeight: FontWeight.w500,
             height: 1.3,
           ),
         ),
@@ -1506,51 +1942,48 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     _DiscoverPageStyle s,
     DiscoverState discoverState,
   ) {
-    if (_selectedCategory == null) {
+    final String? selectedCategoryId = _selectedCategory;
+    if (selectedCategoryId == null) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
 
-    // Get the selected category
-    final selectedCategory = discoverState.categories.firstWhere(
-      (cat) => cat.id == _selectedCategory,
+    final discover_models.Category selectedCategory =
+        discoverState.categories.firstWhere(
+      (discover_models.Category cat) => cat.id == selectedCategoryId,
       orElse: () => discoverState.categories.first,
     );
 
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        padding: const EdgeInsets.fromLTRB(
+          STDiscoverTokens.pagePadding,
+          0,
+          STDiscoverTokens.pagePadding,
+          STDiscoverTokens.sectionGap,
+        ),
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
           decoration: BoxDecoration(
             color: s.cardFill,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(STDiscoverTokens.cardRadius),
             border: Border.all(
               color: s.cardBorder,
             ),
-            boxShadow: s.isLight
-                ? <BoxShadow>[
-                    BoxShadow(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.shadow.withValues(
-                            alpha: 0.08,
-                          ),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
+            boxShadow: _discoverShadow(context, s, heavy: true),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               _buildSectionHeading(
                 context,
-                selectedCategory.name,
+                '${selectedCategory.name} Clips',
                 'Swipe into a focused feed from this category',
               ),
               const SizedBox(height: 12),
-              _buildVideoGridWithTapToSwipe(selectedCategory.id, discoverState),
+              _buildVideoGridWithTapToSwipe(
+                selectedCategoryId,
+                discoverState,
+              ),
             ],
           ),
         ),
@@ -1562,28 +1995,37 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     String categoryId,
     DiscoverState discoverState,
   ) {
-    final future = _categoryFeedFutures.putIfAbsent(
-      categoryId,
-      () => _getCategoryVideosForFeed(categoryId),
-    );
+    final Future<List<Map<String, dynamic>>> future =
+        _categoryFeedFutures[categoryId] ??=
+            _getCategoryVideosForFeed(categoryId);
     return FutureBuilder<List<Map<String, dynamic>>>(
+      key: ValueKey<String>('category-feed-$categoryId'),
       future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          );
+          return _buildVideoGridSkeleton(context);
         }
 
         if (snapshot.hasError) {
-          return _buildErrorState(context, snapshot.error.toString());
+          return _buildErrorState(
+            context,
+            UserFacingError.message(snapshot.error),
+          );
         }
 
-        final categoryVideos = snapshot.data ?? [];
+        final List<Map<String, dynamic>> rawList = snapshot.data ?? [];
+        final List<Map<String, dynamic>> categoryVideos = rawList
+            .where(
+              (Map<String, dynamic> v) =>
+                  resolveReadyPlaybackUrl(_normalizedVideoData(v)) != null,
+            )
+            .toList(growable: false);
+        if (kDebugMode) {
+          debugPrint(
+            'Discover category grid: id=$categoryId raw=${rawList.length} '
+            'playable=${categoryVideos.length}',
+          );
+        }
 
         if (categoryVideos.isEmpty) {
           return _buildEmptyCategoryState();
@@ -1593,10 +2035,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 0.64,
           ),
           itemCount: categoryVideos.length,
           itemBuilder: (context, index) {
@@ -1618,118 +2060,223 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   ) {
     return Builder(
       builder: (BuildContext context) {
+        final raw = _normalizedVideoData(video);
         final ColorScheme cs = Theme.of(context).colorScheme;
         final Color tileBg = cs.surfaceContainerHighest;
         final Color iconMuted = cs.onSurfaceVariant;
-        return GestureDetector(
-          onTap: () {
-            LoggingService.instance.debug(
-              'Tapped video: ${video['title']}',
-              tag: 'DiscoverView',
-            );
-            _openSwipeableVideoFeed(allVideos, currentIndex);
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: tileBg,
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Builder(
-                  builder: (BuildContext innerContext) {
-                    final thumbnailUrl = video['thumbnailUrl'] ??
-                        video['thumbnailURL'] ??
-                        video['thumbnail'] ??
-                        '';
+        final creatorName = DiscoverFieldMapper.safeString(
+          raw['creatorUsername'] ??
+              raw['username'] ??
+              raw['displayName'] ??
+              'creator',
+        );
+        final viewCount = math.max(
+          0,
+          DiscoverFieldMapper.safeInt(raw['viewCount'] ?? raw['views']),
+        );
+        return Semantics(
+          button: true,
+          label: 'Clip by $creatorName, $viewCount views',
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              LoggingService.instance.debug(
+                'Tapped video: ${raw['title'] ?? raw['caption'] ?? raw['docId']}',
+                tag: 'DiscoverView',
+              );
+              _openSwipeableVideoFeed(allVideos, currentIndex);
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: tileBg,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.10),
+                ),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Builder(
+                    builder: (BuildContext innerContext) {
+                      final muxPlaybackId = _firstString(raw, const [
+                        'muxPlaybackId',
+                        'playbackId',
+                        'mux_playback_id',
+                      ]);
+                      final thumbnailUrl = _firstString(raw, const [
+                        'thumbnailUrl',
+                        'thumbnailURL',
+                        'thumbnail',
+                        'muxThumbnailUrl',
+                      ]);
+                      final effectiveThumbnailUrl = thumbnailUrl.isNotEmpty
+                          ? thumbnailUrl
+                          : (muxPlaybackId.isEmpty
+                              ? ''
+                              : 'https://image.mux.com/$muxPlaybackId/thumbnail.jpg?width=720&time=0');
 
-                    if (thumbnailUrl.isNotEmpty) {
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          thumbnailUrl,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) {
-                              return child;
-                            }
-                            return Container(
-                              color: tileBg,
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    cs.primary,
+                      if (effectiveThumbnailUrl.isNotEmpty) {
+                        return ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: Image.network(
+                            effectiveThumbnailUrl,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) {
+                                return child;
+                              }
+                              return Container(
+                                color: tileBg,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      cs.primary,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: tileBg,
-                              child: Center(
-                                child: Icon(
-                                  Icons.video_library_outlined,
-                                  color: iconMuted,
-                                  size: 32,
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: tileBg,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.video_library_outlined,
+                                    color: iconMuted,
+                                    size: 32,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
+                        );
+                      }
+                      return Container(
+                        color: tileBg,
+                        child: Center(
+                          child: Icon(
+                            Icons.video_library_outlined,
+                            color: iconMuted,
+                            size: 32,
+                          ),
                         ),
                       );
-                    }
-                    return Container(
-                      color: tileBg,
-                      child: Center(
-                        child: Icon(
-                          Icons.video_library_outlined,
-                          color: iconMuted,
-                          size: 32,
+                    },
+                  ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.10),
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.62),
+                          ],
                         ),
                       ),
-                    );
-                  },
-                ),
-                // Duration badge (if available)
-                Builder(
-                  builder: (context) {
-                    dynamic duration = video['duration'];
-                    if (duration == null) {
-                      final metadata =
-                          video['metadata'] as Map<String, dynamic>?;
-                      duration = metadata?['duration'];
-                    }
-
-                    if (duration != null) {
-                      return Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.38),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 10,
+                    right: 10,
+                    bottom: 10,
+                    child: Row(
+                      children: [
+                        Expanded(
                           child: Text(
-                            _formatDuration(duration),
+                            creatorName.startsWith('@')
+                                ? creatorName
+                                : '@$creatorName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ],
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.local_fire_department_rounded,
+                          color: StThemeColors.warning,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          _formatCompactCount(viewCount),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Duration badge (if available)
+                  Builder(
+                    builder: (context) {
+                      dynamic duration = raw['duration'];
+                      if (duration == null) {
+                        final metadata =
+                            raw['metadata'] as Map<String, dynamic>?;
+                        duration = metadata?['duration'];
+                      }
+
+                      if (duration != null) {
+                        return Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _formatDuration(duration),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1773,32 +2320,109 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     List<Map<String, dynamic>> videos,
     int startIndex,
   ) {
-    // Convert to HomeVideo objects for VideoPlayerViewOptimized
-    final homeVideos =
-        videos.map((video) => _convertToHomeVideo(video)).toList();
+    final normalizedEntries = <({HomeVideo video, int originalIndex})>[];
 
-    // Navigate to full-screen swipeable video feed using HomeView pattern
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _buildCategoryVideoFeed(
-          videos: homeVideos,
-          startIndex: startIndex,
-          categoryId: _selectedCategory ?? 'unknown',
-        ),
-      ),
+    for (var i = 0; i < videos.length; i++) {
+      final raw = _normalizedVideoData(videos[i]);
+      final feedVideo = _convertToHomeVideo(videos[i]);
+      if (feedVideo.videoURL.trim().isEmpty) {
+        if (kDebugMode) {
+          debugPrint(
+            '⚠️ Discover category video skipped: id=${feedVideo.id} source=${_playbackSourceFor(raw)}',
+          );
+        }
+        continue;
+      }
+      normalizedEntries.add((video: feedVideo, originalIndex: i));
+    }
+
+    final tappedRaw = startIndex >= 0 && startIndex < videos.length
+        ? _normalizedVideoData(videos[startIndex])
+        : <String, dynamic>{};
+    if (kDebugMode) {
+      final tappedPlaybackUrl = resolveReadyPlaybackUrl(tappedRaw);
+      debugPrint(
+        '🎬 Discover category tap debug: '
+        'id=${tappedRaw['id'] ?? tappedRaw['videoId'] ?? tappedRaw['docId']} '
+        'muxPlaybackId=${_firstString(tappedRaw, const [
+              'muxPlaybackId',
+              'playbackId',
+              'mux_playback_id'
+            ])} '
+        'hlsUrl=${_firstString(tappedRaw, const [
+              'hlsUrl',
+              'playbackUrl',
+              'streamUrl',
+              'hls_url'
+            ])} '
+        'videoUrl=${_firstString(tappedRaw, const [
+              'videoUrl',
+              'downloadUrl',
+              'url',
+              'fileUrl',
+              'videoURL'
+            ])} '
+        'thumbnailUrl=${_firstString(tappedRaw, const [
+              'thumbnailUrl',
+              'thumbnail',
+              'muxThumbnailUrl',
+              'thumbnailURL'
+            ])} '
+        'selectedPlaybackUrl=$tappedPlaybackUrl '
+        'status=${tappedRaw['status']}',
+      );
+    }
+    final normalizedStartIndex = normalizedEntries.indexWhere(
+      (entry) => entry.originalIndex == startIndex,
     );
-  }
 
-  /// Category video feed widget that follows HomeView's audio management pattern exactly
-  Widget _buildCategoryVideoFeed({
-    required List<HomeVideo> videos,
-    required int startIndex,
-    required String categoryId,
-  }) {
-    return _CategoryVideoFeedStateful(
-      videos: videos,
-      startIndex: startIndex,
-      categoryId: categoryId,
+    if (normalizedEntries.isEmpty || normalizedStartIndex < 0) {
+      if (kDebugMode) {
+        debugPrint(
+          '⚠️ Discover category video missing playback source: tapped=${tappedRaw['id'] ?? tappedRaw['videoId'] ?? tappedRaw['docId']} source=${_playbackSourceFor(tappedRaw)} count=${videos.length}',
+        );
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This video is still processing.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final homeVideos =
+        normalizedEntries.map((entry) => entry.video).toList(growable: false);
+
+    final HomeVideo tappedVideoForWarm = homeVideos[normalizedStartIndex];
+    final String warmUrl = tappedVideoForWarm.videoURL.trim();
+    if (warmUrl.isNotEmpty) {
+      unawaited(
+        GlobalPlaybackManager.instance.getOrCreateController(
+          tappedVideoForWarm.id,
+          warmUrl,
+          owner: PlaybackOwners.player,
+        ),
+      );
+    }
+
+    if (kDebugMode) {
+      final tappedVideo = normalizedEntries[normalizedStartIndex].video;
+      debugPrint(
+        '🎬 Discover category feed opening: categoryId=${_selectedCategory ?? 'unknown'} '
+        'tappedVideoId=${tappedVideo.id} normalizedCount=${homeVideos.length} '
+        'initialIndex=$normalizedStartIndex '
+        'playbackUrl=${tappedVideo.videoURL}',
+      );
+    }
+
+    unawaited(
+      DiscoverView.openCategoryVideoSwipeFeed<void>(
+        context,
+        videos: homeVideos,
+        startIndex: normalizedStartIndex,
+        categoryId: _selectedCategory ?? 'unknown',
+      ),
     );
   }
 
@@ -1812,43 +2436,47 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      // Load mixed videos (new + trending)
-      final mixedVideos = await _loadMixedCategoryVideos(categoryId, null);
+      List<Map<String, dynamic>> mixedVideos =
+          await _fetchCategoryVideoCandidatesFromFirestore(categoryId);
+      if (mixedVideos.isEmpty) {
+        mixedVideos = await _loadMixedCategoryVideos(categoryId, null);
+      }
 
-      LoggingService.instance.debug(
-        'Raw mixed videos loaded: ${mixedVideos.length} for $categoryId',
-        tag: 'DiscoverView',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          'Discover category fetch merged: id=$categoryId '
+          'rawCount=${mixedVideos.length}',
+        );
+      }
 
       if (mixedVideos.isEmpty) {
         LoggingService.instance.debug(
-          'No mixed videos found for $categoryId',
+          'No videos found for $categoryId',
           tag: 'DiscoverView',
         );
-        return [];
+        return <Map<String, dynamic>>[];
       }
 
-      // Sort videos: new videos first, then by trending score
-      mixedVideos.sort((a, b) {
-        final aIsNew = a['isNew'] as bool;
-        final bIsNew = b['isNew'] as bool;
-        final aScore = a['trendingScore'] as double;
-        final bScore = b['trendingScore'] as double;
-
-        // New videos always appear first
-        if (aIsNew && !bIsNew) return -1;
-        if (!aIsNew && bIsNew) return 1;
-
-        // Then sort by trending score (highest first)
+      mixedVideos.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+        final bool aIsNew = a['isNew'] as bool;
+        final bool bIsNew = b['isNew'] as bool;
+        final double aScore = a['trendingScore'] as double;
+        final double bScore = b['trendingScore'] as double;
+        if (aIsNew && !bIsNew) {
+          return -1;
+        }
+        if (!aIsNew && bIsNew) {
+          return 1;
+        }
         return bScore.compareTo(aScore);
       });
 
-      // Convert to the format expected by the UI
-      final videos = <Map<String, dynamic>>[];
-      final userIds = <String>{};
+      final List<Map<String, dynamic>> videos = <Map<String, dynamic>>[];
+      final Set<String> userIds = <String>{};
 
-      for (final videoData in mixedVideos) {
-        final data = videoData['data'] as Map<String, dynamic>?;
+      for (final Map<String, dynamic> videoData in mixedVideos) {
+        final Map<String, dynamic>? data =
+            videoData['data'] as Map<String, dynamic>?;
         if (data == null) {
           LoggingService.instance.debug(
             'Skipping video with null data: ${videoData['docId']}',
@@ -1857,25 +2485,27 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           continue;
         }
 
-        final status = data['status'] as String? ?? '';
-        final isValidStatus =
-            status == 'published' || status == 'ready' || status == 'active';
-        if (!isValidStatus) {
-          final videoId =
-              videoData['docId'] as String? ?? data['id'] as String?;
-          if (videoId != null) {
-            LoggingService.instance.debug(
-              'Skipping deleted video: $videoId',
-              tag: 'DiscoverView',
-            );
-          }
+        if (!isVideoVisibleInFeed(data)) {
+          continue;
+        }
+        final String status = (data['status'] as String?)?.trim() ?? '';
+        if (status == 'failed') {
           continue;
         }
 
-        final userId = (data['userId'] ??
-            data['creatorId'] ??
-            data['creator_id']) as String?;
-        if (userId != null) {
+        final String? playback = resolveReadyPlaybackUrl(data);
+        if (playback == null || playback.isEmpty) {
+          continue;
+        }
+
+        final String userId = _firstString(data, const <String>[
+          'userId',
+          'creatorId',
+          'creator_id',
+          'uid',
+          'ownerId',
+        ]);
+        if (userId.isNotEmpty) {
           userIds.add(userId);
         }
       }
@@ -1885,22 +2515,38 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      // ✅ FIX #3: Batch fetch user data with chunking (Firestore whereIn limit is 10)
-      final userMap = await _fetchUsersByIds(userIds);
+      final Map<String, Map<String, dynamic>> userMap =
+          await _fetchUsersByIds(userIds);
 
       LoggingService.instance.debug(
         'Fetched ${userMap.length} user documents for $categoryId',
         tag: 'DiscoverView',
       );
 
-      // Build final video list
-      for (final videoData in mixedVideos) {
-        final data = videoData['data'] as Map<String, dynamic>;
-        final userId = (data['userId'] ??
-            data['creatorId'] ??
-            data['creator_id']) as String?;
+      for (final Map<String, dynamic> videoData in mixedVideos) {
+        final Map<String, dynamic> data =
+            videoData['data'] as Map<String, dynamic>;
+        if (!isVideoVisibleInFeed(data)) {
+          continue;
+        }
+        final String status = (data['status'] as String?)?.trim() ?? '';
+        if (status == 'failed') {
+          continue;
+        }
+        final String? playback = resolveReadyPlaybackUrl(data);
+        if (playback == null || playback.isEmpty) {
+          continue;
+        }
 
-        if (userId == null) {
+        final String userId = _firstString(data, const <String>[
+          'userId',
+          'creatorId',
+          'creator_id',
+          'uid',
+          'ownerId',
+        ]);
+
+        if (userId.isEmpty) {
           LoggingService.instance.debug(
             'Skipping video with null userId: ${videoData['docId']}',
             tag: 'DiscoverView',
@@ -1908,53 +2554,47 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           continue;
         }
 
-        final userData = userMap[userId];
-        if (userData == null) {
-          LoggingService.instance.debug(
-            'Skipping video with missing user data: ${videoData['docId']}, userId: $userId',
-            tag: 'DiscoverView',
+        final Map<String, dynamic>? userData = userMap[userId];
+        if (userData == null && kDebugMode) {
+          debugPrint(
+            'Using video fallback creator data for ${videoData['docId']}, '
+            'userId: $userId',
           );
-          continue;
         }
 
-        final thumbnailUrl = FieldMapper.getThumbnailUrl(data);
+        videos.add(
+          _fullCategoryVideoMap(
+            docId: DiscoverFieldMapper.safeString(videoData['docId']),
+            data: data,
+            userData: userData,
+            categoryId: categoryId,
+            isNew: videoData['isNew'] == true,
+            trendingScore: DiscoverFieldMapper.safeDouble(videoData['trendingScore']),
+          ),
+        );
+      }
 
-        final durationValue = data['duration'] ?? data['metadata']?['duration'];
-        videos.add({
-          'id': videoData['docId'],
-          'title': FieldMapper.safeString(
-            data['caption'] ??
-                data['title'] ??
-                data['metadata']?['title'] ??
-                'Untitled',
-          ),
-          'creator': FieldMapper.getDisplayName(userData),
-          'thumbnail': thumbnailUrl,
-          'thumbnailUrl': thumbnailUrl,
-          'thumbnailURL': thumbnailUrl,
-          'views': FieldMapper.safeInt(data['views'] ?? data['viewsCount']),
-          'duration': FieldMapper.safeDouble(durationValue),
-          'videoUrl': FieldMapper.getVideoUrl(data),
-          'creatorId': userId,
-          'creatorAvatar': FieldMapper.getAvatarUrl(userData),
-          'creatorUsername': FieldMapper.safeString(userData['username']),
-          'creatorDisplayName': FieldMapper.getDisplayName(userData),
-          'creatorBio': FieldMapper.safeString(userData['bio']),
-          'creatorHashtags': userData['hashtags'] ?? [],
-          'creatorFollowers': FieldMapper.safeInt(userData['followerCount']),
-          'creatorFollowing': FieldMapper.safeInt(userData['followingCount']),
-          'creatorVideos': FieldMapper.safeInt(userData['postCount']),
-          'likes': FieldMapper.safeInt(data['likes'] ?? data['likesCount']),
-          'comments': FieldMapper.safeInt(
-            data['comments'] ?? data['commentsCount'],
-          ),
-          'createdAt': data['createdAt'],
-          'isLiked': data['isLiked'] ?? false,
-          'isFavorited': data['isFavorited'] ?? false,
-          'trendingScore': videoData['trendingScore'] ?? 0.0,
-          'isNew': videoData['isNew'] ?? false,
-          'isTrending': (videoData['trendingScore'] ?? 0.0) > 100.0,
-        });
+      if (kDebugMode) {
+        final int n = videos.length;
+        final List<String> ids = videos
+            .map(
+              (Map<String, dynamic> v) =>
+                  DiscoverFieldMapper.safeString(v['docId'] ?? v['id']),
+            )
+            .where((String id) => id.isNotEmpty)
+            .take(3)
+            .toList();
+        final List<String?> urls = videos
+            .take(3)
+            .map(
+              (Map<String, dynamic> v) =>
+                  resolveReadyPlaybackUrl(_normalizedVideoData(v)),
+            )
+            .toList();
+        debugPrint(
+          'Discover category feed built: id=$categoryId playableCount=$n '
+          'firstIds=$ids firstPlaybackUrls=$urls',
+        );
       }
 
       LoggingService.instance.debug(
@@ -1970,54 +2610,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         error: e,
         stackTrace: stackTrace,
       );
-      return [];
+      return <Map<String, dynamic>>[];
     }
-  }
-
-  Widget _buildLoadingState(BuildContext context) {
-    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
-    return SizedBox(
-      height: 120,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(s.refreshColor),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Loading trending creators...',
-              style: TextStyle(color: s.muted, fontSize: 14),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyTrendingCreatorsState(BuildContext context) {
-    final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
-    return SizedBox(
-      height: 120,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              Icons.people,
-              size: 32,
-              color: s.muted,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No trending creators yet',
-              style: TextStyle(color: s.muted, fontSize: 14),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildEmptyCategoryState() {
@@ -2037,7 +2631,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'No videos found for this category',
+                  'No playable videos in this category yet.',
                   style: TextStyle(
                     color: s.muted,
                     fontSize: 16,
@@ -2046,7 +2640,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Be the first to upload a video!',
+                  'Try another category or check back soon.',
                   style: TextStyle(
                     color: s.muted,
                     fontSize: 14,
@@ -2058,6 +2652,115 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         );
       },
     );
+  }
+
+  /// Direct Firestore reads by canonical / legacy category fields (no orderBy
+  /// to reduce composite index requirements). Results are de-duplicated by doc id.
+  Future<List<Map<String, dynamic>>> _fetchCategoryVideoCandidatesFromFirestore(
+    String categoryId,
+  ) async {
+    if (_normalizeCategoryKey(categoryId) == 'all') {
+      return <Map<String, dynamic>>[];
+    }
+    final Map<String, Map<String, dynamic>> merged =
+        <String, Map<String, dynamic>>{};
+    final DateTime sevenDaysAgo =
+        DateTime.now().subtract(const Duration(days: 7));
+
+    void ingest(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc, {
+      required bool markNew,
+    }) {
+      final Map<String, dynamic> data = doc.data();
+      if (data['deleted'] == true) {
+        return;
+      }
+      final String st = (data['status'] as String?)?.trim() ?? '';
+      if (st == 'deleted' || st == 'failed') {
+        return;
+      }
+      final String? playback = resolveReadyPlaybackUrl(data);
+      if (playback == null || playback.isEmpty) {
+        return;
+      }
+      final DateTime? created = data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : null;
+      final bool isNew =
+          markNew || (created != null && created.isAfter(sevenDaysAgo));
+      final double score = DiscoverFieldMapper.safeDouble(data['trendingScore']);
+      merged[doc.id] = <String, dynamic>{
+        'docId': doc.id,
+        'data': data,
+        'isNew': isNew,
+        'trendingScore': score,
+      };
+    }
+
+    Future<void> runQuery(Query<Map<String, dynamic>> query) async {
+      try {
+        final QuerySnapshot<Map<String, dynamic>> snap =
+            await query.limit(30).get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> d in snap.docs) {
+          ingest(d, markNew: false);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            'DiscoverView category Firestore query skipped: '
+            'categoryId=$categoryId err=$e',
+          );
+        }
+      }
+    }
+
+    final CollectionReference<Map<String, dynamic>> col =
+        FirebaseFirestore.instance.collection('videos');
+    final List<String> arrayValues = _getCategoryQueryValues(categoryId);
+    final List<Future<void>> tasks = <Future<void>>[
+      runQuery(
+        col
+            .where('categoryId', isEqualTo: categoryId)
+            .where('status', whereIn: _allowedVideoStatuses),
+      ),
+      runQuery(
+        col
+            .where('category', isEqualTo: categoryId)
+            .where('status', whereIn: _allowedVideoStatuses),
+      ),
+      runQuery(
+        col
+            .where('contentCategory', isEqualTo: categoryId)
+            .where('status', whereIn: _allowedVideoStatuses),
+      ),
+      runQuery(
+        col
+            .where('game', isEqualTo: categoryId)
+            .where('status', whereIn: _allowedVideoStatuses),
+      ),
+      runQuery(
+        col
+            .where('gameTitle', isEqualTo: categoryId)
+            .where('status', whereIn: _allowedVideoStatuses),
+      ),
+    ];
+    if (arrayValues.isNotEmpty) {
+      tasks.add(
+        runQuery(
+          col
+              .where('categories', arrayContainsAny: arrayValues)
+              .where('status', whereIn: _allowedVideoStatuses),
+        ),
+      );
+    }
+    await Future.wait(tasks);
+    if (kDebugMode) {
+      debugPrint(
+        'DiscoverView category direct fetch: categoryId=$categoryId '
+        'mergedCount=${merged.length}',
+      );
+    }
+    return merged.values.toList();
   }
 
   /// Load mixed category videos (recent + trending)
@@ -2266,7 +2969,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     try {
       Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('videos')
-          .where('status', whereIn: _allowedVideoStatuses)
           .orderBy('createdAt', descending: true)
           .limit(_videosPerPage * 2);
       if (startAfter != null) {
@@ -2429,25 +3131,26 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 }
 
-/// Stateful widget for category video feed that follows HomeView's pattern exactly
-class _CategoryVideoFeedStateful extends ConsumerStatefulWidget {
-  final List<HomeVideo> videos;
-  final int startIndex;
-  final String categoryId;
-
-  const _CategoryVideoFeedStateful({
+/// Full-screen vertical swipe feed for Discover category clips.
+class DiscoverCategoryVideoFeedPage extends ConsumerStatefulWidget {
+  const DiscoverCategoryVideoFeedPage({
+    super.key,
     required this.videos,
     required this.startIndex,
     required this.categoryId,
   });
 
+  final List<HomeVideo> videos;
+  final int startIndex;
+  final String categoryId;
+
   @override
-  ConsumerState<_CategoryVideoFeedStateful> createState() =>
-      _CategoryVideoFeedStatefulState();
+  ConsumerState<DiscoverCategoryVideoFeedPage> createState() =>
+      _DiscoverCategoryVideoFeedPageState();
 }
 
-class _CategoryVideoFeedStatefulState
-    extends ConsumerState<_CategoryVideoFeedStateful> {
+class _DiscoverCategoryVideoFeedPageState
+    extends ConsumerState<DiscoverCategoryVideoFeedPage> {
   late PageController _pageController;
   int _currentIndex = 0;
   List<HomeVideo> _videos = [];
@@ -2460,6 +3163,24 @@ class _CategoryVideoFeedStatefulState
     _pageController = PageController(initialPage: widget.startIndex);
     _videos = List.from(widget.videos);
     _setupRealtimeDeletionListeners();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final int idx = widget.startIndex.clamp(0, _videos.length - 1);
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(idx);
+      }
+      setState(() {
+        _currentIndex = idx;
+      });
+      GlobalPlaybackManager.instance.preloadAround(
+        idx,
+        _videos,
+        controllerOwner: PlaybackOwners.player,
+      );
+    });
 
     // 🔊 CRITICAL FIX: Unblock playback when category feed opens
     // DiscoverView blocks playback, but category feed needs videos to play
@@ -2483,8 +3204,11 @@ class _CategoryVideoFeedStatefulState
 
     // 🔥 CRITICAL MEMORY FIX: Dispose all controllers for this category feed
     // This prevents MediaCodec NO_MEMORY errors by freeing resources immediately
-    final tabId = 'discoverView_${widget.categoryId}';
-    GlobalPlaybackManager.instance.disposeControllersForOwner(tabId);
+    // Unnamed full-screen route: [AppNavigationObserver] sets activeOwner
+    // player; pool owner must match for canPlay / cleanup.
+    GlobalPlaybackManager.instance.disposeControllersForOwner(
+      PlaybackOwners.player,
+    );
 
     // 🔊 AUDIO FIX: Pause all videos when category feed closes
     GlobalPlaybackManager.instance.pauseAll();
@@ -2509,9 +3233,7 @@ class _CategoryVideoFeedStatefulState
         }
 
         final data = snapshot.data();
-        final status = data?['status'] as String? ?? '';
-
-        if (status == 'deleted') {
+        if (data == null || !isVideoVisibleInFeed(data)) {
           _removeVideoFromFeed(video.id);
         }
       });
@@ -2595,6 +3317,11 @@ class _CategoryVideoFeedStatefulState
                     setState(() {
                       _currentIndex = index;
                     });
+                    GlobalPlaybackManager.instance.preloadAround(
+                      index,
+                      _videos,
+                      controllerOwner: PlaybackOwners.player,
+                    );
                   }
                 },
                 itemCount: _videos.length,
@@ -2613,8 +3340,9 @@ class _CategoryVideoFeedStatefulState
                     video: video,
                     isCurrentVideo: isCurrentVideo, // HomeView pattern
                     isFirstVideo: index == 0,
+                    deferOffscreenControllerInit: true,
                     tabId: 'discoverView_${widget.categoryId}',
-                    ownerKey: PlaybackOwners.discover,
+                    ownerKey: PlaybackOwners.player,
                     homeViewModel: ref.read(hp.homeProvider.notifier),
                     showSheet: false,
                     sheetType: '',
@@ -2679,17 +3407,28 @@ class _CategoryVideoFeedStatefulState
                 },
               ),
             ),
-            // Back button overlay (HomeView pattern)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
+              top: MediaQuery.of(context).padding.top + 12,
               left: 16,
               child: SafeArea(
-                child: IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(
-                    Icons.arrow_back_ios,
-                    color: Colors.white,
-                    size: 24,
+                bottom: false,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.42),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),

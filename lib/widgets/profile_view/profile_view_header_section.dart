@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
 import '../../core/theme/support_shell_style.dart';
+import '../../features/creator_score/creator_score_widgets.dart';
 import '../../models/user_status.dart' show UserPresence, UserStatus;
 import '../../providers/status_provider.dart';
 import '../../utils/avatar_url_resolver.dart';
@@ -96,8 +97,7 @@ class _ProfileAvatarRing extends StatelessWidget {
                         key: ValueKey<String>(avatarUrl),
                         fit: BoxFit.cover,
                         errorBuilder:
-                            (BuildContext c, Object e, StackTrace? s) =>
-                                Icon(
+                            (BuildContext c, Object e, StackTrace? s) => Icon(
                           Icons.person,
                           color: placeholderIcon,
                           size: 48,
@@ -114,8 +114,7 @@ class _ProfileAvatarRing extends StatelessWidget {
         ),
         if (isCurrentUser)
           Consumer(
-            builder:
-                (BuildContext context, WidgetRef ref, Widget? child) {
+            builder: (BuildContext context, WidgetRef ref, Widget? child) {
               final AsyncValue<UserPresence> statusAsync = ref.watch(
                 userStatusProvider(userData['id'] ?? ''),
               );
@@ -206,50 +205,63 @@ class _ProfileStatsSystemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: scheme.outline.withValues(alpha: 0.35),
-        ),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: scheme.shadow.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Stack(
+        clipBehavior: Clip.none,
         children: <Widget>[
-          UserStatsRow(
-            userId: profileUserId,
-            spacing: 28,
-            valueTextStyle: TextStyle(
-              color: scheme.onSurface,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              height: 1.0,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: scheme.outline.withValues(alpha: 0.35),
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: scheme.shadow.withValues(alpha: 0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-            labelTextStyle: TextStyle(
-              color: scheme.onSurface.withValues(alpha: 0.62),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              height: 1.0,
+            child: Column(
+              children: <Widget>[
+                UserStatsRow(
+                  userId: profileUserId,
+                  spacing: 28,
+                  valueTextStyle: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                  ),
+                  labelTextStyle: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.62),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.0,
+                  ),
+                ),
+                if (isCurrentUser) ...<Widget>[
+                  const SizedBox(height: 18),
+                  Container(
+                    height: 1,
+                    color: scheme.outline.withValues(alpha: 0.25),
+                  ),
+                  const SizedBox(height: 18),
+                  _ProfilePrimaryButtonsRow(userData: userData),
+                ],
+              ],
             ),
           ),
-          if (isCurrentUser) ...<Widget>[
-            const SizedBox(height: 18),
-            Container(
-              height: 1,
-              color: scheme.outline.withValues(alpha: 0.25),
-            ),
-            const SizedBox(height: 18),
-            _ProfilePrimaryButtonsRow(userData: userData),
-          ],
+          Positioned(
+            top: -24,
+            right: -10,
+            child: CreatorScoreBadge(userId: profileUserId),
+          ),
         ],
       ),
     );

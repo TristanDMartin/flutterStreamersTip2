@@ -30,11 +30,11 @@ class _StoryViewerState extends State<StoryViewer>
       duration: const Duration(milliseconds: 50),
       vsync: this,
     );
-    
+
     if (widget.selectedStory != null) {
       _startTimer(widget.selectedStory!.duration);
     }
-    
+
     // Hide status bar
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
   }
@@ -51,7 +51,7 @@ class _StoryViewerState extends State<StoryViewer>
   @override
   void didUpdateWidget(StoryViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedStory != widget.selectedStory && 
+    if (oldWidget.selectedStory != widget.selectedStory &&
         widget.selectedStory != null) {
       _startTimer(widget.selectedStory!.duration);
     }
@@ -83,7 +83,7 @@ class _StoryViewerState extends State<StoryViewer>
       children: [
         // Story content
         _buildStoryContentView(story),
-        
+
         // Overlay with progress and controls
         _buildOverlayView(story),
       ],
@@ -148,7 +148,7 @@ class _StoryViewerState extends State<StoryViewer>
             valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
           ),
         ),
-        
+
         // Header with creator name and close button
         Padding(
           padding: const EdgeInsets.only(left: 16, right: 16, top: 8),
@@ -162,9 +162,7 @@ class _StoryViewerState extends State<StoryViewer>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              
               const Spacer(),
-              
               GestureDetector(
                 onTap: widget.onDismiss,
                 child: Container(
@@ -184,7 +182,7 @@ class _StoryViewerState extends State<StoryViewer>
             ],
           ),
         ),
-        
+
         const Spacer(),
       ],
     );
@@ -193,7 +191,7 @@ class _StoryViewerState extends State<StoryViewer>
   void _startTimer(double duration) {
     _stopTimer();
     _progress = 0.0;
-    
+
     _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
       if (mounted) {
         setState(() {

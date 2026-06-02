@@ -32,6 +32,8 @@ class StreamerShareSheet extends ConsumerWidget {
 
   // Validate input parameters
   bool get _isValidUserId => userId.isNotEmpty && userId.length > 3;
+  String get _sanitizedUserId =>
+      userId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
   String get _sanitizedUsername =>
       (username ?? '').trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
   String get _profileUrl => ProfileLinkService.publicProfileUrl(
@@ -1026,8 +1028,8 @@ class StreamerShareSheet extends ConsumerWidget {
         ),
       );
     } catch (e) {
-      LoggingService.instance.error('Failed to show QR code',
-          tag: 'ShareSheet', error: e);
+      LoggingService.instance
+          .error('Failed to show QR code', tag: 'ShareSheet', error: e);
       if (context.mounted) {
         _showErrorSnackbar(context, 'Failed to generate QR code');
       }

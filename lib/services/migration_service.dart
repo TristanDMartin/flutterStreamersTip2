@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 /// Service to migrate from old data model to new follows collection
-/// 
+///
 /// Old model: users/{userId}/following/{followingId} and users/{userId}/followers/{followerId}
 /// New model: follows/{followerId}_{followedId}
 class MigrationService {
@@ -13,8 +13,9 @@ class MigrationService {
   /// Migrate all follow relationships to the new follows collection
   static Future<bool> migrateFollowRelationships() async {
     try {
-      debugPrint('🔄 MigrationService: Starting migration of follow relationships...');
-      
+      debugPrint(
+          '🔄 MigrationService: Starting migration of follow relationships...');
+
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         debugPrint('❌ MigrationService: No authenticated user');
@@ -23,14 +24,16 @@ class MigrationService {
 
       // Get all users to migrate their relationships
       final usersSnapshot = await _firestore.collection('users').get();
-      debugPrint('📊 MigrationService: Found ${usersSnapshot.docs.length} users to migrate');
+      debugPrint(
+          '📊 MigrationService: Found ${usersSnapshot.docs.length} users to migrate');
 
       int totalMigrated = 0;
       int totalErrors = 0;
 
       for (final userDoc in usersSnapshot.docs) {
         final userId = userDoc.id;
-        debugPrint('🔄 MigrationService: Migrating relationships for user $userId');
+        debugPrint(
+            '🔄 MigrationService: Migrating relationships for user $userId');
 
         try {
           // Get following relationships
@@ -62,7 +65,8 @@ class MigrationService {
               batch.set(followRef, {
                 'followerId': userId,
                 'followedId': followedId,
-                'createdAt': followingDoc.data()['followedAt'] ?? FieldValue.serverTimestamp(),
+                'createdAt': followingDoc.data()['followedAt'] ??
+                    FieldValue.serverTimestamp(),
                 'migrated': true,
               });
               totalMigrated++;
@@ -81,7 +85,8 @@ class MigrationService {
               batch.set(followRef, {
                 'followerId': followerId,
                 'followedId': userId,
-                'createdAt': followerDoc.data()['followedAt'] ?? FieldValue.serverTimestamp(),
+                'createdAt': followerDoc.data()['followedAt'] ??
+                    FieldValue.serverTimestamp(),
                 'migrated': true,
               });
               totalMigrated++;
@@ -90,15 +95,16 @@ class MigrationService {
 
           // Commit batch for this user
           await batch.commit();
-          debugPrint('✅ MigrationService: Migrated relationships for user $userId');
-
+          debugPrint(
+              '✅ MigrationService: Migrated relationships for user $userId');
         } catch (e) {
           debugPrint('❌ MigrationService: Error migrating user $userId: $e');
           totalErrors++;
         }
       }
 
-      debugPrint('🎯 MigrationService: Migration complete - $totalMigrated relationships migrated, $totalErrors errors');
+      debugPrint(
+          '🎯 MigrationService: Migration complete - $totalMigrated relationships migrated, $totalErrors errors');
       return totalErrors == 0;
     } catch (e) {
       debugPrint('❌ MigrationService: Migration failed: $e');
@@ -110,20 +116,21 @@ class MigrationService {
   static Future<bool> updateUserCounters() async {
     try {
       debugPrint('🔄 MigrationService: Updating user counters...');
-      
+
       final usersSnapshot = await _firestore.collection('users').get();
-      debugPrint('📊 MigrationService: Found ${usersSnapshot.docs.length} users to update');
+      debugPrint(
+          '📊 MigrationService: Found ${usersSnapshot.docs.length} users to update');
 
       for (final userDoc in usersSnapshot.docs) {
         final userId = userDoc.id;
-        
+
         try {
           // Count following relationships
           final followingQuery = await _firestore
               .collection('follows')
               .where('followerId', isEqualTo: userId)
               .get();
-          
+
           // Count followers relationships
           final followersQuery = await _firestore
               .collection('follows')
@@ -131,9 +138,14 @@ class MigrationService {
               .get();
 
           // Count mutual follows (connections)
-          final followingIds = followingQuery.docs.map((doc) => doc.data()['followedId'] as String).toSet();
-          final followerIds = followersQuery.docs.map((doc) => doc.data()['followerId'] as String).toSet();
-          final connectionsCount = followingIds.intersection(followerIds).length;
+          final followingIds = followingQuery.docs
+              .map((doc) => doc.data()['followedId'] as String)
+              .toSet();
+          final followerIds = followersQuery.docs
+              .map((doc) => doc.data()['followerId'] as String)
+              .toSet();
+          final connectionsCount =
+              followingIds.intersection(followerIds).length;
 
           // Update user document with counters
           await _firestore.collection('users').doc(userId).update({
@@ -143,10 +155,11 @@ class MigrationService {
             'countersUpdated': FieldValue.serverTimestamp(),
           });
 
-          debugPrint('✅ MigrationService: Updated counters for user $userId - Following: ${followingQuery.docs.length}, Followers: ${followersQuery.docs.length}, Connections: $connectionsCount');
-
+          debugPrint(
+              '✅ MigrationService: Updated counters for user $userId - Following: ${followingQuery.docs.length}, Followers: ${followersQuery.docs.length}, Connections: $connectionsCount');
         } catch (e) {
-          debugPrint('❌ MigrationService: Error updating counters for user $userId: $e');
+          debugPrint(
+              '❌ MigrationService: Error updating counters for user $userId: $e');
         }
       }
 
@@ -162,13 +175,14 @@ class MigrationService {
   static Future<bool> cleanupOldData() async {
     try {
       debugPrint('🔄 MigrationService: Cleaning up old subcollection data...');
-      
+
       final usersSnapshot = await _firestore.collection('users').get();
-      debugPrint('📊 MigrationService: Found ${usersSnapshot.docs.length} users to clean up');
+      debugPrint(
+          '📊 MigrationService: Found ${usersSnapshot.docs.length} users to clean up');
 
       for (final userDoc in usersSnapshot.docs) {
         final userId = userDoc.id;
-        
+
         try {
           // Delete following subcollection
           final followingSnapshot = await _firestore
@@ -176,7 +190,7 @@ class MigrationService {
               .doc(userId)
               .collection('following')
               .get();
-          
+
           for (final doc in followingSnapshot.docs) {
             await doc.reference.delete();
           }
@@ -187,13 +201,13 @@ class MigrationService {
               .doc(userId)
               .collection('followers')
               .get();
-          
+
           for (final doc in followersSnapshot.docs) {
             await doc.reference.delete();
           }
 
-          debugPrint('✅ MigrationService: Cleaned up old data for user $userId');
-
+          debugPrint(
+              '✅ MigrationService: Cleaned up old data for user $userId');
         } catch (e) {
           debugPrint('❌ MigrationService: Error cleaning up user $userId: $e');
         }
@@ -211,11 +225,12 @@ class MigrationService {
   static Future<bool> runCompleteMigration() async {
     try {
       debugPrint('🚀 MigrationService: Starting complete migration process...');
-      
+
       // Step 1: Migrate follow relationships
       final relationshipsMigrated = await migrateFollowRelationships();
       if (!relationshipsMigrated) {
-        debugPrint('❌ MigrationService: Relationship migration failed, stopping');
+        debugPrint(
+            '❌ MigrationService: Relationship migration failed, stopping');
         return false;
       }
 
@@ -227,8 +242,9 @@ class MigrationService {
       }
 
       debugPrint('✅ MigrationService: Complete migration successful!');
-      debugPrint('⚠️ MigrationService: Old subcollection data still exists - run cleanupOldData() when ready');
-      
+      debugPrint(
+          '⚠️ MigrationService: Old subcollection data still exists - run cleanupOldData() when ready');
+
       return true;
     } catch (e) {
       debugPrint('❌ MigrationService: Complete migration failed: $e');

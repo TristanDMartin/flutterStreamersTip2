@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'about_view.dart';
 import 'blocked_accounts_view.dart';
 import 'community_guidelines_view.dart';
@@ -11,6 +13,10 @@ import 'privacy_settings_view.dart';
 import 'contact_support_view.dart';
 import 'safety_center_view.dart';
 import 'terms_and_privacy_view.dart';
+import '../core/theme/support_shell_style.dart';
+import '../core/feature_flags.dart';
+import '../components/onboarding/onboarding_service.dart';
+import '../routing/app_navigator.dart';
 import '../widgets/two_factor_settings_view.dart';
 import '../widgets/video_categorization_screen.dart';
 
@@ -57,15 +63,15 @@ class _SettingsViewState extends State<SettingsView> {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme c = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final Widget scaffold = Scaffold(
-      backgroundColor: c.surface,
+      backgroundColor: shell.scaffold,
       body: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: <Color>[c.surface, c.surfaceContainerLow],
+            colors: shell.pageGradient,
           ),
         ),
         child: SafeArea(
@@ -92,15 +98,16 @@ class _SettingsViewState extends State<SettingsView> {
                             onTap: () =>
                                 _navigateToPage(context, 'Manage Account'),
                           ),
-                          _buildSettingsItem(
-                            context,
-                            icon: Icons.link,
-                            title: 'Linked Platforms',
-                            subtitle:
-                                'Reconnect YouTube, TikTok, Instagram, and more',
-                            onTap: () =>
-                                _navigateToPage(context, 'Linked Platforms'),
-                          ),
+                          if (FeatureFlags.linkedPlatforms)
+                            _buildSettingsItem(
+                              context,
+                              icon: Icons.link,
+                              title: 'Linked Platforms',
+                              subtitle:
+                                  'Reconnect YouTube, TikTok, Instagram, and more',
+                              onTap: () =>
+                                  _navigateToPage(context, 'Linked Platforms'),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -178,6 +185,14 @@ class _SettingsViewState extends State<SettingsView> {
                             onTap: () =>
                                 _navigateToPage(context, 'Content Preferences'),
                           ),
+                          _buildSettingsItem(
+                            context,
+                            icon: Icons.explore_rounded,
+                            title: 'Replay onboarding tips',
+                            subtitle:
+                                'Show contextual hints again as you explore',
+                            onTap: () => _resetOnboardingTips(context),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -252,30 +267,28 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final Color on = Theme.of(context).colorScheme.onSurface;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 10, 18, 10),
         decoration: BoxDecoration(
-          color: on.withValues(alpha: 0.08),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: on.withValues(alpha: 0.14),
-          ),
-          boxShadow: [
+          border: Border.all(color: shell.surfaceCardBorder),
+          boxShadow: <BoxShadow>[
             BoxShadow(
-              color: on.withValues(alpha: 0.12),
+              color: shell.shadowSoft,
               blurRadius: 18,
               offset: const Offset(0, 10),
             ),
           ],
         ),
         child: Row(
-          children: [
+          children: <Widget>[
             IconButton(
               onPressed: () => Navigator.pop(context),
-              icon: Icon(Icons.arrow_back, color: on),
+              icon: Icon(Icons.arrow_back_rounded, color: shell.onChrome),
             ),
             const SizedBox(width: 4),
             Expanded(
@@ -284,7 +297,7 @@ class _SettingsViewState extends State<SettingsView> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: on,
+                  color: shell.onChrome,
                   fontSize: _headerTitleSize,
                   fontWeight: FontWeight.w900,
                   height: 1.0,
@@ -298,34 +311,28 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Widget _buildSearchField(BuildContext context) {
-    final Color on = Theme.of(context).colorScheme.onSurface;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 8, 20, 18),
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: on.withValues(alpha: 0.1),
+        color: shell.panelSurface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: on.withValues(alpha: 0.16),
-          width: 1,
-        ),
+        border: Border.all(color: shell.panelBorder),
       ),
       child: TextField(
         controller: _searchController,
-        onChanged: (value) {
+        onChanged: (String value) {
           setState(() {
             _searchQuery = value.toLowerCase();
           });
         },
-        style: TextStyle(color: on),
+        style: TextStyle(color: shell.onChrome),
         decoration: InputDecoration(
           hintText: 'Search settings...',
-          hintStyle: TextStyle(color: on.withValues(alpha: 0.5)),
+          hintStyle: TextStyle(color: shell.muted),
           border: InputBorder.none,
-          icon: Icon(
-            Icons.search,
-            color: on.withValues(alpha: 0.5),
-          ),
+          icon: Icon(Icons.search_rounded, color: shell.iconDim),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   onPressed: () {
@@ -334,10 +341,7 @@ class _SettingsViewState extends State<SettingsView> {
                       _searchQuery = '';
                     });
                   },
-                  icon: Icon(
-                    Icons.clear,
-                    color: on.withValues(alpha: 0.5),
-                  ),
+                  icon: Icon(Icons.clear_rounded, color: shell.iconDim),
                 )
               : null,
         ),
@@ -351,56 +355,49 @@ class _SettingsViewState extends State<SettingsView> {
     required List<Widget?> items,
   }) {
     final ColorScheme c = Theme.of(context).colorScheme;
-    final Color on = c.onSurface;
-    final visibleItems = items.whereType<Widget>().toList(growable: false);
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final List<Widget> visibleItems =
+        items.whereType<Widget>().toList(growable: false);
     if (visibleItems.isEmpty) {
       return const SizedBox.shrink();
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+      children: <Widget>[
         Text(
           title,
           style: TextStyle(
-            color: on,
+            color: shell.onChrome,
             fontSize: _sectionTitleSize,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.2,
-            shadows: [
-              Shadow(
-                color: c.shadow,
-                offset: const Offset(0, 1),
-                blurRadius: 10,
-              ),
-            ],
           ),
         ),
         const SizedBox(height: 12),
         Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: on.withValues(alpha: 0.08),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: on.withValues(alpha: 0.14),
-              width: 1,
-            ),
-            boxShadow: [
+            border: Border.all(color: shell.surfaceCardBorder),
+            boxShadow: <BoxShadow>[
               BoxShadow(
-                color: on.withValues(alpha: 0.12),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
+                color: shell.shadowSoft,
+                blurRadius: 14,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           child: Column(
-            children: [
-              for (int index = 0; index < visibleItems.length; index++) ...[
+            children: <Widget>[
+              for (int index = 0;
+                  index < visibleItems.length;
+                  index++) ...<Widget>[
                 if (index > 0)
                   Divider(
                     height: 1,
                     thickness: 1,
-                    color: on.withValues(alpha: 0.08),
+                    color: c.outlineVariant.withValues(alpha: 0.45),
                   ),
                 visibleItems[index],
               ],
@@ -423,33 +420,24 @@ class _SettingsViewState extends State<SettingsView> {
         !subtitle.toLowerCase().contains(_searchQuery)) {
       return null;
     }
-    final Color on = Theme.of(context).colorScheme.onSurface;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
         child: Row(
-          children: [
+          children: <Widget>[
             Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    on.withValues(alpha: 0.16),
-                    on.withValues(alpha: 0.06),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: shell.chipUnselectedBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: on.withValues(alpha: 0.12),
-                ),
+                border: Border.all(color: shell.chipUnselectedBorder),
               ),
               child: Icon(
                 icon,
-                color: on,
+                color: shell.onChrome,
                 size: 21,
               ),
             ),
@@ -457,11 +445,11 @@ class _SettingsViewState extends State<SettingsView> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                children: <Widget>[
                   Text(
                     title,
                     style: TextStyle(
-                      color: on,
+                      color: shell.onChrome,
                       fontSize: _itemTitleSize,
                       fontWeight: FontWeight.w800,
                       height: 1.15,
@@ -473,7 +461,7 @@ class _SettingsViewState extends State<SettingsView> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: on.withValues(alpha: 0.66),
+                      color: shell.muted,
                       fontSize: _itemSubtitleSize,
                       fontWeight: FontWeight.w500,
                       height: 1.2,
@@ -484,8 +472,8 @@ class _SettingsViewState extends State<SettingsView> {
             ),
             const SizedBox(width: 10),
             Icon(
-              Icons.arrow_forward_ios,
-              color: on.withValues(alpha: 0.5),
+              Icons.arrow_forward_ios_rounded,
+              color: shell.iconDim,
               size: 15,
             ),
           ],
@@ -511,24 +499,9 @@ class _SettingsViewState extends State<SettingsView> {
         );
         return;
       case 'Linked Platforms':
-        final ColorScheme cs = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: const Text(
-              'Linked platforms are coming soon. You\'ll be able to '
-              'connect YouTube, TikTok, Instagram, and more.',
-            ),
-            backgroundColor: cs.inverseSurface,
-            action: SnackBarAction(
-              label: 'OK',
-              textColor: cs.onInverseSurface,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
-        );
+        if (FeatureFlags.linkedPlatforms) {
+          AppNavigator.openLinkedPlatforms(context);
+        }
         return;
       case 'Blocked Accounts':
         Navigator.of(context).push(
@@ -608,12 +581,28 @@ class _SettingsViewState extends State<SettingsView> {
         );
         return;
       default:
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$pageName is not available yet.'),
-          ),
-        );
         break;
     }
+  }
+
+  Future<void> _resetOnboardingTips(BuildContext context) async {
+    final String userId = FirebaseAuth.instance.currentUser?.uid ?? 'local';
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String prefix = 'streamerstip.first_tap_tip.$userId.';
+    for (final String key in prefs.getKeys().where(
+          (String key) => key.startsWith(prefix),
+        )) {
+      await prefs.remove(key);
+    }
+    if (userId != 'local') {
+      await OnboardingService().resetContextualTips(userId);
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('Onboarding tips will appear again as you explore.'),
+      ),
+    );
   }
 }

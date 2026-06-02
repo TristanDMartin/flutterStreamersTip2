@@ -389,12 +389,12 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
         _firebaseErrors = 0;
         _nullSafetyErrors = 0;
         _crashReports = 0;
-        
+
         for (final doc in snapshot.docs) {
           final data = doc.data();
           final errorType = data['errorType'] ?? 'unknown';
           final isFatal = data['fatal'] ?? false;
-          
+
           // Count error types
           if (errorType == 'network') {
             _networkErrors++;
@@ -403,11 +403,11 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
           } else if (errorType == 'null_safety') {
             _nullSafetyErrors++;
           }
-          
+
           if (isFatal) {
             _crashReports++;
           }
-          
+
           _errorLogs.add({
             'id': doc.id,
             'errorType': errorType,
@@ -422,7 +422,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
             'userFriendlyMessage': data['userFriendlyMessage'] ?? '',
           });
         }
-        
+
         _totalErrors = _errorLogs.length;
       });
       _addLog('🚨 Updated error logs: ${_errorLogs.length}');
@@ -457,25 +457,25 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
           .collection('error_logs')
           .count()
           .get();
-      
+
       final networkErrorsCount = await FirebaseFirestore.instance
           .collection('error_logs')
           .where('errorType', isEqualTo: 'network')
           .count()
           .get();
-      
+
       final firebaseErrorsCount = await FirebaseFirestore.instance
           .collection('error_logs')
           .where('errorType', isEqualTo: 'firebase')
           .count()
           .get();
-      
+
       final nullSafetyErrorsCount = await FirebaseFirestore.instance
           .collection('error_logs')
           .where('errorType', isEqualTo: 'null_safety')
           .count()
           .get();
-      
+
       final crashReportsCount = await FirebaseFirestore.instance
           .collection('error_logs')
           .where('fatal', isEqualTo: true)
@@ -1920,7 +1920,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
             fullWidth: true,
           ),
           const SizedBox(height: 24),
-          
+
           // Error Handling Features Status
           const Text(
             '✅ Error Handling Features',
@@ -1973,7 +1973,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
             Colors.red,
           ),
           const SizedBox(height: 24),
-          
+
           // Recent Error Logs
           const Text(
             '📋 Recent Error Logs',
@@ -2008,7 +2008,8 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     );
   }
 
-  Widget _buildErrorStatCard(String label, String value, Color color, IconData icon,
+  Widget _buildErrorStatCard(
+      String label, String value, Color color, IconData icon,
       {bool fullWidth = false}) {
     return Container(
       width: fullWidth ? double.infinity : null,
@@ -2076,10 +2077,10 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     final errorType = error['errorType'] ?? 'unknown';
     final isFatal = error['fatal'] ?? false;
     final recovered = error['recovered'] ?? false;
-    
+
     Color typeColor = Colors.grey;
     IconData typeIcon = Icons.error_outline;
-    
+
     if (errorType == 'network') {
       typeColor = Colors.orange;
       typeIcon = Icons.wifi_off;
@@ -2090,7 +2091,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
       typeColor = Colors.purple;
       typeIcon = Icons.bug_report;
     }
-    
+
     if (isFatal) {
       typeColor = Colors.red;
       typeIcon = Icons.warning;
@@ -2117,7 +2118,8 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: typeColor.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
@@ -2134,7 +2136,8 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 if (isFatal) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.red.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
@@ -2152,7 +2155,8 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 if (recovered) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.green.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),

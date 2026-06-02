@@ -1,32 +1,102 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../components/onboarding/product_tour_target_keys.dart';
-import '../core/theme/st_theme_tokens.dart';
-
 import '../providers/unread_messages_provider.dart';
+import '../qa/qa_keys.dart';
 import '../utils/performance_utils.dart';
 import '../utils/responsive_layout.dart';
+import 'navigation/liquid_glass_dock_tokens.dart';
 
-class CustomBottomNav extends ConsumerWidget {
-  final int currentIndex;
-  final Function(int) onTap;
-
+class CustomBottomNav extends ConsumerStatefulWidget {
   const CustomBottomNav({
     super.key,
     required this.currentIndex,
     required this.onTap,
   });
 
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final responsive = context.responsive;
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final TextScaler navTextScaler = MediaQuery.textScalerOf(
-      context,
-    ).clamp(minScaleFactor: 0.85, maxScaleFactor: 1.0);
+  ConsumerState<CustomBottomNav> createState() => _CustomBottomNavState();
+}
+
+class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
+    with SingleTickerProviderStateMixin {
+  static const int _slotCount = 5;
+  static const int _createIndex = 2;
+
+  late final AnimationController _indicatorController;
+  late Animation<double> _indicatorCenterAnimation;
+  double _indicatorCenter = 0.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _indicatorCenter = _centerFractionForIndex(widget.currentIndex);
+    _indicatorController = AnimationController(
+      vsync: this,
+      duration: LiquidGlassDockTokens.orbDuration,
+    );
+    _indicatorCenterAnimation = AlwaysStoppedAnimation<double>(
+      _indicatorCenter,
+    );
+    _indicatorController.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(CustomBottomNav oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentIndex != widget.currentIndex) {
+      _animateIndicatorTo(widget.currentIndex);
+    }
+  }
+
+  @override
+  void dispose() {
+    _indicatorController.dispose();
+    super.dispose();
+  }
+
+  double _centerFractionForIndex(int index) {
+    return (index + 0.5) / _slotCount;
+  }
+
+  void _animateIndicatorTo(int index) {
+    final double begin = _indicatorController.isAnimating
+        ? _indicatorCenterAnimation.value
+        : _indicatorCenter;
+    final double end = _centerFractionForIndex(index);
+    _indicatorCenter = end;
+    _indicatorCenterAnimation = Tween<double>(begin: begin, end: end).animate(
+      CurvedAnimation(
+        parent: _indicatorController,
+        curve: LiquidGlassDockTokens.orbCurve,
+        reverseCurve: LiquidGlassDockTokens.orbReverseCurve,
+      ),
+    );
+    _indicatorController
+      ..reset()
+      ..forward();
+  }
+
+  void _handleTap(int index) {
+    if (index != widget.currentIndex) {
+      HapticFeedback.selectionClick();
+      widget.onTap(index);
+    } else {
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppResponsive responsive = context.responsive;
+    final double viewBottom = MediaQuery.viewPaddingOf(context).bottom;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final ColorScheme colorScheme = Theme.of(context).colorScheme;
@@ -40,149 +110,188 @@ class CustomBottomNav extends ConsumerWidget {
                 colorScheme.surface.withValues(alpha: 0.28),
               ]
             : <Color>[
-                on.withValues(alpha: 0.22),
-                on.withValues(alpha: 0.12),
-                on.withValues(alpha: 0.05),
-                on.withValues(alpha: 0.2),
+                Colors.white.withValues(alpha: 0.25),
+                Colors.white.withValues(alpha: 0.15),
+                Colors.white.withValues(alpha: 0.05),
+                Colors.black.withValues(alpha: 0.3),
               ];
         final Color borderGlass = isLight
             ? colorScheme.outline.withValues(alpha: 0.28)
-            : on.withValues(alpha: 0.35);
+            : Colors.white.withValues(alpha: 0.4);
         final Color glow = isLight
             ? colorScheme.shadow.withValues(alpha: 0.08)
-            : on.withValues(alpha: 0.1);
-        const int navSlotCount = 5;
-        final metrics = _NavMetrics.from(
+            : Colors.white.withValues(alpha: 0.1);
+        final _NavMetrics metrics = _NavMetrics.from(
           availableWidth: constraints.maxWidth,
           responsive: responsive,
-          bottomInset: bottomInset,
-          navSlotCount: navSlotCount,
+          hasSystemNavBar: viewBottom > 0,
         );
-        return Container(
-          margin: EdgeInsets.only(
-            bottom: metrics.bottomMargin,
-            left: metrics.horizontalMargin,
-            right: metrics.horizontalMargin,
-          ),
-          child: SizedBox(
-            height: metrics.height,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(metrics.radius),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: colorScheme.shadow,
-                    blurRadius: metrics.shadowBlur,
-                    spreadRadius: 0,
-                    offset: Offset(0, metrics.shadowOffset),
-                  ),
-                  BoxShadow(
-                    color: glow,
-                    blurRadius: metrics.glowBlur,
-                    spreadRadius: -5,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
+        final double dockWidth =
+            (constraints.maxWidth - metrics.horizontalMargin * 2)
+                .clamp(0.0, double.infinity)
+                .toDouble();
+        final double contentWidth =
+            (dockWidth - metrics.contentPadding.horizontal)
+                .clamp(0.0, double.infinity)
+                .toDouble();
+        return RepaintBoundary(
+          child: SafeArea(
+            bottom: true,
+            minimum: EdgeInsets.zero,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: metrics.horizontalMargin,
+                right: metrics.horizontalMargin,
+                bottom: metrics.outerBottomGap,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(metrics.radius),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(metrics.radius),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: glassColors,
-                        stops: const <double>[0.0, 0.3, 0.7, 1.0],
+              child: SizedBox(
+                height: metrics.height,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(metrics.radius),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: metrics.shadowBlur,
+                        spreadRadius: 0,
+                        offset: Offset(0, metrics.shadowOffset),
                       ),
-                      border: Border.all(
-                        color: borderGlass,
-                        width: 1.5,
+                      BoxShadow(
+                        color: glow,
+                        blurRadius: metrics.glowBlur,
+                        spreadRadius: -5,
+                        offset: const Offset(0, -5),
                       ),
-                    ),
-                    padding: metrics.contentPadding,
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: _buildNavItem(
-                                colorScheme,
-                                isLight,
-                                0,
-                                Icons.home,
-                                'Home',
-                                metrics,
-                                navTextScaler,
-                              ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(metrics.radius),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: LiquidGlassDockTokens.dockBlurSigma,
+                        sigmaY: LiquidGlassDockTokens.dockBlurSigma,
+                      ),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(metrics.radius),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: glassColors,
+                            stops: const <double>[0.0, 0.3, 0.7, 1.0],
+                          ),
+                          border: Border.all(color: borderGlass, width: 1.5),
+                        ),
+                        child: Padding(
+                          padding: metrics.contentPadding,
+                          child: AnimatedBuilder(
+                            animation: _indicatorController,
+                            builder: (BuildContext context, Widget? child) {
+                              final double center =
+                                  _indicatorController.isAnimating
+                                      ? _indicatorCenterAnimation.value
+                                      : _indicatorCenter;
+                              final double rawLeft = center * contentWidth -
+                                  metrics.indicatorWidth / 2;
+                              final double maxLeft = contentWidth >
+                                      metrics.indicatorWidth + 8
+                                  ? contentWidth - metrics.indicatorWidth - 4
+                                  : 4;
+                              final double left =
+                                  rawLeft.clamp(4.0, maxLeft).toDouble();
+                              return Stack(
+                                alignment: Alignment.center,
+                                children: <Widget>[
+                                  Positioned(
+                                    left: left,
+                                    top: metrics.indicatorTop,
+                                    child: _SlidingGlassIndicator(
+                                      width: metrics.indicatorWidth,
+                                      height: metrics.indicatorHeight,
+                                    ),
+                                  ),
+                                  child!,
+                                ],
+                              );
+                            },
+                            child: Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Center(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: _buildNavItem(
+                                        colorScheme: colorScheme,
+                                        isLight: isLight,
+                                        index: 0,
+                                        icon: Icons.home,
+                                        label: 'Home',
+                                        metrics: metrics,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: _buildNavItem(
+                                        colorScheme: colorScheme,
+                                        isLight: isLight,
+                                        index: 1,
+                                        icon: Icons.people,
+                                        label: 'Network',
+                                        metrics: metrics,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: _buildCreateButton(
+                                        colorScheme: colorScheme,
+                                        isLight: isLight,
+                                        on: on,
+                                        metrics: metrics,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: _buildInboxNavItem(
+                                        colorScheme: colorScheme,
+                                        isLight: isLight,
+                                        on: on,
+                                        metrics: metrics,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: _buildNavItem(
+                                        colorScheme: colorScheme,
+                                        isLight: isLight,
+                                        index: 4,
+                                        icon: Icons.account_circle_outlined,
+                                        label: 'Profile',
+                                        metrics: metrics,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        Expanded(
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: _buildNavItem(
-                                colorScheme,
-                                isLight,
-                                1,
-                                Icons.people,
-                                'Network',
-                                metrics,
-                                navTextScaler,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: _buildAddButton(
-                                colorScheme,
-                                isLight,
-                                on,
-                                metrics,
-                                navTextScaler,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: _buildInboxNavItem(
-                                ref,
-                                colorScheme,
-                                isLight,
-                                on,
-                                metrics,
-                                navTextScaler,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: _buildNavItem(
-                                colorScheme,
-                                isLight,
-                                4,
-                                Icons.account_circle_outlined,
-                                'Profile',
-                                metrics,
-                                navTextScaler,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -194,75 +303,52 @@ class CustomBottomNav extends ConsumerWidget {
     );
   }
 
-  Widget _buildNavItem(
-      ColorScheme colorScheme,
-      bool isLight,
-      int index,
-      IconData icon,
-      String label,
-      _NavMetrics metrics,
-      TextScaler navTextScaler,
-      {GlobalKey? tourKey}) {
+  Widget _buildNavItem({
+    required ColorScheme colorScheme,
+    required bool isLight,
+    required int index,
+    required IconData icon,
+    required String label,
+    required _NavMetrics metrics,
+    GlobalKey? tourKey,
+  }) {
+    final bool isSelected = widget.currentIndex == index;
     final Color on = colorScheme.onSurface;
-    final Color muted = isLight
-        ? Colors.white.withValues(alpha: 0.72)
-        : on.withValues(alpha: 0.4);
-    final bool isSelected = currentIndex == index;
-    final Color iconAndLabel =
-        isSelected ? (isLight ? Colors.white : on) : muted;
-    final Color? fill = isSelected
-        ? (isLight
-            ? Colors.white.withValues(alpha: 0.14)
-            : on.withValues(alpha: 0.2))
-        : null;
-    final BoxBorder? ring = isSelected
-        ? Border.all(
-            color: isLight
-                ? Colors.white.withValues(alpha: 0.28)
-                : on.withValues(alpha: 0.3),
-            width: 1,
+    final Color activeColor = isLight ? colorScheme.primary : Colors.white;
+    final Color inactiveColor = isLight
+        ? colorScheme.onSurfaceVariant.withValues(
+            alpha: LiquidGlassDockTokens.inactiveIconOpacity,
           )
-        : null;
-    final Widget iconCircle = Container(
-      padding: EdgeInsets.all(metrics.iconPadding),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: fill,
-        border: ring,
-      ),
-      child: Icon(
-        icon,
-        color: iconAndLabel,
-        size: metrics.iconSize,
+        : on.withValues(alpha: LiquidGlassDockTokens.inactiveIconOpacity);
+    final Color contentColor = isSelected ? activeColor : inactiveColor;
+    final Widget iconWidget = AnimatedScale(
+      scale: isSelected ? LiquidGlassDockTokens.activeIconScale : 1,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: isSelected ? 1 : 0.72,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: Icon(icon, color: contentColor, size: metrics.iconSize),
       ),
     );
     final Widget iconSlot = tourKey != null
-        ? KeyedSubtree(key: tourKey, child: iconCircle)
-        : iconCircle;
+        ? KeyedSubtree(key: tourKey, child: iconWidget)
+        : iconWidget;
     final Widget tapTarget = OptimizedButton(
+      key: switch (index) {
+        0 => QaKeys.bottomNavHome,
+        1 => QaKeys.bottomNavNetwork,
+        _ => null,
+      },
       buttonId: 'nav_$index',
-      onPressed: () => onTap(index),
+      onPressed: () => _handleTap(index),
+      enableHaptic: false,
       child: Padding(
         padding: EdgeInsets.all(metrics.itemPadding),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            iconSlot,
-            SizedBox(height: metrics.labelGap),
-            Text(
-              label,
-              textScaler: navTextScaler,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: iconAndLabel,
-                fontSize: metrics.labelFontSize,
-                height: 1.0,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
+        child: SizedBox.square(
+          dimension: metrics.tapTargetSize,
+          child: Center(child: iconSlot),
         ),
       ),
     );
@@ -275,39 +361,25 @@ class CustomBottomNav extends ConsumerWidget {
     );
   }
 
-  Widget _buildInboxNavItem(
-    WidgetRef ref,
-    ColorScheme colorScheme,
-    bool isLight,
-    Color on,
-    _NavMetrics metrics,
-    TextScaler navTextScaler,
-  ) {
-    final isSelected = currentIndex == 3;
-    final Color muted = isLight
-        ? Colors.white.withValues(alpha: 0.72)
-        : on.withValues(alpha: 0.4);
-    final Color iconAndLabel =
-        isSelected ? (isLight ? Colors.white : on) : muted;
-    final Color? fill = isSelected
-        ? (isLight
-            ? Colors.white.withValues(alpha: 0.14)
-            : on.withValues(alpha: 0.2))
-        : null;
-    final BoxBorder? ring = isSelected
-        ? Border.all(
-            color: isLight
-                ? Colors.white.withValues(alpha: 0.28)
-                : on.withValues(alpha: 0.3),
-            width: 1,
+  Widget _buildInboxNavItem({
+    required ColorScheme colorScheme,
+    required bool isLight,
+    required Color on,
+    required _NavMetrics metrics,
+  }) {
+    const int index = 3;
+    final bool isSelected = widget.currentIndex == index;
+    final Color activeColor = isLight ? colorScheme.primary : Colors.white;
+    final Color inactiveColor = isLight
+        ? colorScheme.onSurfaceVariant.withValues(
+            alpha: LiquidGlassDockTokens.inactiveIconOpacity,
           )
-        : null;
-    final unreadCountAsync = ref.watch(unreadMessagesProvider);
-    var messageUnreadCount = 0;
-    unreadCountAsync.whenOrNull(
-      data: (int unreadCount) => messageUnreadCount += unreadCount,
-    );
-
+        : on.withValues(alpha: LiquidGlassDockTokens.inactiveIconOpacity);
+    final Color contentColor = isSelected ? activeColor : inactiveColor;
+    final int messageUnreadCount = ref.watch(unreadMessagesProvider).maybeWhen(
+          data: (int count) => count,
+          orElse: () => 0,
+        );
     return Semantics(
       label: 'Inbox',
       hint: isSelected ? 'Selected inbox tab' : 'Tap to open inbox',
@@ -315,31 +387,36 @@ class CustomBottomNav extends ConsumerWidget {
       button: true,
       child: OptimizedButton(
         buttonId: 'nav_inbox',
-        onPressed: () => onTap(3),
+        onPressed: () => _handleTap(index),
+        enableHaptic: false,
         child: Padding(
           padding: EdgeInsets.all(metrics.itemPadding),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Stack(
+          child: SizedBox.square(
+            dimension: metrics.tapTargetSize,
+            child: Center(
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: <Widget>[
-                  Container(
-                    padding: EdgeInsets.all(metrics.iconPadding),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: fill,
-                      border: ring,
-                    ),
-                    child: Icon(
-                      Icons.mail_outline,
-                      color: iconAndLabel,
-                      size: metrics.iconSize,
+                  AnimatedScale(
+                    scale:
+                        isSelected ? LiquidGlassDockTokens.activeIconScale : 1,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedOpacity(
+                      opacity: isSelected ? 1 : 0.72,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(
+                        Icons.mail_outline,
+                        color: contentColor,
+                        size: metrics.iconSize,
+                      ),
                     ),
                   ),
                   if (messageUnreadCount > 0)
                     Positioned(
-                      right: 0,
-                      top: 0,
+                      right: -7,
+                      top: -7,
                       child: Semantics(
                         label: '$messageUnreadCount unread messages',
                         child: Container(
@@ -347,6 +424,9 @@ class CustomBottomNav extends ConsumerWidget {
                           decoration: BoxDecoration(
                             color: colorScheme.error,
                             shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
                           ),
                           constraints: BoxConstraints(
                             minWidth: metrics.badgeMinSize,
@@ -355,108 +435,66 @@ class CustomBottomNav extends ConsumerWidget {
                           child: Text(
                             messageUnreadCount > 99
                                 ? '99+'
-                                : messageUnreadCount.toString(),
-                            textScaler: navTextScaler,
+                                : '$messageUnreadCount',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               color: colorScheme.onError,
                               fontSize: metrics.badgeFontSize,
                               fontWeight: FontWeight.bold,
                             ),
-                            textAlign: TextAlign.center,
                           ),
                         ),
                       ),
                     ),
                 ],
               ),
-              SizedBox(height: metrics.labelGap),
-              Text(
-                'Inbox',
-                textScaler: navTextScaler,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: iconAndLabel,
-                  fontSize: metrics.labelFontSize,
-                  height: 1.0,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildAddButton(
-    ColorScheme colorScheme,
-    bool isLight,
-    Color on,
-    _NavMetrics metrics,
-    TextScaler navTextScaler,
-  ) {
-    final Color createMuted = isLight
-        ? Colors.white.withValues(alpha: 0.72)
-        : on.withValues(alpha: 0.4);
+  Widget _buildCreateButton({
+    required ColorScheme colorScheme,
+    required bool isLight,
+    required Color on,
+    required _NavMetrics metrics,
+  }) {
+    final bool isSelected = widget.currentIndex == _createIndex;
+    final Color activeColor = isLight ? colorScheme.primary : Colors.white;
+    final Color inactiveColor = isLight
+        ? colorScheme.onSurfaceVariant.withValues(
+            alpha: LiquidGlassDockTokens.inactiveIconOpacity,
+          )
+        : on.withValues(alpha: LiquidGlassDockTokens.inactiveIconOpacity);
+    final Color iconColor = isSelected ? activeColor : inactiveColor;
     return KeyedSubtree(
-      key: ProductTourTargetKeys.uploadButton,
+      key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.uploadButton),
       child: Semantics(
         label: 'Create content',
         hint: 'Tap to open camera and create new content',
         button: true,
         child: OptimizedButton(
           buttonId: 'nav_add',
-          onPressed: () => onTap(2),
+          onPressed: () => _handleTap(_createIndex),
+          enableHaptic: false,
           child: Padding(
             padding: EdgeInsets.all(metrics.itemPadding),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Container(
-                  padding: EdgeInsets.all(metrics.iconPadding),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[
-                        StThemeColors.brandPurple,
-                        StThemeColors.brandBlue,
-                      ],
-                      stops: <double>[0.0, 1.0],
-                    ),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: StThemeColors.brandPurple.withValues(alpha: 0.4),
-                        blurRadius: metrics.addShadowBlur,
-                        spreadRadius: 0,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
+            child: SizedBox.square(
+              dimension: metrics.tapTargetSize,
+              child: Center(
+                child: AnimatedScale(
+                  scale: isSelected ? LiquidGlassDockTokens.activeIconScale : 1,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
                   child: Icon(
                     Icons.add,
-                    color: colorScheme.onPrimary,
-                    size: metrics.iconSize,
+                    color: iconColor,
+                    size: metrics.createIconSize,
                   ),
                 ),
-                SizedBox(height: metrics.labelGap),
-                Text(
-                  'Create',
-                  textScaler: navTextScaler,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: createMuted,
-                    fontSize: metrics.labelFontSize,
-                    height: 1.0,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -469,77 +507,150 @@ class _NavMetrics {
   const _NavMetrics({
     required this.height,
     required this.horizontalMargin,
-    required this.bottomMargin,
+    required this.outerBottomGap,
     required this.radius,
     required this.contentPadding,
     required this.itemPadding,
-    required this.iconPadding,
     required this.iconSize,
-    required this.labelFontSize,
-    required this.labelGap,
+    required this.createIconSize,
+    required this.tapTargetSize,
     required this.badgePadding,
     required this.badgeMinSize,
     required this.badgeFontSize,
+    required this.indicatorWidth,
+    required this.indicatorHeight,
+    required this.indicatorTop,
     required this.shadowBlur,
     required this.glowBlur,
     required this.shadowOffset,
-    required this.addShadowBlur,
   });
 
   final double height;
   final double horizontalMargin;
-  final double bottomMargin;
+  final double outerBottomGap;
   final double radius;
   final EdgeInsets contentPadding;
   final double itemPadding;
-  final double iconPadding;
   final double iconSize;
-  final double labelFontSize;
-  final double labelGap;
+  final double createIconSize;
+  final double tapTargetSize;
   final double badgePadding;
   final double badgeMinSize;
   final double badgeFontSize;
+  final double indicatorWidth;
+  final double indicatorHeight;
+  final double indicatorTop;
   final double shadowBlur;
   final double glowBlur;
   final double shadowOffset;
-  final double addShadowBlur;
 
   factory _NavMetrics.from({
     required double availableWidth,
     required AppResponsive responsive,
-    required double bottomInset,
-    int navSlotCount = 5,
+    required bool hasSystemNavBar,
   }) {
-    final compact = responsive.isCompactPhone || availableWidth < 360;
-    final small = responsive.isSmallPhone || availableWidth < 390;
-    final safeLift = bottomInset > 0 ? bottomInset + 6.0 : 8.0;
-    final double perSlot =
-        navSlotCount > 0 ? availableWidth / navSlotCount : availableWidth;
-    final bool tightSlots = perSlot < 58;
-
+    final bool compact = responsive.isCompactPhone || availableWidth < 360;
+    final bool small = responsive.isSmallPhone || availableWidth < 390;
+    final bool tight = availableWidth / 5 < 58;
     return _NavMetrics(
-      height: compact ? 82 : (small ? 86 : 90),
-      horizontalMargin: compact ? 10 : 16,
-      bottomMargin: safeLift,
-      radius: responsive.radius(compact ? 24 : 28),
+      height: compact ? 58 : (small ? 60 : 62),
+      horizontalMargin: compact ? 12 : 16,
+      outerBottomGap: hasSystemNavBar ? 6 : 10,
+      radius: responsive.radius(26),
       contentPadding: EdgeInsets.fromLTRB(
-        tightSlots ? 4 : (compact ? 8 : 14),
-        compact ? 7 : 9,
-        tightSlots ? 4 : (compact ? 8 : 14),
-        compact ? 7 : 9,
+        tight ? 6 : (compact ? 10 : 16),
+        compact ? 6 : 8,
+        tight ? 6 : (compact ? 10 : 16),
+        compact ? 6 : 8,
       ),
-      itemPadding: tightSlots ? 1 : (compact ? 2 : 3),
-      iconPadding: tightSlots ? 4 : (compact ? 6 : 7),
-      iconSize: tightSlots ? 18 : (compact ? 20 : 22),
-      labelFontSize: tightSlots ? 9 : (compact ? 10 : 11),
-      labelGap: compact ? 3 : 4,
+      itemPadding: tight ? 1 : 2,
+      iconSize: tight ? 22 : (compact ? 24 : 25),
+      createIconSize: compact ? 27 : 29,
+      tapTargetSize: compact ? 42 : 44,
       badgePadding: compact ? 3 : 4,
       badgeMinSize: compact ? 15 : 16,
       badgeFontSize: compact ? 9 : 10,
-      shadowBlur: compact ? 22 : 28,
-      glowBlur: compact ? 16 : 20,
-      shadowOffset: compact ? 8 : 10,
-      addShadowBlur: compact ? 12 : 15,
+      indicatorWidth: compact ? 48 : 52,
+      indicatorHeight: compact ? 38 : 40,
+      indicatorTop: compact ? 4 : 5,
+      shadowBlur: compact ? 22 : 26,
+      glowBlur: compact ? 12 : 14,
+      shadowOffset: compact ? 6 : 8,
+    );
+  }
+}
+
+class _SlidingGlassIndicator extends StatelessWidget {
+  const _SlidingGlassIndicator({
+    required this.width,
+    required this.height,
+  });
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(height / 2),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(height / 2),
+              gradient: RadialGradient(
+                center: const Alignment(-0.35, -0.45),
+                radius: 1.25,
+                colors: <Color>[
+                  Colors.white.withValues(alpha: 0.32),
+                  LiquidGlassDockTokens.orbGradientStart.withValues(alpha: 0.3),
+                  LiquidGlassDockTokens.orbGradientEnd.withValues(alpha: 0.18),
+                  Colors.white.withValues(alpha: 0.06),
+                ],
+                stops: const <double>[0, 0.42, 0.72, 1],
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.22),
+                width: 1,
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: LiquidGlassDockTokens.orbGradientStart.withValues(
+                    alpha: 0.22,
+                  ),
+                  blurRadius: 18,
+                  spreadRadius: -6,
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  spreadRadius: -5,
+                ),
+              ],
+            ),
+            child: SizedBox(
+              width: width,
+              height: height,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(height / 2),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      Colors.white.withValues(alpha: 0.18),
+                      Colors.white.withValues(alpha: 0.02),
+                      Colors.white.withValues(alpha: 0.1),
+                    ],
+                    stops: const <double>[0, 0.52, 1],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

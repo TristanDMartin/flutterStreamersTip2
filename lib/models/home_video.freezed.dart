@@ -23,6 +23,7 @@ mixin _$HomeVideo {
   int get comments;
   int get views;
   String get caption;
+  String get overlayCaption;
   bool get isLiked;
   bool get isFavorited;
   bool get isDraft;
@@ -63,6 +64,8 @@ mixin _$HomeVideo {
                 other.comments == comments) &&
             (identical(other.views, views) || other.views == views) &&
             (identical(other.caption, caption) || other.caption == caption) &&
+            (identical(other.overlayCaption, overlayCaption) ||
+                other.overlayCaption == overlayCaption) &&
             (identical(other.isLiked, isLiked) || other.isLiked == isLiked) &&
             (identical(other.isFavorited, isFavorited) ||
                 other.isFavorited == isFavorited) &&
@@ -100,6 +103,7 @@ mixin _$HomeVideo {
         comments,
         views,
         caption,
+        overlayCaption,
         isLiked,
         isFavorited,
         isDraft,
@@ -118,7 +122,7 @@ mixin _$HomeVideo {
 
   @override
   String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, overlayCaption: $overlayCaption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
   }
 }
 
@@ -137,6 +141,7 @@ abstract mixin class $HomeVideoCopyWith<$Res> {
       int comments,
       int views,
       String caption,
+      String overlayCaption,
       bool isLiked,
       bool isFavorited,
       bool isDraft,
@@ -176,6 +181,7 @@ class _$HomeVideoCopyWithImpl<$Res> implements $HomeVideoCopyWith<$Res> {
     Object? comments = null,
     Object? views = null,
     Object? caption = null,
+    Object? overlayCaption = null,
     Object? isLiked = null,
     Object? isFavorited = null,
     Object? isDraft = null,
@@ -227,6 +233,10 @@ class _$HomeVideoCopyWithImpl<$Res> implements $HomeVideoCopyWith<$Res> {
       caption: null == caption
           ? _self.caption
           : caption // ignore: cast_nullable_to_non_nullable
+              as String,
+      overlayCaption: null == overlayCaption
+          ? _self.overlayCaption
+          : overlayCaption // ignore: cast_nullable_to_non_nullable
               as String,
       isLiked: null == isLiked
           ? _self.isLiked
@@ -403,6 +413,7 @@ extension HomeVideoPatterns on HomeVideo {
             int comments,
             int views,
             String caption,
+            String overlayCaption,
             bool isLiked,
             bool isFavorited,
             bool isDraft,
@@ -433,6 +444,7 @@ extension HomeVideoPatterns on HomeVideo {
             _that.comments,
             _that.views,
             _that.caption,
+            _that.overlayCaption,
             _that.isLiked,
             _that.isFavorited,
             _that.isDraft,
@@ -477,6 +489,7 @@ extension HomeVideoPatterns on HomeVideo {
             int comments,
             int views,
             String caption,
+            String overlayCaption,
             bool isLiked,
             bool isFavorited,
             bool isDraft,
@@ -506,6 +519,7 @@ extension HomeVideoPatterns on HomeVideo {
             _that.comments,
             _that.views,
             _that.caption,
+            _that.overlayCaption,
             _that.isLiked,
             _that.isFavorited,
             _that.isDraft,
@@ -547,6 +561,7 @@ extension HomeVideoPatterns on HomeVideo {
             int comments,
             int views,
             String caption,
+            String overlayCaption,
             bool isLiked,
             bool isFavorited,
             bool isDraft,
@@ -576,6 +591,7 @@ extension HomeVideoPatterns on HomeVideo {
             _that.comments,
             _that.views,
             _that.caption,
+            _that.overlayCaption,
             _that.isLiked,
             _that.isFavorited,
             _that.isDraft,
@@ -609,6 +625,7 @@ class _HomeVideo implements HomeVideo {
       this.comments = 0,
       this.views = 0,
       this.caption = '',
+      this.overlayCaption = '',
       this.isLiked = false,
       this.isFavorited = false,
       this.isDraft = false,
@@ -650,6 +667,9 @@ class _HomeVideo implements HomeVideo {
   @override
   @JsonKey()
   final String caption;
+  @override
+  @JsonKey()
+  final String overlayCaption;
   @override
   @JsonKey()
   final bool isLiked;
@@ -739,6 +759,8 @@ class _HomeVideo implements HomeVideo {
                 other.comments == comments) &&
             (identical(other.views, views) || other.views == views) &&
             (identical(other.caption, caption) || other.caption == caption) &&
+            (identical(other.overlayCaption, overlayCaption) ||
+                other.overlayCaption == overlayCaption) &&
             (identical(other.isLiked, isLiked) || other.isLiked == isLiked) &&
             (identical(other.isFavorited, isFavorited) ||
                 other.isFavorited == isFavorited) &&
@@ -776,6 +798,7 @@ class _HomeVideo implements HomeVideo {
         comments,
         views,
         caption,
+        overlayCaption,
         isLiked,
         isFavorited,
         isDraft,
@@ -794,7 +817,7 @@ class _HomeVideo implements HomeVideo {
 
   @override
   String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, overlayCaption: $overlayCaption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
   }
 }
 
@@ -816,6 +839,7 @@ abstract mixin class _$HomeVideoCopyWith<$Res>
       int comments,
       int views,
       String caption,
+      String overlayCaption,
       bool isLiked,
       bool isFavorited,
       bool isDraft,
@@ -856,6 +880,7 @@ class __$HomeVideoCopyWithImpl<$Res> implements _$HomeVideoCopyWith<$Res> {
     Object? comments = null,
     Object? views = null,
     Object? caption = null,
+    Object? overlayCaption = null,
     Object? isLiked = null,
     Object? isFavorited = null,
     Object? isDraft = null,
@@ -907,6 +932,10 @@ class __$HomeVideoCopyWithImpl<$Res> implements _$HomeVideoCopyWith<$Res> {
       caption: null == caption
           ? _self.caption
           : caption // ignore: cast_nullable_to_non_nullable
+              as String,
+      overlayCaption: null == overlayCaption
+          ? _self.overlayCaption
+          : overlayCaption // ignore: cast_nullable_to_non_nullable
               as String,
       isLiked: null == isLiked
           ? _self.isLiked

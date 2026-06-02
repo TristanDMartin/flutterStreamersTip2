@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../utils/public_video_count_rules.dart';
+import '../utils/swallow_non_fatal.dart';
 
 /// Post Counter Reconciliation Service
 ///
@@ -196,7 +197,9 @@ class PostCounterReconciliation {
           if (await videoIsPlayableForProfileCount(doc.id, data)) {
             countablePosts++;
           }
-        } catch (_) {}
+        } catch (e, st) {
+          swallowNonFatal('PostCounterReconciliation.countPost', e, st);
+        }
       }
 
       return {

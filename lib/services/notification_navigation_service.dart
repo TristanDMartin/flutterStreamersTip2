@@ -50,7 +50,9 @@ class NotificationNavigationService {
           '🎬 NotificationNavigationService: Video not found in available videos, fetching from Firestore: $videoId');
       final HomeVideo? homeVideo = await loadHomeVideoForPlayback(videoId);
       if (homeVideo == null) {
-        if (context.mounted) _showVideoUnavailable(context);
+        if (context.mounted) {
+          await AppNavigator.openVideoUnavailable(context, videoId: videoId);
+        }
         return;
       }
 
@@ -72,38 +74,6 @@ class NotificationNavigationService {
         _showErrorSnackBar(context, 'Unable to open video');
       }
     }
-  }
-
-  /// Show video unavailable dialog
-  void _showVideoUnavailable(BuildContext context) {
-    if (!context.mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          'Video Unavailable',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'This video is no longer available or has been deleted.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Color(0xFF9248d2)),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Show error SnackBar

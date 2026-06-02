@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:streamers_tip/features/gamification/models/subscription_plan.dart';
 import 'package:streamers_tip/models/creator_command_snapshot.dart';
-import 'package:streamers_tip/models/creator_command_snapshot.dart' as command_model;
+import 'package:streamers_tip/models/creator_command_snapshot.dart'
+    as command_model;
 import 'package:streamers_tip/routing/app_routes.dart';
 import 'package:streamers_tip/providers/creator_command_provider.dart';
 import 'package:streamers_tip/widgets/creator_command_center_overlay.dart';

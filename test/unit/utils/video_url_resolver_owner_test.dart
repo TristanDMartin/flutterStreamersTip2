@@ -20,8 +20,7 @@ void main() {
   group('inferOwnerIdFromVideoDocumentId', () {
     test('returns uid prefix when pattern matches', () {
       const String uid = 'abcdefghijklmnopqrst';
-      final String? actual =
-          inferOwnerIdFromVideoDocumentId('${uid}_clip001');
+      final String? actual = inferOwnerIdFromVideoDocumentId('${uid}_clip001');
       expect(actual, uid);
     });
     test('returns null when no underscore', () {

@@ -362,7 +362,7 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
   Future<void> _handleShareDraft(Map<String, dynamic> draft) async {
     try {
       HapticFeedback.lightImpact();
-      
+
       // Navigate to connection selection view
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
@@ -393,10 +393,9 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
   }
 
   Widget _buildDraftCard(Map<String, dynamic> draft) {
-    final videoSource =
-        (draft['videoPath'] as String?)?.isNotEmpty == true
-            ? draft['videoPath'] as String
-            : (draft['videoUrl'] as String?) ?? '';
+    final videoSource = (draft['videoPath'] as String?)?.isNotEmpty == true
+        ? draft['videoPath'] as String
+        : (draft['videoUrl'] as String?) ?? '';
     final thumbnailSource =
         (draft['thumbnailPath'] as String?)?.isNotEmpty == true
             ? draft['thumbnailPath'] as String
@@ -412,8 +411,9 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
     debugPrint('  - thumbnailSource: $thumbnailSource');
 
     // Check if thumbnail exists, if not generate it
-    final hasLocalThumbnail = (draft['thumbnailPath'] as String?)?.isNotEmpty == true &&
-        File(draft['thumbnailPath'] as String).existsSync();
+    final hasLocalThumbnail =
+        (draft['thumbnailPath'] as String?)?.isNotEmpty == true &&
+            File(draft['thumbnailPath'] as String).existsSync();
     final hasThumbnail = hasLocalThumbnail || thumbnailSource.isNotEmpty;
 
     final draftVideo = HomeVideo(
@@ -649,11 +649,12 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
       );
     }
 
-    final crossPlatforms = (metadata['cross_platform_sharing'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .where((e) => e.isNotEmpty)
-            .toList() ??
-        const <String>[];
+    final crossPlatforms =
+        (metadata['cross_platform_sharing'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            const <String>[];
     if (crossPlatforms.isNotEmpty) {
       chips.add(
         _buildStatusChip(
@@ -728,7 +729,8 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
         .join(' ');
   }
 
-  Future<String?> _generateThumbnailIfMissing(String draftId, String videoPath) async {
+  Future<String?> _generateThumbnailIfMissing(
+      String draftId, String videoPath) async {
     try {
       debugPrint('🖼️ Generating missing thumbnail for draft: $draftId');
       final draftThumbnailService = DraftThumbnailService();
@@ -736,7 +738,7 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
         videoPath: videoPath,
         videoId: draftId,
       );
-      
+
       if (thumbnailPath != null) {
         // Update the draft with the new thumbnail path
         final localDraftService = LocalDraftService();
@@ -745,18 +747,18 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
           (d) => d['id'] == draftId,
           orElse: () => <String, dynamic>{},
         );
-        
+
         if (draft.isNotEmpty) {
           await localDraftService.updateDraftFields(
             draftId,
             {'thumbnailPath': thumbnailPath},
           );
         }
-        
+
         debugPrint('✅ Generated thumbnail: $thumbnailPath');
         return thumbnailPath;
       }
-      
+
       return null;
     } catch (e) {
       debugPrint('❌ Error generating thumbnail: $e');

@@ -85,7 +85,7 @@ class BookmarkEvent {
   EventStatus get status {
     final now = DateTime.now();
     final timeDiff = startAt.difference(now);
-    
+
     if (timeDiff.isNegative) {
       return EventStatus.past;
     } else if (timeDiff.inMinutes <= 30) {
@@ -99,7 +99,7 @@ class BookmarkEvent {
   String get formattedStartTime {
     final now = DateTime.now();
     final timeDiff = startAt.difference(now);
-    
+
     if (timeDiff.isNegative) {
       return 'Past';
     } else if (timeDiff.inDays > 0) {

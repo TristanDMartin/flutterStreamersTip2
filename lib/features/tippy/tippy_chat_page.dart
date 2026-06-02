@@ -18,6 +18,8 @@ import '../content_planning/content_planning_repository.dart';
 import 'tippy_access.dart';
 import 'tippy_chat_service.dart';
 import 'tippy_message_content.dart';
+import 'tippy_personality.dart';
+import 'tippy_tier.dart';
 
 class TippyChatPage extends ConsumerStatefulWidget {
   const TippyChatPage({
@@ -34,12 +36,6 @@ class TippyChatPage extends ConsumerStatefulWidget {
 }
 
 class _TippyChatPageState extends ConsumerState<TippyChatPage> {
-  static const List<String> _quickPrompts = <String>[
-    'Turn this conversation into a content plan',
-    'Give me 10 gaming short-form hooks',
-    'What should I post today?',
-    'Turn my next idea into a scheduled post',
-  ];
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
   final List<_ChatLine> _lines = <_ChatLine>[];
@@ -190,8 +186,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
           _lines.add(
             const _ChatLine(
               user: false,
-              text:
-                  'That content plan was not found. Open the Content planner '
+              text: 'That content plan was not found. Open the Content planner '
                   'and pull to refresh.',
               isError: true,
             ),
@@ -759,10 +754,15 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                               greeting: _greeting,
                               nudge: _nudge,
                               creditsLabel: creditsLabel,
+                              subtitle: TippyPersonality.welcomeSubtitle(
+                                resolveTippyFeatureTier(bundle),
+                              ),
                             ),
                             const SizedBox(height: 14),
                             _QuickPromptGrid(
-                              prompts: _quickPrompts,
+                              prompts: TippyPersonality.quickPromptsForBundle(
+                                bundle,
+                              ),
                               onPrompt: (String prompt) {
                                 _input.text = prompt;
                                 _send();
@@ -775,10 +775,9 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                     final _ChatLine line = _lines[index];
                     return _ChatBubble(
                       line: line,
-                      onContentPlanDeepLink:
-                          line.user || line.isThinking
-                              ? null
-                              : _openContentPlanById,
+                      onContentPlanDeepLink: line.user || line.isThinking
+                          ? null
+                          : _openContentPlanById,
                     );
                   },
                 ),
@@ -1521,11 +1520,13 @@ class _TippyWelcomePanel extends StatelessWidget {
     required this.greeting,
     required this.nudge,
     required this.creditsLabel,
+    this.subtitle,
   });
 
   final String? greeting;
   final String? nudge;
   final String creditsLabel;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1592,6 +1593,18 @@ class _TippyWelcomePanel extends StatelessWidget {
               height: 1.08,
             ),
           ),
+          if (subtitle != null && subtitle!.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.58),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
+            ),
+          ],
           if (nudge != null && nudge!.trim().isNotEmpty) ...<Widget>[
             const SizedBox(height: 8),
             Text(

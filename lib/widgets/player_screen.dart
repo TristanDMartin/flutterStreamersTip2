@@ -5,12 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/home_video.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/video_service_provider.dart';
-import '../services/video_service.dart';
-import '../providers/discover_provider.dart';
-import '../providers/favorites_provider.dart';
 import '../services/global_playback_manager.dart';
 import '../constants/playback_owners.dart';
+import '../core/feature_flags.dart';
 import '../services/video_actions_service.dart';
+import '../services/video_deletion_service.dart';
 import '../services/video_download_service.dart';
 import '../services/streamers_tip_like_service.dart';
 import '../services/unified_bookmark_service.dart';
@@ -50,7 +49,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   final Map<String, bool> _bookmarkStates = {}; // Cache bookmark states
 
   void _restoreCurrentVideoFocus({String reason = 'player_restore'}) {
-    if (_videos.isEmpty || _currentIndex < 0 || _currentIndex >= _videos.length) {
+    if (_videos.isEmpty ||
+        _currentIndex < 0 ||
+        _currentIndex >= _videos.length) {
       return;
     }
 
@@ -428,17 +429,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 },
               ),
 
-              // Download
-              _buildMenuOption(
-                context,
-                icon: Icons.download,
-                title: 'Download',
-                subtitle: 'Save video to device',
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleDownload(context, video);
-                },
-              ),
+              if (FeatureFlags.videoDownload)
+                _buildMenuOption(
+                  context,
+                  icon: Icons.download,
+                  title: 'Download',
+                  subtitle: 'Save video to device',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _handleDownload(context, video);
+                  },
+                ),
 
               // Delete
               _buildMenuOption(
@@ -623,7 +624,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
-              await _performDelete(playerContext, video);
+              await _performDelete(video);
             },
             child: const Text(
               'Delete',
@@ -635,18 +636,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 
-  /// Deletes locally first (instant UI), then Firestore via [VideoActionsService].
-  Future<void> _performDelete(BuildContext context, HomeVideo video) async {
-    final ProviderContainer container =
-        ProviderScope.containerOf(context, listen: false);
+  /// Deletes locally first (instant UI), then backend via [VideoActionsService].
+  Future<void> _performDelete(HomeVideo video) async {
     final int deletedIndex = _currentIndex;
     final bool wasOnlyVideo = _videos.length == 1;
     final bool wasLastVideo = deletedIndex == _videos.length - 1;
-    final VideoService videoService = container.read(videoServiceProvider);
-    videoService.removeVideo(video.id);
-    container.invalidate(hp.homeProvider);
-    container.invalidate(discoverProvider);
-    container.invalidate(favoritesProvider);
+    ref.read(videoDeletionServiceProvider).applyOptimisticRemoval(
+      <String>[video.id],
+    );
     if (wasOnlyVideo) {
       GlobalPlaybackManager.instance.pauseAll();
       if (context.mounted) {
@@ -661,7 +658,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       }
       unawaited(
         _completeVideoDeletionAfterOptimistic(
-          container: container,
           video: video,
           deletedIndex: deletedIndex,
           wasOnlyVideo: true,
@@ -682,7 +678,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
     GlobalPlaybackManager.instance.pauseAll();
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    if (context.mounted &&
+    if (mounted &&
         _pageController != null &&
         _pageController!.hasClients &&
         _videos.isNotEmpty) {
@@ -698,7 +694,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       await Future<void>.delayed(const Duration(milliseconds: 150));
       _restoreCurrentVideoFocus(reason: 'delete_navigation');
     }
-    if (context.mounted) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Video deleted'),
@@ -709,7 +705,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
     unawaited(
       _completeVideoDeletionAfterOptimistic(
-        container: container,
         video: video,
         deletedIndex: deletedIndex,
         wasOnlyVideo: false,
@@ -718,17 +713,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   Future<void> _completeVideoDeletionAfterOptimistic({
-    required ProviderContainer container,
     required HomeVideo video,
     required int deletedIndex,
     required bool wasOnlyVideo,
   }) async {
     try {
-      await container.read(videoActionsServiceProvider).deleteVideo(video.id);
-      unawaited(_refreshFeedsAfterDelete(container));
+      await ref.read(videoActionsServiceProvider).deleteVideo(video.id);
+      unawaited(_refreshFeedsAfterDelete());
     } catch (e) {
       debugPrint('❌ PlayerScreen: Server delete failed, rolling back: $e');
-      container.read(videoServiceProvider).addVideo(video);
+      ref.read(videoDeletionServiceProvider).rollbackOptimisticRemoval(
+        <HomeVideo>[video],
+      );
       if (!mounted) {
         return;
       }
@@ -761,10 +757,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
   }
 
-  Future<void> _refreshFeedsAfterDelete(ProviderContainer container) async {
+  Future<void> _refreshFeedsAfterDelete() async {
     try {
-      await container.read(hp.homeProvider.notifier).refreshFeed();
-      await container.read(videoServiceProvider).refresh();
+      await ref.read(hp.homeProvider.notifier).refreshFeed();
+      await ref.read(videoServiceProvider).refresh();
     } catch (e, st) {
       debugPrint('⚠️ PlayerScreen: Post-delete feed refresh failed: $e $st');
     }

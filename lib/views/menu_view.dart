@@ -439,9 +439,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
           borderRadius: BorderRadius.circular(metrics.cardRadius),
           border: Border.all(
             color: on.withValues(
-              alpha: isPrimary
-                  ? 0.22
-                  : (isLight ? 0.22 : 0.12),
+              alpha: isPrimary ? 0.22 : (isLight ? 0.22 : 0.12),
             ),
             width: 1,
           ),
@@ -462,9 +460,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
               height: metrics.cardIconBoxSize,
               decoration: BoxDecoration(
                 color: on.withValues(
-                  alpha: isPrimary
-                      ? 0.18
-                      : (isLight ? 0.14 : 0.1),
+                  alpha: isPrimary ? 0.18 : (isLight ? 0.14 : 0.1),
                 ),
                 borderRadius: BorderRadius.circular(metrics.cardIconRadius),
                 border: Border.all(

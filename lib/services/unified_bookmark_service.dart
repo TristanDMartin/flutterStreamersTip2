@@ -2,10 +2,18 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import '../features/bookmarks/data/calendar_event_bookmark_coordinator.dart';
+import '../features/bookmarks/models/video_bookmark_stream_event.dart';
+import '../models/bookmark_event.dart' as calendar;
+import '../features/gamification/emit_engagement_gamification.dart';
+import '../features/gamification/gamification_event_types.dart';
+import 'progression_service.dart';
 
 /// Unified Bookmark Service - Single source of truth for bookmark operations
 ///
-/// Eliminates race conditions by providing atomic operations and reactive state management
+/// - **Video favorites:** `users/{uid}/favorites`, `videos/{id}/bookmarks/{uid}`
+/// - **Calendar events:** `users/{uid}/bookmarks/{eventId}` via
+///   [CalendarEventBookmarkCoordinator]
 class UnifiedBookmarkService extends ChangeNotifier {
   static final UnifiedBookmarkService _instance =
       UnifiedBookmarkService._internal();
@@ -15,23 +23,53 @@ class UnifiedBookmarkService extends ChangeNotifier {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final CalendarEventBookmarkCoordinator _calendarEventBookmarks =
+      CalendarEventBookmarkCoordinator();
 
   // State management
   final Map<String, BookmarkState> _bookmarkStates = {};
   final Set<String> _pendingOperations = {};
-  final StreamController<BookmarkEvent> _eventController =
-      StreamController<BookmarkEvent>.broadcast();
+  final StreamController<VideoBookmarkStreamEvent> _eventController =
+      StreamController<VideoBookmarkStreamEvent>.broadcast();
   String? _initializedUserId;
   bool _hasLoadedInitialState = false;
 
   // Getters
-  Stream<BookmarkEvent> get eventStream => _eventController.stream;
+  Stream<VideoBookmarkStreamEvent> get eventStream => _eventController.stream;
   Map<String, BookmarkState> get bookmarkStates => Map.from(_bookmarkStates);
 
   /// Check if a video is bookmarked
   bool isBookmarked(String videoId) {
     final state = _bookmarkStates[videoId];
     return state?.isBookmarked ?? false;
+  }
+
+  /// Bookmarked video ids, newest `favoritedAt` first (nulls last).
+  List<String> get orderedBookmarkedVideoIds {
+    final List<MapEntry<String, BookmarkState>> entries = _bookmarkStates
+        .entries
+        .where((MapEntry<String, BookmarkState> e) => e.value.isBookmarked)
+        .toList();
+    entries.sort(_compareFavoritedAtDesc);
+    return entries.map((MapEntry<String, BookmarkState> e) => e.key).toList();
+  }
+
+  static int _compareFavoritedAtDesc(
+    MapEntry<String, BookmarkState> a,
+    MapEntry<String, BookmarkState> b,
+  ) {
+    final DateTime? ta = a.value.favoritedAt;
+    final DateTime? tb = b.value.favoritedAt;
+    if (ta == null && tb == null) {
+      return 0;
+    }
+    if (ta == null) {
+      return 1;
+    }
+    if (tb == null) {
+      return -1;
+    }
+    return tb.compareTo(ta);
   }
 
   /// Get bookmark state for a video
@@ -65,28 +103,58 @@ class UnifiedBookmarkService extends ChangeNotifier {
     } catch (e) {
       _hasLoadedInitialState = false;
       debugPrint('❌ UnifiedBookmarkService: Initialization failed: $e');
-      _eventController.add(BookmarkEvent.error('Initialization failed: $e'));
+      _eventController.add(
+        VideoBookmarkStreamEvent.error('Initialization failed: $e'),
+      );
     }
   }
 
   /// Load user's bookmarks from Firebase
   Future<void> _loadUserBookmarks(String userId) async {
     try {
+      final Map<String, DateTime?> favoritedAtByVideoId = <String, DateTime?>{};
+      _bookmarkStates.clear();
+
+      try {
+        final canonicalBookmarks = await _firestore
+            .collectionGroup('bookmarks')
+            .where('userId', isEqualTo: userId)
+            .limit(1000)
+            .get();
+        for (final doc in canonicalBookmarks.docs) {
+          final Map<String, dynamic> data = doc.data();
+          final String? videoId =
+              (data['videoId'] as String?) ?? doc.reference.parent.parent?.id;
+          if (videoId == null || videoId.isEmpty) {
+            continue;
+          }
+          favoritedAtByVideoId[videoId] =
+              _readFavoritedAt(data) ?? favoritedAtByVideoId[videoId];
+        }
+      } catch (e) {
+        debugPrint(
+            '⚠️ UnifiedBookmarkService: Canonical bookmark query failed: $e');
+      }
+
       final snapshot = await _firestore
           .collection('users')
           .doc(userId)
           .collection('favorites')
           .get();
-
-      _bookmarkStates.clear();
-
       for (final doc in snapshot.docs) {
-        final videoId = doc.id;
-        _bookmarkStates[videoId] = BookmarkState(
-          videoId: videoId,
+        final String videoId = doc.id;
+        final DateTime? at = _readFavoritedAt(doc.data());
+        favoritedAtByVideoId[videoId] = at ?? favoritedAtByVideoId[videoId];
+      }
+
+      for (final MapEntry<String, DateTime?> e
+          in favoritedAtByVideoId.entries) {
+        _bookmarkStates[e.key] = BookmarkState(
+          videoId: e.key,
           isBookmarked: true,
-          lastUpdated: doc.data()['timestamp']?.toDate() ?? DateTime.now(),
+          lastUpdated: DateTime.now(),
           status: BookmarkStatus.synced,
+          favoritedAt: e.value,
         );
       }
 
@@ -114,13 +182,16 @@ class UnifiedBookmarkService extends ChangeNotifier {
     _pendingOperations.add(videoId);
     final currentState = _bookmarkStates[videoId];
     final isCurrentlyBookmarked = currentState?.isBookmarked ?? false;
+    final DateTime? priorFavoritedAt = currentState?.favoritedAt;
 
     try {
       final newBookmarkState = !isCurrentlyBookmarked;
 
       // Optimistic update
       _updateLocalState(videoId, newBookmarkState, BookmarkStatus.pending);
-      _eventController.add(BookmarkEvent.toggle(videoId, newBookmarkState));
+      _eventController.add(
+        VideoBookmarkStreamEvent.toggle(videoId, newBookmarkState),
+      );
 
       // Perform atomic Firebase operation
       final result = await _performAtomicFirebaseOperation(
@@ -132,22 +203,49 @@ class UnifiedBookmarkService extends ChangeNotifier {
       if (result.success) {
         // Update status to synced
         _updateLocalState(videoId, newBookmarkState, BookmarkStatus.synced);
-        _eventController.add(BookmarkEvent.success(videoId, newBookmarkState));
+        _eventController.add(
+          VideoBookmarkStreamEvent.success(videoId, newBookmarkState),
+        );
+        if (newBookmarkState) {
+          scheduleEngagementGamificationEvent(
+            type: GamificationEventTypes.engagementBookmarkCreated,
+            entityType: 'video',
+            entityId: videoId,
+            source: 'bookmarks',
+          );
+          unawaited(ProgressionService.instance.markTaskCompleted(
+            currentUser.uid,
+            ProgressionTaskIds.firstBookmarkSaved,
+            source: 'bookmarks',
+          ));
+        }
 
         return BookmarkResult.success(newBookmarkState);
       } else {
         // Revert optimistic update
         _updateLocalState(
-            videoId, isCurrentlyBookmarked, BookmarkStatus.synced);
-        _eventController
-            .add(BookmarkEvent.error(result.error ?? 'Unknown error'));
+          videoId,
+          isCurrentlyBookmarked,
+          BookmarkStatus.synced,
+          favoritedAtOverride: isCurrentlyBookmarked ? priorFavoritedAt : null,
+        );
+        _eventController.add(
+          VideoBookmarkStreamEvent.error(result.error ?? 'Unknown error'),
+        );
 
         return BookmarkResult.error(result.error ?? 'Operation failed');
       }
     } catch (e) {
       // Revert optimistic update on error
-      _updateLocalState(videoId, isCurrentlyBookmarked, BookmarkStatus.synced);
-      _eventController.add(BookmarkEvent.error('Operation failed: $e'));
+      _updateLocalState(
+        videoId,
+        isCurrentlyBookmarked,
+        BookmarkStatus.synced,
+        favoritedAtOverride: isCurrentlyBookmarked ? priorFavoritedAt : null,
+      );
+      _eventController.add(
+        VideoBookmarkStreamEvent.error('Operation failed: $e'),
+      );
 
       return BookmarkResult.error('Operation failed: $e');
     } finally {
@@ -165,38 +263,110 @@ class UnifiedBookmarkService extends ChangeNotifier {
       final userDocRef = _firestore.collection('users').doc(userId);
       final favoriteDocRef = userDocRef.collection('favorites').doc(videoId);
       final videoDocRef = _firestore.collection('videos').doc(videoId);
-      var shouldUpdateCounter = false;
+      final bookmarkDocRef = videoDocRef.collection('bookmarks').doc(userId);
 
       await _firestore.runTransaction<void>((transaction) async {
         final favoriteDoc = await transaction.get(favoriteDocRef);
-        final bool exists = favoriteDoc.exists;
+        final bookmarkDoc = await transaction.get(bookmarkDocRef);
+        final videoDoc = await transaction.get(videoDocRef);
+        final bool exists = favoriteDoc.exists || bookmarkDoc.exists;
+
+        int currentCount = 0;
+        if (videoDoc.exists) {
+          currentCount = _readBookmarkCount(videoDoc.data() ?? const {});
+        }
 
         if (isBookmarking) {
           if (exists) {
+            transaction.set(
+              bookmarkDocRef,
+              {
+                'userId': userId,
+                'videoId': videoId,
+                'bookmarkedAt': FieldValue.serverTimestamp(),
+                'favoritedAt': FieldValue.serverTimestamp(),
+                'updatedAt': FieldValue.serverTimestamp(),
+                'source': 'mobile',
+              },
+              SetOptions(merge: true),
+            );
+            transaction.set(
+              favoriteDocRef,
+              {
+                'videoId': videoId,
+                'favoritedAt': FieldValue.serverTimestamp(),
+                'timestamp': FieldValue.serverTimestamp(),
+                'updatedAt': FieldValue.serverTimestamp(),
+                'source': 'mobile',
+              },
+              SetOptions(merge: true),
+            );
+            if (videoDoc.exists) {
+              final int nextCount = currentCount < 1 ? 1 : currentCount;
+              transaction.set(
+                videoDocRef,
+                <String, dynamic>{
+                  'bookmarkCount': nextCount,
+                  'favorites': nextCount,
+                  'favoriteCount': nextCount,
+                  'updatedAt': FieldValue.serverTimestamp(),
+                },
+                SetOptions(merge: true),
+              );
+            }
             return;
           }
-          transaction.set(favoriteDocRef, {
+          transaction.set(bookmarkDocRef, {
+            'userId': userId,
             'videoId': videoId,
-            'timestamp': FieldValue.serverTimestamp(),
+            'bookmarkedAt': FieldValue.serverTimestamp(),
+            'favoritedAt': FieldValue.serverTimestamp(),
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
             'source': 'mobile',
           });
-          shouldUpdateCounter = true;
+          transaction.set(favoriteDocRef, {
+            'videoId': videoId,
+            'favoritedAt': FieldValue.serverTimestamp(),
+            'timestamp': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'source': 'mobile',
+          });
+          if (videoDoc.exists) {
+            final nextCount = currentCount + 1;
+            transaction.set(
+              videoDocRef,
+              <String, dynamic>{
+                'bookmarkCount': nextCount,
+                'favorites': nextCount,
+                'favoriteCount': nextCount,
+                'updatedAt': FieldValue.serverTimestamp(),
+              },
+              SetOptions(merge: true),
+            );
+          }
           return;
         }
 
         if (!exists) {
           return;
         }
+        transaction.delete(bookmarkDocRef);
         transaction.delete(favoriteDocRef);
-        shouldUpdateCounter = true;
+        if (videoDoc.exists) {
+          final nextCount = (currentCount - 1).clamp(0, 1 << 31).toInt();
+          transaction.set(
+            videoDocRef,
+            <String, dynamic>{
+              'bookmarkCount': nextCount,
+              'favorites': nextCount,
+              'favoriteCount': nextCount,
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true),
+          );
+        }
       });
-
-      if (shouldUpdateCounter) {
-        unawaited(_updateVideoFavoriteCounters(
-          videoDocRef: videoDocRef,
-          isBookmarking: isBookmarking,
-        ));
-      }
 
       debugPrint(
         isBookmarking
@@ -211,55 +381,60 @@ class UnifiedBookmarkService extends ChangeNotifier {
     }
   }
 
-  Future<void> _updateVideoFavoriteCounters({
-    required DocumentReference<Map<String, dynamic>> videoDocRef,
-    required bool isBookmarking,
-  }) async {
-    try {
-      await _firestore.runTransaction<void>((transaction) async {
-        final videoDoc = await transaction.get(videoDocRef);
-        if (!videoDoc.exists) {
-          return;
-        }
-        transaction.set(
-          videoDocRef,
-          <String, dynamic>{
-            'favorites': _nextCounter(videoDoc, 'favorites', isBookmarking),
-            'favoriteCount':
-                _nextCounter(videoDoc, 'favoriteCount', isBookmarking),
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-      });
-    } catch (e) {
-      debugPrint(
-        '⚠️ UnifiedBookmarkService: Counter update skipped for ${videoDocRef.id}: $e',
-      );
+  int _readBookmarkCount(Map<String, dynamic> data) {
+    for (final key in const [
+      'bookmarkCount',
+      'bookmarksCount',
+      'savesCount',
+      'bookmarks',
+      'favoriteCount',
+      'favorites',
+    ]) {
+      final value = data[key];
+      if (value is num) return value.toInt().clamp(0, 1 << 31).toInt();
+      if (value is String) {
+        final parsed = int.tryParse(value);
+        if (parsed != null) return parsed.clamp(0, 1 << 31).toInt();
+      }
     }
+    return 0;
   }
 
-  int _nextCounter(
-    DocumentSnapshot<Map<String, dynamic>> snapshot,
-    String field,
-    bool increment,
-  ) {
-    final value = snapshot.data()?[field];
-    final current = value is num ? value.toInt().clamp(0, 1 << 31).toInt() : 0;
-    if (increment) {
-      return current + 1;
+  static DateTime? _readFavoritedAt(Map<String, dynamic> data) {
+    for (final String key in const <String>[
+      'favoritedAt',
+      'timestamp',
+      'bookmarkedAt',
+      'updatedAt',
+    ]) {
+      final Object? v = data[key];
+      if (v is Timestamp) {
+        return v.toDate();
+      }
     }
-    return (current - 1).clamp(0, 1 << 31).toInt();
+    return null;
   }
 
   /// Update local state
   void _updateLocalState(
-      String videoId, bool isBookmarked, BookmarkStatus status) {
+    String videoId,
+    bool isBookmarked,
+    BookmarkStatus status, {
+    DateTime? favoritedAtOverride,
+  }) {
+    final BookmarkState? prev = _bookmarkStates[videoId];
+    final DateTime? favoritedAt = !isBookmarked
+        ? null
+        : (favoritedAtOverride ??
+            ((prev?.isBookmarked == true && prev?.favoritedAt != null)
+                ? prev!.favoritedAt
+                : DateTime.now()));
     _bookmarkStates[videoId] = BookmarkState(
       videoId: videoId,
       isBookmarked: isBookmarked,
       lastUpdated: DateTime.now(),
       status: status,
+      favoritedAt: favoritedAt,
     );
     notifyListeners();
   }
@@ -281,11 +456,58 @@ class UnifiedBookmarkService extends ChangeNotifier {
     _pendingOperations.clear();
     _initializedUserId = null;
     _hasLoadedInitialState = false;
+    _calendarEventBookmarks.reset();
     notifyListeners();
   }
 
+  // ── Calendar event bookmarks (streamer schedule) ───────────────────────────
+
+  Future<void> initializeCalendarEventBookmarks() =>
+      _calendarEventBookmarks.initialize();
+
+  Stream<List<calendar.BookmarkEvent>> calendarEventBookmarksStream() =>
+      _calendarEventBookmarks.getBookmarksStream();
+
+  Future<bool> bookmarkCalendarEvent({
+    required String eventId,
+    required String creatorId,
+    String? creatorName,
+    required String title,
+    required DateTime startAt,
+    DateTime? notifyAt,
+    String source = 'streamerCardBackView',
+  }) =>
+      _calendarEventBookmarks.bookmarkEvent(
+        eventId: eventId,
+        creatorId: creatorId,
+        creatorName: creatorName,
+        title: title,
+        startAt: startAt,
+        notifyAt: notifyAt,
+        source: source,
+      );
+
+  Future<bool> deleteCalendarEventBookmark({required String eventId}) =>
+      _calendarEventBookmarks.deleteBookmark(eventId: eventId);
+
+  Future<bool> toggleCalendarEventNotification({
+    required String eventId,
+    required bool notify,
+  }) =>
+      _calendarEventBookmarks.toggleNotification(
+        eventId: eventId,
+        notify: notify,
+      );
+
+  Future<Set<String>> fetchBookmarkedCalendarEventIds() =>
+      _calendarEventBookmarks.fetchBookmarkedEventIds();
+
+  bool isCalendarEventBookmarked(String eventId) =>
+      _calendarEventBookmarks.isEventBookmarked(eventId);
+
   @override
   void dispose() {
+    _calendarEventBookmarks.dispose();
     _eventController.close();
     super.dispose();
   }
@@ -297,12 +519,14 @@ class BookmarkState {
   final bool isBookmarked;
   final DateTime lastUpdated;
   final BookmarkStatus status;
+  final DateTime? favoritedAt;
 
   BookmarkState({
     required this.videoId,
     required this.isBookmarked,
     required this.lastUpdated,
     required this.status,
+    this.favoritedAt,
   });
 
   BookmarkState copyWith({
@@ -310,12 +534,14 @@ class BookmarkState {
     bool? isBookmarked,
     DateTime? lastUpdated,
     BookmarkStatus? status,
+    DateTime? favoritedAt,
   }) {
     return BookmarkState(
       videoId: videoId ?? this.videoId,
       isBookmarked: isBookmarked ?? this.isBookmarked,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       status: status ?? this.status,
+      favoritedAt: favoritedAt ?? this.favoritedAt,
     );
   }
 }
@@ -324,36 +550,6 @@ class BookmarkState {
 enum BookmarkStatus {
   synced,
   pending,
-  error,
-}
-
-/// Bookmark event model
-class BookmarkEvent {
-  final String videoId;
-  final BookmarkEventType type;
-  final bool? isBookmarked;
-  final String? error;
-
-  BookmarkEvent._(this.videoId, this.type, {this.isBookmarked, this.error});
-
-  factory BookmarkEvent.toggle(String videoId, bool isBookmarked) {
-    return BookmarkEvent._(videoId, BookmarkEventType.toggle,
-        isBookmarked: isBookmarked);
-  }
-
-  factory BookmarkEvent.success(String videoId, bool isBookmarked) {
-    return BookmarkEvent._(videoId, BookmarkEventType.success,
-        isBookmarked: isBookmarked);
-  }
-
-  factory BookmarkEvent.error(String error) {
-    return BookmarkEvent._('', BookmarkEventType.error, error: error);
-  }
-}
-
-enum BookmarkEventType {
-  toggle,
-  success,
   error,
 }
 

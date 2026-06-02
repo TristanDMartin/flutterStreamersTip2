@@ -40,6 +40,7 @@ class TippyAiEntitlementPayload {
       }
       return 0;
     }
+
     final List<dynamic> featRaw = raw['features'] is List<dynamic>
         ? raw['features'] as List<dynamic>
         : const <dynamic>[];
@@ -83,19 +84,16 @@ class MeEntitlementsData {
     Map<String, dynamic> body,
   ) {
     final Object? d = body['data'];
-    final Map<String, dynamic> data = d is Map<String, dynamic>
-        ? d
-        : <String, dynamic>{};
-    final String tier = data['tier'] is String
-        ? (data['tier'] as String)
-        : 'unknown';
+    final Map<String, dynamic> data =
+        d is Map<String, dynamic> ? d : <String, dynamic>{};
+    final String tier =
+        data['tier'] is String ? (data['tier'] as String) : 'unknown';
     return MeEntitlementsData(
       uid: data['uid'] is String ? data['uid'] as String : '',
       email: data['email'] is String ? data['email'] as String : '',
       tier: tier,
-      tierSource: data['tierSource'] is String
-          ? data['tierSource'] as String
-          : 'none',
+      tierSource:
+          data['tierSource'] is String ? data['tierSource'] as String : 'none',
       subscriptionStatus: data['subscriptionStatus'] is String
           ? data['subscriptionStatus'] as String
           : 'unknown',

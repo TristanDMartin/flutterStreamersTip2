@@ -13,7 +13,8 @@ sealed class AuthResponse with _$AuthResponse {
     String? refreshToken,
   }) = _AuthResponse;
 
-  factory AuthResponse.fromJson(Map<String, dynamic> json) => _$AuthResponseFromJson(json);
+  factory AuthResponse.fromJson(Map<String, dynamic> json) =>
+      _$AuthResponseFromJson(json);
 }
 
 @freezed
@@ -23,7 +24,8 @@ sealed class LoginRequest with _$LoginRequest {
     required String password,
   }) = _LoginRequest;
 
-  factory LoginRequest.fromJson(Map<String, dynamic> json) => _$LoginRequestFromJson(json);
+  factory LoginRequest.fromJson(Map<String, dynamic> json) =>
+      _$LoginRequestFromJson(json);
 }
 
 @freezed
@@ -34,5 +36,6 @@ sealed class SignupRequest with _$SignupRequest {
     required String password,
   }) = _SignupRequest;
 
-  factory SignupRequest.fromJson(Map<String, dynamic> json) => _$SignupRequestFromJson(json);
+  factory SignupRequest.fromJson(Map<String, dynamic> json) =>
+      _$SignupRequestFromJson(json);
 }

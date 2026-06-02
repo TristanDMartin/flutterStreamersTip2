@@ -2,6 +2,12 @@
  * Server-side Anthropic Messages API for Tippy (never expose API keys to clients).
  */
 
+const {
+  buildTippySystemPrompt,
+  buildAnalyzeSystemPrompt,
+  buildPlanSystemPrompt,
+} = require('./tippy_identity');
+
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
@@ -210,18 +216,29 @@ function tryParseJson(text) {
  * @param {string} params.requestId
  * @returns {Promise<object>}
  */
-async function runAnthropicTippy({apiKey, path, body, requestId}) {
+function resolveTippyContext(tippyContext) {
+  const ctx = tippyContext && typeof tippyContext === 'object' ? tippyContext : {};
+  return {
+    tier: ctx.tier || 'starter',
+    displayName: ctx.creatorName || ctx.displayName || 'creator',
+    userData: ctx.userData && typeof ctx.userData === 'object' ? ctx.userData : {},
+    extras: ctx.extras && typeof ctx.extras === 'object' ? ctx.extras : {},
+  };
+}
+
+async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) {
   const model = resolveModel();
+  const {tier, displayName, userData, extras} = resolveTippyContext(tippyContext);
   if (path === '/tippy/chat') {
     const raw = Array.isArray(body.messages) ? body.messages : [];
     const {system, messages} = sanitizeChatMessages(raw);
-    const sys =
-      system ||
-      'You are Tippy, a concise, practical AI coach for streamers and short-form '
-      + 'creators. Be direct and actionable. If a user asks you to add, save, '
-      + 'create, or sync a plan/calendar to their content planner, never say you '
-      + 'cannot do it. The backend can create planner documents; acknowledge that '
-      + 'Tippy is creating it or ask one concise clarifying question if needed.';
+    const sys = buildTippySystemPrompt({
+      tier,
+      displayName,
+      userData,
+      extras,
+      clientSystem: system,
+    });
     const maxTokens = 4096;
     const result = await postAnthropicWithModelFallback({
       apiKey,
@@ -280,10 +297,7 @@ async function runAnthropicTippy({apiKey, path, body, requestId}) {
       apiKey,
       model,
       maxTokens: 4096,
-      system:
-        'You output valid JSON only for a content planner. Include 3 to 14 '
-        + 'items only when the user context supports a specific plan. Preserve '
-        + 'the user\'s actual topic and wording. Never default to gaming.',
+      system: buildPlanSystemPrompt({tier}),
       messages: [{role: 'user', content: user}],
     });
     if (!result.ok) {
@@ -378,7 +392,12 @@ async function runAnthropicTippy({apiKey, path, body, requestId}) {
       apiKey,
       model,
       maxTokens: 4096,
-      system: 'You give constructive feedback. Output valid JSON only.',
+      system: buildAnalyzeSystemPrompt({
+        tier,
+        displayName,
+        userData,
+        extras,
+      }),
       messages: [{role: 'user', content: user}],
     });
     if (!result.ok) {

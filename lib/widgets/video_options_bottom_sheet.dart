@@ -5,10 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/home_video.dart';
 import '../models/user.dart';
+import '../core/feature_flags.dart';
 import '../services/video_actions_service.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'streamer_card_view.dart';
-import 'dart:developer' as developer;
+import 'package:streamers_tip/utils/secure_log.dart';
 
 enum VideoOption {
   saveVideo,
@@ -53,7 +54,9 @@ class _VideoOptionsBottomSheetState
   List<VideoOption> _buildMenuOptions() {
     final List<VideoOption> options = [];
     if (_isOwner) {
-      options.add(VideoOption.saveVideo);
+      if (FeatureFlags.videoDownload) {
+        options.add(VideoOption.saveVideo);
+      }
       options.add(VideoOption.privacy);
       options.add(VideoOption.editCaption);
       if (widget.video.isPinned) {
@@ -65,7 +68,7 @@ class _VideoOptionsBottomSheetState
       options.add(VideoOption.share);
       options.add(VideoOption.delete);
     } else {
-      if (widget.video.allowSave) {
+      if (FeatureFlags.videoDownload && widget.video.allowSave) {
         options.add(VideoOption.saveVideo);
       }
       if (widget.video.isFavorited) {
@@ -409,11 +412,31 @@ class _VideoOptionsBottomSheetState
   }
 
   Future<void> _handleNotInterested() async {
-    Navigator.of(context).pop();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Noted. Adjusting recommendations...')),
-      );
+    setState(() => _isProcessing = true);
+    try {
+      final String creatorId = widget.video.creator.id;
+      await ref.read(videoActionsServiceProvider).markNotInterested(
+            videoId: widget.video.id,
+            creatorId: creatorId,
+          );
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Noted. Adjusting recommendations...'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update preferences: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
     }
   }
 
@@ -643,7 +666,8 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
           taggedUsers.add({
             'userId': taggedUserId,
             'username': userData['username'] ?? 'unknown',
-            'displayName': userData['displayName'] ?? userData['username'] ?? 'Unknown',
+            'displayName':
+                userData['displayName'] ?? userData['username'] ?? 'Unknown',
             'avatarURL': resolveAvatarUrl(userData) ?? '',
           });
         }
@@ -677,7 +701,8 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
 
   void _navigateToTaggedUserProfile(String userId) {
     HapticFeedback.lightImpact();
-    developer.log('👤 EditCaptionDialog: Opening StreamerCard for tagged user: $userId');
+    secureLog(
+        '👤 EditCaptionDialog: Opening StreamerCard for tagged user: $userId');
 
     // Get current user ID
     final currentUserId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
@@ -728,7 +753,8 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
                 runSpacing: 8,
                 children: _taggedUsers.map((user) {
                   return GestureDetector(
-                    onTap: () => _navigateToTaggedUserProfile(user['userId'] as String),
+                    onTap: () =>
+                        _navigateToTaggedUserProfile(user['userId'] as String),
                     child: Chip(
                       avatar: CircleAvatar(
                         radius: 12,

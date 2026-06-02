@@ -4,7 +4,7 @@ import '../models/user_model.dart';
 import 'relationship_service_advanced.dart';
 
 /// NetworkViewModel - Complete state management with reactive data binding
-/// 
+///
 /// This view model provides comprehensive state management including:
 /// - Reactive data binding with real-time updates
 /// - Tab filtering algorithms
@@ -30,7 +30,7 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
   // ======== PRIVATE PROPERTIES ========
   RelationshipServiceAdvanced? _relationshipService;
   final Set<StreamSubscription> _cancellables = <StreamSubscription>{};
-  
+
   // Data persistence keys (commented out as they're not currently used)
   // static const String _followingKey = 'network_following_ids';
   // static const String _followersKey = 'network_followers_ids';
@@ -38,15 +38,16 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
 
   // ======== REAL-TIME UPDATES ALGORITHM ========
   /// Setup relationship service with reactive data binding
-  void setupRelationshipService(RelationshipServiceAdvanced globalRelationshipService) {
+  void setupRelationshipService(
+      RelationshipServiceAdvanced globalRelationshipService) {
     _relationshipService = globalRelationshipService;
-    
+
     // Bind to real-time updates from the global RelationshipService
     _relationshipService!.addListener(_onRelationshipServiceUpdate);
-    
+
     // Initial data load
     _onRelationshipServiceUpdate();
-    
+
     // Load persisted data
     _loadPersistedData();
   }
@@ -54,15 +55,15 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
   /// Handle relationship service updates
   void _onRelationshipServiceUpdate() {
     if (_relationshipService == null) return;
-    
+
     _connections = _relationshipService!.connections;
     _followers = _relationshipService!.followers;
     _following = _relationshipService!.following;
     _isLoading = _relationshipService!.isLoading;
-    
+
     // Save persisted data
     _savePersistedData();
-    
+
     notifyListeners();
   }
 
@@ -75,11 +76,15 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
       case NetworkTab.followers:
         // Show only followers who are not mutual connections
         final connectionIds = _connections.map((e) => e.id).toSet();
-        return _followers.where((user) => !connectionIds.contains(user.id)).toList();
+        return _followers
+            .where((user) => !connectionIds.contains(user.id))
+            .toList();
       case NetworkTab.following:
         // Show only following who are not mutual connections
         final connectionIds = _connections.map((e) => e.id).toSet();
-        return _following.where((user) => !connectionIds.contains(user.id)).toList();
+        return _following
+            .where((user) => !connectionIds.contains(user.id))
+            .toList();
     }
   }
 
@@ -100,7 +105,7 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
   /// Handle horizontal drag end for tab navigation
   void handleHorizontalDragEnd(double translation) {
     const double threshold = 50.0;
-    
+
     if (translation > threshold) {
       // Swipe right - go to previous tab
       _navigateToPreviousTab();
@@ -139,15 +144,15 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
   }) {
     const double swipeThreshold = -80.0;
     const double maxOffset = -140.0;
-    
+
     double newOffset = currentOffset + translation;
-    
+
     // Constrain offset
     if (newOffset > 0) newOffset = 0;
     if (newOffset < maxOffset) newOffset = maxOffset;
-    
+
     bool newIsSwiped = isSwiped;
-    
+
     // Check if swipe threshold is reached
     if (newOffset < swipeThreshold && !isSwiped) {
       newOffset = -100;
@@ -156,7 +161,7 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
       newOffset = 0;
       newIsSwiped = false;
     }
-    
+
     return SwipeGestureResult(
       offset: newOffset,
       isSwiped: newIsSwiped,
@@ -172,11 +177,11 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
       // In Flutter, we'd use SharedPreferences or similar
       // For now, we'll just log the data
       debugPrint('💾 Saving following IDs: $followingIds');
-      
+
       // Save follower IDs
       final followerIds = _followers.map((user) => user.id).toList();
       debugPrint('💾 Saving follower IDs: $followerIds');
-      
+
       // Save connection IDs
       final connectionIds = _connections.map((user) => user.id).toList();
       debugPrint('💾 Saving connection IDs: $connectionIds');
@@ -191,20 +196,20 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
       // In a real implementation, you would load from SharedPreferences
       // For now, we'll just log that we're loading
       debugPrint('📱 Loading persisted data...');
-      
+
       // Load following IDs
       // cspell:ignore prefs
       // final savedFollowing = await SharedPreferences.getInstance()
       //     .then((prefs) => prefs.getStringList(_followingKey));
-      
+
       // Load follower IDs
       // final savedFollowers = await SharedPreferences.getInstance()
       //     .then((prefs) => prefs.getStringList(_followersKey)); // cspell:ignore prefs
-      
+
       // Load connection IDs
       // final savedConnections = await SharedPreferences.getInstance()
       //     .then((prefs) => prefs.getStringList(_connectionsKey)); // cspell:ignore prefs
-      
+
       debugPrint('✅ Persisted data loaded');
     } catch (e) {
       debugPrint('❌ Error loading persisted data: $e');
@@ -238,20 +243,20 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
   /// Load suggestions based on current network
   Future<void> loadSuggestions() async {
     if (_relationshipService == null) return;
-    
+
     try {
       // Get current connection IDs
       final connectionIds = _connections.map((e) => e.id).toList();
       final followerIds = _followers.map((e) => e.id).toList();
       final followingIds = _following.map((e) => e.id).toList();
-      
+
       // Find suggestions (this would typically call an API)
       final suggestions = _findSuggestions(
         currentConnections: connectionIds,
         followers: followerIds,
         following: followingIds,
       );
-      
+
       _suggested = suggestions;
       notifyListeners();
     } catch (e) {
@@ -269,7 +274,7 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
     // In a real implementation, this would be more sophisticated
     final allUsers = [...followers, ...following];
     final connectionSet = currentConnections.toSet();
-    
+
     return allUsers
         .where((id) => !connectionSet.contains(id))
         .take(10)

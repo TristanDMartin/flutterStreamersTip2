@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../models/user_stats.dart';
 import 'onboarding_models.dart';
 
 class OnboardingMissionResult {
@@ -41,6 +40,20 @@ class OnboardingService {
     return _firestore.collection('users').doc(userId);
   }
 
+  Future<void> _safeUserSet(
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await _userRef(userId).set(data, SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        return;
+      }
+      rethrow;
+    }
+  }
+
   Stream<OnboardingState> watchOnboarding(String userId) {
     return _userRef(userId)
         .snapshots()
@@ -57,7 +70,8 @@ class OnboardingService {
   }
 
   Future<void> resetForDeveloperTesterInstall(String userId) {
-    return _userRef(userId).set(
+    return _safeUserSet(
+      userId,
       <String, dynamic>{
         'onboarding': <String, dynamic>{
           'hasSeenIntro': false,
@@ -75,12 +89,12 @@ class OnboardingService {
         'level': 1,
         'creatorStatus': CreatorStatus.newCreator.value,
       },
-      SetOptions(merge: true),
     );
   }
 
   Future<void> completeIntro(String userId, String creatorGoal) {
-    return _userRef(userId).set(
+    return _safeUserSet(
+      userId,
       <String, dynamic>{
         'onboarding': <String, dynamic>{
           'hasSeenIntro': true,
@@ -92,12 +106,12 @@ class OnboardingService {
         'level': 1,
         'creatorStatus': CreatorStatus.newCreator.value,
       },
-      SetOptions(merge: true),
     );
   }
 
   Future<void> completeProductTour(String userId) {
-    return _userRef(userId).set(
+    return _safeUserSet(
+      userId,
       <String, dynamic>{
         'onboarding': <String, dynamic>{
           'hasCompletedProductTour': true,
@@ -105,12 +119,12 @@ class OnboardingService {
           'lastSeenAt': FieldValue.serverTimestamp(),
         },
       },
-      SetOptions(merge: true),
     );
   }
 
   Future<void> skipProductTour(String userId, int currentStep) {
-    return _userRef(userId).set(
+    return _safeUserSet(
+      userId,
       <String, dynamic>{
         'onboarding': <String, dynamic>{
           'hasCompletedProductTour': true,
@@ -119,12 +133,12 @@ class OnboardingService {
           'lastSeenAt': FieldValue.serverTimestamp(),
         },
       },
-      SetOptions(merge: true),
     );
   }
 
   Future<void> completeOnboarding(String userId) {
-    return _userRef(userId).set(
+    return _safeUserSet(
+      userId,
       <String, dynamic>{
         'hasCompletedOnboarding': true,
         'onboarding': <String, dynamic>{
@@ -133,12 +147,12 @@ class OnboardingService {
           'lastSeenAt': FieldValue.serverTimestamp(),
         },
       },
-      SetOptions(merge: true),
     );
   }
 
   Future<void> dismissLevelOneChecklist(String userId) {
-    return _userRef(userId).set(
+    return _safeUserSet(
+      userId,
       <String, dynamic>{
         'onboarding': <String, dynamic>{
           'skippedSteps':
@@ -146,19 +160,40 @@ class OnboardingService {
           'lastSeenAt': FieldValue.serverTimestamp(),
         },
       },
-      SetOptions(merge: true),
     );
   }
 
   Future<void> markContextualTipSeen(String userId, String tipId) {
-    return _userRef(userId).set(
+    return _safeUserSet(
+      userId,
       <String, dynamic>{
         'onboarding': <String, dynamic>{
           'skippedSteps': FieldValue.arrayUnion(<String>['tip_$tipId']),
           'lastSeenAt': FieldValue.serverTimestamp(),
         },
       },
-      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> resetContextualTips(String userId) {
+    const List<String> tipIds = <String>[
+      'tip_home',
+      'tip_network',
+      'tip_create',
+      'tip_inbox',
+      'tip_profile',
+      'tip_comments',
+      'tip_tippy_ai',
+      'tip_content_planner',
+    ];
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'skippedSteps': FieldValue.arrayRemove(tipIds),
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
     );
   }
 
@@ -209,7 +244,7 @@ class OnboardingService {
       );
       final Set<String> mergedSet = <String>{...before, ...inferred};
       final List<String> merged = mergedSet.toList()..sort();
-      final bool allLevelOne = levelOneMissions.every(
+      final bool allLevelOne = visibleLevelOneMissions.every(
         (OnboardingMission m) => merged.contains(m.id),
       );
       nextOnboarding['completedMissions'] = merged;
@@ -238,10 +273,7 @@ class OnboardingService {
     final bool hasAvatar = _hasNonEmptyString(
       data['avatarURL'] ?? data['photoURL'] ?? data['avatarUrl'],
     );
-    final List<dynamic>? tags = data['hashtags'] as List<dynamic>?;
-    final bool hasTags = tags != null && tags.isNotEmpty;
-    final int posts = UserStats.readPostsCountFromUserDoc(data);
-    return bio.isNotEmpty || hasAvatar || hasTags || posts > 0;
+    return bio.isNotEmpty && hasAvatar;
   }
 
   bool _hasNonEmptyString(Object? value) {
@@ -365,9 +397,10 @@ class OnboardingService {
         ...current.completedMissions,
         missionId,
       ];
+      // TODO Phase B: stop writing users.xp; use createGamificationEvent only.
       final int newXp = current.xp + mission.rewardXp;
       final int newLevel = levelForXp(newXp);
-      final bool completedLevelOne = levelOneMissions.every(
+      final bool completedLevelOne = visibleLevelOneMissions.every(
         (OnboardingMission item) => completed.contains(item.id),
       );
 

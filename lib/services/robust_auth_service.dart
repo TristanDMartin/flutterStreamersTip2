@@ -268,7 +268,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 
     // Check if this is still the latest request
     if (_currentRequestId != null && _currentRequestId != requestId) {
-      // print("🚫 Ignoring stale request: $requestId (current: $_currentRequestId)");
+      // appLog("🚫 Ignoring stale request: $requestId (current: $_currentRequestId)");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -281,20 +281,20 @@ class RobustAuthenticationService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // print("🚀 Starting $requestType authentication (request: $requestId)");
+      // appLog("🚀 Starting $requestType authentication (request: $requestId)");
       final result = await authFunction(requestId);
 
       // Only process if this is still the current request
       if (_currentRequestId == requestId) {
         _currentRequestId = null;
         if (result.success) {
-          // print("✅ $requestType authentication successful (request: $requestId)");
+          // appLog("✅ $requestType authentication successful (request: $requestId)");
         } else {
-          // print("❌ $requestType authentication failed: ${result.error} (request: $requestId)");
+          // appLog("❌ $requestType authentication failed: ${result.error} (request: $requestId)");
         }
         notifyListeners();
       } else {
-        // print("🚫 Ignoring stale response for request: $requestId");
+        // appLog("🚫 Ignoring stale response for request: $requestId");
       }
 
       return result;
@@ -302,7 +302,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Only process if this is still the current request
       if (_currentRequestId == requestId) {
         _currentRequestId = null;
-        // print("❌ $requestType authentication error: $e (request: $requestId)");
+        // appLog("❌ $requestType authentication error: $e (request: $requestId)");
         notifyListeners();
       }
 
@@ -729,9 +729,9 @@ class RobustAuthenticationService extends ChangeNotifier {
         'isDeleted': false,
       });
 
-      // print("✅ User document created in Firestore");
+      // appLog("✅ User document created in Firestore");
     } catch (e) {
-      // print("❌ Error creating user document: $e");
+      // appLog("❌ Error creating user document: $e");
       rethrow;
     }
   }
@@ -884,7 +884,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Set up real-time listener for user data changes
   void _setupUserDataListener(String userId) {
-    // print("👂 Setting up real-time listener for user: $userId");
+    // appLog("👂 Setting up real-time listener for user: $userId");
 
     _firestoreInstance
         .collection("users")
@@ -900,9 +900,9 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         if (newAvatarURLString != currentAvatarURLString &&
             newAvatarURLString.isNotEmpty) {
-          // print("🔄 Avatar URL changed in Firestore - updating app");
-          // print("📸 Old: $currentAvatarURLString");
-          // print("📸 New: $newAvatarURLString");
+          // appLog("🔄 Avatar URL changed in Firestore - updating app");
+          // appLog("📸 Old: $currentAvatarURLString");
+          // appLog("📸 New: $newAvatarURLString");
 
           _currentUser = User(
             id: _currentUser!.id,
@@ -940,7 +940,7 @@ class RobustAuthenticationService extends ChangeNotifier {
             newUsername != _currentUser!.username ||
             newBio != _currentUser!.bio ||
             newHashtags.toString() != _currentUser!.hashtags.toString()) {
-          // print("🔄 User data changed in Firestore - updating app");
+          // appLog("🔄 User data changed in Firestore - updating app");
 
           _currentUser = User(
             id: _currentUser!.id,
@@ -1049,21 +1049,19 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Check existing permission status
       final currentSettings = await messaging.getNotificationSettings();
 
-      // Only request permission if not already granted
+      // Do not prompt on sign-in. Progression prompts after the first creator
+      // action so notifications feel tied to momentum, not app launch.
       if (currentSettings.authorizationStatus ==
           AuthorizationStatus.notDetermined) {
-        debugPrint("🔔 Requesting notification permissions...");
-        final settings = await messaging.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-          provisional: false,
-        );
-
-        if (settings.authorizationStatus != AuthorizationStatus.authorized) {
-          debugPrint("⚠️ Notification permission denied");
-          return;
-        }
+        debugPrint("ℹ️ Notification permission not requested at sign-in");
+        return;
+      }
+      if (currentSettings.authorizationStatus !=
+              AuthorizationStatus.authorized &&
+          currentSettings.authorizationStatus !=
+              AuthorizationStatus.provisional) {
+        debugPrint("⚠️ Notification permission not granted");
+        return;
       }
 
       if (defaultTargetPlatform == TargetPlatform.iOS) {
@@ -1087,48 +1085,40 @@ class RobustAuthenticationService extends ChangeNotifier {
       if (fcmToken != null) {
         debugPrint("📱 FCM Token obtained: ${fcmToken.substring(0, 20)}...");
 
-        // Check if token already saved in Firestore
-        final userDoc =
-            await _firestoreInstance.collection('users').doc(userId).get();
-        final existingToken = userDoc.data()?['fcmToken'] as String?;
+        await _firestoreInstance
+            .collection('users')
+            .doc(userId)
+            .collection('deviceTokens')
+            .doc(fcmToken)
+            .set({
+          'token': fcmToken,
+          'platform': _fcmPlatformName(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'lastUsed': FieldValue.serverTimestamp(),
+          'source': 'auth',
+        }, SetOptions(merge: true));
 
-        // Only save if token changed
-        if (existingToken != fcmToken) {
-          // Save token to Firestore user document
-          await _firestoreInstance.collection('users').doc(userId).update({
-            'fcmToken': fcmToken,
-            'lastTokenUpdate': FieldValue.serverTimestamp(),
-          });
-
-          debugPrint("✅ FCM token saved to Firestore for user $userId");
-
-          // Also save to deviceTokens subcollection for multi-device support
-          await _firestoreInstance
-              .collection('users')
-              .doc(userId)
-              .collection('deviceTokens')
-              .doc(fcmToken)
-              .set({
-            'token': fcmToken,
-            'createdAt': FieldValue.serverTimestamp(),
-            'lastUsed': FieldValue.serverTimestamp(),
-            'platform': defaultTargetPlatform.name,
-          });
-
-          debugPrint("✅ FCM token added to deviceTokens collection");
-        } else {
-          debugPrint("ℹ️ FCM token unchanged, skipping Firestore update");
-        }
+        debugPrint("✅ FCM token added to deviceTokens collection");
 
         // Listen for token refresh
         messaging.onTokenRefresh.listen((newToken) async {
           debugPrint("🔄 FCM token refreshed");
           try {
-            await _firestoreInstance.collection('users').doc(userId).update({
-              'fcmToken': newToken,
-              'lastTokenUpdate': FieldValue.serverTimestamp(),
-            });
-            debugPrint("✅ Updated FCM token in Firestore");
+            await _firestoreInstance
+                .collection('users')
+                .doc(userId)
+                .collection('deviceTokens')
+                .doc(newToken)
+                .set({
+              'token': newToken,
+              'platform': _fcmPlatformName(),
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              'lastUsed': FieldValue.serverTimestamp(),
+              'source': 'auth_refresh',
+            }, SetOptions(merge: true));
+            debugPrint("✅ Updated FCM token in deviceTokens");
           } catch (e) {
             debugPrint("❌ Error updating FCM token: $e");
           }
@@ -1185,7 +1175,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Update user calendar events in Firestore
   Future<void> updateUserCalendarEvents(List<dynamic> events) async {
     if (_currentUser == null) {
-      // print('❌ No current user to update calendar events');
+      // appLog('❌ No current user to update calendar events');
       return;
     }
 
@@ -1206,9 +1196,9 @@ class RobustAuthenticationService extends ChangeNotifier {
         'calendarEvents': eventsData,
       });
 
-      // print('✅ Calendar events successfully updated in Firestore');
+      // appLog('✅ Calendar events successfully updated in Firestore');
     } catch (e) {
-      // print('❌ Error updating calendar events in Firestore: $e');
+      // appLog('❌ Error updating calendar events in Firestore: $e');
       rethrow;
     }
   }
@@ -1221,6 +1211,17 @@ class RobustAuthenticationService extends ChangeNotifier {
     } catch (e) {
       debugPrint("❌ Password reset error: $e");
       rethrow;
+    }
+  }
+
+  String _fcmPlatformName() {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.android:
+        return 'android';
+      default:
+        return 'unknown';
     }
   }
 }

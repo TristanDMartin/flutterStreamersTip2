@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:equatable/equatable.dart';
+import 'creator_activity.dart';
 import 'user_count_fields.dart';
 import 'user_stats.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/data_parsing_utils.dart';
 
 /// User Model - Complete implementation matching SwiftUI User class
-/// 
+///
 /// This model represents a user in the network with all necessary properties
 /// for the NetworkView functionality including social links, platforms, and status.
 class User extends Equatable {
@@ -24,6 +25,8 @@ class User extends Equatable {
   final int followerCount;
   final int followingCount;
   final List<CalendarEvent> calendarEvents;
+  final CreatorActivity creatorActivity;
+  final CreatorActivityPrivacy activityPrivacy;
 
   const User({
     required this.id,
@@ -40,6 +43,8 @@ class User extends Equatable {
     this.followerCount = 0,
     this.followingCount = 0,
     this.calendarEvents = const [],
+    this.creatorActivity = CreatorActivity.noneValue,
+    this.activityPrivacy = const CreatorActivityPrivacy(),
   });
 
   factory User.fromMap(Map<String, dynamic> data) {
@@ -50,8 +55,9 @@ class User extends Equatable {
       bio: data['bio'],
       avatarURL: resolveAvatarUrl(data),
       platforms: (data['platforms'] as List<dynamic>?)
-          ?.map((p) => Platform.fromMap(p as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((p) => Platform.fromMap(p as Map<String, dynamic>))
+              .toList() ??
+          [],
       onlineStatus: OnlineStatus.values.firstWhere(
         (e) => e.value == data['onlineStatus'],
         orElse: () => OnlineStatus.offline,
@@ -59,17 +65,20 @@ class User extends Equatable {
       hashtags: parseStringList(data['hashtags']),
       aiSelf: data['aiSelf'] ?? '',
       socialLinks: (data['socialLinks'] as List<dynamic>?)
-          ?.map((s) => SocialLink.fromMap(s as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((s) => SocialLink.fromMap(s as Map<String, dynamic>))
+              .toList() ??
+          [],
       postCount: UserStats.readPostsCountFromUserDoc(data),
       followerCount: UserCountFields.readFollowersCount(data),
       followingCount: UserCountFields.readFollowingCount(data),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)
-          ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      creatorActivity: CreatorActivity.fromMap(data['creatorActivity']),
+      activityPrivacy: CreatorActivityPrivacy.fromMap(data['activityPrivacy']),
     );
   }
-
 
   Map<String, dynamic> toMap() {
     return {
@@ -89,6 +98,8 @@ class User extends Equatable {
         followingCount: followingCount,
       ),
       'calendarEvents': calendarEvents.map((e) => e.toMap()).toList(),
+      'creatorActivity': creatorActivity.toMap(),
+      'activityPrivacy': activityPrivacy.toMap(),
     };
   }
 
@@ -107,6 +118,8 @@ class User extends Equatable {
     int? followerCount,
     int? followingCount,
     List<CalendarEvent>? calendarEvents,
+    CreatorActivity? creatorActivity,
+    CreatorActivityPrivacy? activityPrivacy,
   }) {
     return User(
       id: id ?? this.id,
@@ -123,6 +136,8 @@ class User extends Equatable {
       followerCount: followerCount ?? this.followerCount,
       followingCount: followingCount ?? this.followingCount,
       calendarEvents: calendarEvents ?? this.calendarEvents,
+      creatorActivity: creatorActivity ?? this.creatorActivity,
+      activityPrivacy: activityPrivacy ?? this.activityPrivacy,
     );
   }
 
@@ -142,6 +157,8 @@ class User extends Equatable {
         followerCount,
         followingCount,
         calendarEvents,
+        creatorActivity,
+        activityPrivacy,
       ];
 
   @override
@@ -354,7 +371,8 @@ class SocialLink extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, platform, url, username, isVerified, createdAt];
+  List<Object?> get props =>
+      [id, platform, url, username, isVerified, createdAt];
 }
 
 /// CalendarEvent Model for user calendar events

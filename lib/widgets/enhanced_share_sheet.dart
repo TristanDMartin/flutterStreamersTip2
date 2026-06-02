@@ -1,19 +1,29 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/home_video.dart';
 import '../models/share_payload.dart';
 import '../models/share_video_payload.dart';
+import '../models/video_thumbnails.dart';
+import '../services/chat_service.dart';
+import '../services/chat_service_optimized.dart';
+import '../services/connections_service.dart';
 import '../services/enhanced_share_service.dart';
+import '../utils/swallow_non_fatal.dart';
 import '../services/report_service.dart';
+import '../services/video_actions_service.dart';
 import '../constants/app_colors.dart';
-import 'connections_row.dart';
-import 'connections_search_overlay.dart';
+import '../core/feature_flags.dart';
+import '../views/network_view.dart';
 import 'share_sheet_brand_icon.dart';
+import 'threads/create_thread_screen.dart';
 import 'video_qr_code_dialog.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 class EnhancedShareSheet extends StatefulWidget {
   final HomeVideo video;
@@ -47,15 +57,28 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
 
   SharePayload? _sharePayload;
   bool _isLoading = true;
+  bool _connectionsLoading = true;
+  bool _showConnectionSearch = false;
+  bool _isSendingConnection = false;
+  List<_ShareConnection> _connections = <_ShareConnection>[];
+  String? _selectedConnectionId;
   Timer? _toastTimer;
   String? _toastMessage;
   bool _toastIsError = false;
+  final TextEditingController _connectionSearchController =
+      TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
     _loadShareData();
+    _loadConnections();
+    _connectionSearchController.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       HapticFeedback.lightImpact();
     });
@@ -104,7 +127,9 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       if (mounted) {
         try {
           EnhancedShareService().trackShareSheetOpen(widget.video.id);
-        } catch (_) {}
+        } catch (e, st) {
+          swallowNonFatal('EnhancedShareSheet.trackOpen', e, st);
+        }
         setState(() {
           _sharePayload = payload;
           _isLoading = false;
@@ -116,7 +141,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
         });
       }
     } catch (e) {
-      log('❌ EnhancedShareSheet: Error loading share data: $e');
+      secureLog('❌ EnhancedShareSheet: Error loading share data: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -125,9 +150,75 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
     }
   }
 
+  Future<void> _loadConnections() async {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      if (mounted) {
+        setState(() => _connectionsLoading = false);
+      }
+      return;
+    }
+
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snapshot =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('connections')
+              .limit(24)
+              .get();
+
+      final List<_ShareConnection> directConnections =
+          snapshot.docs.map(_ShareConnection.fromDocument).toList();
+
+      final List<_ShareConnection> resolvedConnections = <_ShareConnection>[];
+      for (final _ShareConnection connection in directConnections) {
+        if (connection.hasDisplayData) {
+          resolvedConnections.add(connection);
+          continue;
+        }
+        try {
+          final DocumentSnapshot<Map<String, dynamic>> userDoc =
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(connection.userId)
+                  .get();
+          resolvedConnections.add(connection.mergeUserData(userDoc.data()));
+        } catch (_) {
+          resolvedConnections.add(connection);
+        }
+      }
+
+      List<_ShareConnection> finalConnections = resolvedConnections;
+      if (finalConnections.isEmpty) {
+        final liteConnections =
+            await ConnectionsService().getConnectionsPreview(limit: 12);
+        finalConnections =
+            liteConnections.map(_ShareConnection.fromLite).toList();
+      }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _connections = finalConnections
+            .where(
+                (_ShareConnection connection) => connection.userId.isNotEmpty)
+            .toList();
+        _connectionsLoading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ EnhancedShareSheet: Error loading connections: $e');
+      if (mounted) {
+        setState(() => _connectionsLoading = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _toastTimer?.cancel();
+    _connectionSearchController.dispose();
     _slideController.dispose();
     _fadeController.dispose();
     _chipEntranceController.dispose();
@@ -157,25 +248,26 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
             position: _slideAnimation,
             child: ClipRRect(
               borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
+                  const BorderRadius.vertical(top: Radius.circular(30)),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
                 child: Container(
                   constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.62,
+                    maxHeight: MediaQuery.of(context).size.height * 0.76,
                   ),
                   decoration: BoxDecoration(
+                    color: const Color(0xFF080C18).withValues(alpha: 0.78),
                     border: Border(
                       top: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: <Color>[
-                        Color(0xFF0f172a),
-                        Color(0xFF1e293b),
+                        const Color(0xFF162034).withValues(alpha: 0.74),
+                        const Color(0xFF080C18).withValues(alpha: 0.92),
                       ],
                     ),
                   ),
@@ -305,20 +397,24 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
 
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
+      padding: EdgeInsets.only(
+        bottom: math.max(MediaQuery.of(context).padding.bottom, 10),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSwipeHandle(),
           _buildHeader(),
-          _buildConnectionsRow(),
-          const SizedBox(height: 20),
-          _buildShareTargets(),
-          const SizedBox(height: 10),
-          _buildDivider(),
-          const SizedBox(height: 8),
-          _buildActionButtons(),
           const SizedBox(height: 12),
-          _buildBottomPadding(),
+          _buildConnectionsRow(),
+          const SizedBox(height: 18),
+          _buildShareTargets(),
+          const SizedBox(height: 14),
+          _buildDivider(),
+          const SizedBox(height: 14),
+          _buildActionButtons(),
+          const SizedBox(height: 10),
         ],
       ),
     );
@@ -375,17 +471,32 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 4, 8, 2),
+      padding: const EdgeInsets.fromLTRB(18, 4, 8, 0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
-            'Send to',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.3,
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Share',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Send this clip or share it anywhere',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
           IconButton(
@@ -402,50 +513,37 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
   }
 
   Widget _buildShareTargets() {
-    final List<ShareTarget> targets =
-        EnhancedShareService().getRankedTargets();
-    return SizedBox(
-      height: 92,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        physics: const BouncingScrollPhysics(),
-        itemCount: targets.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 4),
-        itemBuilder: (BuildContext context, int index) {
-          return _buildShareTargetStaggered(
-            targets[index],
-            index,
-            targets.length,
-          );
-        },
-      ),
+    const List<ShareTarget> targets = <ShareTarget>[
+      ShareTarget.copyLink,
+      ShareTarget.sms,
+      ShareTarget.instagramDirect,
+      ShareTarget.whatsapp,
+      ShareTarget.more,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('Share actions'),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 82,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            physics: const BouncingScrollPhysics(),
+            itemCount: targets.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (BuildContext context, int index) {
+              return _buildShareTargetStaggered(
+                targets[index],
+                index,
+                targets.length,
+              );
+            },
+          ),
+        ),
+      ],
     );
-  }
-
-  Color _brandFillFor(ShareTarget target) {
-    switch (target) {
-      case ShareTarget.copyLink:
-        return const Color(0xFF3A3A3C);
-      case ShareTarget.instagramDirect:
-        return AppColors.instagram;
-      case ShareTarget.sms:
-        return const Color(0xFF34C759);
-      case ShareTarget.whatsapp:
-        return const Color(0xFF25D366);
-      case ShareTarget.repost:
-        return AppColors.primary;
-      case ShareTarget.facebook:
-        return AppColors.facebook;
-      case ShareTarget.twitter:
-        return AppColors.twitter;
-      case ShareTarget.telegram:
-        return const Color(0xFF0088CC);
-      case ShareTarget.email:
-        return const Color(0xFF5E5CE6);
-      case ShareTarget.more:
-        return const Color(0xFF48484A);
-    }
   }
 
   Widget _buildShareTargetStaggered(
@@ -472,7 +570,6 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
   }
 
   Widget _buildShareTarget(ShareTarget target) {
-    final Color fill = _brandFillFor(target);
     return Semantics(
       button: true,
       label: target.displayName,
@@ -482,28 +579,24 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
           onTap: () => _handleShareTarget(target),
           borderRadius: BorderRadius.circular(12),
           child: SizedBox(
-            width: 72,
+            width: 70,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 50,
+                  height: 50,
                   decoration: BoxDecoration(
-                    color: fill,
+                    color: Colors.white.withValues(alpha: 0.08),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
                   ),
                   child: Center(
                     child: ShareSheetBrandIcon(
                       target: target,
-                      size: 26,
+                      size: 24,
                     ),
                   ),
                 ),
@@ -529,10 +622,405 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
   }
 
   Widget _buildConnectionsRow() {
-    return ConnectionsRow(
-      videoId: widget.video.id,
-      shareToken: _sharePayload?.trackingToken ?? '',
-      onSearchTap: _openConnectionsSearch,
+    final List<_ShareConnection> visibleConnections = _filteredConnections();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Send to creators',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              if (_selectedConnectionId != null)
+                TextButton(
+                  onPressed: _isSendingConnection
+                      ? null
+                      : () => _sendSelectedConnection(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.24),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  child: Text(_isSendingConnection ? 'Sending...' : 'Send'),
+                ),
+              IconButton(
+                tooltip: 'Search creators',
+                onPressed: () {
+                  setState(
+                      () => _showConnectionSearch = !_showConnectionSearch);
+                },
+                icon: const Icon(Icons.search_rounded, color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+        if (_showConnectionSearch) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+            child: TextField(
+              controller: _connectionSearchController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              cursorColor: AppColors.primary,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search creators',
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.42),
+                ),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: Colors.white.withValues(alpha: 0.55),
+                  size: 19,
+                ),
+                suffixIcon: _connectionSearchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: _connectionSearchController.clear,
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.06),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.55),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        SizedBox(
+          height:
+              _connectionsLoading || visibleConnections.isNotEmpty ? 98 : 82,
+          child: _buildConnectionContent(visibleConnections),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.2,
+        ),
+      ),
+    );
+  }
+
+  List<_ShareConnection> _filteredConnections() {
+    final String query = _connectionSearchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      return _connections;
+    }
+    return _connections.where((_ShareConnection connection) {
+      return connection.displayName.toLowerCase().contains(query) ||
+          connection.username.toLowerCase().contains(query) ||
+          connection.creatorActivity.toLowerCase().contains(query);
+    }).toList(growable: false);
+  }
+
+  Widget _buildConnectionContent(List<_ShareConnection> visibleConnections) {
+    if (_connectionsLoading) {
+      return ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: 5,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, __) => Column(
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: 42,
+              height: 8,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (visibleConnections.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.people_alt_outlined,
+                color: Colors.white.withValues(alpha: 0.72),
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Start building your creator network',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _openNetworkDiscovery,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                child: const Text('Find creators'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: visibleConnections.length + 1,
+      separatorBuilder: (_, __) => const SizedBox(width: 12),
+      itemBuilder: (BuildContext context, int index) {
+        if (index == visibleConnections.length) {
+          return _buildMoreConnectionButton();
+        }
+        return _buildConnectionPill(visibleConnections[index]);
+      },
+    );
+  }
+
+  Widget _buildMoreConnectionButton() {
+    return GestureDetector(
+      onTap: () => setState(() => _showConnectionSearch = true),
+      child: SizedBox(
+        width: 66,
+        child: Column(
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+              ),
+              child: const Icon(Icons.more_horiz_rounded, color: Colors.white),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'More',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.76),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionPill(_ShareConnection connection) {
+    final bool selected = _selectedConnectionId == connection.userId;
+    return GestureDetector(
+      onTap: connection.canDM
+          ? () {
+              HapticFeedback.selectionClick();
+              setState(() => _selectedConnectionId = connection.userId);
+            }
+          : null,
+      child: Opacity(
+        opacity: connection.canDM ? 1 : 0.48,
+        child: SizedBox(
+          width: 68,
+          child: Column(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 58,
+                    height: 58,
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: selected
+                          ? const LinearGradient(
+                              colors: AppColors.primaryGradient,
+                            )
+                          : const LinearGradient(
+                              colors: <Color>[
+                                Colors.transparent,
+                                Colors.transparent,
+                              ],
+                            ),
+                      border: Border.all(
+                        color: selected
+                            ? Colors.transparent
+                            : Colors.white.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: ClipOval(
+                      child: connection.avatarUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: connection.avatarUrl,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 116,
+                              memCacheHeight: 116,
+                              placeholder: (_, __) =>
+                                  _buildConnectionFallback(connection),
+                              errorWidget: (_, __, ___) =>
+                                  _buildConnectionFallback(connection),
+                            )
+                          : _buildConnectionFallback(connection),
+                    ),
+                  ),
+                  if (connection.isOnline)
+                    Positioned(
+                      right: 3,
+                      bottom: 3,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF28D17C),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF080C18),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (selected)
+                    Positioned(
+                      right: -1,
+                      top: -1,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: AppColors.primaryGradient,
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                connection.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (connection.creatorActivity.isNotEmpty)
+                Text(
+                  connection.creatorActivity,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.48),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionFallback(_ShareConnection connection) {
+    final String initial = connection.displayName.isNotEmpty
+        ? connection.displayName.characters.first.toUpperCase()
+        : '?';
+    return Container(
+      color: Colors.white.withValues(alpha: 0.11),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 21,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 
@@ -544,29 +1032,64 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
         onTap: _handleQRCode,
       ),
       _buildActionButton(
-        icon: Icons.report_outlined,
+        icon: Icons.flag_outlined,
         label: 'Report',
         onTap: _handleReport,
       ),
+      _buildActionButton(
+        icon: Icons.bookmark_add_outlined,
+        label: 'Collection',
+        onTap: _handleAddToCollection,
+      ),
+      _buildActionButton(
+        icon: Icons.forum_outlined,
+        label: 'Start Thread',
+        onTap: _handleStartThread,
+      ),
+      _buildActionButton(
+        icon: Icons.not_interested_outlined,
+        label: 'Not Interested',
+        onTap: _handleNotInterested,
+      ),
     ];
-
-    if (widget.onFavorite != null) {
+    if (FeatureFlags.videoDownload && _canDownloadVideo) {
       actionButtons.insert(
-        1,
+        2,
         _buildActionButton(
-          icon: Icons.favorite_border,
-          label: 'Favorite',
-          onTap: _handleFavorite,
+          icon: Icons.download_rounded,
+          label: 'Save Video',
+          onTap: _handleSaveVideo,
+        ),
+      );
+    }
+    if (FeatureFlags.watermarkExport && _canShareWithWatermark) {
+      actionButtons.insert(
+        3,
+        _buildActionButton(
+          icon: Icons.branding_watermark_rounded,
+          label: 'Watermark',
+          onTap: _handleShareWithWatermark,
         ),
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: actionButtons,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('Creator tools'),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 80,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: actionButtons.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, int index) => actionButtons[index],
+          ),
+        ),
+      ],
     );
   }
 
@@ -575,43 +1098,62 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
     required String label,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.14),
+    return SizedBox(
+      width: 76,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white.withValues(alpha: 0.92),
+                  size: 21,
                 ),
               ),
-              child: Icon(
-                icon,
-                color: Colors.white.withValues(alpha: 0.95),
-                size: 22,
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.82),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.88),
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  bool get _canDownloadVideo {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    final bool isOwner =
+        currentUser != null && currentUser.uid == widget.video.creator.id;
+    final bool hasPlayableSource = widget.video.videoURL.trim().isNotEmpty;
+    final bool ready = widget.video.status == 'published';
+    return hasPlayableSource && ready && (isOwner || widget.video.allowSave);
+  }
+
+  bool get _canShareWithWatermark {
+    return _canDownloadVideo && widget.video.videoURL.trim().isNotEmpty;
   }
 
   Widget _buildDivider() {
@@ -619,24 +1161,6 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       height: 1,
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       color: Colors.white.withValues(alpha: 0.1),
-    );
-  }
-
-  Widget _buildBottomPadding() {
-    return SizedBox(
-      height: MediaQuery.of(context).padding.bottom + 4,
-    );
-  }
-
-  void _openConnectionsSearch() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ConnectionsSearchOverlay(
-          videoId: widget.video.id,
-          shareToken: _sharePayload?.trackingToken ?? '',
-        ),
-        fullscreenDialog: true,
-      ),
     );
   }
 
@@ -651,6 +1175,136 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
         setState(() => _toastMessage = null);
       }
     });
+  }
+
+  Future<void> _sendSelectedConnection() async {
+    final String? selectedId = _selectedConnectionId;
+    if (selectedId == null || _isSendingConnection) {
+      return;
+    }
+    final _ShareConnection connection = _connections.firstWhere(
+      (_ShareConnection item) => item.userId == selectedId,
+      orElse: () => _ShareConnection(userId: selectedId),
+    );
+
+    setState(() => _isSendingConnection = true);
+    HapticFeedback.lightImpact();
+    try {
+      final chat = await ChatService.shared.fetchOrCreateChat(selectedId);
+      if (chat?.id == null || chat!.id!.isEmpty) {
+        throw StateError('Could not open conversation');
+      }
+
+      final String thumbnailUrl = widget.video.thumbnailURL ??
+          widget.video.thumbnails?.getLargestUrl() ??
+          '';
+      final String title = widget.video.caption.trim().isNotEmpty
+          ? widget.video.caption.trim()
+          : 'StreamersTip clip';
+      final bool sent = await ChatServiceOptimized().sendVideoShare(
+        chatId: chat.id!,
+        videoId: widget.video.id,
+        shareToken: _sharePayload?.trackingToken ?? '',
+        previewText: 'Shared a video',
+        thumbnailUrl: thumbnailUrl,
+        title: title,
+      );
+      if (!sent) {
+        throw StateError('Message could not be sent');
+      }
+      if (!mounted) {
+        return;
+      }
+      _showSheetToast('Sent to ${connection.displayName}');
+      setState(() => _selectedConnectionId = null);
+    } catch (e) {
+      if (mounted) {
+        _showSheetToast('Could not send this clip', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingConnection = false);
+      }
+    }
+  }
+
+  void _openNetworkDiscovery() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NetworkView(),
+        settings: const RouteSettings(name: '/network'),
+      ),
+    );
+  }
+
+  Future<void> _handleSaveVideo() async {
+    HapticFeedback.selectionClick();
+    try {
+      await VideoActionsService().saveVideo(widget.video.id);
+      if (mounted) {
+        _showSheetToast('Video saved');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSheetToast('Could not save this video', isError: true);
+      }
+    }
+  }
+
+  void _handleShareWithWatermark() {
+    _showSheetToast('Watermark export is unavailable in this build',
+        isError: true);
+  }
+
+  Future<void> _handleNotInterested() async {
+    HapticFeedback.selectionClick();
+    try {
+      await VideoActionsService().markNotInterested(
+        videoId: widget.video.id,
+        creatorId: widget.video.creator.id,
+      );
+      widget.onNotInterested?.call(widget.video.id, widget.video.creator.id);
+      if (mounted) {
+        _showSheetToast('Noted. Adjusting recommendations...');
+        await _closeSheet();
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSheetToast('Could not update preferences', isError: true);
+      }
+    }
+  }
+
+  Future<void> _handleAddToCollection() async {
+    HapticFeedback.selectionClick();
+    try {
+      await VideoActionsService().addToFavorites(widget.video.id);
+      widget.onFavorite?.call(widget.video.id, widget.video.creator.id);
+      if (mounted) {
+        _showSheetToast('Added to collection');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSheetToast('Could not add to collection', isError: true);
+      }
+    }
+  }
+
+  void _handleStartThread() {
+    HapticFeedback.selectionClick();
+    final String caption = widget.video.caption.trim();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateThreadScreen(
+          attachedVideoId: widget.video.id,
+          initialTitle: caption.isEmpty ? 'Discuss this clip' : null,
+          initialContent: caption.isEmpty
+              ? 'What do you think about this clip?'
+              : 'What do you think about this clip?\n\n$caption',
+        ),
+        settings: const RouteSettings(name: '/threads/create'),
+      ),
+    );
   }
 
   Future<void> _handleShareTarget(ShareTarget target) async {
@@ -677,21 +1331,13 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       }
       _showSheetToast(e.message);
     } catch (e) {
-      log('❌ EnhancedShareSheet: Error sharing to ${target.displayName}: $e');
+      secureLog(
+          '❌ EnhancedShareSheet: Error sharing to ${target.displayName}: $e');
       _showSheetToast(
         'Could not share to ${target.displayName}',
         isError: true,
       );
     }
-  }
-
-  void _handleFavorite() {
-    if (widget.onFavorite == null) {
-      return;
-    }
-    HapticFeedback.selectionClick();
-    widget.onFavorite?.call(widget.video.id, widget.video.creator.id);
-    _showSheetToast('Saved to favorites');
   }
 
   void _handleQRCode() {
@@ -722,7 +1368,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       debugPrint('❌ Error checking report status: $e');
       // Continue anyway - let user try to report
     }
-    
+
     _showReportDialog();
   }
 
@@ -782,8 +1428,8 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.2),
-                ),
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
                 ),
               ),
               child: const Text(
@@ -889,5 +1535,120 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       }
     }
   }
+}
 
+class _ShareConnection {
+  const _ShareConnection({
+    required this.userId,
+    this.displayName = '',
+    this.username = '',
+    this.avatarUrl = '',
+    this.creatorActivity = '',
+    this.isOnline = false,
+    this.canDM = true,
+  });
+
+  final String userId;
+  final String displayName;
+  final String username;
+  final String avatarUrl;
+  final String creatorActivity;
+  final bool isOnline;
+  final bool canDM;
+
+  bool get hasDisplayData =>
+      displayName.trim().isNotEmpty ||
+      username.trim().isNotEmpty ||
+      avatarUrl.trim().isNotEmpty;
+
+  factory _ShareConnection.fromDocument(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final Map<String, dynamic> data = doc.data();
+    final String userId =
+        _readString(data, <String>['userId', 'uid', 'connectedUserId']) ??
+            doc.id;
+    return _ShareConnection(
+      userId: userId,
+      displayName:
+          _readString(data, <String>['displayName', 'name', 'fullName']) ?? '',
+      username:
+          _readString(data, <String>['username', 'handle', 'userName']) ?? '',
+      avatarUrl: _readString(
+            data,
+            <String>['avatarUrl', 'avatarURL', 'photoURL', 'profileImageUrl'],
+          ) ??
+          '',
+      creatorActivity: _readString(
+            data,
+            <String>[
+              'creatorActivity',
+              'activity',
+              'creatorType',
+              'category',
+              'statusText',
+            ],
+          ) ??
+          '',
+      isOnline: data['isOnline'] == true ||
+          data['online'] == true ||
+          data['onlineStatus'] == 'online',
+      canDM: data['canDM'] != false && data['canReceiveDMs'] != false,
+    );
+  }
+
+  factory _ShareConnection.fromLite(dynamic connection) {
+    return _ShareConnection(
+      userId: connection.userId as String,
+      displayName: connection.displayName as String,
+      username: connection.handle as String,
+      avatarUrl: connection.avatarUrl as String,
+      isOnline: connection.isOnline as bool,
+      canDM: connection.canDM as bool,
+    );
+  }
+
+  _ShareConnection mergeUserData(Map<String, dynamic>? data) {
+    if (data == null) {
+      return this;
+    }
+    return _ShareConnection(
+      userId: userId,
+      displayName: displayName.trim().isNotEmpty
+          ? displayName
+          : (_readString(data, <String>['displayName', 'name']) ?? username),
+      username: username.trim().isNotEmpty
+          ? username
+          : (_readString(data, <String>['username', 'handle']) ?? ''),
+      avatarUrl: avatarUrl.trim().isNotEmpty
+          ? avatarUrl
+          : (_readString(
+                data,
+                <String>['avatarUrl', 'avatarURL', 'photoURL'],
+              ) ??
+              ''),
+      creatorActivity: creatorActivity.trim().isNotEmpty
+          ? creatorActivity
+          : (_readString(
+                data,
+                <String>['creatorActivity', 'creatorType', 'category', 'role'],
+              ) ??
+              ''),
+      isOnline: isOnline ||
+          data['isOnline'] == true ||
+          data['online'] == true ||
+          data['onlineStatus'] == 'online',
+      canDM: canDM && data['canReceiveDMs'] != false,
+    );
+  }
+
+  static String? _readString(Map<String, dynamic> data, List<String> keys) {
+    for (final String key in keys) {
+      final Object? value = data[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return null;
+  }
 }

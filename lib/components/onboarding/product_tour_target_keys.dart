@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 
 /// Global keys for [ProductTourOverlay] coach marks (widgets attach these).
 abstract final class ProductTourTargetKeys {
+  static const bool disableTargetKeys = bool.fromEnvironment(
+    'STREAMERSTIP_DISABLE_PRODUCT_TOUR_TARGET_KEYS',
+    defaultValue: false,
+  );
+
   static final GlobalKey homeFeed =
       GlobalKey(debugLabel: 'productTourHomeFeed');
   static final GlobalKey uploadButton =
@@ -29,7 +34,10 @@ abstract final class ProductTourTargetKeys {
   static final GlobalKey progressionPanel =
       GlobalKey(debugLabel: 'productTourProgressionPanel');
 
+  static Key? maybe(GlobalKey key) => disableTargetKeys ? null : key;
+
   static GlobalKey? keyForStepId(String id) {
+    if (disableTargetKeys) return null;
     switch (id) {
       case 'home_feed':
         return homeFeed;

@@ -44,7 +44,8 @@ class RealtimeTrendingService {
         secureLog('🕐 Prime time boost - ${timeMultiplier}x');
       }
 
-      secureLog('✅ Total trending boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog(
+          '✅ Total trending boost for $videoId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
       secureLog('❌ Error calculating trending boost: $e');
@@ -79,7 +80,8 @@ class RealtimeTrendingService {
       // Burst = >200% increase in engagement
       final burstScore = (acceleration / 2.0).clamp(0.0, 1.0);
 
-      secureLog('💥 Burst detection: $videoId - last hour: $lastHour, prev: $previousHour, score: ${burstScore.toStringAsFixed(2)}');
+      secureLog(
+          '💥 Burst detection: $videoId - last hour: $lastHour, prev: $previousHour, score: ${burstScore.toStringAsFixed(2)}');
 
       return burstScore;
     } catch (e) {
@@ -110,7 +112,8 @@ class RealtimeTrendingService {
       final trendingScore = (engagementRate * 3.0).clamp(0.0, 1.0);
 
       if (viewsCount > 50) {
-        secureLog('🔥 Hourly trending: $videoId - $engagementCount/$viewsCount = ${trendingScore.toStringAsFixed(2)}');
+        secureLog(
+            '🔥 Hourly trending: $videoId - $engagementCount/$viewsCount = ${trendingScore.toStringAsFixed(2)}');
         return trendingScore;
       }
 
@@ -243,8 +246,9 @@ class RealtimeTrendingService {
       // 1. Compute trending videos based on engagement (server-side only)
       // 2. Store results in: trending_network/{userId} or public_trending/{timeWindow}
       // 3. Client reads only pre-computed results
-      
-      secureLog('⚠️ Trending in network: Feature disabled (should be server-side)');
+
+      secureLog(
+          '⚠️ Trending in network: Feature disabled (should be server-side)');
       return [];
     } catch (e) {
       secureLog('❌ Error getting trending in network: $e');

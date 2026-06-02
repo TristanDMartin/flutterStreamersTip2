@@ -30,7 +30,8 @@ class CreatorGrowthService {
       // 1. New Creator Boost (first 10 videos)
       if (metrics.totalVideos <= 10) {
         multiplier *= newCreatorBoost;
-        secureLog('🆕 New creator boost applied: $creatorId (${metrics.totalVideos} videos) - ${newCreatorBoost}x');
+        secureLog(
+            '🆕 New creator boost applied: $creatorId (${metrics.totalVideos} videos) - ${newCreatorBoost}x');
       }
 
       // 2. Consistency Boost (uploads weekly)
@@ -59,7 +60,8 @@ class CreatorGrowthService {
         secureLog('🔄 Comeback boost applied: $creatorId - ${comebackBoost}x');
       }
 
-      secureLog('✅ Total creator boost for $creatorId: ${multiplier.toStringAsFixed(2)}x');
+      secureLog(
+          '✅ Total creator boost for $creatorId: ${multiplier.toStringAsFixed(2)}x');
       return multiplier;
     } catch (e) {
       secureLog('❌ Error calculating creator boost: $e');

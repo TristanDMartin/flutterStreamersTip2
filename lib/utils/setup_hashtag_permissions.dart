@@ -13,12 +13,9 @@ class HashtagPermissionSetup {
       // Replace these with actual user IDs
       const String ownerUserId = 'YOUR_OWNER_USER_ID_HERE';
       const String founderUserId = 'YOUR_FOUNDER_USER_ID_HERE';
-      
+
       // Grant Owner hashtag permission
-      await _firestore
-          .collection('hashtag_permissions')
-          .doc('owner')
-          .set({
+      await _firestore.collection('hashtag_permissions').doc('owner').set({
         'hashtag': 'owner',
         'authorizedUsers': [ownerUserId],
         'createdAt': FieldValue.serverTimestamp(),
@@ -26,10 +23,7 @@ class HashtagPermissionSetup {
       });
 
       // Grant Founder hashtag permission
-      await _firestore
-          .collection('hashtag_permissions')
-          .doc('founder')
-          .set({
+      await _firestore.collection('hashtag_permissions').doc('founder').set({
         'hashtag': 'founder',
         'authorizedUsers': [founderUserId],
         'createdAt': FieldValue.serverTimestamp(),
@@ -47,15 +41,12 @@ class HashtagPermissionSetup {
   /// Adds a user to Owner hashtag permissions
   static Future<void> addOwnerPermission(String userId) async {
     try {
-      await _firestore
-          .collection('hashtag_permissions')
-          .doc('owner')
-          .set({
+      await _firestore.collection('hashtag_permissions').doc('owner').set({
         'hashtag': 'owner',
         'authorizedUsers': FieldValue.arrayUnion([userId]),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      
+
       debugPrint('✅ Owner permission granted to: $userId');
     } catch (e) {
       debugPrint('❌ Error granting Owner permission: $e');
@@ -65,15 +56,12 @@ class HashtagPermissionSetup {
   /// Adds a user to Founder hashtag permissions
   static Future<void> addFounderPermission(String userId) async {
     try {
-      await _firestore
-          .collection('hashtag_permissions')
-          .doc('founder')
-          .set({
+      await _firestore.collection('hashtag_permissions').doc('founder').set({
         'hashtag': 'founder',
         'authorizedUsers': FieldValue.arrayUnion([userId]),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      
+
       debugPrint('✅ Founder permission granted to: $userId');
     } catch (e) {
       debugPrint('❌ Error granting Founder permission: $e');

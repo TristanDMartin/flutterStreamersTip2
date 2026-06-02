@@ -17,6 +17,11 @@ const storage = admin.storage();
 // Video transcoding helpers (format check only - no server transcoding)
 const {transcodeVideo: transcodeVideoHelper, uploadVariant, getPublicUrl, cleanupFiles} = require('./src/videoTranscoding');
 const {checkFormat} = require('./src/videoFormatCheck');
+const {
+  isPublicFeedEligible,
+  scoreVideoForFeed,
+  feedMirrorPayload,
+} = require('./src/feed_ranking');
 
 function safeEmitTelemetry(eventType, payload) {
   try {
@@ -116,9 +121,12 @@ exports.transcodeVideo = functions
           mp4_720_url: url720,
           videoUrl: url720,
           videoURL: url720,
+          canonicalPlaybackUrl: url720,
           transcodingStatus: 'completed',
           transcodedAt: FieldValue.serverTimestamp(),
           status: 'ready',
+          isReadyForFeed: true,
+          isDeleted: false,
           updatedAt: FieldValue.serverTimestamp(),
         }, {merge: true});
         console.log(`✅ Format OK: ${videoId} - using original as mp4_720_url`);
@@ -1636,6 +1644,13 @@ const region = 'us-central1';
 const crypto = require('crypto');
 const { createDirectUpload, handleMuxWebhook } = require('./src/mux');
 const {handleGamificationEvents} = require('./src/gamification/gamification_events_http');
+const {handleProgressionCallable} = require('./src/gamification/progression_callable');
+const {
+  handleDeleteVideo,
+  handleDeleteVideos,
+} = require('./src/videos/delete_video_callable');
+const {cleanupStuckUploads} = require('./src/videos/cleanup_stuck_uploads');
+const {runProgressionNotificationSweep} = require('./src/gamification/progression_notifications');
 const {handleVerifyMobilePurchase} = require('./src/billing/verify_mobile_purchase');
 const {
   handleTippyRequest,
@@ -1648,6 +1663,21 @@ const {handleMeEntitlements} = require('./src/me/me_entitlements_http');
 
 /** Optional fallback only — prefer Cloudflare Worker `POST /gamification/events` (same contract). */
 exports.gamificationEvents = onRequest({region, cors: true}, handleGamificationEvents);
+
+/** Admin SDK-owned progression sync. Clients can request, but cannot write XP/rank/task state. */
+exports.progressionSync = onCall({region}, handleProgressionCallable);
+
+/** Soft-delete videos + purge feed/index mirrors (owner or admin). */
+exports.deleteVideo = onCall({region}, handleDeleteVideo);
+exports.deleteVideos = onCall({region}, handleDeleteVideos);
+
+/** Mark uploading/pending/processing videos stuck >2h as failed. */
+exports.cleanupStuckUploads = cleanupStuckUploads;
+
+exports.progressionNotificationSweep = onSchedule(
+  {region, schedule: 'every 60 minutes', timeZone: 'UTC'},
+  async () => runProgressionNotificationSweep(),
+);
 
 /** Mobile IAP: Flutter posts receipt/token; verifies Apple / Play; writes Firestore. */
 exports.verifyMobilePurchase = onRequest(
@@ -2154,11 +2184,120 @@ exports.onFollowDelete = functions.region(region).firestore
     }
   });
 
-// DISABLED: Sync moved to app (CreatorStatsSyncService). App updates users/{creatorId}.totalViews/totalLikes directly.
-// Stubbed to reduce Cloud Run CPU; invocation still occurs. Undeploy to eliminate entirely.
 exports.onVideoWrite = functions.region(region).firestore
   .document('videos/{videoId}')
-  .onWrite(async () => null);
+  .onWrite(async (change, context) => {
+    const videoId = context.params.videoId;
+    const globalFeedRef = firestore
+      .collection('feeds')
+      .doc('for_you')
+      .collection('videos')
+      .doc(videoId);
+
+    if (!change.after.exists) {
+      await globalFeedRef.delete().catch(() => null);
+      return null;
+    }
+
+    const data = change.after.data() || {};
+    if (!isPublicFeedEligible(data)) {
+      await globalFeedRef.delete().catch(() => null);
+      return null;
+    }
+
+    const rank = scoreVideoForFeed(data);
+    const previousScore = Number(data.feedScore || 0);
+    const scoreChanged = Math.abs(previousScore - rank.finalScore) >= 0.0001;
+    const writes = [
+      globalFeedRef.set(feedMirrorPayload(videoId, data, admin), {merge: true}),
+    ];
+    if (scoreChanged || !data.feedRank) {
+      writes.push(change.after.ref.set({
+        feedRank: rank,
+        feedScore: rank.finalScore,
+        rankedAt: FieldValue.serverTimestamp(),
+      }, {merge: true}));
+    }
+    await Promise.all(writes);
+    return null;
+  });
+
+exports.apiFeedForYou = onRequest({region, cors: true}, async (req, res) => {
+  try {
+    if (req.method !== 'GET') {
+      res.status(405).json({error: 'Method not allowed'});
+      return;
+    }
+    const limit = Math.min(Math.max(Number(req.query.limit || 30), 1), 50);
+    const rankedSnapshot = await firestore
+      .collection('feeds')
+      .doc('for_you')
+      .collection('videos')
+      .orderBy('finalScore', 'desc')
+      .limit(limit)
+      .get();
+
+    const itemsById = new Map();
+    rankedSnapshot.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      if (
+        typeof data.finalScore === 'number' &&
+        typeof data.canonicalPlaybackUrl === 'string' &&
+        data.canonicalPlaybackUrl.trim()
+      ) {
+        itemsById.set(doc.id, {id: doc.id, ...data});
+      }
+    });
+
+    const videoSnapshots = await Promise.all([
+      firestore
+        .collection('videos')
+        .where('visibility', '==', 'public')
+        .orderBy('createdAt', 'desc')
+        .limit(limit * 2)
+        .get()
+        .catch(() => ({docs: []})),
+      firestore
+        .collection('videos')
+        .where('status', 'in', ['ready', 'active', 'published'])
+        .orderBy('createdAt', 'desc')
+        .limit(limit * 2)
+        .get()
+        .catch(() => ({docs: []})),
+    ]);
+
+    const mirrorWrites = [];
+    for (const snapshot of videoSnapshots) {
+      for (const doc of snapshot.docs) {
+        if (itemsById.has(doc.id)) continue;
+        const data = doc.data() || {};
+        if (!isPublicFeedEligible(data)) continue;
+        const payload = feedMirrorPayload(doc.id, data, admin);
+        itemsById.set(doc.id, {id: doc.id, ...payload});
+        mirrorWrites.push(
+          firestore
+            .collection('feeds')
+            .doc('for_you')
+            .collection('videos')
+            .doc(doc.id)
+            .set(payload, {merge: true}),
+        );
+      }
+    }
+
+    await Promise.all(mirrorWrites.slice(0, 100));
+    const items = Array.from(itemsById.values())
+      .sort((a, b) => Number(b.finalScore || 0) - Number(a.finalScore || 0))
+      .slice(0, limit);
+
+    res.status(200).json({
+      items,
+    });
+  } catch (error) {
+    console.error('apiFeedForYou error:', error);
+    res.status(500).json({error: error.message || 'Internal error'});
+  }
+});
 
 exports.sendWelcomeEmail = functions.region(region).auth.user().onCreate(async (user) => {
   const email = user.email;

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'video_download_service.dart';
 
 final videoActionsServiceProvider = Provider<VideoActionsService>((ref) {
@@ -11,8 +12,28 @@ final videoActionsServiceProvider = Provider<VideoActionsService>((ref) {
 });
 
 class VideoActionsService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+  static FirebaseFirestore? _firestoreOverride;
+  static firebase_auth.FirebaseAuth? _authOverride;
+  static FirebaseFunctions? _functionsOverride;
+
+  @visibleForTesting
+  static void debugSetOverrides({
+    FirebaseFirestore? firestore,
+    firebase_auth.FirebaseAuth? auth,
+    FirebaseFunctions? functions,
+  }) {
+    _firestoreOverride = firestore;
+    _authOverride = auth;
+    _functionsOverride = functions;
+  }
+
+  FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
+  firebase_auth.FirebaseAuth get _auth =>
+      _authOverride ?? firebase_auth.FirebaseAuth.instance;
+  FirebaseFunctions get _functions =>
+      _functionsOverride ??
+      FirebaseFunctions.instanceFor(region: 'us-central1');
 
   Future<String?> getCurrentUserId() async {
     return _auth.currentUser?.uid;
@@ -29,15 +50,15 @@ class VideoActionsService {
       final ownerUid = data['userId'] as String?;
       final allowSave = data['allowSave'] as bool? ?? true;
       final videoUrl = data['videoUrl'] ?? data['videoURL'] as String?;
-      
+
       if (videoUrl == null || videoUrl.isEmpty) {
         throw Exception('Video URL not available');
       }
-      
+
       if (userId != ownerUid && !allowSave) {
         throw Exception('Video owner has disabled downloads');
       }
-      
+
       // Use VideoDownloadService to download the video
       final downloadService = VideoDownloadService();
       await downloadService.downloadVideo(videoId, videoUrl);
@@ -156,76 +177,39 @@ class VideoActionsService {
     }
   }
 
-  Future<void> deleteVideo(String videoId) async {
+  /// Soft-delete via `deleteVideo` callable (us-central1) only.
+  Future<void> deleteVideo(String videoId, {String source = 'app'}) async {
     try {
-      final userId = await getCurrentUserId();
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
-      
-      final videoRef = _firestore.collection('videos').doc(videoId);
-      final videoDoc = await videoRef.get();
-      
-      if (!videoDoc.exists) {
-        throw Exception('Video not found');
-      }
-      
-      final videoData = videoDoc.data();
-      final ownerUid = (videoData?['userId'] ?? 
-                       videoData?['creatorId'] ?? 
-                       videoData?['creator_id']) as String?;
-      
-      if (ownerUid == null || ownerUid != userId) {
-        throw Exception('Only video owner can delete videos');
-      }
-      
-      // 🔥 CROSS-PLATFORM FIX: Update status to 'deleted' (both app and website will see this)
-      await videoRef.update({
-        'status': 'deleted',
-        'deletedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(), // Ensure website sees the update
+      final HttpsCallable callable = _functions.httpsCallable('deleteVideo');
+      await callable.call(<String, dynamic>{
+        'videoId': videoId,
+        'source': source,
       });
-      
-      // Update user post count
-      final userRef = _firestore.collection('users').doc(userId);
-      await userRef.update({
-        'postCount': FieldValue.increment(-1),
-      });
-      
-      // Delete from user_videos subcollection if it exists
-      try {
-        final userVideosRef = _firestore
-            .collection('user_videos')
-            .doc(userId)
-            .collection('posts')
-            .doc(videoId);
-        final userVideoDoc = await userVideosRef.get();
-        if (userVideoDoc.exists) {
-          await userVideosRef.delete();
-        }
-      } catch (e) {
-        // Ignore if subcollection doesn't exist
-        debugPrint('⚠️ VideoActionsService: user_videos subcollection not found (this is OK): $e');
-      }
-      
-      // Remove from pinned videos if pinned
-      try {
-        final userDoc = await userRef.get();
-        final pinnedVideoIds = List<String>.from(
-          userDoc.data()?['pinnedVideoIds'] ?? [],
-        );
-        if (pinnedVideoIds.contains(videoId)) {
-          pinnedVideoIds.remove(videoId);
-          await userRef.update({'pinnedVideoIds': pinnedVideoIds});
-        }
-      } catch (e) {
-        debugPrint('⚠️ VideoActionsService: Error updating pinned videos: $e');
-        // Don't fail deletion if pinned video update fails
-      }
-      
-      debugPrint('✅ VideoActionsService: Video $videoId deleted successfully');
+      debugPrint('✅ VideoActionsService: Video $videoId soft-deleted');
     } catch (e) {
       debugPrint('❌ VideoActionsService: Error deleting video $videoId: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteVideos(
+    List<String> videoIds, {
+    String source = 'app',
+  }) async {
+    if (videoIds.isEmpty) {
+      return;
+    }
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('deleteVideos');
+      await callable.call(<String, dynamic>{
+        'videoIds': videoIds,
+        'source': source,
+      });
+      debugPrint(
+        '✅ VideoActionsService: Soft-deleted ${videoIds.length} videos',
+      );
+    } catch (e) {
+      debugPrint('❌ VideoActionsService: Bulk delete failed: $e');
       rethrow;
     }
   }
@@ -285,6 +269,25 @@ class VideoActionsService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  /// Negative signal for feed ranking (see [EnhancedAlgorithmService]).
+  Future<void> markNotInterested({
+    required String videoId,
+    required String creatorId,
+  }) async {
+    final String? userId = await getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated');
+    }
+    await _firestore.collection('user_interactions').add({
+      'userId': userId,
+      'videoId': videoId,
+      'creatorId': creatorId,
+      'interactionType': 'not_interested',
+      'watchPercentage': 0.0,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> copyLink(String videoId) async {

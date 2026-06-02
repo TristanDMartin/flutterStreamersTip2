@@ -1,7 +1,9 @@
-import 'dart:developer';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/connection_lite.dart';
+import 'progression_service.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// ConnectionsService - Handles fetching and caching user connections
 ///
@@ -26,7 +28,7 @@ class ConnectionsService {
   }) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
-      log('❌ ConnectionsService: No authenticated user');
+      secureLog('❌ ConnectionsService: No authenticated user');
       return [];
     }
 
@@ -37,13 +39,13 @@ class ConnectionsService {
       final cacheTime = _cacheTimestamp[userId];
       if (cacheTime != null &&
           DateTime.now().difference(cacheTime).inMinutes < 5) {
-        log('✅ ConnectionsService: Using cached connections for $userId');
+        secureLog('✅ ConnectionsService: Using cached connections for $userId');
         return _connectionsCache[userId] ?? [];
       }
     }
 
     try {
-      log('🔄 ConnectionsService: Fetching connections for $userId');
+      secureLog('🔄 ConnectionsService: Fetching connections for $userId');
 
       // Fetch connections from Firestore with ranking
       final connections = await _fetchConnectionsWithRanking(userId, limit);
@@ -52,10 +54,11 @@ class ConnectionsService {
       _connectionsCache[userId] = connections;
       _cacheTimestamp[userId] = DateTime.now();
 
-      log('✅ ConnectionsService: Loaded ${connections.length} connections for $userId');
+      secureLog(
+          '✅ ConnectionsService: Loaded ${connections.length} connections for $userId');
       return connections;
     } catch (e) {
-      log('❌ ConnectionsService: Error fetching connections: $e');
+      secureLog('❌ ConnectionsService: Error fetching connections: $e');
       // Return cached data if available, even if stale
       return _connectionsCache[userId] ?? [];
     }
@@ -74,7 +77,8 @@ class ConnectionsService {
     }
 
     try {
-      log('📊 ConnectionsService: Counting total connections from all sources for $userId');
+      secureLog(
+          '📊 ConnectionsService: Counting total connections from all sources for $userId');
 
       int total = 0;
       final Set<String> uniqueUserIds = {}; // Prevent duplicates
@@ -95,9 +99,11 @@ class ConnectionsService {
           }
         }
 
-        log('📊 ConnectionsService: Found ${uniqueUserIds.length} connections from subcollection');
+        secureLog(
+            '📊 ConnectionsService: Found ${uniqueUserIds.length} connections from subcollection');
       } catch (e) {
-        log('⚠️ ConnectionsService: Error counting from subcollection: $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error counting from subcollection: $e');
       }
 
       // 2. Count connections from relationships (following)
@@ -115,9 +121,11 @@ class ConnectionsService {
           }
         }
 
-        log('📊 ConnectionsService: Found additional connections from relationships (following)');
+        secureLog(
+            '📊 ConnectionsService: Found additional connections from relationships (following)');
       } catch (e) {
-        log('⚠️ ConnectionsService: Error counting from relationships (following): $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error counting from relationships (following): $e');
       }
 
       // 3. Count mutual connections (followers)
@@ -135,18 +143,21 @@ class ConnectionsService {
           }
         }
 
-        log('📊 ConnectionsService: Found mutual connections from relationships (followers)');
+        secureLog(
+            '📊 ConnectionsService: Found mutual connections from relationships (followers)');
       } catch (e) {
-        log('⚠️ ConnectionsService: Error counting from relationships (followers): $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error counting from relationships (followers): $e');
       }
 
       total = uniqueUserIds.length;
       _connectionsTotalCache[userId] = total;
 
-      log('📊 ConnectionsService: Total unique connections for $userId: $total');
+      secureLog(
+          '📊 ConnectionsService: Total unique connections for $userId: $total');
       return total;
     } catch (e) {
-      log('❌ ConnectionsService: Error counting connections: $e');
+      secureLog('❌ ConnectionsService: Error counting connections: $e');
       return _connectionsTotalCache[userId] ?? 0;
     }
   }
@@ -165,7 +176,8 @@ class ConnectionsService {
     }
 
     try {
-      log('🔍 ConnectionsService: Searching connections with query: "$query"');
+      secureLog(
+          '🔍 ConnectionsService: Searching connections with query: "$query"');
 
       final connections = <ConnectionLite>[];
       final Set<String> processedUserIds = {}; // Prevent duplicates
@@ -213,9 +225,11 @@ class ConnectionsService {
                   avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
               isOnline = userData['isOnline'] ?? false;
 
-              log('🔍 ConnectionsService: Fetched user data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
+              secureLog(
+                  '🔍 ConnectionsService: Fetched user data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
             } else {
-              log('⚠️ ConnectionsService: User document not found for $connectedUserId');
+              secureLog(
+                  '⚠️ ConnectionsService: User document not found for $connectedUserId');
             }
           }
 
@@ -237,7 +251,7 @@ class ConnectionsService {
           }
         }
       } catch (e) {
-        log('⚠️ ConnectionsService: Error searching subcollection: $e');
+        secureLog('⚠️ ConnectionsService: Error searching subcollection: $e');
       }
 
       // 2. Search in relationships (following)
@@ -300,7 +314,8 @@ class ConnectionsService {
           }
         }
       } catch (e) {
-        log('⚠️ ConnectionsService: Error searching relationships (following): $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error searching relationships (following): $e');
       }
 
       // 3. Search in mutual connections (followers)
@@ -364,16 +379,18 @@ class ConnectionsService {
           }
         }
       } catch (e) {
-        log('⚠️ ConnectionsService: Error searching relationships (followers): $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error searching relationships (followers): $e');
       }
 
       // Sort by ranking score for search results
       connections.sort((a, b) => b.rankingScore.compareTo(a.rankingScore));
 
-      log('🔍 ConnectionsService: Found ${connections.length} matching connections from all sources');
+      secureLog(
+          '🔍 ConnectionsService: Found ${connections.length} matching connections from all sources');
       return connections.take(limit).toList();
     } catch (e) {
-      log('❌ ConnectionsService: Error searching connections: $e');
+      secureLog('❌ ConnectionsService: Error searching connections: $e');
       return [];
     }
   }
@@ -385,7 +402,8 @@ class ConnectionsService {
     required String shareToken,
   }) async {
     try {
-      log('📤 ConnectionsService: Sending DM share to $recipientId for video $videoId');
+      secureLog(
+          '📤 ConnectionsService: Sending DM share to $recipientId for video $videoId');
 
       String videoTitle = 'Shared a video';
       String videoThumbnailUrl = '';
@@ -397,25 +415,25 @@ class ConnectionsService {
             await _firestore.collection('videos').doc(videoId).get();
         if (videoDoc.exists) {
           videoData = videoDoc.data() ?? <String, dynamic>{};
-          videoTitle =
-              videoData['caption'] as String? ??
-                  videoData['title'] as String? ??
-                  'Shared a video';
+          videoTitle = videoData['caption'] as String? ??
+              videoData['title'] as String? ??
+              'Shared a video';
           videoThumbnailUrl = videoData['thumbnailUrl'] as String? ?? '';
           creatorUsername = (videoData['username'] as String?)?.trim() ??
               (videoData['creatorUsername'] as String?)?.trim() ??
               (videoData['displayName'] as String?)?.trim() ??
               '';
-          log('📤 ConnectionsService: Fetched video data - title: "$videoTitle", thumbnail: "$videoThumbnailUrl"');
+          secureLog(
+              '📤 ConnectionsService: Fetched video data - title: "$videoTitle", thumbnail: "$videoThumbnailUrl"');
         } else {
-          log('⚠️ ConnectionsService: Video document does not exist: $videoId');
+          secureLog(
+              '⚠️ ConnectionsService: Video document does not exist: $videoId');
         }
       } catch (e) {
-        log('⚠️ ConnectionsService: Could not fetch video data: $e');
+        secureLog('⚠️ ConnectionsService: Could not fetch video data: $e');
       }
 
-      final String publicUrl =
-          'https://streamerstip.com/video/$videoId';
+      final String publicUrl = 'https://streamerstip.com/video/$videoId';
       final String deepLink = 'streamerstip://video/$videoId';
 
       final messageData = <String, dynamic>{
@@ -466,7 +484,7 @@ class ConnectionsService {
           'lastSeen': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
-        log('⚠️ ConnectionsService: Non-fatal connection bump: $e');
+        secureLog('⚠️ ConnectionsService: Non-fatal connection bump: $e');
       }
 
       try {
@@ -480,13 +498,19 @@ class ConnectionsService {
           'createdAt': FieldValue.serverTimestamp(),
         });
       } catch (e) {
-        log('⚠️ ConnectionsService: recentShares write skipped: $e');
+        secureLog('⚠️ ConnectionsService: recentShares write skipped: $e');
       }
 
-      log('✅ ConnectionsService: DM share sent successfully to chat $chatId');
+      secureLog(
+          '✅ ConnectionsService: DM share sent successfully to chat $chatId');
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        _auth.currentUser!.uid,
+        ProgressionTaskIds.firstMessageSent,
+        source: 'messages',
+      ));
       return chatId;
     } catch (e) {
-      log('❌ ConnectionsService: Error sending DM share: $e');
+      secureLog('❌ ConnectionsService: Error sending DM share: $e');
       rethrow;
     }
   }
@@ -508,7 +532,7 @@ class ConnectionsService {
         );
         results.add(chatId);
       } catch (e) {
-        log('❌ ConnectionsService: Failed to share to $recipientId: $e');
+        secureLog('❌ ConnectionsService: Failed to share to $recipientId: $e');
         results.add(null);
       }
     }
@@ -526,41 +550,40 @@ class ConnectionsService {
     _connectionsTotalCache.remove(userId);
     _cacheTimestamp.remove(userId);
 
-    log('🗑️ ConnectionsService: Cleared cache for $userId');
+    secureLog('🗑️ ConnectionsService: Cleared cache for $userId');
   }
 
   /// Fetch connections with server-side ranking from ALL sources
   Future<List<ConnectionLite>> _fetchConnectionsWithRanking(
       String userId, int limit) async {
     try {
-      log('🔄 ConnectionsService: Fetching ALL connections for $userId from multiple sources');
+      secureLog(
+          '🔄 ConnectionsService: Fetching ALL connections for $userId from multiple sources');
 
       final connections = <ConnectionLite>[];
       final Set<String> processedUserIds = {}; // Prevent duplicates
       final Set<String> recentShareUserIds = <String>{};
       try {
-        final QuerySnapshot<Map<String, dynamic>> recentSnap =
-            await _firestore
-                .collection('users')
-                .doc(userId)
-                .collection('recentShares')
-                .limit(24)
-                .get();
+        final QuerySnapshot<Map<String, dynamic>> recentSnap = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('recentShares')
+            .limit(24)
+            .get();
         for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
             in recentSnap.docs) {
           final Map<String, dynamic> m = doc.data();
           final String? peer = (m['recipientId'] ??
-                  m['userId'] ??
-                  m['toUserId'] ??
-                  m['peerUserId'] ??
-                  m['targetUserId'])
-              as String?;
+              m['userId'] ??
+              m['toUserId'] ??
+              m['peerUserId'] ??
+              m['targetUserId']) as String?;
           if (peer != null && peer.isNotEmpty) {
             recentShareUserIds.add(peer);
           }
         }
       } catch (e) {
-        log('⚠️ ConnectionsService: recentShares unavailable: $e');
+        secureLog('⚠️ ConnectionsService: recentShares unavailable: $e');
       }
 
       // 1. Get connections from connections subcollection (app-created)
@@ -590,8 +613,10 @@ class ConnectionsService {
           bool isOnline = connectionData['isOnline'] ??
               connectionData['onlineStatus'] == 'online';
 
-          log('🔍 ConnectionsService: Connection data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
-          log('🔍 ConnectionsService: Raw connection data: ${connectionData.keys.toList()}');
+          secureLog(
+              '🔍 ConnectionsService: Connection data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
+          secureLog(
+              '🔍 ConnectionsService: Raw connection data: ${connectionData.keys.toList()}');
 
           // If connection data is incomplete, fetch from users collection
           if (handle.isEmpty || displayName.isEmpty || avatarUrl.isEmpty) {
@@ -608,9 +633,11 @@ class ConnectionsService {
                   avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
               isOnline = userData['isOnline'] ?? false;
 
-              log('🔍 ConnectionsService: Fetched user data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
+              secureLog(
+                  '🔍 ConnectionsService: Fetched user data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
             } else {
-              log('⚠️ ConnectionsService: User document not found for $connectedUserId');
+              secureLog(
+                  '⚠️ ConnectionsService: User document not found for $connectedUserId');
             }
           }
 
@@ -619,7 +646,8 @@ class ConnectionsService {
             if (avatarUrl.isEmpty) {
               avatarUrl =
                   'https://via.placeholder.com/120x120/4ECDC4/FFFFFF?text=${handle.substring(0, 1).toUpperCase()}';
-              log('🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
+              secureLog(
+                  '🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
             }
 
             connections.add(ConnectionLite(
@@ -637,9 +665,11 @@ class ConnectionsService {
           }
         }
 
-        log('✅ ConnectionsService: Found ${connections.length} connections from subcollection');
+        secureLog(
+            '✅ ConnectionsService: Found ${connections.length} connections from subcollection');
       } catch (e) {
-        log('⚠️ ConnectionsService: Error fetching from connections subcollection: $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error fetching from connections subcollection: $e');
       }
 
       // 2. Get connections from relationships collection (website-created)
@@ -690,7 +720,8 @@ class ConnectionsService {
             if (avatarUrl.isEmpty) {
               avatarUrl =
                   'https://via.placeholder.com/120x120/4ECDC4/FFFFFF?text=${handle.substring(0, 1).toUpperCase()}';
-              log('🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
+              secureLog(
+                  '🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
             }
 
             connections.add(ConnectionLite(
@@ -707,9 +738,11 @@ class ConnectionsService {
           }
         }
 
-        log('✅ ConnectionsService: Found additional connections from relationships collection');
+        secureLog(
+            '✅ ConnectionsService: Found additional connections from relationships collection');
       } catch (e) {
-        log('⚠️ ConnectionsService: Error fetching from relationships collection: $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error fetching from relationships collection: $e');
       }
 
       // 3. Get mutual connections (both following each other)
@@ -760,7 +793,8 @@ class ConnectionsService {
             if (avatarUrl.isEmpty) {
               avatarUrl =
                   'https://via.placeholder.com/120x120/4ECDC4/FFFFFF?text=${handle.substring(0, 1).toUpperCase()}';
-              log('🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
+              secureLog(
+                  '🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
             }
 
             connections.add(ConnectionLite(
@@ -778,9 +812,11 @@ class ConnectionsService {
           }
         }
 
-        log('✅ ConnectionsService: Found mutual connections from followers');
+        secureLog(
+            '✅ ConnectionsService: Found mutual connections from followers');
       } catch (e) {
-        log('⚠️ ConnectionsService: Error fetching mutual connections: $e');
+        secureLog(
+            '⚠️ ConnectionsService: Error fetching mutual connections: $e');
       }
 
       final List<ConnectionLite> ranked = connections
@@ -795,10 +831,12 @@ class ConnectionsService {
             b.rankingScore.compareTo(a.rankingScore),
       );
 
-      log('🎯 ConnectionsService: Total connections found: ${ranked.length}');
+      secureLog(
+          '🎯 ConnectionsService: Total connections found: ${ranked.length}');
       return ranked.take(limit).toList();
     } catch (e) {
-      log('❌ ConnectionsService: Error fetching connections with ranking: $e');
+      secureLog(
+          '❌ ConnectionsService: Error fetching connections with ranking: $e');
       return [];
     }
   }
@@ -857,13 +895,13 @@ class ConnectionsService {
         final participants =
             List<String>.from(doc.data()['participants'] ?? []);
         if (participants.contains(otherUserId)) {
-          log('📱 ConnectionsService: Found existing chat ${doc.id}');
+          secureLog('📱 ConnectionsService: Found existing chat ${doc.id}');
           return doc.id;
         }
       }
 
       // Create new chat if none exists
-      log('📱 ConnectionsService: Creating new chat with $otherUserId');
+      secureLog('📱 ConnectionsService: Creating new chat with $otherUserId');
       final chatData = <String, dynamic>{
         'participants': <String>[currentUserId, otherUserId],
         'lastMessage': '',
@@ -874,10 +912,10 @@ class ConnectionsService {
       };
 
       final docRef = await _firestore.collection('chats').add(chatData);
-      log('📱 ConnectionsService: Created new chat ${docRef.id}');
+      secureLog('📱 ConnectionsService: Created new chat ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      log('❌ ConnectionsService: Error finding/creating chat: $e');
+      secureLog('❌ ConnectionsService: Error finding/creating chat: $e');
       rethrow;
     }
   }
@@ -933,9 +971,10 @@ class ConnectionsService {
             .set(connection);
       }
 
-      log('✅ ConnectionsService: Created ${mockConnections.length} mock connections');
+      secureLog(
+          '✅ ConnectionsService: Created ${mockConnections.length} mock connections');
     } catch (e) {
-      log('❌ ConnectionsService: Error creating mock connections: $e');
+      secureLog('❌ ConnectionsService: Error creating mock connections: $e');
     }
   }
 }

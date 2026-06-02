@@ -22,7 +22,8 @@ class FavoritesNotifier extends StateNotifier<FavoritesState> {
     _onBookmarksChanged();
   }
 
-  final UnifiedBookmarkService _bookmarkService = UnifiedBookmarkService.instance;
+  final UnifiedBookmarkService _bookmarkService =
+      UnifiedBookmarkService.instance;
 
   void detach() {
     _bookmarkService.removeListener(_onBookmarksChanged);
@@ -74,10 +75,7 @@ class FavoritesNotifier extends StateNotifier<FavoritesState> {
 
   bool isFavorite(String videoId) => _bookmarkService.isBookmarked(videoId);
 
-  List<String> getFavorites() => _bookmarkService.bookmarkStates.entries
-      .where((MapEntry<String, BookmarkState> e) => e.value.isBookmarked)
-      .map((MapEntry<String, BookmarkState> e) => e.key)
-      .toList();
+  List<String> getFavorites() => _bookmarkService.orderedBookmarkedVideoIds;
 
   Future<void> forceSync() async {
     final User? user = FirebaseAuth.instance.currentUser;

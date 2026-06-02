@@ -46,18 +46,12 @@ class MissionSectionsList extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.only(bottom: 14),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: shell.surfaceCard,
-              borderRadius: BorderRadius.circular(20),
+              color:
+                  shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.68),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: shell.surfaceCardBorder),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: shell.shadowSoft,
-                  blurRadius: 18,
-                  offset: const Offset(0, 10),
-                ),
-              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -97,7 +91,7 @@ class MissionSectionsList extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 ...section.missions.map(
                   (DailyMissionModel mission) => _MissionTile(
                     mission,
@@ -140,7 +134,7 @@ class _MissionTile extends StatelessWidget {
         : '${mission.progress}/${mission.target}';
     final bool readyToClaim = done && !claimed;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Semantics(
         label: '${mission.title}. $progressLabel progress.',
         child: Material(
@@ -152,43 +146,40 @@ class _MissionTile extends StatelessWidget {
               readyToClaim,
               onRefreshRequested,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 260),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               decoration: BoxDecoration(
-                color: shell.surfaceCard.withValues(alpha: 0.95),
-                borderRadius: BorderRadius.circular(16),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerLow
+                    .withValues(alpha: 0.38),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: done
                       ? accent.withValues(alpha: 0.32)
-                      : shell.surfaceCardBorder,
+                      : shell.surfaceCardBorder.withValues(alpha: 0.72),
                 ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: <Color>[
-                          accent.withValues(alpha: 0.9),
-                          accent.withValues(alpha: 0.28),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(color: accent.withValues(alpha: 0.22)),
                     ),
                     child: Icon(
                       icon,
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      size: 20,
+                      color: accent,
+                      size: 18,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,13 +192,13 @@ class _MissionTile extends StatelessWidget {
                                 mission.title,
                                 style: TextStyle(
                                   color: shell.onChrome,
-                                  fontSize: 14,
+                                  fontSize: 13.5,
                                   fontWeight: FontWeight.w700,
                                   height: 1.15,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             _MissionStatusChip(
                               label: claimed
                                   ? 'Claimed'
@@ -231,7 +222,7 @@ class _MissionTile extends StatelessWidget {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 9),
+                        const SizedBox(height: 8),
                         Row(
                           children: <Widget>[
                             Expanded(
@@ -248,7 +239,7 @@ class _MissionTile extends StatelessWidget {
                                   builder: (context, value, _) {
                                     return LinearProgressIndicator(
                                       value: value,
-                                      minHeight: 6,
+                                      minHeight: 5,
                                       backgroundColor: scheme.onSurface
                                           .withValues(alpha: 0.12),
                                       valueColor:

@@ -10,13 +10,10 @@ class AtomicStatsService {
   /// Increment view count atomically (writes to video_analytics; sync job updates videos)
   Future<void> incrementViews(String videoId) async {
     try {
-      await _firestore
-          .collection('video_analytics')
-          .doc(videoId)
-          .set({
-            'views': FieldValue.increment(1),
-            'lastViewedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+      await _firestore.collection('video_analytics').doc(videoId).set({
+        'views': FieldValue.increment(1),
+        'lastViewedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       debugPrint('✅ AtomicStatsService: View count incremented for $videoId');
     } catch (e) {
       debugPrint(

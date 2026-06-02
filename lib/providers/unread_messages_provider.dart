@@ -81,7 +81,8 @@ class UnreadMessagesService {
       var hasUpdates = false;
 
       for (final messageDoc in messagesSnapshot.docs) {
-        final readBy = List<String>.from(messageDoc.data()['readBy'] ?? const []);
+        final readBy =
+            List<String>.from(messageDoc.data()['readBy'] ?? const []);
         if (readBy.contains(currentUser.uid)) continue;
 
         batch.update(messageDoc.reference, {
@@ -104,7 +105,7 @@ class UnreadMessagesService {
         await batch.commit();
       }
     } catch (e) {
-      // print('❌ Error marking chat as read: $e');
+      // appLog('❌ Error marking chat as read: $e');
     }
   }
 
@@ -124,7 +125,7 @@ class UnreadMessagesService {
         'isRead': true,
       });
     } catch (e) {
-      // print('❌ Error marking message as read: $e');
+      // appLog('❌ Error marking message as read: $e');
     }
   }
 
@@ -145,9 +146,9 @@ class UnreadMessagesService {
         await markChatAsRead(chatDoc.id);
       }
 
-      // print('✅ Marked all visible messages as read');
+      // appLog('✅ Marked all visible messages as read');
     } catch (e) {
-      // print('❌ Error marking all messages as read: $e');
+      // appLog('❌ Error marking all messages as read: $e');
     }
   }
 }

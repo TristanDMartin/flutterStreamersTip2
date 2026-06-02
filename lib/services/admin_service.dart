@@ -12,12 +12,13 @@ class AdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// UI-only bootstrap when Firestore profile fields are not denormalized
-  /// into the profile map yet (still requires claims/rules for real access).
-  static const Set<String> _shieldBootstrapUsernames = <String>{
-    'technqs',
-    'buzzz',
-  };
+  /// Debug-only UI bootstrap; never populated in release builds.
+  static Set<String> get _shieldBootstrapUsernames {
+    if (!kDebugMode) {
+      return const <String>{};
+    }
+    return const <String>{'technqs', 'buzzz'};
+  }
 
   /// Matches [firestore.rules] `isFirestoreAdminSelf()` only (no username
   /// bootstrap). Use before queries that require `isUserAdmin()` in rules.
@@ -35,7 +36,7 @@ class AdminService {
     return legacy || role == 'admin' || nested;
   }
 
-  /// True if [userData] carries admin fields OR known founder usernames.
+  /// True if [userData] carries admin fields. Username bootstrap is debug-only.
   static bool userMapIndicatesAdmin(Map<String, dynamic>? userData) {
     if (userData == null) {
       return false;

@@ -7,7 +7,7 @@ class UsernameLockService {
   UsernameLockService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
+
   // Reserved usernames that cannot be taken by new users
   static const List<String> _reservedUsernames = [
     'technqs', // Your reserved username
@@ -41,12 +41,12 @@ class UsernameLockService {
   /// Check if a username is available (not taken and not reserved)
   Future<bool> isUsernameAvailable(String username) async {
     final normalizedUsername = username.toLowerCase().trim();
-    
+
     // First check if it's reserved
     if (isUsernameReserved(normalizedUsername)) {
       return false;
     }
-    
+
     // Check if username exists in Firestore
     try {
       final query = await _firestore
@@ -54,7 +54,7 @@ class UsernameLockService {
           .where('username', isEqualTo: normalizedUsername)
           .limit(1)
           .get();
-      
+
       return query.docs.isEmpty;
     } catch (e) {
       // If there's an error checking, assume it's not available for safety
@@ -71,20 +71,23 @@ class UsernameLockService {
   Future<bool> addReservedUsername(String username) async {
     try {
       final normalizedUsername = username.toLowerCase().trim();
-      
+
       // Check if it's already reserved
       if (isUsernameReserved(normalizedUsername)) {
         return true; // Already reserved
       }
-      
+
       // Add to reserved usernames collection in Firestore
-      await _firestore.collection('reserved_usernames').doc(normalizedUsername).set({
+      await _firestore
+          .collection('reserved_usernames')
+          .doc(normalizedUsername)
+          .set({
         'username': normalizedUsername,
         'reservedAt': FieldValue.serverTimestamp(),
         'reservedBy': 'system', // Could be admin user ID
         'reason': 'Manual reservation',
       });
-      
+
       return true;
     } catch (e) {
       return false;
@@ -95,13 +98,16 @@ class UsernameLockService {
   Future<bool> removeReservedUsername(String username) async {
     try {
       final normalizedUsername = username.toLowerCase().trim();
-      
+
       // Don't allow removing core reserved usernames
       if (_reservedUsernames.contains(normalizedUsername)) {
         return false;
       }
-      
-      await _firestore.collection('reserved_usernames').doc(normalizedUsername).delete();
+
+      await _firestore
+          .collection('reserved_usernames')
+          .doc(normalizedUsername)
+          .delete();
       return true;
     } catch (e) {
       return false;
@@ -119,7 +125,7 @@ class UsernameLockService {
   /// Validate username during registration
   Future<UsernameValidationResult> validateUsername(String username) async {
     final normalizedUsername = username.toLowerCase().trim();
-    
+
     // Check length
     if (normalizedUsername.length < 3) {
       return UsernameValidationResult(
@@ -127,23 +133,24 @@ class UsernameLockService {
         errorMessage: 'Username must be at least 3 characters long.',
       );
     }
-    
+
     if (normalizedUsername.length > 20) {
       return UsernameValidationResult(
         isValid: false,
         errorMessage: 'Username must be 20 characters or less.',
       );
     }
-    
+
     // Check for valid characters
     final usernameRegex = RegExp(r'^[a-zA-Z0-9_]+$');
     if (!usernameRegex.hasMatch(normalizedUsername)) {
       return UsernameValidationResult(
         isValid: false,
-        errorMessage: 'Username can only contain letters, numbers, and underscores.',
+        errorMessage:
+            'Username can only contain letters, numbers, and underscores.',
       );
     }
-    
+
     // Check if reserved
     if (isUsernameReserved(normalizedUsername)) {
       return UsernameValidationResult(
@@ -151,7 +158,7 @@ class UsernameLockService {
         errorMessage: getReservedUsernameErrorMessage(normalizedUsername),
       );
     }
-    
+
     // Check if available
     final isAvailable = await isUsernameAvailable(normalizedUsername);
     if (!isAvailable) {
@@ -160,7 +167,7 @@ class UsernameLockService {
         errorMessage: 'This username is already taken.',
       );
     }
-    
+
     return UsernameValidationResult(
       isValid: true,
       errorMessage: null,

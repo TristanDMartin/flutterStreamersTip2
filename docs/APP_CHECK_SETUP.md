@@ -2,12 +2,20 @@
 
 ## Current State
 
-```
-Error getting App Check token; using placeholder token instead.
-No AppCheckProvider installed.
-```
+Dart startup calls `activateAppCheckIfEnabled()` in `lib/core/firebase_app_check_startup.dart`
+after Firebase init.
 
-Firebase uses a placeholder token. This is fine for development.
+- **Debug builds** always activate the App Check **debug provider** and log the debug
+  token to the console (register it in Firebase Console → App Check → Manage debug tokens).
+- **Release builds** use Play Integrity / DeviceCheck when built with
+  `--dart-define=ST_ENABLE_APP_CHECK=true`.
+
+Upload and optimistic placeholder writes call `ensureAppCheckReadyForFirestore()` first.
+If attestation fails (`App attestation failed`, placeholder token), Firestore writes
+will show `PERMISSION_DENIED` even when UID ownership is correct.
+
+If you see placeholder-token errors while testing, either register the debug token or set
+Firestore/Storage App Check enforcement to **Unenforced** in Firebase Console.
 
 ## When to Configure
 

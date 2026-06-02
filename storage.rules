@@ -4,12 +4,16 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     match /avatars/{userId}/{allPaths=**} {
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && isImageUpload()
+        && request.resource.size < 5 * 1024 * 1024;
       allow read: if true;
     }
 
     match /draft_assets/{userId}/{allPaths=**} {
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && isMediaUpload()
+        && request.resource.size < 250 * 1024 * 1024;
       allow read: if request.auth != null;
     }
     
@@ -19,17 +23,23 @@ service firebase.storage {
     }
     
     match /content/{allPaths=**} {
-      allow write: if request.auth != null;
+      allow write: if request.auth != null
+        && isMediaUpload()
+        && request.resource.size < 250 * 1024 * 1024;
       allow read: if request.auth != null;
     }
     
     match /thumbnails/{allPaths=**} {
-      allow write: if request.auth != null;
+      allow write: if request.auth != null
+        && isImageUpload()
+        && request.resource.size < 10 * 1024 * 1024;
       allow read: if true;
     }
     
     match /videos/{userId}/{allPaths=**} {
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && isVideoUpload()
+        && request.resource.size < 750 * 1024 * 1024;
       allow read: if true;
     }
 
@@ -46,6 +56,22 @@ service firebase.storage {
         firestore.exists(/databases/(default)/documents/chats/$(chatId)) &&
         request.auth.uid in
           firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants;
+    }
+
+    function isImageUpload() {
+      return request.resource != null &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    function isVideoUpload() {
+      return request.resource != null &&
+        request.resource.contentType.matches('video/.*');
+    }
+
+    function isMediaUpload() {
+      return request.resource != null &&
+        (request.resource.contentType.matches('image/.*') ||
+         request.resource.contentType.matches('video/.*'));
     }
   }
 }

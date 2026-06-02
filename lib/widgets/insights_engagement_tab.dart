@@ -20,22 +20,22 @@ class InsightsEngagementTab extends StatelessWidget {
         children: [
           // Engagement rate card
           _buildEngagementRateCard(context),
-          
+
           const SizedBox(height: 24),
-          
+
           // Engagement metrics cards
           _buildEngagementMetricsCards(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Engagement trends section
           _buildEngagementTrendsSection(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Engagement breakdown section
           _buildEngagementBreakdownSection(),
-          
+
           const SizedBox(height: 24),
         ],
       ),
@@ -139,7 +139,8 @@ class InsightsEngagementTab extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: engagementStatus.color.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -379,9 +380,9 @@ class InsightsEngagementTab extends StatelessWidget {
 
   Widget _buildEngagementBreakdownSection() {
     final totalEngagements = insights.engagement.likes +
-                           insights.engagement.shares +
-                           insights.engagement.comments +
-                           insights.engagement.favorites;
+        insights.engagement.shares +
+        insights.engagement.comments +
+        insights.engagement.favorites;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,7 +622,7 @@ class InsightsEngagementTab extends StatelessWidget {
     IconData icon,
   ) {
     final percentage = total > 0 ? (count / total * 100) : 0.0;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
@@ -734,7 +735,8 @@ class InsightsEngagementTab extends StatelessWidget {
     if (totalEngagements == 0) {
       return (
         label: 'No Signal Yet',
-        description: 'Audience interaction will start showing up here as people engage with this video.',
+        description:
+            'Audience interaction will start showing up here as people engage with this video.',
         color: Colors.white70,
       );
     }
@@ -742,7 +744,8 @@ class InsightsEngagementTab extends StatelessWidget {
     if (totalEngagements < 10) {
       return (
         label: 'Early Signal',
-        description: 'This engagement rate is based on a small number of actions and may shift quickly.',
+        description:
+            'This engagement rate is based on a small number of actions and may shift quickly.',
         color: Colors.orange,
       );
     }
@@ -750,7 +753,8 @@ class InsightsEngagementTab extends StatelessWidget {
     if (engagementRate >= 0.15) {
       return (
         label: 'Highly Active',
-        description: 'Viewers are interacting at a strong rate across likes, shares, comments, and saves.',
+        description:
+            'Viewers are interacting at a strong rate across likes, shares, comments, and saves.',
         color: const Color(0xFF40DCD1),
       );
     }
@@ -758,7 +762,8 @@ class InsightsEngagementTab extends StatelessWidget {
     if (engagementRate >= 0.10) {
       return (
         label: 'Healthy Response',
-        description: 'Audience interaction looks solid and the content is resonating.',
+        description:
+            'Audience interaction looks solid and the content is resonating.',
         color: const Color(0xFF9248D2),
       );
     }
@@ -766,14 +771,16 @@ class InsightsEngagementTab extends StatelessWidget {
     if (engagementRate >= 0.05) {
       return (
         label: 'Building Momentum',
-        description: 'Engagement is present, with room to strengthen the call-to-action or hook.',
+        description:
+            'Engagement is present, with room to strengthen the call-to-action or hook.',
         color: Colors.orange,
       );
     }
 
     return (
       label: 'Needs a Stronger Hook',
-      description: 'Viewers are watching but not interacting much yet, so the post may need a sharper payoff.',
+      description:
+          'Viewers are watching but not interacting much yet, so the post may need a sharper payoff.',
       color: const Color(0xFFE91E63),
     );
   }

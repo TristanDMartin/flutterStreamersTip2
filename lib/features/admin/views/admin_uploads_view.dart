@@ -30,15 +30,11 @@ class _AdminUploadsViewState extends State<AdminUploadsView> {
       case _UploadFilter.newest:
         return col.orderBy('updatedAt', descending: true).limit(40);
       case _UploadFilter.processing:
-        return col
-            .where('status', isEqualTo: 'processing')
-            .limit(40);
+        return col.where('status', isEqualTo: 'processing').limit(40);
       case _UploadFilter.ready:
         return col.where('status', isEqualTo: 'ready').limit(40);
       case _UploadFilter.flagged:
-        return col
-            .where('moderationStatus', isEqualTo: 'flagged')
-            .limit(40);
+        return col.where('moderationStatus', isEqualTo: 'flagged').limit(40);
       case _UploadFilter.removed:
         return col.where('status', isEqualTo: 'removed').limit(40);
       case _UploadFilter.failed:
@@ -125,9 +121,8 @@ class _AdminUploadsViewState extends State<AdminUploadsView> {
                 itemBuilder: (context, i) {
                   final doc = docs[i];
                   final d = doc.data();
-                  final thumb =
-                      (d['thumbnailUrl'] ?? d['thumbnail_url'] ?? '')
-                          .toString();
+                  final thumb = (d['thumbnailUrl'] ?? d['thumbnail_url'] ?? '')
+                      .toString();
                   final rawCap = (d['caption'] ?? '').toString();
                   final cap = rawCap.length > 80
                       ? '${rawCap.substring(0, 80)}…'

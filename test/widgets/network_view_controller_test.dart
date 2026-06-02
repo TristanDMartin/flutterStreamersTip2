@@ -138,7 +138,8 @@ void main() {
       expect(controller.state.pendingActionUserId, isNull);
     });
 
-    test('remove action reports failure without mutating loaded lists', () async {
+    test('remove action reports failure without mutating loaded lists',
+        () async {
       final service = _FakeNetworkViewService(
         connectionsResult: const <User>[],
         followersResult: <User>[casey],

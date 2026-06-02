@@ -52,8 +52,9 @@ class _ProfilePillButtonState extends State<ProfilePillButton>
   Widget build(BuildContext context) {
     final textScaler = MediaQuery.of(context).textScaler;
     final adaptivePadding = _getAdaptivePadding(textScaler.scale(1.0));
-    final adaptiveCornerRadius = _getAdaptiveCornerRadius(textScaler.scale(1.0));
-    
+    final adaptiveCornerRadius =
+        _getAdaptiveCornerRadius(textScaler.scale(1.0));
+
     return GestureDetector(
       onTapDown: (_) {
         // setState(() {
@@ -95,7 +96,9 @@ class _ProfilePillButtonState extends State<ProfilePillButton>
                         end: Alignment.centerRight,
                       )
                     : null,
-                color: widget.isPrimary ? null : Colors.white.withValues(alpha:0.1),
+                color: widget.isPrimary
+                    ? null
+                    : Colors.white.withValues(alpha: 0.1),
               ),
               child: Center(
                 child: Text(
@@ -196,7 +199,7 @@ class ProfilePillButtonStyle extends ButtonStyle {
       if (isPrimary) {
         return Colors.transparent; // Use gradient instead
       } else {
-        return Colors.white.withValues(alpha:0.1);
+        return Colors.white.withValues(alpha: 0.1);
       }
     });
   }
@@ -238,27 +241,27 @@ class ProfilePillButtonExample extends StatelessWidget {
                 text: "Follow",
                 isPrimary: true,
                 onPressed: () {
-                  // print("Follow button tapped"); // Commented out for production
+                  // appLog("Follow button tapped"); // Commented out for production
                 },
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               ProfilePillButton(
                 text: "Message",
                 isPrimary: false,
                 onPressed: () {
-                  // print("Message button tapped"); // Commented out for production
+                  // appLog("Message button tapped"); // Commented out for production
                 },
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // Alternative: Using ElevatedButton with ProfilePillButtonStyle
               ElevatedButton(
                 style: const ProfilePillButtonStyle(isPrimary: true),
                 onPressed: () {
-                  // print("Follow button (style) tapped"); // Commented out for production
+                  // appLog("Follow button (style) tapped"); // Commented out for production
                 },
                 child: const Text("Follow (Style)"),
               ),

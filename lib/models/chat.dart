@@ -22,7 +22,6 @@ sealed class Chat with _$Chat {
   }) = _Chat;
 
   factory Chat.fromJson(Map<String, dynamic> json) => _$ChatFromJson(json);
-  
 }
 
 extension ChatSerialization on Chat {

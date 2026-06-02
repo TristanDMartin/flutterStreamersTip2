@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// FollowEdge - Single source of truth for follow relationships
-/// 
+///
 /// Stores one directed edge per user pair with status tracking
 class FollowEdge {
-  final String followerId;        // the user who follows
-  final String followeeId;        // the user being followed
-  final FollowStatus status;      // "active" | "none" | "blocked" | "pending"
+  final String followerId; // the user who follows
+  final String followeeId; // the user being followed
+  final FollowStatus status; // "active" | "none" | "blocked" | "pending"
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -57,10 +57,10 @@ class FollowEdge {
   /// Check if this is a mutual follow relationship
   bool isMutualWith(FollowEdge? otherEdge) {
     if (otherEdge == null) return false;
-    return status == FollowStatus.active && 
-           otherEdge.status == FollowStatus.active &&
-           followerId == otherEdge.followeeId &&
-           followeeId == otherEdge.followerId;
+    return status == FollowStatus.active &&
+        otherEdge.status == FollowStatus.active &&
+        followerId == otherEdge.followeeId &&
+        followeeId == otherEdge.followerId;
   }
 
   @override
@@ -109,9 +109,9 @@ enum FollowStatus {
 /// Relationship state for UI updates
 class RelationshipState {
   final String userId;
-  final List<String> following;      // users I follow
-  final List<String> followers;      // users who follow me
-  final List<String> connections;    // mutual follows
+  final List<String> following; // users I follow
+  final List<String> followers; // users who follow me
+  final List<String> connections; // mutual follows
 
   const RelationshipState({
     required this.userId,

@@ -43,7 +43,7 @@ class _InstantResponseButtonState extends State<InstantResponseButton>
       duration: widget.animationDuration,
       vsync: this,
     );
-    
+
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: widget.scaleOnPress,
@@ -51,7 +51,7 @@ class _InstantResponseButtonState extends State<InstantResponseButton>
       parent: _animationController,
       curve: Curves.easeInOut,
     ));
-    
+
     _opacityAnimation = Tween<double>(
       begin: 1.0,
       end: 0.8,
@@ -492,12 +492,15 @@ class InstantActionButton extends StatelessWidget {
                 child: Icon(
                   icon,
                   size: 32,
-                  color: color ?? (isActive ? const Color(0xFF9248d2) : Colors.white.withValues(alpha:0.85)),
+                  color: color ??
+                      (isActive
+                          ? const Color(0xFF9248d2)
+                          : Colors.white.withValues(alpha: 0.85)),
                 ),
               ),
-            
+
             const SizedBox(height: 4),
-            
+
             // Label
             Text(
               label,

@@ -38,8 +38,9 @@ class IOSMemoryService {
 
   static void registerImageLoad() {
     _currentImageCount++;
-    debugPrint('📊 Image count: $_currentImageCount/${_isIOS ? _maxImageCount : 1}');
-    
+    debugPrint(
+        '📊 Image count: $_currentImageCount/${_isIOS ? _maxImageCount : 1}');
+
     if (_currentImageCount >= (_isIOS ? _maxImageCount : 1)) {
       _isMemoryPressureHigh = true;
       debugPrint('⚠️ Image memory pressure high - pausing image loading');
@@ -49,8 +50,9 @@ class IOSMemoryService {
 
   static void registerAvatarLoad() {
     _currentAvatarCount++;
-    debugPrint('📊 Avatar count: $_currentAvatarCount/${_isIOS ? _maxAvatarCount : 2}');
-    
+    debugPrint(
+        '📊 Avatar count: $_currentAvatarCount/${_isIOS ? _maxAvatarCount : 2}');
+
     if (_currentAvatarCount >= (_isIOS ? _maxAvatarCount : 2)) {
       _isAvatarPressureHigh = true;
       debugPrint('⚠️ Avatar memory pressure high - pausing avatar loading');
@@ -61,8 +63,9 @@ class IOSMemoryService {
   static void registerImageDispose() {
     if (_currentImageCount > 0) {
       _currentImageCount--;
-      debugPrint('📊 Image count: $_currentImageCount/${_isIOS ? _maxImageCount : 1}');
-      
+      debugPrint(
+          '📊 Image count: $_currentImageCount/${_isIOS ? _maxImageCount : 1}');
+
       if (_currentImageCount < (_isIOS ? _maxImageCount * 0.5 : 0.5)) {
         _isMemoryPressureHigh = false;
         debugPrint('✅ Image memory pressure normal - resuming image loading');
@@ -73,8 +76,9 @@ class IOSMemoryService {
   static void registerAvatarDispose() {
     if (_currentAvatarCount > 0) {
       _currentAvatarCount--;
-      debugPrint('📊 Avatar count: $_currentAvatarCount/${_isIOS ? _maxAvatarCount : 2}');
-      
+      debugPrint(
+          '📊 Avatar count: $_currentAvatarCount/${_isIOS ? _maxAvatarCount : 2}');
+
       if (_currentAvatarCount < (_isIOS ? _maxAvatarCount * 0.5 : 1)) {
         _isAvatarPressureHigh = false;
         debugPrint('✅ Avatar memory pressure normal - resuming avatar loading');
@@ -85,7 +89,7 @@ class IOSMemoryService {
   static void _forceMemoryCleanup() {
     try {
       debugPrint('🗑️ Forcing memory cleanup...');
-      
+
       if (_isIOS) {
         // More gentle cleanup for iOS
         _clearCachesGently();
@@ -93,7 +97,6 @@ class IOSMemoryService {
         // Aggressive cleanup for Android
         _clearCachesAggressively();
       }
-      
     } catch (e) {
       debugPrint('⚠️ Memory cleanup failed: $e');
     }
@@ -103,7 +106,7 @@ class IOSMemoryService {
     try {
       // Gentle cleanup for iOS
       debugPrint('🧹 Gentle cache cleanup for iOS...');
-      
+
       // Clear some caches but not all
       if (_currentImageCount > 1) {
         _currentImageCount = 1;
@@ -111,10 +114,9 @@ class IOSMemoryService {
       if (_currentAvatarCount > 2) {
         _currentAvatarCount = 2;
       }
-      
+
       _isMemoryPressureHigh = false;
       _isAvatarPressureHigh = false;
-      
     } catch (e) {
       debugPrint('⚠️ Gentle cleanup failed: $e');
     }
@@ -124,15 +126,14 @@ class IOSMemoryService {
     try {
       // Aggressive cleanup for Android
       debugPrint('🧹 Aggressive cache cleanup for Android...');
-      
+
       _currentImageCount = 0;
       _currentAvatarCount = 0;
       _isMemoryPressureHigh = false;
       _isAvatarPressureHigh = false;
-      
+
       // Force garbage collection
       SystemChannels.platform.invokeMethod('System.gc');
-      
     } catch (e) {
       debugPrint('⚠️ Aggressive cleanup failed: $e');
     }

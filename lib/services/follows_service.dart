@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart' as user_model;
 import 'event_trigger_service.dart';
+import '../features/gamification/emit_engagement_gamification.dart';
+import '../features/gamification/gamification_event_types.dart';
+import 'progression_service.dart';
 
 class FollowsService {
   static final FollowsService _instance = FollowsService._internal();
@@ -33,7 +37,7 @@ class FollowsService {
   }
 
   Future<bool> followUser(String targetUserId) async {
-    final currentUser = _auth.currentUser;
+    final User? currentUser = _auth.currentUser;
     if (currentUser == null) {
       debugPrint('❌ FollowsService: No current user');
       return false;
@@ -44,41 +48,110 @@ class FollowsService {
     }
     try {
       final String currentUserId = currentUser.uid;
-      if (await isFollowing(targetUserId)) {
+      final DocumentReference<Map<String, dynamic>> followerEdgeRef = _firestore
+          .collection('users')
+          .doc(targetUserId)
+          .collection('followers')
+          .doc(currentUserId);
+      final DocumentSnapshot<Map<String, dynamic>> existingEdge =
+          await followerEdgeRef.get();
+      if (existingEdge.exists) {
         return true;
       }
       await _ensureCounterFields(currentUserId);
       await _ensureCounterFields(targetUserId);
-      final WriteBatch batch = _firestore.batch();
-      final DocumentReference<Map<String, dynamic>> followRef =
-          _firestore.collection('follows').doc();
-      batch.set(followRef, {
-        'followerUserId': currentUserId,
-        'targetUserId': targetUserId,
-        'followerId': currentUserId,
-        'followingId': targetUserId,
-        'isActive': true,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      final Map<String, DocumentReference<Map<String, dynamic>>> legacyRefs =
+          await _queryLegacyFollowReferences(currentUserId, targetUserId);
       final DocumentReference<Map<String, dynamic>> currentUserRef =
           _firestore.collection('users').doc(currentUserId);
       final DocumentReference<Map<String, dynamic>> targetUserRef =
           _firestore.collection('users').doc(targetUserId);
-      batch.update(currentUserRef, {
-        'followingCount': FieldValue.increment(1),
-        'updatedAt': FieldValue.serverTimestamp(),
+      final DocumentReference<Map<String, dynamic>> followingEdgeRef =
+          _firestore
+              .collection('users')
+              .doc(currentUserId)
+              .collection('following')
+              .doc(targetUserId);
+      final DocumentReference<Map<String, dynamic>> canonicalFollowRef =
+          _firestore
+              .collection('follows')
+              .doc('${currentUserId}_$targetUserId');
+      bool shouldTriggerFollowEvent = false;
+      await _firestore.runTransaction<void>((Transaction transaction) async {
+        final DocumentSnapshot<Map<String, dynamic>> followerSnap =
+            await transaction.get(followerEdgeRef);
+        if (followerSnap.exists) {
+          return;
+        }
+        final DocumentSnapshot<Map<String, dynamic>> currentSnap =
+            await transaction.get(currentUserRef);
+        final DocumentSnapshot<Map<String, dynamic>> targetSnap =
+            await transaction.get(targetUserRef);
+        bool anyLegacy = false;
+        for (final DocumentReference<Map<String, dynamic>> ref
+            in legacyRefs.values) {
+          final DocumentSnapshot<Map<String, dynamic>> leg =
+              await transaction.get(ref);
+          if (leg.exists) {
+            anyLegacy = true;
+            break;
+          }
+        }
+        transaction.set(followerEdgeRef, <String, dynamic>{
+          'userId': currentUserId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(followingEdgeRef, <String, dynamic>{
+          'userId': targetUserId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(
+          canonicalFollowRef,
+          <String, dynamic>{
+            'followerUserId': currentUserId,
+            'targetUserId': targetUserId,
+            'followerId': currentUserId,
+            'followingId': targetUserId,
+            'isActive': true,
+            'createdAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        if (!anyLegacy) {
+          shouldTriggerFollowEvent = true;
+          final int nextFollowers =
+              _readCounter(targetSnap, 'followerCount') + 1;
+          final int aligned = math.max(0, nextFollowers);
+          transaction.update(targetUserRef, <String, dynamic>{
+            'followerCount': aligned,
+            'followersCount': aligned,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          final int nextFollowing =
+              _readCounter(currentSnap, 'followingCount') + 1;
+          transaction.update(currentUserRef, <String, dynamic>{
+            'followingCount': math.max(0, nextFollowing),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
       });
-      batch.update(targetUserRef, {
-        'followerCount': FieldValue.increment(1),
-        'followersCount': FieldValue.increment(1),
-      });
-      await batch.commit();
-      if (_eventTriggerService != null) {
+      if (shouldTriggerFollowEvent && _eventTriggerService != null) {
         await _eventTriggerService!.triggerFollowEvent(
           followerId: currentUserId,
           followingId: targetUserId,
         );
       }
+      scheduleEngagementGamificationEvent(
+        type: GamificationEventTypes.engagementFollowCreated,
+        entityType: 'user',
+        entityId: targetUserId,
+        source: 'connections',
+      );
+      unawaited(ProgressionService.instance.markTaskCompleted(
+        currentUserId,
+        ProgressionTaskIds.firstConnectionMade,
+        source: 'connections',
+      ));
       return true;
     } catch (e) {
       debugPrint('❌ FollowsService: Error following user: $e');
@@ -87,7 +160,7 @@ class FollowsService {
   }
 
   Future<bool> unfollowUser(String targetUserId) async {
-    final currentUser = _auth.currentUser;
+    final User? currentUser = _auth.currentUser;
     if (currentUser == null) {
       debugPrint('❌ FollowsService: No current user');
       return false;
@@ -96,72 +169,76 @@ class FollowsService {
       final String currentUserId = currentUser.uid;
       await _ensureCounterFields(currentUserId);
       await _ensureCounterFields(targetUserId);
-      final CollectionReference<Map<String, dynamic>> follows =
-          _firestore.collection('follows');
-      final QuerySnapshot<Map<String, dynamic>> primary = await follows
-          .where('followerUserId', isEqualTo: currentUserId)
-          .where('targetUserId', isEqualTo: targetUserId)
-          .get();
-      final QuerySnapshot<Map<String, dynamic>> legacy = await follows
-          .where('followerId', isEqualTo: currentUserId)
-          .where('followingId', isEqualTo: targetUserId)
-          .get();
-      final QuerySnapshot<Map<String, dynamic>> legacyAlt = await follows
-          .where('followerId', isEqualTo: currentUserId)
-          .where('followedId', isEqualTo: targetUserId)
-          .get();
-      final Map<String, DocumentReference<Map<String, dynamic>>> followRefs =
-          <String, DocumentReference<Map<String, dynamic>>>{};
-      for (final doc in primary.docs) {
-        followRefs[doc.reference.path] = doc.reference;
+      final DocumentReference<Map<String, dynamic>> followerEdgeRef = _firestore
+          .collection('users')
+          .doc(targetUserId)
+          .collection('followers')
+          .doc(currentUserId);
+      final DocumentReference<Map<String, dynamic>> followingEdgeRef =
+          _firestore
+              .collection('users')
+              .doc(currentUserId)
+              .collection('following')
+              .doc(targetUserId);
+      final Map<String, DocumentReference<Map<String, dynamic>>> legacyRefs =
+          await _queryLegacyFollowReferences(currentUserId, targetUserId);
+      final DocumentSnapshot<Map<String, dynamic>> followerPre =
+          await followerEdgeRef.get();
+      final DocumentSnapshot<Map<String, dynamic>> followingPre =
+          await followingEdgeRef.get();
+      if (!followerPre.exists && !followingPre.exists && legacyRefs.isEmpty) {
+        return true;
       }
-      for (final doc in legacy.docs) {
-        followRefs[doc.reference.path] = doc.reference;
-      }
-      for (final doc in legacyAlt.docs) {
-        followRefs[doc.reference.path] = doc.reference;
-      }
-      if (followRefs.isEmpty) return true;
-
       final DocumentReference<Map<String, dynamic>> currentUserRef =
           _firestore.collection('users').doc(currentUserId);
       final DocumentReference<Map<String, dynamic>> targetUserRef =
           _firestore.collection('users').doc(targetUserId);
-
-      await _firestore.runTransaction<void>((transaction) async {
-        final followDocs = <DocumentSnapshot<Map<String, dynamic>>>[];
-        for (final ref in followRefs.values) {
-          final doc = await transaction.get(ref);
-          if (doc.exists) {
-            followDocs.add(doc);
+      await _firestore.runTransaction<void>((Transaction transaction) async {
+        final DocumentSnapshot<Map<String, dynamic>> followerSnap =
+            await transaction.get(followerEdgeRef);
+        final DocumentSnapshot<Map<String, dynamic>> followingSnap =
+            await transaction.get(followingEdgeRef);
+        final DocumentSnapshot<Map<String, dynamic>> currentSnap =
+            await transaction.get(currentUserRef);
+        final DocumentSnapshot<Map<String, dynamic>> targetSnap =
+            await transaction.get(targetUserRef);
+        final List<DocumentReference<Map<String, dynamic>>> legacyRefList =
+            legacyRefs.values.toList();
+        final List<DocumentSnapshot<Map<String, dynamic>>> legacySnaps =
+            <DocumentSnapshot<Map<String, dynamic>>>[];
+        for (final DocumentReference<Map<String, dynamic>> ref
+            in legacyRefList) {
+          legacySnaps.add(await transaction.get(ref));
+        }
+        final bool anyLegacy = legacySnaps
+            .any((DocumentSnapshot<Map<String, dynamic>> s) => s.exists);
+        final bool hadRelationship =
+            followerSnap.exists || followingSnap.exists || anyLegacy;
+        if (!hadRelationship) {
+          return;
+        }
+        if (followerSnap.exists) {
+          transaction.delete(followerEdgeRef);
+        }
+        if (followingSnap.exists) {
+          transaction.delete(followingEdgeRef);
+        }
+        for (var i = 0; i < legacyRefList.length; i++) {
+          if (legacySnaps[i].exists) {
+            transaction.delete(legacyRefList[i]);
           }
         }
-        if (followDocs.isEmpty) return;
-
-        final currentUserDoc = await transaction.get(currentUserRef);
-        final targetUserDoc = await transaction.get(targetUserRef);
-        final int removed = followDocs.length;
-
-        for (final doc in followDocs) {
-          transaction.delete(doc.reference);
-        }
-        transaction.update(currentUserRef, {
-          'followingCount':
-              (_readCounter(currentUserDoc, 'followingCount') - removed)
-                  .clamp(0, 1 << 31)
-                  .toInt(),
+        final int curFollow = _readCounter(targetSnap, 'followerCount');
+        final int nextFollow = math.max(0, curFollow - 1);
+        transaction.update(targetUserRef, <String, dynamic>{
+          'followerCount': nextFollow,
+          'followersCount': nextFollow,
           'updatedAt': FieldValue.serverTimestamp(),
         });
-        final int nextFollowers =
-            (_readCounter(targetUserDoc, 'followersCount') - removed)
-                .clamp(0, 1 << 31)
-                .toInt();
-        transaction.update(targetUserRef, {
-          'followersCount': nextFollowers,
-          'followerCount':
-              (_readCounter(targetUserDoc, 'followerCount') - removed)
-                  .clamp(0, 1 << 31)
-                  .toInt(),
+        final int curFollowing = _readCounter(currentSnap, 'followingCount');
+        transaction.update(currentUserRef, <String, dynamic>{
+          'followingCount': math.max(0, curFollowing - 1),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
       });
       return true;
@@ -171,12 +248,164 @@ class FollowsService {
     }
   }
 
+  Future<bool> removeFollower(String followerUserId) async {
+    final User? currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      debugPrint('❌ FollowsService: No current user');
+      return false;
+    }
+    if (currentUser.uid == followerUserId) {
+      return false;
+    }
+    try {
+      await _deleteFollowEdge(
+        followerUserId: followerUserId,
+        targetUserId: currentUser.uid,
+        decrementCounters: true,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('❌ FollowsService: Error removing follower: $e');
+      return false;
+    }
+  }
+
+  Future<bool> removeRelationshipBothWays(String otherUserId) async {
+    final User? currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      debugPrint('❌ FollowsService: No current user');
+      return false;
+    }
+    if (currentUser.uid == otherUserId) {
+      return false;
+    }
+    try {
+      await _deleteFollowEdge(
+        followerUserId: currentUser.uid,
+        targetUserId: otherUserId,
+        decrementCounters: true,
+      );
+      await _deleteFollowEdge(
+        followerUserId: otherUserId,
+        targetUserId: currentUser.uid,
+        decrementCounters: true,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('❌ FollowsService: Error removing relationship: $e');
+      return false;
+    }
+  }
+
+  Future<void> _deleteFollowEdge({
+    required String followerUserId,
+    required String targetUserId,
+    required bool decrementCounters,
+  }) async {
+    await _ensureCounterFields(followerUserId);
+    await _ensureCounterFields(targetUserId);
+    final followerEdgeRef = _firestore
+        .collection('users')
+        .doc(targetUserId)
+        .collection('followers')
+        .doc(followerUserId);
+    final followingEdgeRef = _firestore
+        .collection('users')
+        .doc(followerUserId)
+        .collection('following')
+        .doc(targetUserId);
+    final legacyRefs =
+        await _queryLegacyFollowReferences(followerUserId, targetUserId);
+    final followerUserRef = _firestore.collection('users').doc(followerUserId);
+    final targetUserRef = _firestore.collection('users').doc(targetUserId);
+
+    await _firestore.runTransaction<void>((transaction) async {
+      final followerSnap = await transaction.get(followerEdgeRef);
+      final followingSnap = await transaction.get(followingEdgeRef);
+      final followerUserSnap = await transaction.get(followerUserRef);
+      final targetUserSnap = await transaction.get(targetUserRef);
+      final legacyRefList = legacyRefs.values.toList();
+      final legacySnaps = <DocumentSnapshot<Map<String, dynamic>>>[];
+      for (final ref in legacyRefList) {
+        legacySnaps.add(await transaction.get(ref));
+      }
+      final hadRelationship = followerSnap.exists ||
+          followingSnap.exists ||
+          legacySnaps.any((snapshot) => snapshot.exists);
+      if (!hadRelationship) return;
+
+      if (followerSnap.exists) transaction.delete(followerEdgeRef);
+      if (followingSnap.exists) transaction.delete(followingEdgeRef);
+      for (var i = 0; i < legacyRefList.length; i++) {
+        if (legacySnaps[i].exists) {
+          transaction.delete(legacyRefList[i]);
+        }
+      }
+
+      if (decrementCounters) {
+        final nextFollowers =
+            math.max(0, _readCounter(targetUserSnap, 'followerCount') - 1);
+        transaction.update(targetUserRef, <String, dynamic>{
+          'followerCount': nextFollowers,
+          'followersCount': nextFollowers,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        final nextFollowing =
+            math.max(0, _readCounter(followerUserSnap, 'followingCount') - 1);
+        transaction.update(followerUserRef, <String, dynamic>{
+          'followingCount': nextFollowing,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
+  }
+
   int _readCounter(
     DocumentSnapshot<Map<String, dynamic>> snapshot,
     String field,
   ) {
     final value = snapshot.data()?[field];
     return value is num ? value.toInt().clamp(0, 1 << 31).toInt() : 0;
+  }
+
+  Future<Map<String, DocumentReference<Map<String, dynamic>>>>
+      _queryLegacyFollowReferences(
+    String followerUserId,
+    String targetUserId,
+  ) async {
+    final CollectionReference<Map<String, dynamic>> follows =
+        _firestore.collection('follows');
+    final QuerySnapshot<Map<String, dynamic>> primary = await follows
+        .where('followerUserId', isEqualTo: followerUserId)
+        .where('targetUserId', isEqualTo: targetUserId)
+        .get();
+    final QuerySnapshot<Map<String, dynamic>> legacy = await follows
+        .where('followerId', isEqualTo: followerUserId)
+        .where('followingId', isEqualTo: targetUserId)
+        .get();
+    final QuerySnapshot<Map<String, dynamic>> legacyAlt = await follows
+        .where('followerId', isEqualTo: followerUserId)
+        .where('followedId', isEqualTo: targetUserId)
+        .get();
+    final Map<String, DocumentReference<Map<String, dynamic>>> out =
+        <String, DocumentReference<Map<String, dynamic>>>{};
+    void addSnap(QuerySnapshot<Map<String, dynamic>> snap) {
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snap.docs) {
+        out[doc.reference.path] = doc.reference;
+      }
+    }
+
+    addSnap(primary);
+    addSnap(legacy);
+    addSnap(legacyAlt);
+    final DocumentReference<Map<String, dynamic>> canonical =
+        follows.doc('${followerUserId}_$targetUserId');
+    final DocumentSnapshot<Map<String, dynamic>> canSnap =
+        await canonical.get();
+    if (canSnap.exists) {
+      out[canonical.path] = canonical;
+    }
+    return out;
   }
 
   Future<void> _ensureCounterFields(String userId) async {
@@ -308,10 +537,17 @@ class FollowsService {
   }
 
   Future<bool> isFollowing(String targetUserId) async {
-    final currentUser = _auth.currentUser;
+    final User? currentUser = _auth.currentUser;
     if (currentUser == null) return false;
     try {
-      final primary = await _firestore
+      final DocumentSnapshot<Map<String, dynamic>> edge = await _firestore
+          .collection('users')
+          .doc(targetUserId)
+          .collection('followers')
+          .doc(currentUser.uid)
+          .get();
+      if (edge.exists) return true;
+      final QuerySnapshot<Map<String, dynamic>> primary = await _firestore
           .collection('follows')
           .where('followerUserId', isEqualTo: currentUser.uid)
           .where('targetUserId', isEqualTo: targetUserId)
@@ -319,14 +555,14 @@ class FollowsService {
           .limit(1)
           .get();
       if (primary.docs.isNotEmpty) return true;
-      final legacy = await _firestore
+      final QuerySnapshot<Map<String, dynamic>> legacy = await _firestore
           .collection('follows')
           .where('followerId', isEqualTo: currentUser.uid)
           .where('followingId', isEqualTo: targetUserId)
           .limit(1)
           .get();
       if (legacy.docs.isNotEmpty) return true;
-      final legacyAlt = await _firestore
+      final QuerySnapshot<Map<String, dynamic>> legacyAlt = await _firestore
           .collection('follows')
           .where('followerId', isEqualTo: currentUser.uid)
           .where('followedId', isEqualTo: targetUserId)

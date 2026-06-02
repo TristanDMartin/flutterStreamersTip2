@@ -136,9 +136,8 @@ class DiscussionAuthorRow extends StatelessWidget {
           width: d,
           height: d,
           fit: BoxFit.cover,
-          errorWidget:
-              (BuildContext c, String u, Object e) =>
-                  _buildPlaceholderAvatar(avatarRadius),
+          errorWidget: (BuildContext c, String u, Object e) =>
+              _buildPlaceholderAvatar(avatarRadius),
         ),
       );
     }

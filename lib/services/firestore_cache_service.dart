@@ -2,7 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class FirestoreCacheService {
-  static final FirestoreCacheService _instance = FirestoreCacheService._internal();
+  static final FirestoreCacheService _instance =
+      FirestoreCacheService._internal();
   factory FirestoreCacheService() => _instance;
   FirestoreCacheService._internal();
 
@@ -14,22 +15,23 @@ class FirestoreCacheService {
 
     try {
       final firestore = FirebaseFirestore.instance;
-      
+
       // Enable auto-index creation to replace deprecated setIndexConfigurationFromJSON
       // This is the recommended approach for the deprecation warning
       await firestore.enableNetwork();
-      
+
       // Configure settings for optimal performance
       final settings = Settings(
         persistenceEnabled: true,
         cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
       );
-      
+
       firestore.settings = settings;
-      
+
       debugPrint('✅ Firestore cache service initialized');
-      debugPrint('💡 Auto-index creation enabled - replaces deprecated setIndexConfigurationFromJSON');
-      
+      debugPrint(
+          '💡 Auto-index creation enabled - replaces deprecated setIndexConfigurationFromJSON');
+
       _isInitialized = true;
     } catch (e) {
       debugPrint('⚠️ Firestore cache service initialization failed: $e');
@@ -41,14 +43,13 @@ class FirestoreCacheService {
   static Future<void> configureCollectionIndexes() async {
     try {
       final firestore = FirebaseFirestore.instance;
-      
+
       // Enable network to ensure proper initialization
       await firestore.enableNetwork();
-      
+
       // The auto-index creation will handle the indexes defined in firestore.indexes.json
       // No need to manually set index configuration anymore
       debugPrint('✅ Collection indexes configured via auto-creation');
-      
     } catch (e) {
       debugPrint('⚠️ Collection index configuration failed: $e');
     }

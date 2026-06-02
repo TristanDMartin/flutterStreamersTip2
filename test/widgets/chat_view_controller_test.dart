@@ -183,8 +183,7 @@ void main() {
     });
 
     test('submitComposerText sends remote GIF URLs as gif messages', () async {
-      const String gifUrl =
-          'https://media.giphy.com/media/abc123/200.gif';
+      const String gifUrl = 'https://media.giphy.com/media/abc123/200.gif';
       final ChatComposerResult result =
           await controller.submitComposerText('  $gifUrl  ');
       expect(result, ChatComposerResult.sent);
@@ -195,8 +194,7 @@ void main() {
     test('settings actions execute real service intents', () async {
       final muteFeedback =
           await controller.handleSettingsAction(ChatSettingsAction.mute);
-      final reportFeedback =
-          await controller.handleSettingsAction(
+      final reportFeedback = await controller.handleSettingsAction(
         ChatSettingsAction.report,
         reportReason: ChatReportReason.spam,
         additionalDetails: 'Repeated phishing links',
@@ -210,7 +208,8 @@ void main() {
 
       expect(reportFeedback.isError, isFalse);
       expect(reportFeedback.message, contains('Report submitted'));
-      expect(service.reportedUserIds.single, contains('other-user::Spam or scam'));
+      expect(
+          service.reportedUserIds.single, contains('other-user::Spam or scam'));
 
       expect(blockFeedback.isError, isFalse);
       expect(blockFeedback.message, contains('blocked'));

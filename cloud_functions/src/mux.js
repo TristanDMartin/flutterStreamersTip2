@@ -59,9 +59,30 @@ async function createDirectUpload(videoId, userId) {
     throw new Error(`Mux create upload failed: ${res.status} ${err}`);
   }
   const data = await res.json();
+  const uploadId = data.data.id;
+  const firestore = admin.firestore();
+  const videoRef = firestore.collection('videos').doc(videoId);
+  await videoRef.set(
+    {
+      userId,
+      creatorId: userId,
+      creator_id: userId,
+      status: 'processing',
+      visibility: 'public',
+      visible: false,
+      isReadyForFeed: false,
+      isDeleted: false,
+      isMux: true,
+      muxStatus: 'processing',
+      muxUploadId: uploadId || '',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
   return {
     uploadUrl: data.data.url,
-    uploadId: data.data.id,
+    uploadId,
   };
 }
 
@@ -114,9 +135,27 @@ async function handleMuxWebhook(payload) {
     );
     return;
   }
-  const userId = beforeData.userId || beforeData.creatorId || beforeData.creator_id || data.meta?.creator_id;
+  const userId =
+    beforeData.userId ||
+    beforeData.creatorId ||
+    beforeData.creator_id ||
+    (data.meta && data.meta.creator_id) ||
+    null;
   const privacy = beforeData.privacy || 'Everyone';
-  const category = beforeData.category || beforeData.categoryId || beforeData.metadata?.categoryCanonical || beforeData.metadata?.categoryOriginal;
+  const visibility =
+    beforeData.visibility ||
+    (privacy === 'Everyone' || privacy === 'Public' || privacy === 'public'
+      ? 'public'
+      : privacy === 'Private' || privacy === 'private'
+        ? 'private'
+        : 'public');
+  const category =
+    beforeData.category ||
+    beforeData.categoryId ||
+    beforeData.category_id ||
+    (beforeData.metadata && beforeData.metadata.categoryCanonical) ||
+    (beforeData.metadata && beforeData.metadata.categoryOriginal) ||
+    'gaming';
 
   const thumbnails = {
     urls: { 360: thumbnailUrl, 540: thumbnailUrl, 720: thumbnailUrl },
@@ -135,9 +174,10 @@ async function handleMuxWebhook(payload) {
     thumbnailUrl,
     thumbnailURL: thumbnailUrl,
     thumbnails,
-    status: 'active',
+    status: 'ready',
     visible: true,
     isReadyForFeed: true,
+    isDeleted: false,
     playbackReady: true,
     transcodingStatus: 'completed',
     muxAssetId: data.id,
@@ -147,6 +187,20 @@ async function handleMuxWebhook(payload) {
     transcodedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
+
+  if (userId) {
+    updates.userId = userId;
+    updates.creatorId = userId;
+    updates.creator_id = userId;
+  }
+  updates.privacy = privacy;
+  updates.visibility = visibility;
+  if (category) {
+    updates.category = category;
+    updates.categoryId = category;
+    updates.category_id = category;
+    updates.categories = beforeData.categories || [category];
+  }
 
   await videoRef.set(updates, { merge: true });
 
@@ -162,8 +216,12 @@ async function handleMuxWebhook(payload) {
       firestore.collection('users').doc(userId).collection('videos').doc(videoId),
       {
         videoId,
-        status: 'active',
+        userId,
+        status: 'ready',
         visible: true,
+        privacy,
+        visibility,
+        category,
         addedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
@@ -177,7 +235,7 @@ async function handleMuxWebhook(payload) {
           videoId,
           userId,
           privacy,
-          status: 'active',
+          status: 'ready',
           addedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         {merge: true},
@@ -188,7 +246,7 @@ async function handleMuxWebhook(payload) {
           videoId,
           userId,
           privacy,
-          status: 'active',
+          status: 'ready',
           addedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         {merge: true},
@@ -201,7 +259,7 @@ async function handleMuxWebhook(payload) {
             userId,
             category,
             privacy,
-            status: 'active',
+            status: 'ready',
             addedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           {merge: true},

@@ -10,6 +10,9 @@ class ContentNormalizer {
 
   /// Extract tokens from normalized text
   static List<String> extractTokens(String normalizedText) {
-    return normalizedText.split(' ').where((token) => token.isNotEmpty).toList();
+    return normalizedText
+        .split(' ')
+        .where((token) => token.isNotEmpty)
+        .toList();
   }
 }

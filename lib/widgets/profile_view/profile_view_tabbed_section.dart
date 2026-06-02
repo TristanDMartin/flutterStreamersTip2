@@ -156,9 +156,8 @@ class _TabCell extends StatelessWidget {
             child: AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
-                color: isSelected
-                    ? shell.chipSelectedFg
-                    : shell.chipUnselectedFg,
+                color:
+                    isSelected ? shell.chipSelectedFg : shell.chipUnselectedFg,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),

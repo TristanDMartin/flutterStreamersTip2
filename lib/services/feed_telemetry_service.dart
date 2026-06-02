@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart';
 
 /// Service for feed telemetry per spec (video_impression, video_skip, etc.)
 class FeedTelemetryService {
-  static final FeedTelemetryService _instance = FeedTelemetryService._internal();
+  static final FeedTelemetryService _instance =
+      FeedTelemetryService._internal();
   factory FeedTelemetryService() => _instance;
   FeedTelemetryService._internal();
 

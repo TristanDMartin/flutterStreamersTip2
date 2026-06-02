@@ -4,7 +4,8 @@ import 'package:path_provider/path_provider.dart';
 import '../models/upload_job.dart';
 
 class UploadJobStorageService {
-  static final UploadJobStorageService _instance = UploadJobStorageService._internal();
+  static final UploadJobStorageService _instance =
+      UploadJobStorageService._internal();
   factory UploadJobStorageService() => _instance;
   UploadJobStorageService._internal();
 
@@ -31,13 +32,13 @@ class UploadJobStorageService {
     await initialize();
     final file = File('${_jobsDir.path}/$localId.json');
     if (!await file.exists()) return null;
-    
+
     try {
       final content = await file.readAsString();
       final json = jsonDecode(content) as Map<String, dynamic>;
       return UploadJob.fromJson(json);
     } catch (e) {
-    // print('❌ Error loading upload job $localId: $e');
+      // appLog('❌ Error loading upload job $localId: $e');
       return null;
     }
   }
@@ -55,7 +56,7 @@ class UploadJobStorageService {
           final json = jsonDecode(content) as Map<String, dynamic>;
           jobs.add(UploadJob.fromJson(json));
         } catch (e) {
-    // print('❌ Error loading upload job from ${file.path}: $e');
+          // appLog('❌ Error loading upload job from ${file.path}: $e');
         }
       }
     }
@@ -70,7 +71,8 @@ class UploadJobStorageService {
   }
 
   /// Update job state
-  Future<void> updateJobState(String localId, UploadJobState state, {double? progress, String? errorMessage}) async {
+  Future<void> updateJobState(String localId, UploadJobState state,
+      {double? progress, String? errorMessage}) async {
     final job = await loadJob(localId);
     if (job == null) return;
 
@@ -96,7 +98,7 @@ class UploadJobStorageService {
   Future<void> cleanupOldJobs() async {
     final allJobs = await loadAllJobs();
     final cutoffDate = DateTime.now().subtract(const Duration(days: 7));
-    
+
     for (final job in allJobs) {
       if (job.state.isCompleted && job.createdAt.isBefore(cutoffDate)) {
         await deleteJob(job.localId);
@@ -108,11 +110,11 @@ class UploadJobStorageService {
   Future<Map<UploadJobState, int>> getJobCounts() async {
     final allJobs = await loadAllJobs();
     final counts = <UploadJobState, int>{};
-    
+
     for (final state in UploadJobState.values) {
       counts[state] = allJobs.where((job) => job.state == state).length;
     }
-    
+
     return counts;
   }
 }

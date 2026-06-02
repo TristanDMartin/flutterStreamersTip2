@@ -43,7 +43,8 @@ class _VideoTimelineState extends State<VideoTimeline> {
   @override
   void didUpdateWidget(VideoTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.startTime != widget.startTime || oldWidget.endTime != widget.endTime) {
+    if (oldWidget.startTime != widget.startTime ||
+        oldWidget.endTime != widget.endTime) {
       _startTime = widget.startTime;
       _endTime = widget.endTime;
     }
@@ -68,12 +69,13 @@ class _VideoTimelineState extends State<VideoTimeline> {
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     final localPosition = renderBox.globalToLocal(details.globalPosition);
     final width = renderBox.size.width;
-    
+
     // Simple position calculation without margins
     final position = (localPosition.dx / width).clamp(0.0, 1.0);
     final newDuration = _getDurationFromPosition(position);
-    
-    debugPrint('🎯 Pan update: $handleType, position: ${position.toStringAsFixed(2)}, duration: ${newDuration.inSeconds}s');
+
+    debugPrint(
+        '🎯 Pan update: $handleType, position: ${position.toStringAsFixed(2)}, duration: ${newDuration.inSeconds}s');
 
     setState(() {
       switch (handleType) {
@@ -81,7 +83,9 @@ class _VideoTimelineState extends State<VideoTimeline> {
           _startTime = newDuration;
           // Ensure minimum 1 second duration
           if (_startTime >= _endTime) {
-            _startTime = Duration(milliseconds: (_endTime.inMilliseconds - 1000).clamp(0, _endTime.inMilliseconds - 1000));
+            _startTime = Duration(
+                milliseconds: (_endTime.inMilliseconds - 1000)
+                    .clamp(0, _endTime.inMilliseconds - 1000));
           }
           break;
         case 'end':
@@ -133,11 +137,13 @@ class _VideoTimelineState extends State<VideoTimeline> {
               borderRadius: BorderRadius.circular(10),
             ),
           ),
-          
+
           // Trimmed area highlight
           Positioned(
-            left: 20 + (startPosition * (MediaQuery.of(context).size.width - 80)),
-            right: 20 + ((1 - endPosition) * (MediaQuery.of(context).size.width - 80)),
+            left:
+                20 + (startPosition * (MediaQuery.of(context).size.width - 80)),
+            right: 20 +
+                ((1 - endPosition) * (MediaQuery.of(context).size.width - 80)),
             top: 20,
             child: Container(
               height: 20,
@@ -147,10 +153,12 @@ class _VideoTimelineState extends State<VideoTimeline> {
               ),
             ),
           ),
-          
+
           // Current position indicator
           Positioned(
-            left: 20 + (currentPosition * (MediaQuery.of(context).size.width - 80)) - 1,
+            left: 20 +
+                (currentPosition * (MediaQuery.of(context).size.width - 80)) -
+                1,
             top: 18,
             child: Container(
               width: 2,
@@ -161,10 +169,12 @@ class _VideoTimelineState extends State<VideoTimeline> {
               ),
             ),
           ),
-          
+
           // Start trim handle
           Positioned(
-            left: 20 + (startPosition * (MediaQuery.of(context).size.width - 80)) - 15,
+            left: 20 +
+                (startPosition * (MediaQuery.of(context).size.width - 80)) -
+                15,
             top: 15,
             child: GestureDetector(
               onPanStart: (details) => _onPanStart(details, 'start'),
@@ -193,10 +203,12 @@ class _VideoTimelineState extends State<VideoTimeline> {
               ),
             ),
           ),
-          
+
           // End trim handle
           Positioned(
-            left: 20 + (endPosition * (MediaQuery.of(context).size.width - 80)) - 15,
+            left: 20 +
+                (endPosition * (MediaQuery.of(context).size.width - 80)) -
+                15,
             top: 15,
             child: GestureDetector(
               onPanStart: (details) => _onPanStart(details, 'end'),
@@ -225,13 +237,15 @@ class _VideoTimelineState extends State<VideoTimeline> {
               ),
             ),
           ),
-          
+
           // Timeline tap area for seeking
           Positioned.fill(
             child: GestureDetector(
               onTapDown: (details) {
-                final RenderBox renderBox = context.findRenderObject() as RenderBox;
-                final localPosition = renderBox.globalToLocal(details.globalPosition);
+                final RenderBox renderBox =
+                    context.findRenderObject() as RenderBox;
+                final localPosition =
+                    renderBox.globalToLocal(details.globalPosition);
                 final width = renderBox.size.width;
                 final position = (localPosition.dx / width).clamp(0.0, 1.0);
                 final newDuration = _getDurationFromPosition(position);

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/gamification/gamification_providers.dart';
 import 'onboarding_models.dart';
 import 'onboarding_style.dart';
 
-class LevelOneChecklist extends StatelessWidget {
+class LevelOneChecklist extends ConsumerWidget {
   const LevelOneChecklist({
     super.key,
     required this.state,
@@ -16,13 +18,21 @@ class LevelOneChecklist extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final int complete = state.completedMissionCount;
     final Size size = MediaQuery.sizeOf(context);
     final bool isCompact = compact || size.width < 380 || size.height < 720;
     final Color textPrimary = OnboardingStyle.textPrimaryFor(context);
     final Color textSecondary = OnboardingStyle.textSecondaryFor(context);
     final Color border = OnboardingStyle.borderFor(context);
+    final int displayLevel = ref.watch(userProgressBundleProvider).maybeWhen(
+          data: (bundle) => bundle.progress.level,
+          orElse: () => levelForXp(state.xp),
+        );
+    final int displayXp = ref.watch(userProgressBundleProvider).maybeWhen(
+          data: (bundle) => bundle.progress.totalXp,
+          orElse: () => state.xp,
+        );
     return Container(
       key: const Key('level-one-checklist'),
       padding: EdgeInsets.fromLTRB(
@@ -49,13 +59,22 @@ class LevelOneChecklist extends StatelessWidget {
                 ),
               ),
               Text(
-                '$complete/${levelOneMissions.length}',
+                '$complete/${visibleLevelOneMissions.length}',
                 style: const TextStyle(
                   color: Color(0xFF7DD3FC),
                   fontWeight: FontWeight.w900,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Level $displayLevel · $displayXp XP',
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 8),
           ClipRRect(
@@ -69,7 +88,7 @@ class LevelOneChecklist extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          ...levelOneMissions.map((OnboardingMission mission) {
+          ...visibleLevelOneMissions.map((OnboardingMission mission) {
             final bool done = state.completedMissions.contains(mission.id);
             return _MissionRow(
               key: _missionKey(mission.id),

@@ -77,13 +77,13 @@ class UserPresence {
   factory UserPresence.fromMap(Map<String, dynamic> data) {
     return UserPresence(
       status: UserStatus.fromString(data['status'] ?? 'offline'),
-      lastSeen: data['lastSeen'] != null 
-          ? (data['lastSeen'] is Timestamp 
+      lastSeen: data['lastSeen'] != null
+          ? (data['lastSeen'] is Timestamp
               ? (data['lastSeen'] as Timestamp).toDate()
               : DateTime.fromMillisecondsSinceEpoch(data['lastSeen']))
           : null,
-      lastActive: data['lastActive'] != null 
-          ? (data['lastActive'] is Timestamp 
+      lastActive: data['lastActive'] != null
+          ? (data['lastActive'] is Timestamp
               ? (data['lastActive'] as Timestamp).toDate()
               : DateTime.fromMillisecondsSinceEpoch(data['lastActive']))
           : null,

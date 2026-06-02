@@ -22,7 +22,8 @@ class OptimizedFavoriteButton extends StatefulWidget {
   });
 
   @override
-  State<OptimizedFavoriteButton> createState() => _OptimizedFavoriteButtonState();
+  State<OptimizedFavoriteButton> createState() =>
+      _OptimizedFavoriteButtonState();
 }
 
 class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
@@ -96,7 +97,8 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
   Widget build(BuildContext context) {
     final size = widget.size ?? 24.0;
     final activeColor = widget.activeColor ?? const Color(0xFF9248D2);
-    final inactiveColor = widget.inactiveColor ?? Colors.white.withValues(alpha:0.85);
+    final inactiveColor =
+        widget.inactiveColor ?? Colors.white.withValues(alpha: 0.85);
 
     return GestureDetector(
       onTap: _toggleFavorite,
@@ -113,7 +115,7 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha:0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(size / 2),
                   ),
                   child: Center(

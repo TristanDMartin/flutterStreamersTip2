@@ -1,7 +1,6 @@
-import 'dart:developer';
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 import '../constants/playback_owners.dart';
 import '../models/feed_tab.dart';
@@ -20,6 +19,7 @@ class HomeViewControllerState {
     required this.followingIndex,
     required this.shouldResumeOnReturn,
     required this.isNavigatingToDiscover,
+    required this.isColdOpenResetDone,
     required this.lastReactivateAt,
   });
 
@@ -29,6 +29,7 @@ class HomeViewControllerState {
   final int followingIndex;
   final bool shouldResumeOnReturn;
   final bool isNavigatingToDiscover;
+  final bool isColdOpenResetDone;
   final DateTime? lastReactivateAt;
 
   HomeViewControllerState copyWith({
@@ -38,6 +39,7 @@ class HomeViewControllerState {
     int? followingIndex,
     bool? shouldResumeOnReturn,
     bool? isNavigatingToDiscover,
+    bool? isColdOpenResetDone,
     DateTime? lastReactivateAt,
   }) {
     return HomeViewControllerState(
@@ -48,6 +50,7 @@ class HomeViewControllerState {
       shouldResumeOnReturn: shouldResumeOnReturn ?? this.shouldResumeOnReturn,
       isNavigatingToDiscover:
           isNavigatingToDiscover ?? this.isNavigatingToDiscover,
+      isColdOpenResetDone: isColdOpenResetDone ?? this.isColdOpenResetDone,
       lastReactivateAt: lastReactivateAt ?? this.lastReactivateAt,
     );
   }
@@ -65,6 +68,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
       followingIndex: 0,
       shouldResumeOnReturn: false,
       isNavigatingToDiscover: false,
+      isColdOpenResetDone: false,
       lastReactivateAt: null,
     );
   }
@@ -75,6 +79,22 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
       FeedTab.following => state.followingIndex,
       FeedTab.threads => 0,
     };
+  }
+
+  void resetFeedPositionForColdOpen() {
+    if (state.currentIndex == 0 &&
+        state.forYouIndex == 0 &&
+        state.followingIndex == 0 &&
+        state.isColdOpenResetDone) {
+      return;
+    }
+    state = state.copyWith(
+      currentIndex: 0,
+      forYouIndex: 0,
+      followingIndex: 0,
+      shouldResumeOnReturn: false,
+      isColdOpenResetDone: true,
+    );
   }
 
   void restoreFeedIndex(FeedTab feed) {
@@ -118,7 +138,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
   }
 
   void prepareForOverlay({required String reason}) {
-    log('⏸️ HomeViewController: Preparing overlay ($reason)');
+    secureLog('⏸️ HomeViewController: Preparing overlay ($reason)');
     _pauseAndBlock(
       reason: reason,
       leaveHomeView: false,
@@ -127,7 +147,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
   }
 
   void prepareForRouteNavigation({required String reason}) {
-    log('🔇 HomeViewController: Navigating away ($reason)');
+    secureLog('🔇 HomeViewController: Navigating away ($reason)');
     _pauseAndBlock(
       reason: reason,
       leaveHomeView: true,
@@ -140,6 +160,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     manager.unblock();
     manager.setActiveOwner(PlaybackOwners.home);
     markAsActiveOwner();
+    manager.restoreCurrentFeedFocus();
     _resumeCurrentVideoInstantly();
   }
 
@@ -164,11 +185,13 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     GlobalPlaybackManager.instance.onAppLifecycleChanged(appLifecycleState);
     if (appLifecycleState != AppLifecycleState.resumed) return;
     if (!isRouteCurrent) {
-      log('🔄 HomeViewController: App resumed but route not current → skip');
+      secureLog(
+          '🔄 HomeViewController: App resumed but route not current → skip');
       state = state.copyWith(shouldResumeOnReturn: true);
       return;
     }
-    log('🔄 HomeViewController: App resumed & visible → reactivating feed');
+    secureLog(
+        '🔄 HomeViewController: App resumed & visible → reactivating feed');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _reactivateFeed(
         reason: 'app_resumed_visible',
@@ -194,7 +217,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     final bool isHomeActiveOwner = manager.activeOwner == PlaybackOwners.home;
     if (requireCooldown && !isHomeActiveOwner && !_canReactivateNow()) return;
 
-    log('🔄 HomeViewController: Reactivating feed ($reason)');
+    secureLog('🔄 HomeViewController: Reactivating feed ($reason)');
     manager.unblock();
     if (!isHomeActiveOwner) {
       manager.setActiveOwner(PlaybackOwners.home);
@@ -225,11 +248,10 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     try {
       final hp.HomeState homeState = ref.read(hp.homeProvider);
       final FeedTab activeFeed = ref.read(activeFeedProvider);
-      final List<HomeVideo> currentVideos = homeState
-          .feedData(activeFeed)
-          .videos;
+      final List<HomeVideo> currentVideos =
+          homeState.feedData(activeFeed).videos;
       if (currentVideos.isEmpty) {
-        log('⚠️ HomeViewController: No videos available to resume');
+        secureLog('⚠️ HomeViewController: No videos available to resume');
         return;
       }
       final int safeIndex = state.currentIndex.clamp(
@@ -242,14 +264,14 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
       if (videoId.isEmpty) return;
       GlobalPlaybackManager.instance.requestFocus(videoId, ownerId);
     } catch (e, stackTrace) {
-      log('❌ HomeViewController: Error resuming current video: $e');
-      log('Stack trace: $stackTrace');
+      secureLog('❌ HomeViewController: Error resuming current video: $e');
+      secureLog('Stack trace: $stackTrace');
     }
   }
 }
 
 final NotifierProvider<HomeViewController, HomeViewControllerState>
-homeViewControllerProvider =
+    homeViewControllerProvider =
     NotifierProvider<HomeViewController, HomeViewControllerState>(
-      HomeViewController.new,
-    );
+  HomeViewController.new,
+);

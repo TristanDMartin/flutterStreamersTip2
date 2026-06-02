@@ -4,6 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import '../features/activity/pulse/activity_pulse_logic.dart';
+import '../features/activity/pulse/activity_pulse_tokens.dart';
+import '../features/activity/pulse/widgets/activity_pulse_grouped_card.dart';
+import '../features/activity/pulse/widgets/activity_pulse_insight_card.dart';
+import '../features/gamification/gamification_providers.dart';
+import '../features/gamification/models/user_progress_bundle.dart';
 import '../providers/activity_provider.dart';
 import '../providers/home_provider.dart' as hp;
 import '../services/auth_service.dart';
@@ -28,15 +34,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   late AnimationController _refreshController;
   late AnimationController _fadeController;
   late AnimationController _badgeController;
-  String _selectedFilter = 'All';
-  final List<String> _filters = [
-    'All',
-    'Likes',
-    'Follows',
-    'Comments',
-    'Tags',
-    'Mentions'
-  ];
+  ActivityPulseFilter _selectedFilter = ActivityPulseFilter.all;
 
   final ScrollController _scrollController = ScrollController();
   bool _isInitialized = false;
@@ -121,7 +119,14 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
     // Activity data is initialized in initState
 
-    final filteredGrouped = _filterNotifications(state.grouped);
+    final UserProgressBundle? bundle =
+        ref.watch(userProgressBundleProvider).valueOrNull;
+    final Map<String, List<ActivityPulseEntry>> filteredGrouped =
+        ActivityPulseLogic.processGrouped(
+      grouped: state.grouped,
+      filter: _selectedFilter,
+      bundle: bundle,
+    );
     final titles = _orderedSectionTitles(filteredGrouped.keys.toList());
 
     // Debug information (reduced for production)
@@ -225,34 +230,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     ActivityState state,
     StSupportShellStyle shell,
   ) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     final int unread = _getTotalNotificationCount(state.grouped);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: shell.heroGradient,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: shell.heroBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: shell.isLight
-                ? Theme.of(context).colorScheme.shadow.withValues(alpha: 0.1)
-                : Colors.black.withValues(alpha: 0.18),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           IconButton(
             onPressed: () {
               HapticFeedback.lightImpact();
@@ -261,136 +243,57 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             icon: Icon(
               Icons.arrow_back_ios_new,
               color: shell.onChrome,
-              size: 20,
+              size: 18,
             ),
-            padding: const EdgeInsets.all(8),
           ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 Row(
-                  children: [
+                  children: <Widget>[
                     Text(
                       'Activity',
                       style: TextStyle(
                         color: shell.onChrome,
-                        fontSize: 28,
+                        fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
                       ),
                     ),
-                    if (unread > 0) ...[
-                      const SizedBox(width: 10),
-                      AnimatedBuilder(
-                        animation: _badgeController,
-                        builder: (context, child) {
-                          return Transform.scale(
-                            scale: 0.85 + (0.15 * _badgeController.value),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: <Color>[
-                                    scheme.primary,
-                                    scheme.secondary,
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(999),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: scheme.primary.withValues(
-                                      alpha: 0.35,
-                                    ),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                '$unread',
-                                style: TextStyle(
-                                  color: scheme.onPrimary,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                    if (unread > 0) ...<Widget>[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: ActivityPulseTokens.activeChipGradient,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$unread',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                     ],
                   ],
                 ),
-                const SizedBox(height: 4),
-                if (state.isProcessing)
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            shell.onChrome,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Processing ${state.processingCount}…',
-                          style: TextStyle(
-                            color: shell.muted,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Text(
-                    unread > 0 ? '$unread unread' : 'Likes, follows & replies',
-                    style: TextStyle(
-                      color: shell.mutedStrong,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                Text(
+                  'Your creator pulse',
+                  style: TextStyle(
+                    color: shell.muted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
+                ),
               ],
             ),
           ),
-          if (_hasUnreadNotifications(state.grouped))
-            IconButton(
-              tooltip: 'Mark all read',
-              onPressed: _handleMarkAllAsRead,
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: <Color>[
-                      scheme.primary,
-                      scheme.secondary,
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: scheme.outline.withValues(
-                      alpha: shell.isLight ? 0.35 : 0.4,
-                    ),
-                  ),
-                ),
-                child: Icon(
-                  Icons.done_all_rounded,
-                  color: scheme.onPrimary,
-                  size: 18,
-                ),
-              ),
-            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _handleRefresh,
@@ -402,10 +305,23 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   child: Icon(
                     Icons.refresh_rounded,
                     color: shell.onChrome,
-                    size: 24,
+                    size: 22,
                   ),
                 );
               },
+            ),
+          ),
+          IconButton(
+            tooltip: 'Mark all read',
+            onPressed: _hasUnreadNotifications(state.grouped)
+                ? _handleMarkAllAsRead
+                : null,
+            icon: Icon(
+              Icons.tune_rounded,
+              color: _hasUnreadNotifications(state.grouped)
+                  ? shell.onChrome
+                  : shell.iconDim,
+              size: 22,
             ),
           ),
         ],
@@ -415,15 +331,16 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Widget _buildFilterChips(StSupportShellStyle shell) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: SizedBox(
-        height: 40,
+        height: 32,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
-          itemCount: _filters.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemCount: ActivityPulseLogic.filters.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 6),
           itemBuilder: (context, index) {
-            final String filter = _filters[index];
+            final ActivityPulseFilter filter =
+                ActivityPulseLogic.filters[index];
             final bool isSelected = _selectedFilter == filter;
             return Material(
               color: Colors.transparent,
@@ -432,35 +349,43 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   HapticFeedback.selectionClick();
                   setState(() => _selectedFilter = filter);
                 },
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(999),
                 child: Ink(
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? shell.chipSelectedBg
-                        : shell.chipUnselectedBg,
-                    borderRadius: BorderRadius.circular(20),
+                    gradient: isSelected
+                        ? ActivityPulseTokens.activeChipGradient
+                        : null,
+                    color: isSelected ? null : shell.chipUnselectedBg,
+                    borderRadius: BorderRadius.circular(999),
                     border: Border.all(
                       color: isSelected
-                          ? shell.chipSelectedBorder
+                          ? Colors.transparent
                           : shell.chipUnselectedBorder,
-                      width: isSelected ? 1.5 : 1,
                     ),
+                    boxShadow: isSelected
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: ActivityPulseTokens.threadGlow
+                                  .withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
+                      horizontal: 12,
+                      vertical: 6,
                     ),
                     child: Text(
-                      filter,
+                      filter.label,
                       style: TextStyle(
-                        color: isSelected
-                            ? shell.chipSelectedFg
-                            : shell.chipUnselectedFg,
-                        fontSize: 14,
+                        color:
+                            isSelected ? Colors.white : shell.chipUnselectedFg,
+                        fontSize: 12,
                         fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
-                        letterSpacing: 0.2,
+                            isSelected ? FontWeight.w800 : FontWeight.w600,
                       ),
                     ),
                   ),
@@ -629,10 +554,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   child: Transform.translate(
                     offset: Offset(0, 20 * (1 - value)),
                     child: Text(
-                      'No Activity Yet',
+                      'No new activity yet',
                       style: TextStyle(
                         color: shell.onChrome,
-                        fontSize: 28,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
                       ),
@@ -654,13 +579,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   child: Transform.translate(
                     offset: Offset(0, 20 * (1 - value)),
                     child: Text(
-                      'When people interact with your content,\nyou\'ll see it here',
+                      'Post consistently.\nJoin threads.\nBuild momentum.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: shell.muted,
-                        fontSize: 16,
+                        fontSize: 15,
                         height: 1.5,
-                        letterSpacing: 0.3,
+                        letterSpacing: 0.2,
                       ),
                     ),
                   ),
@@ -682,7 +607,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     child: GestureDetector(
                       onTap: () {
                         HapticFeedback.lightImpact();
-                        AppNavigator.openDiscover(context);
+                        Navigator.of(context).pushNamed(AppRoutes.camera);
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -717,7 +642,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                           ],
                         ),
                         child: Text(
-                          'Explore content',
+                          'Upload content',
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onPrimary,
                             fontSize: 16,
@@ -835,7 +760,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     BuildContext context,
     StSupportShellStyle shell,
     List<String> titles,
-    Map<String, List<ActivityNotification>> grouped,
+    Map<String, List<ActivityPulseEntry>> grouped,
   ) {
     return RefreshIndicator(
       onRefresh: _handleRefresh,
@@ -847,31 +772,71 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         itemCount: titles.length,
         itemBuilder: (context, index) {
           final String title = titles[index];
-          final List<ActivityNotification> items =
-              grouped[title] ?? <ActivityNotification>[];
+          final List<ActivityPulseEntry> items =
+              grouped[title] ?? <ActivityPulseEntry>[];
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: <Widget>[
               _buildSectionHeader(shell, title),
-              for (final ActivityNotification notification in items)
+              for (final ActivityPulseEntry entry in items)
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  child: ActivityRowView(
-                    key: ValueKey(notification.id),
-                    notification: notification,
-                    onProfileTap: (user) => _handleProfileTap(user),
-                    onPostTap: _handlePostTap,
-                    onCardTap: _handleNotificationTap,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: _buildPulseEntry(context, entry),
                 ),
             ],
           );
         },
       ),
     );
+  }
+
+  Widget _buildPulseEntry(BuildContext context, ActivityPulseEntry entry) {
+    switch (entry) {
+      case ActivityPulseSingle(:final ActivityNotification notification):
+        return ActivityRowView(
+          key: ValueKey(notification.id),
+          notification: notification,
+          onProfileTap: _handleProfileTap,
+          onPostTap: _handlePostTap,
+          onCardTap: _handleNotificationTap,
+        );
+      case ActivityPulseGrouped(
+          :final List<ActivityNotification> notifications
+        ):
+        return ActivityPulseGroupedCard(
+          key: ValueKey('group_${notifications.first.id}'),
+          notifications: notifications,
+          onTap: () => _handleGroupedTap(notifications),
+        );
+      case ActivityPulseInsight insight:
+        return ActivityPulseInsightCard(
+          key: ValueKey(insight.id),
+          insight: insight,
+          onTap: () => _handleInsightTap(insight),
+        );
+    }
+  }
+
+  void _handleGroupedTap(List<ActivityNotification> notifications) {
+    HapticFeedback.lightImpact();
+    for (final ActivityNotification n in notifications) {
+      _markNotificationAsRead(n);
+    }
+    final ActivityNotification first = notifications.first;
+    if (first.videoId?.isNotEmpty == true) {
+      _handlePostTap(first);
+      return;
+    }
+    _handleProfileTap(first.user);
+  }
+
+  void _handleInsightTap(ActivityPulseInsight insight) {
+    HapticFeedback.lightImpact();
+    if (insight.accent == ActivityPulseAccent.tippy) {
+      AppNavigator.openTippyChat(context);
+      return;
+    }
+    AppNavigator.openDiscover(context);
   }
 
   Widget _buildSectionHeader(StSupportShellStyle shell, String title) {
@@ -910,36 +875,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  Map<String, List<ActivityNotification>> _filterNotifications(
-      Map<String, List<ActivityNotification>> grouped) {
-    if (_selectedFilter == 'All') return grouped;
-
-    final filtered = <String, List<ActivityNotification>>{};
-    for (final entry in grouped.entries) {
-      final filteredItems = entry.value.where((notification) {
-        switch (_selectedFilter) {
-          case 'Likes':
-            return notification.type == ActivityNotificationType.like;
-          case 'Follows':
-            return notification.type == ActivityNotificationType.follow;
-          case 'Comments':
-            return notification.type == ActivityNotificationType.comment;
-          case 'Tags':
-            return notification.type == ActivityNotificationType.tag;
-          case 'Mentions':
-            return notification.type == ActivityNotificationType.mention;
-          default:
-            return true;
-        }
-      }).toList();
-
-      if (filteredItems.isNotEmpty) {
-        filtered[entry.key] = filteredItems;
-      }
-    }
-    return filtered;
-  }
-
   Future<void> _handleRefresh() async {
     HapticFeedback.lightImpact();
     unawaited(
@@ -961,7 +896,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     final userId = auth.currentUser?.id;
 
     if (userId != null) {
-      notifier.markAllDelivered(userId);
+      unawaited(notifier.markAllDelivered(userId));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('All notifications marked as read'),
@@ -1057,28 +992,42 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return actionText.contains('content') || actionText.contains('plan');
   }
 
+  void _openThread(String threadId) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ThreadDetailScreen(postId: threadId),
+      ),
+    );
+  }
+
   void _handleNotificationTap(ActivityNotification notification) {
     HapticFeedback.lightImpact();
-
-    // Mark notification as read
     _markNotificationAsRead(notification);
+
+    final String? threadId = notification.effectiveThreadId;
+    if (notification.type == ActivityNotificationType.commentReply &&
+        threadId != null) {
+      _openThread(threadId);
+      return;
+    }
+
+    if (threadId != null &&
+        (notification.isThreadType ||
+            notification.type == ActivityNotificationType.mention)) {
+      _openThread(threadId);
+      return;
+    }
+
+    if (notification.isTippyType) {
+      AppNavigator.openTippyChat(context);
+      return;
+    }
 
     if (notification.videoId?.isNotEmpty == true) {
       _handlePostTap(notification);
       return;
     }
 
-    final threadId = notification.threadId ?? notification.postId;
-    if (threadId != null && threadId.isNotEmpty) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ThreadDetailScreen(postId: threadId),
-        ),
-      );
-      return;
-    }
-
-    // Navigate based on notification type
     switch (notification.type) {
       case ActivityNotificationType.like:
       case ActivityNotificationType.comment:
@@ -1096,7 +1045,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       case ActivityNotificationType.commentReply:
       case ActivityNotificationType.newVideo:
       case ActivityNotificationType.milestone:
-        if (notification.videoId != null) {
+        if (threadId != null) {
+          _openThread(threadId);
+        } else if (notification.videoId != null) {
           _handlePostTap(notification);
         } else {
           _handleProfileTap(notification.user);
@@ -1124,7 +1075,17 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   void _markNotificationAsRead(ActivityNotification notification) {
     if (notification.status == 'pending') {
       final notifier = ref.read(activityProvider.notifier);
-      notifier.markNotificationAsRead(notification.id);
+      unawaited(notifier.markNotificationAsRead(notification.id).then((ok) {
+        if (!ok && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Couldn’t mark as read. Try again.'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }));
 
       // Trigger badge animation for visual feedback
       _badgeController.reset();

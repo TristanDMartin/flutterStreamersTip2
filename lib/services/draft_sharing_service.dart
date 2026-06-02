@@ -111,7 +111,8 @@ class DraftSharingService {
       }
 
       // Filter out empty connection IDs
-      final validConnectionIds = connectionIds.where((id) => id.isNotEmpty).toList();
+      final validConnectionIds =
+          connectionIds.where((id) => id.isNotEmpty).toList();
       if (validConnectionIds.isEmpty) {
         debugPrint('❌ No valid connection IDs provided');
         return const DraftShareResult.failure(
@@ -124,7 +125,8 @@ class DraftSharingService {
       final verifiedConnectionIds = <String>[];
       for (final recipientId in validConnectionIds) {
         try {
-          final userDoc = await _firestore.collection('users').doc(recipientId).get();
+          final userDoc =
+              await _firestore.collection('users').doc(recipientId).get();
           if (userDoc.exists && userDoc.data() != null) {
             verifiedConnectionIds.add(recipientId);
             debugPrint('✅ Verified user exists: $recipientId');
@@ -137,15 +139,18 @@ class DraftSharingService {
       }
 
       if (verifiedConnectionIds.isEmpty) {
-        debugPrint('❌ No valid users found to share with (all users may not exist in Firestore)');
+        debugPrint(
+            '❌ No valid users found to share with (all users may not exist in Firestore)');
         return const DraftShareResult.failure(
           reason: DraftShareFailureReason.recipientNotFound,
-          message: 'The selected person is not available for draft sharing yet.',
+          message:
+              'The selected person is not available for draft sharing yet.',
         );
       }
 
       if (verifiedConnectionIds.length < validConnectionIds.length) {
-        debugPrint('⚠️ Only ${verifiedConnectionIds.length} of ${validConnectionIds.length} users exist in Firestore');
+        debugPrint(
+            '⚠️ Only ${verifiedConnectionIds.length} of ${validConnectionIds.length} users exist in Firestore');
       }
 
       // 1. Get draft from local storage
@@ -264,20 +269,24 @@ class DraftSharingService {
             message: message,
           );
         } catch (e) {
-          debugPrint('❌ Failed to create chat conversation for $recipientId: $e');
+          debugPrint(
+              '❌ Failed to create chat conversation for $recipientId: $e');
           failedRecipients.add(recipientId);
         }
       }
 
       if (failedRecipients.isNotEmpty) {
-        debugPrint('⚠️ Failed to create chat conversations for ${failedRecipients.length} recipients: $failedRecipients');
+        debugPrint(
+            '⚠️ Failed to create chat conversations for ${failedRecipients.length} recipients: $failedRecipients');
         // Don't fail the entire operation if some chats fail, but log it
       }
 
       // 7. Create notification entries for each verified recipient
-      await _createShareNotifications(sharedDraftId, verifiedConnectionIds, message);
+      await _createShareNotifications(
+          sharedDraftId, verifiedConnectionIds, message);
 
-      debugPrint('✅ Draft shared successfully with ${verifiedConnectionIds.length} verified connections');
+      debugPrint(
+          '✅ Draft shared successfully with ${verifiedConnectionIds.length} verified connections');
       return DraftShareResult.success(
         sharedDraftId: sharedDraftId,
         verifiedRecipientIds: verifiedConnectionIds,
@@ -289,7 +298,7 @@ class DraftSharingService {
     } catch (e, stackTrace) {
       debugPrint('❌ Error sharing draft: $e');
       debugPrint('❌ Stack trace: $stackTrace');
-      
+
       // Provide more specific error information
       if (e.toString().contains('permission-denied')) {
         debugPrint('❌ Permission denied - check Firestore rules');
@@ -298,7 +307,7 @@ class DraftSharingService {
       } else if (e.toString().contains('invalid-argument')) {
         debugPrint('❌ Invalid argument - check user IDs');
       }
-      
+
       return DraftShareResult.failure(
         reason: DraftShareFailureReason.unexpected,
         message: e.toString(),
@@ -499,7 +508,8 @@ class DraftSharingService {
 
       final response = await http.get(Uri.parse(videoUrl));
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        debugPrint('❌ Failed to download shared draft video: ${response.statusCode}');
+        debugPrint(
+            '❌ Failed to download shared draft video: ${response.statusCode}');
         return null;
       }
 
@@ -587,7 +597,8 @@ class DraftSharingService {
 
       // Validate required IDs
       if (sharedDraftId.isEmpty || recipientId.isEmpty) {
-        debugPrint('❌ Invalid IDs: sharedDraftId=$sharedDraftId, recipientId=$recipientId');
+        debugPrint(
+            '❌ Invalid IDs: sharedDraftId=$sharedDraftId, recipientId=$recipientId');
         return;
       }
 
@@ -644,9 +655,10 @@ class DraftSharingService {
 
       debugPrint('✅ Created draft chat conversation with $recipientId');
     } catch (e, stackTrace) {
-      debugPrint('❌ Error creating draft chat conversation with $recipientId: $e');
+      debugPrint(
+          '❌ Error creating draft chat conversation with $recipientId: $e');
       debugPrint('❌ Stack trace: $stackTrace');
-      
+
       // Re-throw to allow caller to handle
       rethrow;
     }
@@ -722,7 +734,8 @@ class DraftSharingService {
 
   int _resolveDraftDuration(Map<String, dynamic> draft) {
     final metadata = draft['metadata'];
-    final duration = metadata is Map<String, dynamic> ? metadata['duration'] : null;
+    final duration =
+        metadata is Map<String, dynamic> ? metadata['duration'] : null;
     if (duration is int) {
       return duration;
     }

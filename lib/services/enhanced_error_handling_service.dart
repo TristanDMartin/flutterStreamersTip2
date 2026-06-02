@@ -10,7 +10,7 @@ enum ErrorType {
   cameraFocusFailed,
   cameraZoomFailed,
   cameraFlashFailed,
-  
+
   // Video processing errors
   videoProcessingFailed,
   videoCompressionFailed,
@@ -18,25 +18,25 @@ enum ErrorType {
   videoDurationInvalid,
   videoSizeExceeded,
   videoFormatUnsupported,
-  
+
   // Upload errors
   networkConnectionFailed,
   uploadTimeout,
   uploadFailed,
   storageQuotaExceeded,
   fileCorrupted,
-  
+
   // Moderation errors
   moderationServiceUnavailable,
   moderationTimeout,
   moderationFailed,
   contentAnalysisFailed,
-  
+
   // Authentication errors
   userNotAuthenticated,
   sessionExpired,
   permissionDenied,
-  
+
   // General errors
   unknownError,
   systemError,
@@ -80,7 +80,7 @@ class ErrorDetails {
         return 'Camera zoom failed. Please try adjusting zoom again.';
       case ErrorType.cameraFlashFailed:
         return 'Camera flash failed. Please try toggling flash again.';
-      
+
       case ErrorType.videoProcessingFailed:
         return 'Failed to process video. Please try recording again.';
       case ErrorType.videoCompressionFailed:
@@ -93,7 +93,7 @@ class ErrorDetails {
         return 'Video file is too large. Please record a shorter video or reduce quality.';
       case ErrorType.videoFormatUnsupported:
         return 'Video format is not supported. Please try recording again.';
-      
+
       case ErrorType.networkConnectionFailed:
         return 'No internet connection. Please check your network and try again.';
       case ErrorType.uploadTimeout:
@@ -104,7 +104,7 @@ class ErrorDetails {
         return 'Storage quota exceeded. Please contact support.';
       case ErrorType.fileCorrupted:
         return 'Video file is corrupted. Please record again.';
-      
+
       case ErrorType.moderationServiceUnavailable:
         return 'Content moderation is temporarily unavailable. Please try again later.';
       case ErrorType.moderationTimeout:
@@ -113,14 +113,14 @@ class ErrorDetails {
         return 'Content moderation failed. Please try again.';
       case ErrorType.contentAnalysisFailed:
         return 'Content analysis failed. Please try again.';
-      
+
       case ErrorType.userNotAuthenticated:
         return 'Please log in to upload videos.';
       case ErrorType.sessionExpired:
         return 'Your session has expired. Please log in again.';
       case ErrorType.permissionDenied:
         return 'You do not have permission to perform this action.';
-      
+
       case ErrorType.unknownError:
         return 'An unexpected error occurred. Please try again.';
       case ErrorType.systemError:
@@ -132,7 +132,7 @@ class ErrorDetails {
 
   String get recoveryMessage {
     if (!isRecoverable) return 'This error cannot be recovered automatically.';
-    
+
     switch (type) {
       case ErrorType.cameraPermissionDenied:
         return 'Go to Settings > Apps > StreamersTip > Permissions > Camera and enable access.';
@@ -151,12 +151,14 @@ class ErrorDetails {
 }
 
 class EnhancedErrorHandlingService {
-  static final EnhancedErrorHandlingService _instance = EnhancedErrorHandlingService._internal();
+  static final EnhancedErrorHandlingService _instance =
+      EnhancedErrorHandlingService._internal();
   factory EnhancedErrorHandlingService() => _instance;
   EnhancedErrorHandlingService._internal();
 
   final List<ErrorDetails> _errorHistory = [];
-  final StreamController<ErrorDetails> _errorStreamController = StreamController<ErrorDetails>.broadcast();
+  final StreamController<ErrorDetails> _errorStreamController =
+      StreamController<ErrorDetails>.broadcast();
 
   Stream<ErrorDetails> get errorStream => _errorStreamController.stream;
   List<ErrorDetails> get errorHistory => List.unmodifiable(_errorHistory);
@@ -184,17 +186,17 @@ class EnhancedErrorHandlingService {
 
     // Add to history
     _errorHistory.add(errorDetails);
-    
+
     // Emit to stream
     _errorStreamController.add(errorDetails);
 
     // Log to console for debugging
-    // print('🚨 Error: ${errorDetails.type} - ${errorDetails.message}');
+    // appLog('🚨 Error: ${errorDetails.type} - ${errorDetails.message}');
     if (technicalDetails != null) {
-    // print('🔧 Technical: $technicalDetails');
+      // appLog('🔧 Technical: $technicalDetails');
     }
     if (context != null) {
-    // print('📋 Context: $context');
+      // appLog('📋 Context: $context');
     }
 
     // Store in persistent storage for analytics
@@ -220,13 +222,13 @@ class EnhancedErrorHandlingService {
         'Enable camera permissions in device settings',
         'Restart the app after enabling permissions',
       ];
-    } else if (error.toString().contains('not available') || 
-               error.toString().contains('not found')) {
+    } else if (error.toString().contains('not available') ||
+        error.toString().contains('not found')) {
       errorType = ErrorType.cameraNotAvailable;
       message = 'Camera not available during $operation';
       suggestedActions = ['Try using a different device'];
-    } else if (error.toString().contains('initialization') || 
-               error.toString().contains('init')) {
+    } else if (error.toString().contains('initialization') ||
+        error.toString().contains('init')) {
       errorType = ErrorType.cameraInitializationFailed;
       message = 'Camera initialization failed during $operation';
       isRecoverable = true;
@@ -235,8 +237,8 @@ class EnhancedErrorHandlingService {
         'Restart the app',
         'Check device storage space',
       ];
-    } else if (error.toString().contains('recording') || 
-               error.toString().contains('record')) {
+    } else if (error.toString().contains('recording') ||
+        error.toString().contains('record')) {
       errorType = ErrorType.cameraRecordingFailed;
       message = 'Camera recording failed during $operation';
       isRecoverable = true;
@@ -291,7 +293,7 @@ class EnhancedErrorHandlingService {
     bool isRecoverable = false;
     List<String> suggestedActions = [];
 
-    if (error.toString().contains('compression') || 
+    if (error.toString().contains('compression') ||
         error.toString().contains('encode')) {
       errorType = ErrorType.videoCompressionFailed;
       message = 'Video compression failed during $operation';
@@ -301,14 +303,14 @@ class EnhancedErrorHandlingService {
         'Reduce video quality',
         'Check device storage space',
       ];
-    } else if (error.toString().contains('thumbnail') || 
-               error.toString().contains('preview')) {
+    } else if (error.toString().contains('thumbnail') ||
+        error.toString().contains('preview')) {
       errorType = ErrorType.videoThumbnailFailed;
       message = 'Video thumbnail generation failed during $operation';
       isRecoverable = true;
       suggestedActions = ['Video will upload without preview', 'Try again'];
-    } else if (error.toString().contains('duration') || 
-               error.toString().contains('length')) {
+    } else if (error.toString().contains('duration') ||
+        error.toString().contains('length')) {
       errorType = ErrorType.videoDurationInvalid;
       message = 'Video duration is invalid during $operation';
       isRecoverable = true;
@@ -316,8 +318,8 @@ class EnhancedErrorHandlingService {
         'Record a video between 1 second and 5 minutes',
         'Try recording again',
       ];
-    } else if (error.toString().contains('size') || 
-               error.toString().contains('large')) {
+    } else if (error.toString().contains('size') ||
+        error.toString().contains('large')) {
       errorType = ErrorType.videoSizeExceeded;
       message = 'Video file size exceeded during $operation';
       isRecoverable = true;
@@ -326,15 +328,16 @@ class EnhancedErrorHandlingService {
         'Reduce video quality',
         'Check device storage space',
       ];
-    } else if (error.toString().contains('format') || 
-               error.toString().contains('unsupported')) {
+    } else if (error.toString().contains('format') ||
+        error.toString().contains('unsupported')) {
       errorType = ErrorType.videoFormatUnsupported;
       message = 'Video format not supported during $operation';
       isRecoverable = true;
       suggestedActions = ['Try recording again', 'Check device compatibility'];
     } else {
       errorType = ErrorType.videoProcessingFailed;
-      message = 'Video processing failed during $operation: ${error.toString()}';
+      message =
+          'Video processing failed during $operation: ${error.toString()}';
       isRecoverable = true;
       suggestedActions = ['Try recording again', 'Restart the app'];
     }
@@ -363,7 +366,7 @@ class EnhancedErrorHandlingService {
     bool isRecoverable = false;
     List<String> suggestedActions = [];
 
-    if (error.toString().contains('network') || 
+    if (error.toString().contains('network') ||
         error.toString().contains('connection') ||
         error.toString().contains('internet')) {
       errorType = ErrorType.networkConnectionFailed;
@@ -374,8 +377,8 @@ class EnhancedErrorHandlingService {
         'Try switching between Wi-Fi and mobile data',
         'Try again when connection is stable',
       ];
-    } else if (error.toString().contains('timeout') || 
-               error.toString().contains('timed out')) {
+    } else if (error.toString().contains('timeout') ||
+        error.toString().contains('timed out')) {
       errorType = ErrorType.uploadTimeout;
       message = 'Upload timed out during $operation';
       isRecoverable = true;
@@ -384,14 +387,14 @@ class EnhancedErrorHandlingService {
         'Try uploading during off-peak hours',
         'Try a shorter video',
       ];
-    } else if (error.toString().contains('quota') || 
-               error.toString().contains('storage')) {
+    } else if (error.toString().contains('quota') ||
+        error.toString().contains('storage')) {
       errorType = ErrorType.storageQuotaExceeded;
       message = 'Storage quota exceeded during $operation';
       isRecoverable = false;
       suggestedActions = ['Contact support for assistance'];
-    } else if (error.toString().contains('corrupted') || 
-               error.toString().contains('invalid')) {
+    } else if (error.toString().contains('corrupted') ||
+        error.toString().contains('invalid')) {
       errorType = ErrorType.fileCorrupted;
       message = 'Video file is corrupted during $operation';
       isRecoverable = true;
@@ -427,20 +430,20 @@ class EnhancedErrorHandlingService {
     bool isRecoverable = false;
     List<String> suggestedActions = [];
 
-    if (error.toString().contains('unavailable') || 
+    if (error.toString().contains('unavailable') ||
         error.toString().contains('service')) {
       errorType = ErrorType.moderationServiceUnavailable;
       message = 'Moderation service unavailable during $operation';
       isRecoverable = true;
       suggestedActions = ['Try again later', 'Save as draft for now'];
-    } else if (error.toString().contains('timeout') || 
-               error.toString().contains('timed out')) {
+    } else if (error.toString().contains('timeout') ||
+        error.toString().contains('timed out')) {
       errorType = ErrorType.moderationTimeout;
       message = 'Moderation timed out during $operation';
       isRecoverable = true;
       suggestedActions = ['Try again', 'Check your connection'];
-    } else if (error.toString().contains('analysis') || 
-               error.toString().contains('content')) {
+    } else if (error.toString().contains('analysis') ||
+        error.toString().contains('content')) {
       errorType = ErrorType.contentAnalysisFailed;
       message = 'Content analysis failed during $operation';
       isRecoverable = true;
@@ -515,9 +518,10 @@ class EnhancedErrorHandlingService {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha:0.1),
+                      color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withValues(alpha:0.3)),
+                      border:
+                          Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -554,15 +558,15 @@ class EnhancedErrorHandlingService {
                   ),
                   const SizedBox(height: 4),
                   ...errorDetails.suggestedActions.map((action) => Padding(
-                    padding: const EdgeInsets.only(left: 8, top: 2),
-                    child: Text(
-                      '• $action',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                  )),
+                        padding: const EdgeInsets.only(left: 8, top: 2),
+                        child: Text(
+                          '• $action',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )),
                 ],
               ],
             ),
@@ -685,7 +689,7 @@ class EnhancedErrorHandlingService {
   Future<void> _storeErrorForAnalytics(ErrorDetails errorDetails) async {
     // This would store errors in a local database or send to analytics service
     // For now, just print to console
-    // print('📊 Error Analytics: ${errorDetails.type} at ${errorDetails.timestamp}');
+    // appLog('📊 Error Analytics: ${errorDetails.type} at ${errorDetails.timestamp}');
   }
 
   /// Clear error history

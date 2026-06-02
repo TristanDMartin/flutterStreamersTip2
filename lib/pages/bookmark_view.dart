@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../core/theme/support_shell_style.dart';
 import '../models/bookmark_event.dart';
-import '../services/enhanced_bookmark_service.dart';
+import '../services/unified_bookmark_service.dart';
 import '../widgets/profile_video_feed_view.dart';
 
 class BookmarkView extends StatefulWidget {
@@ -18,22 +19,19 @@ class _BookmarkViewState extends State<BookmarkView>
     with TickerProviderStateMixin {
   late final TabController _outerTabController;
   late final TabController _eventTabController;
-  late final EnhancedBookmarkService _bookmarkService;
+  final UnifiedBookmarkService _bookmarkService =
+      UnifiedBookmarkService.instance;
 
   List<BookmarkEvent> _bookmarks = [];
   bool _isLoading = true;
   String? _error;
   StreamSubscription<List<BookmarkEvent>>? _bookmarkSubscription;
 
-  static const Color _gradientStart = Color(0xFF6137EB);
-  static const Color _gradientEnd = Color(0xFF1C135D);
-
   @override
   void initState() {
     super.initState();
     _outerTabController = TabController(length: 2, vsync: this);
     _eventTabController = TabController(length: 3, vsync: this);
-    _bookmarkService = EnhancedBookmarkService();
     _initializeBookmarks();
   }
 
@@ -47,9 +45,10 @@ class _BookmarkViewState extends State<BookmarkView>
 
   Future<void> _initializeBookmarks() async {
     try {
-      await _bookmarkService.initialize();
+      await _bookmarkService.initializeCalendarEventBookmarks();
       await _bookmarkSubscription?.cancel();
-      _bookmarkSubscription = _bookmarkService.getBookmarksStream().listen(
+      _bookmarkSubscription =
+          _bookmarkService.calendarEventBookmarksStream().listen(
         (bookmarks) {
           if (mounted) {
             setState(() {
@@ -91,67 +90,69 @@ class _BookmarkViewState extends State<BookmarkView>
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [_gradientStart, _gradientEnd],
-          ),
+    final firebase_auth.User? currentUser =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: shell.pageGradient,
         ),
-        child: Scaffold(
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            title: const Text(
-              'Bookmarks',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            bottom: TabBar(
-              controller: _outerTabController,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              indicator: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white24),
-              ),
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white60,
-              labelStyle: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
-              ),
-              tabs: const [
-                Tab(text: 'Videos'),
-                Tab(text: 'Events'),
-              ],
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: shell.onChrome,
+          title: Text(
+            'Bookmarks',
+            style: TextStyle(
+              color: shell.onChrome,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          body: TabBarView(
+          bottom: TabBar(
             controller: _outerTabController,
-            children: [
-              _SavedVideosTab(userId: currentUser?.uid),
-              _EventsTab(
-                isLoading: _isLoading,
-                error: _error,
-                bookmarksByStatus: _getBookmarksByStatus(),
-                tabController: _eventTabController,
-                onRetry: _initializeBookmarks,
-                onDelete: _deleteBookmark,
-                onToggleNotification: _toggleNotification,
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            indicator: BoxDecoration(
+              color: shell.chipSelectedBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: shell.chipSelectedBorder),
+            ),
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: cs.outlineVariant.withValues(alpha: 0.35),
+            labelColor: shell.chipSelectedFg,
+            unselectedLabelColor: shell.muted,
+            labelStyle: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+            ),
+            tabs: const <Widget>[
+              Tab(text: 'Videos'),
+              Tab(text: 'Events'),
             ],
           ),
+        ),
+        body: TabBarView(
+          controller: _outerTabController,
+          children: <Widget>[
+            _SavedVideosTab(userId: currentUser?.uid),
+            _EventsTab(
+              isLoading: _isLoading,
+              error: _error,
+              bookmarksByStatus: _getBookmarksByStatus(),
+              tabController: _eventTabController,
+              onRetry: _initializeBookmarks,
+              onDelete: _deleteBookmark,
+              onToggleNotification: _toggleNotification,
+            ),
+          ],
         ),
       ),
     );
@@ -161,8 +162,9 @@ class _BookmarkViewState extends State<BookmarkView>
     HapticFeedback.lightImpact();
     setState(
         () => _bookmarks.removeWhere((b) => b.eventId == bookmark.eventId));
-    final success =
-        await _bookmarkService.deleteBookmark(eventId: bookmark.eventId);
+    final success = await _bookmarkService.deleteCalendarEventBookmark(
+      eventId: bookmark.eventId,
+    );
     if (!success && mounted) {
       setState(() {
         _bookmarks.add(bookmark);
@@ -178,7 +180,7 @@ class _BookmarkViewState extends State<BookmarkView>
       final index = _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
       if (index != -1) _bookmarks[index] = bookmark.copyWith(notify: newNotify);
     });
-    final success = await _bookmarkService.toggleNotification(
+    final success = await _bookmarkService.toggleCalendarEventNotification(
       eventId: bookmark.eventId,
       notify: newNotify,
     );
@@ -201,11 +203,12 @@ class _SavedVideosTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     if (userId == null) {
-      return const Center(
+      return Center(
         child: Text(
           'Sign in to view saved videos',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: shell.muted, fontWeight: FontWeight.w600),
         ),
       );
     }
@@ -227,8 +230,6 @@ class _EventsTab extends StatelessWidget {
   final Future<void> Function(BookmarkEvent) onDelete;
   final Future<void> Function(BookmarkEvent) onToggleNotification;
 
-  static const Color _purple = Color(0xFF955CFF);
-
   const _EventsTab({
     required this.isLoading,
     required this.error,
@@ -242,16 +243,18 @@ class _EventsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: _purple),
+      return Center(
+        child: CircularProgressIndicator(
+          color: Theme.of(context).colorScheme.primary,
+        ),
       );
     }
     if (error != null) {
       return _ErrorState(error: error!, onRetry: onRetry);
     }
     return Column(
-      children: [
-        _buildEventTabBar(),
+      children: <Widget>[
+        _buildEventTabBar(context),
         Expanded(
           child: TabBarView(
             controller: tabController,
@@ -284,20 +287,22 @@ class _EventsTab extends StatelessWidget {
     );
   }
 
-  Widget _buildEventTabBar() {
+  Widget _buildEventTabBar(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return TabBar(
       controller: tabController,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       indicator: BoxDecoration(
-        color: _purple.withValues(alpha: 0.24),
+        color: shell.chipSelectedBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _purple.withValues(alpha: 0.44)),
+        border: Border.all(color: shell.chipSelectedBorder),
       ),
       indicatorSize: TabBarIndicatorSize.tab,
-      dividerColor: Colors.transparent,
-      labelColor: Colors.white,
-      unselectedLabelColor: Colors.white60,
-      tabs: const [
+      dividerColor: cs.outlineVariant.withValues(alpha: 0.35),
+      labelColor: shell.chipSelectedFg,
+      unselectedLabelColor: shell.muted,
+      tabs: const <Widget>[
         Tab(text: 'Upcoming'),
         Tab(text: 'Live'),
         Tab(text: 'Past'),
@@ -314,29 +319,31 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Center(
       child: Container(
         margin: const EdgeInsets.all(24),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+          border: Border.all(color: shell.surfaceCardBorder),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.redAccent, size: 44),
+          children: <Widget>[
+            Icon(Icons.error_outline_rounded, color: cs.error, size: 44),
             const SizedBox(height: 14),
             Text(
               error,
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: shell.muted),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
+            FilledButton.tonalIcon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh_rounded),
               label: const Text('Retry'),
             ),
           ],
@@ -363,25 +370,26 @@ class _EventList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     if (bookmarks.isEmpty) {
       return Center(
         child: Container(
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.07),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            border: Border.all(color: shell.surfaceCardBorder),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(emptyIcon, color: Colors.white54, size: 42),
+            children: <Widget>[
+              Icon(emptyIcon, color: shell.iconDim, size: 42),
               const SizedBox(height: 14),
               Text(
                 emptyMessage,
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: shell.muted,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                 ),
@@ -409,8 +417,6 @@ class _EventCard extends StatelessWidget {
   final Future<void> Function(BookmarkEvent) onDelete;
   final Future<void> Function(BookmarkEvent) onToggleNotification;
 
-  static const Color _purple = Color(0xFF955CFF);
-
   const _EventCard({
     required this.bookmark,
     required this.onDelete,
@@ -419,13 +425,15 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme cs = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      color: Colors.white.withValues(alpha: 0.08),
+      color: shell.surfaceCard,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+        side: BorderSide(color: shell.surfaceCardBorder),
       ),
       child: InkWell(
         onTap: () => _showDetails(context),
@@ -434,17 +442,17 @@ class _EventCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: <Widget>[
               Row(
-                children: [
+                children: <Widget>[
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                      children: <Widget>[
                         Text(
                           bookmark.title,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: shell.onChrome,
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
                             height: 1.15,
@@ -455,8 +463,8 @@ class _EventCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           bookmark.creatorName,
-                          style: const TextStyle(
-                            color: Colors.white60,
+                          style: TextStyle(
+                            color: shell.muted,
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                           ),
@@ -469,12 +477,15 @@ class _EventCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Row(
-                children: [
-                  const Icon(Icons.schedule, color: Colors.white60, size: 16),
+                children: <Widget>[
+                  Icon(Icons.schedule_rounded, color: shell.iconDim, size: 16),
                   const SizedBox(width: 8),
                   Text(
                     _formatRelative(bookmark.startAt),
-                    style: const TextStyle(color: Colors.white60, fontSize: 14),
+                    style: TextStyle(
+                      color: shell.muted,
+                      fontSize: 14,
+                    ),
                   ),
                   const Spacer(),
                   Flexible(
@@ -484,7 +495,7 @@ class _EventCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.end,
                       style: TextStyle(
-                        color: _timeColor(bookmark.status),
+                        color: _timeColor(bookmark.status, cs),
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
@@ -494,20 +505,20 @@ class _EventCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Row(
-                children: [
+                children: <Widget>[
                   IconButton.filledTonal(
                     onPressed: () => onToggleNotification(bookmark),
                     icon: Icon(
                       bookmark.notify
-                          ? Icons.notifications
-                          : Icons.notifications_off,
-                      color: bookmark.notify ? _purple : Colors.grey,
+                          ? Icons.notifications_active_rounded
+                          : Icons.notifications_off_outlined,
+                      color: bookmark.notify ? cs.primary : cs.onSurfaceVariant,
                     ),
                   ),
                   const Spacer(),
                   IconButton.filledTonal(
                     onPressed: () => _confirmDelete(context),
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    icon: Icon(Icons.delete_outline_rounded, color: cs.error),
                   ),
                 ],
               ),
@@ -519,78 +530,90 @@ class _EventCard extends StatelessWidget {
   }
 
   String _formatRelative(DateTime dt) {
-    final diff = dt.difference(DateTime.now());
+    final Duration diff = dt.difference(DateTime.now());
     if (diff.inDays > 0) return '${diff.inDays}d ${diff.inHours % 24}h';
     if (diff.inHours > 0) return '${diff.inHours}h ${diff.inMinutes % 60}m';
     if (diff.inMinutes > 0) return '${diff.inMinutes}m';
     return 'Now';
   }
 
-  Color _timeColor(EventStatus status) {
+  Color _timeColor(EventStatus status, ColorScheme cs) {
     switch (status) {
       case EventStatus.upcoming:
-        return Colors.blue;
+        return cs.primary;
       case EventStatus.live:
-        return Colors.green;
+        return cs.tertiary;
       case EventStatus.past:
-        return Colors.grey;
+        return cs.onSurfaceVariant;
     }
   }
 
   void _showDetails(BuildContext context) {
-    showDialog(
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title:
-            Text(bookmark.title, style: const TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Creator: ${bookmark.creatorName}',
-                style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 8),
-            Text('Start: ${_formatRelative(bookmark.startAt)}',
-                style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 8),
-            Text('Notifications: ${bookmark.notify ? "On" : "Off"}',
-                style: const TextStyle(color: Colors.grey)),
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text(bookmark.title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Creator: ${bookmark.creatorName}',
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Start: ${_formatRelative(bookmark.startAt)}',
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Notifications: ${bookmark.notify ? "On" : "Off"}',
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
           ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close')),
-        ],
-      ),
+        );
+      },
     );
   }
 
   void _confirmDelete(BuildContext context) {
-    showDialog(
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Delete Bookmark',
-            style: TextStyle(color: Colors.white)),
-        content: Text(
-          'Remove "${bookmark.title}" from your bookmarks?',
-          style: const TextStyle(color: Colors.grey),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              onDelete(bookmark);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete bookmark'),
+          content: Text(
+            'Remove "${bookmark.title}" from your bookmarks?',
           ),
-        ],
-      ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                onDelete(bookmark);
+              },
+              child: Text(
+                'Delete',
+                style: TextStyle(color: cs.error, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -602,22 +625,26 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (status) {
-      EventStatus.upcoming => Colors.blue,
-      EventStatus.live => Colors.green,
-      EventStatus.past => Colors.grey,
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color color = switch (status) {
+      EventStatus.upcoming => cs.primary,
+      EventStatus.live => cs.tertiary,
+      EventStatus.past => cs.onSurfaceVariant,
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
       child: Text(
         status.displayName,
-        style:
-            TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

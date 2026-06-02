@@ -136,11 +136,14 @@ class VideoProcessingService {
       duration = const Duration(seconds: 30);
     }
     final durationMs = duration.inMilliseconds;
-    final seekPrimary =
-        (durationMs * 0.1).clamp(0, 1000).toInt();
+    final seekPrimary = (durationMs * 0.1).clamp(0, 1000).toInt();
     File? thumb;
     thumb = await _tryThumbnailAtTimeMs(
-      videoFile, seekPrimary, videoId, targetWidth, targetHeight,
+      videoFile,
+      seekPrimary,
+      videoId,
+      targetWidth,
+      targetHeight,
     );
     if (thumb != null) {
       LoggingService.instance.info(
@@ -152,7 +155,11 @@ class VideoProcessingService {
     for (final ms in [500, 1000, 2000]) {
       if (ms > durationMs) continue;
       thumb = await _tryThumbnailAtTimeMs(
-        videoFile, ms, videoId, targetWidth, targetHeight,
+        videoFile,
+        ms,
+        videoId,
+        targetWidth,
+        targetHeight,
       );
       if (thumb != null) {
         LoggingService.instance.info(
@@ -163,7 +170,11 @@ class VideoProcessingService {
       }
     }
     thumb = await _tryThumbnailAtTimeMs(
-      videoFile, 0, videoId, fallbackWidth, fallbackHeight,
+      videoFile,
+      0,
+      videoId,
+      fallbackWidth,
+      fallbackHeight,
     );
     if (thumb != null) {
       LoggingService.instance.info(
@@ -175,7 +186,11 @@ class VideoProcessingService {
     for (final ms in [0, 100, 500, 1000, 2000]) {
       if (ms > durationMs) continue;
       thumb = await _tryThumbnailAtTimeMs(
-        videoFile, ms, videoId, targetWidth, targetHeight,
+        videoFile,
+        ms,
+        videoId,
+        targetWidth,
+        targetHeight,
       );
       if (thumb != null) {
         LoggingService.instance.info(
@@ -379,7 +394,8 @@ class VideoProcessingService {
   }) async {
     try {
       final thumbnail = await generateThumbnailWithFallbacks(
-        inputFile, videoId,
+        inputFile,
+        videoId,
       );
 
       // Upload thumbnail to Firebase Storage

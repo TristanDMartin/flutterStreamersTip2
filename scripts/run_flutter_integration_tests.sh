@@ -9,6 +9,11 @@ set -euo pipefail
 #
 # Env:
 #   FLUTTER_INTEGRATION_TEST_DEVICE   Force device id (same as first arg).
+#   FLUTTER_INTEGRATION_TEST_TARGET   Test target (default: integration_test).
+#   FLUTTER_INTEGRATION_TEST_ARGS     Extra args passed to flutter test.
+#   RUN_MOBILE_FEED_E2E               Passed as a dart define when set.
+#   QA_EMAIL_OR_USERNAME              Passed as a dart define when set.
+#   QA_PASSWORD                       Passed as a dart define when set.
 #   PREFER_INTEGRATION_DEVICE          android | ios (default android) when
 #                                      both physical phones are plugged.
 #
@@ -155,5 +160,21 @@ if [[ -z "$DEVICE" ]]; then
   exit 1
 fi
 
-echo "Running: flutter test integration_test -d $DEVICE"
-exec flutter test integration_test -d "$DEVICE"
+TARGET="${FLUTTER_INTEGRATION_TEST_TARGET:-integration_test}"
+EXTRA_ARGS=()
+if [[ -n "${FLUTTER_INTEGRATION_TEST_ARGS:-}" ]]; then
+  # shellcheck disable=SC2206
+  EXTRA_ARGS=(${FLUTTER_INTEGRATION_TEST_ARGS})
+fi
+if [[ -n "${RUN_MOBILE_FEED_E2E:-}" ]]; then
+  EXTRA_ARGS+=("--dart-define=RUN_MOBILE_FEED_E2E=${RUN_MOBILE_FEED_E2E}")
+fi
+if [[ -n "${QA_EMAIL_OR_USERNAME:-}" ]]; then
+  EXTRA_ARGS+=("--dart-define=QA_EMAIL_OR_USERNAME=${QA_EMAIL_OR_USERNAME}")
+fi
+if [[ -n "${QA_PASSWORD:-}" ]]; then
+  EXTRA_ARGS+=("--dart-define=QA_PASSWORD=${QA_PASSWORD}")
+fi
+
+echo "Running: flutter test $TARGET -d $DEVICE ${EXTRA_ARGS[*]:-}"
+exec flutter test "$TARGET" -d "$DEVICE" "${EXTRA_ARGS[@]}"

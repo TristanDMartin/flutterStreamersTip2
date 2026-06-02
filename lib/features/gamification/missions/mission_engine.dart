@@ -99,7 +99,8 @@ class MissionEngine {
       'milestone',
     };
     final List<MissionSection> out = <MissionSection>[];
-    void addSection(String bucketKey, String title, List<MissionTemplate> pool) {
+    void addSection(
+        String bucketKey, String title, List<MissionTemplate> pool) {
       final List<DailyMissionModel>? bucket = buckets[bucketKey];
       final List<DailyMissionModel> merged = _mergeBucketWithTemplates(
         bucket ?? <DailyMissionModel>[],
@@ -115,8 +116,7 @@ class MissionEngine {
     addSection('weekly', 'This week', pickWeeklyTemplates(userId, now));
     addSection('onboarding', 'Getting started', onboardingTemplates());
     addSection('milestone', 'Milestones', <MissionTemplate>[]);
-    for (final MapEntry<String, List<DailyMissionModel>> e
-        in buckets.entries) {
+    for (final MapEntry<String, List<DailyMissionModel>> e in buckets.entries) {
       if (handled.contains(e.key)) continue;
       out.add(
         MissionSection(
@@ -148,9 +148,8 @@ class MissionEngine {
         withoutTemplate.add(m);
       }
     }
-    final Set<String> templateIdsInPool = templates
-        .map((MissionTemplate t) => t.templateId)
-        .toSet();
+    final Set<String> templateIdsInPool =
+        templates.map((MissionTemplate t) => t.templateId).toSet();
     final List<DailyMissionModel> out = <DailyMissionModel>[];
     for (final MissionTemplate t in templates) {
       final DailyMissionModel? row = byTemplateId[t.templateId];

@@ -23,29 +23,35 @@ class HashtagLockService {
   };
 
   // Validates a hashtag against rules and reserved list
-  Future<HashtagValidationResult> validateHashtag(String hashtag, String? currentUserId) async {
+  Future<HashtagValidationResult> validateHashtag(
+      String hashtag, String? currentUserId) async {
     // Clean the hashtag (remove # if present)
     final cleanHashtag = hashtag.replaceAll('#', '').toLowerCase();
-    
+
     if (cleanHashtag.length < 2 || cleanHashtag.length > 20) {
       return HashtagValidationResult(
-          isValid: false, errorMessage: 'Hashtag must be 2-20 characters long.');
+          isValid: false,
+          errorMessage: 'Hashtag must be 2-20 characters long.');
     }
-    
+
     if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(cleanHashtag)) {
       return HashtagValidationResult(
-          isValid: false, errorMessage: 'Hashtag can only contain letters, numbers, and underscores.');
+          isValid: false,
+          errorMessage:
+              'Hashtag can only contain letters, numbers, and underscores.');
     }
-    
+
     if (_reservedHashtags.contains(cleanHashtag)) {
       // Check if the current user is authorized to use this reserved hashtag
-      final isAuthorized = await _isUserAuthorizedForHashtag(cleanHashtag, currentUserId);
+      final isAuthorized =
+          await _isUserAuthorizedForHashtag(cleanHashtag, currentUserId);
       if (!isAuthorized) {
         return HashtagValidationResult(
-            isValid: false, errorMessage: 'This hashtag is reserved and cannot be used.');
+            isValid: false,
+            errorMessage: 'This hashtag is reserved and cannot be used.');
       }
     }
-    
+
     return HashtagValidationResult(isValid: true);
   }
 
@@ -56,21 +62,20 @@ class HashtagLockService {
   }
 
   // Checks if a user is authorized to use a reserved hashtag
-  Future<bool> _isUserAuthorizedForHashtag(String hashtag, String? currentUserId) async {
+  Future<bool> _isUserAuthorizedForHashtag(
+      String hashtag, String? currentUserId) async {
     if (currentUserId == null) return false;
-    
+
     try {
       // Check if the user has special permissions for this hashtag
-      final doc = await _firestore
-          .collection('hashtag_permissions')
-          .doc(hashtag)
-          .get();
-      
+      final doc =
+          await _firestore.collection('hashtag_permissions').doc(hashtag).get();
+
       if (!doc.exists) return false;
-      
+
       final data = doc.data();
       final authorizedUsers = List<String>.from(data?['authorizedUsers'] ?? []);
-      
+
       return authorizedUsers.contains(currentUserId);
     } catch (e) {
       // If there's an error checking permissions, deny access for security
@@ -82,11 +87,12 @@ class HashtagLockService {
   Future<bool> grantHashtagPermission(String hashtag, String userId) async {
     try {
       final cleanHashtag = hashtag.replaceAll('#', '').toLowerCase();
-      
+
       // First, try to get the existing document
-      final docRef = _firestore.collection('hashtag_permissions').doc(cleanHashtag);
+      final docRef =
+          _firestore.collection('hashtag_permissions').doc(cleanHashtag);
       final doc = await docRef.get();
-      
+
       if (doc.exists) {
         // Document exists, add user to existing list
         await docRef.update({
@@ -102,7 +108,7 @@ class HashtagLockService {
           'updatedAt': FieldValue.serverTimestamp(),
         });
       }
-      
+
       return true;
     } catch (e) {
       debugPrint('Error granting hashtag permission: $e');
@@ -114,7 +120,7 @@ class HashtagLockService {
   Future<bool> revokeHashtagPermission(String hashtag, String userId) async {
     try {
       final cleanHashtag = hashtag.replaceAll('#', '').toLowerCase();
-      
+
       await _firestore
           .collection('hashtag_permissions')
           .doc(cleanHashtag)
@@ -122,7 +128,7 @@ class HashtagLockService {
         'authorizedUsers': FieldValue.arrayRemove([userId]),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      
+
       return true;
     } catch (e) {
       return false;
@@ -133,14 +139,14 @@ class HashtagLockService {
   Future<List<String>> getAuthorizedUsers(String hashtag) async {
     try {
       final cleanHashtag = hashtag.replaceAll('#', '').toLowerCase();
-      
+
       final doc = await _firestore
           .collection('hashtag_permissions')
           .doc(cleanHashtag)
           .get();
-      
+
       if (!doc.exists) return [];
-      
+
       final data = doc.data();
       return List<String>.from(data?['authorizedUsers'] ?? []);
     } catch (e) {

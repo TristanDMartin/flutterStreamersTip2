@@ -6,10 +6,12 @@ class SetupHashtagPermissionsWidget extends StatefulWidget {
   const SetupHashtagPermissionsWidget({super.key});
 
   @override
-  State<SetupHashtagPermissionsWidget> createState() => _SetupHashtagPermissionsWidgetState();
+  State<SetupHashtagPermissionsWidget> createState() =>
+      _SetupHashtagPermissionsWidgetState();
 }
 
-class _SetupHashtagPermissionsWidgetState extends State<SetupHashtagPermissionsWidget> {
+class _SetupHashtagPermissionsWidgetState
+    extends State<SetupHashtagPermissionsWidget> {
   final _hashtagService = HashtagLockService();
   bool _isLoading = false;
   String? _currentUserId;
@@ -50,29 +52,31 @@ class _SetupHashtagPermissionsWidgetState extends State<SetupHashtagPermissionsW
 
     try {
       // Grant Owner permission
-      final ownerSuccess = await _hashtagService.grantHashtagPermission('owner', _currentUserId!);
-      
+      final ownerSuccess = await _hashtagService.grantHashtagPermission(
+          'owner', _currentUserId!);
+
       // Grant Founder permission
-      final founderSuccess = await _hashtagService.grantHashtagPermission('founder', _currentUserId!);
+      final founderSuccess = await _hashtagService.grantHashtagPermission(
+          'founder', _currentUserId!);
 
       if (ownerSuccess && founderSuccess) {
         setState(() {
           _status = '✅ Success! You can now use #owner and #founder hashtags\n'
-                  'Your User ID: $_currentUserId';
+              'Your User ID: $_currentUserId';
         });
       } else if (ownerSuccess || founderSuccess) {
         setState(() {
           _status = '⚠️ Partial success:\n'
-                  'Owner: ${ownerSuccess ? "✅" : "❌"}\n'
-                  'Founder: ${founderSuccess ? "✅" : "❌"}\n'
-                  'Try again for the failed permission.';
+              'Owner: ${ownerSuccess ? "✅" : "❌"}\n'
+              'Founder: ${founderSuccess ? "✅" : "❌"}\n'
+              'Try again for the failed permission.';
         });
       } else {
         setState(() {
           _status = '❌ Failed to set up permissions. Please check:\n'
-                  '1. You are logged in\n'
-                  '2. Internet connection is working\n'
-                  '3. Try again in a few seconds';
+              '1. You are logged in\n'
+              '2. Internet connection is working\n'
+              '3. Try again in a few seconds';
         });
       }
     } catch (e) {
@@ -102,13 +106,13 @@ class _SetupHashtagPermissionsWidgetState extends State<SetupHashtagPermissionsW
     try {
       final ownerUsers = await _hashtagService.getAuthorizedUsers('owner');
       final founderUsers = await _hashtagService.getAuthorizedUsers('founder');
-      
+
       final hasOwnerPermission = ownerUsers.contains(_currentUserId);
       final hasFounderPermission = founderUsers.contains(_currentUserId);
-      
+
       setState(() {
         _status = 'Owner permission: ${hasOwnerPermission ? "✅" : "❌"}\n'
-                'Founder permission: ${hasFounderPermission ? "✅" : "❌"}';
+            'Founder permission: ${hasFounderPermission ? "✅" : "❌"}';
       });
     } catch (e) {
       setState(() {
@@ -144,7 +148,6 @@ class _SetupHashtagPermissionsWidgetState extends State<SetupHashtagPermissionsW
               ),
             ),
             const SizedBox(height: 16),
-            
             Text(
               _status,
               style: const TextStyle(
@@ -152,9 +155,7 @@ class _SetupHashtagPermissionsWidgetState extends State<SetupHashtagPermissionsW
                 fontSize: 16,
               ),
             ),
-            
             const SizedBox(height: 24),
-            
             Row(
               children: [
                 Expanded(
@@ -165,13 +166,14 @@ class _SetupHashtagPermissionsWidgetState extends State<SetupHashtagPermissionsW
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: _isLoading 
+                    child: _isLoading
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Text('Grant Me Permissions'),
@@ -191,9 +193,7 @@ class _SetupHashtagPermissionsWidgetState extends State<SetupHashtagPermissionsW
                 ),
               ],
             ),
-            
             const SizedBox(height: 24),
-            
             const Text(
               'Instructions:',
               style: TextStyle(

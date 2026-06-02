@@ -4,9 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_colors.dart';
 import '../core/theme/support_shell_style.dart';
+import '../features/activity/pulse/activity_pulse_logic.dart';
+import '../features/activity/pulse/activity_pulse_tokens.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
-import '../widgets/optimized_image.dart';
 import '../services/auth_service.dart';
 import '../services/follows_service.dart';
 import '../providers/follow_refresh_provider.dart';
@@ -131,6 +132,9 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     final isFollowing = _isFollowing;
     final isMutualFollow = _isFollowing && _isFollowedBy;
 
+    final ActivityNotification n = widget.notification;
+    final bool highPriority = n.isHighPriority;
+    final Color accent = ActivityPulseTokens.accentColor(n.pulseAccent);
     return FadeTransition(
       opacity: _fadeController,
       child: GestureDetector(
@@ -160,58 +164,75 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           animation: _scaleController,
           builder: (context, child) {
             return Transform.scale(
-              scale: 1.0 - (_scaleController.value * 0.02),
+              scale: 1.0 - (_scaleController.value * 0.025),
               child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 2),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                margin: EdgeInsets.symmetric(
+                  vertical: highPriority ? 5 : 3,
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: highPriority ? 14 : 12,
+                  vertical: highPriority ? 14 : 11,
+                ),
                 decoration: BoxDecoration(
                   color: _isPressed
-                      ? AppColors.primary.withValues(alpha: 0.12)
+                      ? accent.withValues(alpha: 0.1)
                       : shell.surfaceCard,
-                  borderRadius: BorderRadius.circular(22),
+                  borderRadius: BorderRadius.circular(
+                    highPriority ? 18 : 14,
+                  ),
                   border: Border.all(
                     color: _isPressed
-                        ? AppColors.primary.withValues(alpha: 0.35)
-                        : shell.surfaceCardBorder,
-                    width: 1,
+                        ? accent.withValues(alpha: 0.45)
+                        : highPriority
+                            ? accent.withValues(alpha: 0.32)
+                            : shell.surfaceCardBorder,
+                    width: highPriority ? 1.2 : 1,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: shell.shadowSoft,
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
+                  boxShadow: <BoxShadow>[
+                    if (highPriority)
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.14),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      )
+                    else
+                      BoxShadow(
+                        color: shell.shadowSoft,
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
                   ],
                 ),
                 child: Stack(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Avatar with ring
-                        _buildAvatarWithRing(context, shell),
-
-                        const SizedBox(width: 12),
-
-                        // Notification text
-                        Expanded(
-                          child: _buildNotificationText(shell),
+                  children: <Widget>[
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            _buildAvatarWithRing(context, shell, accent),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildNotificationText(shell, accent),
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              flex: 0,
+                              child: _buildActionItem(
+                                context,
+                                shell,
+                                isFollowing,
+                                isMutualFollow,
+                                currentUserId,
+                              ),
+                            ),
+                          ],
                         ),
-
-                        const SizedBox(width: 10),
-
-                        // Action item
-                        Flexible(
-                          flex: 0,
-                          child: _buildActionItem(
-                            context,
-                            shell,
-                            isFollowing,
-                            isMutualFollow,
-                            currentUserId,
-                          ),
-                        ),
+                        if (n.showThreadContinueCta) ...<Widget>[
+                          const SizedBox(height: 10),
+                          _ThreadContinueCta(accent: accent),
+                        ],
                       ],
                     ),
 
@@ -269,6 +290,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   Widget _buildAvatarWithRing(
     BuildContext context,
     StSupportShellStyle shell,
+    Color accent,
   ) {
     final user = widget.notification.user;
     final avatarURL = user.avatarURL ?? '';
@@ -335,10 +357,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: _getNotificationTypeColor(widget.notification.type),
-                width: 2,
-              ),
+              border: Border.all(color: accent, width: 2),
             ),
           ),
 
@@ -365,10 +384,15 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     );
   }
 
-  Widget _buildNotificationText(StSupportShellStyle shell) {
+  Widget _buildNotificationText(
+    StSupportShellStyle shell,
+    Color accent,
+  ) {
+    final ActivityNotification n = widget.notification;
+    final String? preview = n.commentText?.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+      children: <Widget>[
         RichText(
           text: TextSpan(
             style: TextStyle(
@@ -406,49 +430,43 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _handleActorTap,
-                child: Text(
-                  '@${widget.notification.user.username}',
-                  style: TextStyle(
-                    color: shell.mutedStrong,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+        if (preview != null && preview.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            '"$preview"',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: shell.onChrome.withValues(alpha: 0.88),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
             ),
-            const SizedBox(width: 8),
-            Container(
-              width: 4,
-              height: 4,
-              decoration: BoxDecoration(
-                color: shell.iconDim,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              _getTimestampString(),
-              style: TextStyle(
-                color: shell.mutedStrong,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+          ),
+        ],
+        const SizedBox(height: 6),
+        Text(
+          '${_getTimestampString()} • Tap to ${_tapHint()}',
+          style: TextStyle(
+            color: shell.mutedStrong,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
+  }
+
+  String _tapHint() {
+    if (widget.notification.showThreadContinueCta) {
+      return 'continue conversation';
+    }
+    if (widget.notification.videoId?.isNotEmpty == true) {
+      return 'view clip';
+    }
+    return 'open';
   }
 
   Widget _buildActionItem(
@@ -484,12 +502,20 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: OptimizedImage(
+            child: CachedNetworkImage(
               imageUrl: widget.notification.postThumbnailUrl!,
               width: 44,
               height: 44,
               fit: BoxFit.cover,
-              placeholder: Container(
+              memCacheWidth: (44 * MediaQuery.devicePixelRatioOf(context))
+                  .round()
+                  .clamp(88, 256),
+              memCacheHeight: (44 * MediaQuery.devicePixelRatioOf(context))
+                  .round()
+                  .clamp(88, 256),
+              filterQuality: FilterQuality.high,
+              fadeInDuration: const Duration(milliseconds: 120),
+              placeholder: (_, __) => Container(
                 color: shell.skeletonFill,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -508,7 +534,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                   ],
                 ),
               ),
-              errorWidget: Container(
+              errorWidget: (_, __, ___) => Container(
                 color: shell.skeletonFill,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -610,11 +636,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           return 'mentioned you in a comment';
         }
       case ActivityNotificationType.commentReply:
-        if (widget.notification.commentText != null) {
-          return 'replied to your comment: "${widget.notification.commentText}"';
-        } else {
-          return 'replied to your comment';
-        }
+        return 'replied to your thread';
       case ActivityNotificationType.newVideo:
         return 'posted a new video';
       case ActivityNotificationType.milestone:
@@ -657,31 +679,6 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     }
   }
 
-  Color _getNotificationTypeColor(ActivityNotificationType type) {
-    switch (type) {
-      case ActivityNotificationType.like:
-        return const Color(0xFFE91E63); // Pink
-      case ActivityNotificationType.follow:
-        return const Color(0xFF2196F3); // Blue
-      case ActivityNotificationType.comment:
-        return const Color(0xFF4CAF50); // Green
-      case ActivityNotificationType.tag:
-        return const Color(0xFFFF9800); // Orange
-      case ActivityNotificationType.mention:
-        return const Color(0xFF9C27B0); // Purple
-      case ActivityNotificationType.commentReply:
-        return const Color(0xFF00BCD4); // Cyan
-      case ActivityNotificationType.newVideo:
-        return AppColors.primary;
-      case ActivityNotificationType.milestone:
-        return const Color(0xFFFFC107); // Amber/Gold
-      case ActivityNotificationType.liveStream:
-        return const Color(0xFFF44336); // Red (live)
-      case ActivityNotificationType.adminBroadcast:
-        return const Color(0xFF607D8B); // Blue grey
-    }
-  }
-
   String _formatMilestone(int value) {
     if (value >= 1000000) {
       return '${(value / 1000000).toStringAsFixed(1)}M';
@@ -710,11 +707,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       setState(() {
         _isLoadingFollowStatus = true;
       });
-
       bool success;
-
       if (isFollowing) {
-        // Unfollow the user
         success =
             await _followsService.unfollowUser(widget.notification.user.id);
         if (success) {
@@ -724,25 +718,21 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           });
         }
       } else {
-        // Follow the user
         success = await _followsService.followUser(widget.notification.user.id);
         if (success) {
           setState(() {
             _isFollowing = true;
             _isLoadingFollowStatus = false;
           });
-          // Reload follow status to check if they now follow you back
           await _loadFollowStatus();
         }
       }
-
       if (success) {
         ref.read(followRefreshProvider.notifier).state++;
       }
-
       if (mounted) {
-        final username = widget.notification.user.username;
-        final message = success
+        final String username = widget.notification.user.username;
+        final String message = success
             ? (isFollowing
                 ? 'Unfollowed @$username'
                 : (isMutualFollow
@@ -772,5 +762,38 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         );
       }
     }
+  }
+}
+
+class _ThreadContinueCta extends StatelessWidget {
+  const _ThreadContinueCta({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            'Continue thread',
+            style: TextStyle(
+              color: accent,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(Icons.arrow_forward_rounded, size: 14, color: accent),
+        ],
+      ),
+    );
   }
 }

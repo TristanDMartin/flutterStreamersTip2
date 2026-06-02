@@ -25,6 +25,8 @@ final AutoDisposeFutureProvider<MeEntitlementsData> meEntitlementsProvider =
     if (user == null) {
       throw StateError('Not signed in');
     }
-    return ref.read(meEntitlementsServiceProvider).fetchCurrentUserEntitlements();
+    return ref
+        .read(meEntitlementsServiceProvider)
+        .fetchCurrentUserEntitlements();
   },
 );

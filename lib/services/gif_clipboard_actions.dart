@@ -43,7 +43,8 @@ Future<void> copyNetworkGifToClipboard(
     await GifPasteboardChannel.writeGifBytes(bytes);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GIF copied — paste in iMessage or chat.')),
+        const SnackBar(
+            content: Text('GIF copied — paste in iMessage or chat.')),
       );
     }
   } catch (_) {

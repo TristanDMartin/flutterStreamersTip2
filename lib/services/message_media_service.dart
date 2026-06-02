@@ -15,10 +15,34 @@ class MessageMediaService {
   final ImagePicker _imagePicker = ImagePicker();
 
   // Supported media types
-  static const List<String> supportedImageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-  static const List<String> supportedVideoTypes = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
-  static const List<String> supportedAudioTypes = ['mp3', 'wav', 'aac', 'm4a', 'ogg'];
-  static const List<String> supportedDocumentTypes = ['pdf', 'doc', 'docx', 'txt', 'rtf'];
+  static const List<String> supportedImageTypes = [
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp'
+  ];
+  static const List<String> supportedVideoTypes = [
+    'mp4',
+    'mov',
+    'avi',
+    'mkv',
+    'webm'
+  ];
+  static const List<String> supportedAudioTypes = [
+    'mp3',
+    'wav',
+    'aac',
+    'm4a',
+    'ogg'
+  ];
+  static const List<String> supportedDocumentTypes = [
+    'pdf',
+    'doc',
+    'docx',
+    'txt',
+    'rtf'
+  ];
 
   /// Upload image to Firebase Storage
   Future<String?> uploadImage(XFile imageFile, String chatId) async {
@@ -26,15 +50,16 @@ class MessageMediaService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return null;
 
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${imageFile.name}';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${imageFile.name}';
       final path = 'chats/$chatId/images/$fileName';
-      
+
       final ref = _storage.ref().child(path);
       final uploadTask = ref.putFile(File(imageFile.path));
-      
+
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      
+
       LoggingService.instance.info('Image uploaded successfully: $downloadUrl');
       return downloadUrl;
     } catch (e) {
@@ -49,15 +74,16 @@ class MessageMediaService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return null;
 
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${videoFile.name}';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${videoFile.name}';
       final path = 'chats/$chatId/videos/$fileName';
-      
+
       final ref = _storage.ref().child(path);
       final uploadTask = ref.putFile(File(videoFile.path));
-      
+
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      
+
       LoggingService.instance.info('Video uploaded successfully: $downloadUrl');
       return downloadUrl;
     } catch (e) {
@@ -72,15 +98,16 @@ class MessageMediaService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return null;
 
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${audioFile.name}';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${audioFile.name}';
       final path = 'chats/$chatId/audio/$fileName';
-      
+
       final ref = _storage.ref().child(path);
       final uploadTask = ref.putFile(File(audioFile.path));
-      
+
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      
+
       LoggingService.instance.info('Audio uploaded successfully: $downloadUrl');
       return downloadUrl;
     } catch (e) {
@@ -95,16 +122,18 @@ class MessageMediaService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return null;
 
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${documentFile.name}';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${documentFile.name}';
       final path = 'chats/$chatId/documents/$fileName';
-      
+
       final ref = _storage.ref().child(path);
       final uploadTask = ref.putFile(File(documentFile.path));
-      
+
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      
-      LoggingService.instance.info('Document uploaded successfully: $downloadUrl');
+
+      LoggingService.instance
+          .info('Document uploaded successfully: $downloadUrl');
       return downloadUrl;
     } catch (e) {
       LoggingService.instance.error('Error uploading document: $e');
@@ -117,10 +146,12 @@ class MessageMediaService {
     try {
       // Simplified thumbnail generation - in a real app, you'd use a proper video thumbnail library
       final tempDir = await getTemporaryDirectory();
-      final thumbnailPath = '${tempDir.path}/thumbnail_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      
+      final thumbnailPath =
+          '${tempDir.path}/thumbnail_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
       // For now, just return a placeholder path
-      LoggingService.instance.info('Video thumbnail placeholder generated: $thumbnailPath');
+      LoggingService.instance
+          .info('Video thumbnail placeholder generated: $thumbnailPath');
       return thumbnailPath;
     } catch (e) {
       LoggingService.instance.error('Error generating video thumbnail: $e');
@@ -129,7 +160,8 @@ class MessageMediaService {
   }
 
   /// Upload video with thumbnail
-  Future<Map<String, String>?> uploadVideoWithThumbnail(XFile videoFile, String chatId) async {
+  Future<Map<String, String>?> uploadVideoWithThumbnail(
+      XFile videoFile, String chatId) async {
     try {
       // Upload video
       final videoUrl = await uploadVideo(videoFile, chatId);
@@ -138,7 +170,7 @@ class MessageMediaService {
       // Generate and upload thumbnail
       final thumbnailPath = await generateVideoThumbnail(videoFile.path);
       String? thumbnailUrl;
-      
+
       if (thumbnailPath != null) {
         final thumbnailFile = XFile(thumbnailPath);
         thumbnailUrl = await uploadImage(thumbnailFile, chatId);
@@ -163,11 +195,12 @@ class MessageMediaService {
         maxHeight: 1080,
         imageQuality: 85,
       );
-      
+
       if (image != null) {
-        LoggingService.instance.info('Image picked from gallery: ${image.path}');
+        LoggingService.instance
+            .info('Image picked from gallery: ${image.path}');
       }
-      
+
       return image;
     } catch (e) {
       LoggingService.instance.error('Error picking image from gallery: $e');
@@ -184,11 +217,11 @@ class MessageMediaService {
         maxHeight: 1080,
         imageQuality: 85,
       );
-      
+
       if (image != null) {
         LoggingService.instance.info('Image picked from camera: ${image.path}');
       }
-      
+
       return image;
     } catch (e) {
       LoggingService.instance.error('Error picking image from camera: $e');
@@ -203,11 +236,12 @@ class MessageMediaService {
         source: ImageSource.gallery,
         maxDuration: const Duration(minutes: 5),
       );
-      
+
       if (video != null) {
-        LoggingService.instance.info('Video picked from gallery: ${video.path}');
+        LoggingService.instance
+            .info('Video picked from gallery: ${video.path}');
       }
-      
+
       return video;
     } catch (e) {
       LoggingService.instance.error('Error picking video from gallery: $e');
@@ -222,11 +256,11 @@ class MessageMediaService {
         source: ImageSource.camera,
         maxDuration: const Duration(minutes: 5),
       );
-      
+
       if (video != null) {
         LoggingService.instance.info('Video picked from camera: ${video.path}');
       }
-      
+
       return video;
     } catch (e) {
       LoggingService.instance.error('Error picking video from camera: $e');
@@ -242,7 +276,7 @@ class MessageMediaService {
         maxHeight: 1080,
         imageQuality: 85,
       );
-      
+
       LoggingService.instance.info('${images.length} images picked');
       return images;
     } catch (e) {
@@ -267,20 +301,20 @@ class MessageMediaService {
   bool isFileTypeSupported(String fileName) {
     final extension = fileName.split('.').last.toLowerCase();
     return supportedImageTypes.contains(extension) ||
-           supportedVideoTypes.contains(extension) ||
-           supportedAudioTypes.contains(extension) ||
-           supportedDocumentTypes.contains(extension);
+        supportedVideoTypes.contains(extension) ||
+        supportedAudioTypes.contains(extension) ||
+        supportedDocumentTypes.contains(extension);
   }
 
   /// Get media type from file extension
   String getMediaType(String fileName) {
     final extension = fileName.split('.').last.toLowerCase();
-    
+
     if (supportedImageTypes.contains(extension)) return 'image';
     if (supportedVideoTypes.contains(extension)) return 'video';
     if (supportedAudioTypes.contains(extension)) return 'audio';
     if (supportedDocumentTypes.contains(extension)) return 'document';
-    
+
     return 'unknown';
   }
 
@@ -289,7 +323,7 @@ class MessageMediaService {
     try {
       final ref = _storage.refFromURL(mediaUrl);
       await ref.delete();
-      
+
       LoggingService.instance.info('Media deleted successfully: $mediaUrl');
       return true;
     } catch (e) {
@@ -303,7 +337,7 @@ class MessageMediaService {
     try {
       final ref = _storage.refFromURL(mediaUrl);
       final metadata = await ref.getMetadata();
-      
+
       return {
         'name': metadata.name,
         'size': metadata.size,
@@ -323,7 +357,8 @@ class MessageMediaService {
       // This is a simplified compression - in a real app, you'd use a proper image compression library
       // For now, just return the original file
       // In production, you'd compress the image here
-      LoggingService.instance.info('Image compression placeholder for: ${imageFile.path}');
+      LoggingService.instance
+          .info('Image compression placeholder for: ${imageFile.path}');
       return imageFile;
     } catch (e) {
       LoggingService.instance.error('Error compressing image: $e');

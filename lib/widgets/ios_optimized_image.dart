@@ -51,7 +51,7 @@ class _IOSOptimizedImageState extends State<IOSOptimizedImage> {
       if (!_pendingImages.contains(this)) {
         _pendingImages.add(this);
       }
-      
+
       // More conservative delay for iOS: 1-3 seconds between images
       _loadTimer = Timer(Duration(seconds: 1 + (_activeImageCount * 2)), () {
         if (mounted && _pendingImages.contains(this)) {
@@ -69,7 +69,7 @@ class _IOSOptimizedImageState extends State<IOSOptimizedImage> {
     if (_shouldLoad) {
       _activeImageCount--;
       IOSMemoryService.registerImageDispose();
-      
+
       // Process next pending image
       if (_pendingImages.isNotEmpty) {
         final nextImage = _pendingImages.removeAt(0);
@@ -85,7 +85,7 @@ class _IOSOptimizedImageState extends State<IOSOptimizedImage> {
   Widget build(BuildContext context) {
     // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
     return _buildPlaceholder();
-    
+
     // DISABLED: Image loading causes buffer overflow
     // if (widget.imageUrl == null || widget.imageUrl!.isEmpty) {
     //   return _buildPlaceholder();
@@ -129,12 +129,13 @@ class _IOSOptimizedImageState extends State<IOSOptimizedImage> {
         color: Colors.grey[800],
         borderRadius: widget.borderRadius ?? BorderRadius.zero,
       ),
-      child: widget.placeholder ?? const Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
-        ),
-      ),
+      child: widget.placeholder ??
+          const Center(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+            ),
+          ),
     );
   }
 

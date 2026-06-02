@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class SocialIcons {
   // Asset paths for social platform icons
   static const String _basePath = 'assets/images/social_icons';
-  
+
   // Platform icon assets
   static const String twitch = '$_basePath/twitch_4138153.png';
   static const String youtube = '$_basePath/youtube.png';
@@ -16,10 +16,10 @@ class SocialIcons {
   static const String instagram = '$_basePath/instagram.png';
   static const String reddit = '$_basePath/reddit.png';
   static const String website = '$_basePath/website.png';
-  
+
   // Default fallback icon
   static const String defaultIcon = '$_basePath/default_platform.png';
-  
+
   // Get icon asset path by platform name
   static String getIconPath(String platformName) {
     switch (platformName.toLowerCase()) {
@@ -47,7 +47,7 @@ class SocialIcons {
         return defaultIcon;
     }
   }
-  
+
   // Get icon asset path by platform type
   static String getIconPathByType(PlatformType type) {
     switch (type) {
@@ -73,7 +73,7 @@ class SocialIcons {
         return website;
     }
   }
-  
+
   // List of all available platform icons
   static const List<String> allIcons = [
     twitch,
@@ -87,7 +87,7 @@ class SocialIcons {
     reddit,
     website,
   ];
-  
+
   // Platform display names
   static const Map<String, String> platformDisplayNames = {
     'twitch': 'Twitch',
@@ -113,7 +113,7 @@ enum PlatformType {
   bluesky,
   twitter,
   instagram,
-    reddit,
+  reddit,
   website,
 }
 
@@ -143,9 +143,9 @@ extension PlatformTypeExtension on PlatformType {
         return 'Website';
     }
   }
-  
+
   String get iconPath => SocialIcons.getIconPathByType(this);
-  
+
   Color get brandColor {
     switch (this) {
       case PlatformType.twitch:
@@ -170,7 +170,7 @@ extension PlatformTypeExtension on PlatformType {
         return const Color(0xFF6C757D); // Website gray
     }
   }
-  
+
   String get urlScheme {
     switch (this) {
       case PlatformType.twitch:

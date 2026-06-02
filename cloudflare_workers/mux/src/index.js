@@ -1,12 +1,20 @@
 /**
  * StreamersTip Mux API — Cloudflare Worker
- * 
+ *
  * Routes:
- *   POST /mux/direct-upload — Create Mux direct upload, return uploadUrl + videoId
- *   POST /webhooks/mux     — Mux webhook handler, updates Firestore on video.asset.ready
- *   POST /api/crosspost/prepare-watermarked — Create/reuse a branded Mux asset for external posting
- *   POST /gamification/events — Trusted gamification events; idempotent by eventId; mission/XP in Worker
+ *   POST /mux/direct-upload — Allocate videoId, pending Firestore doc, Mux URL
+ *   POST /videos/delete — Soft-delete video (same contract as Firebase deleteVideo)
+ *   POST /webhooks/mux — Mux webhook handler
+ *   POST /gamification/events — Trusted gamification events
  */
+
+import {
+  allocateVideoIdForNewUpload,
+  generateVideoId,
+  pendingVideoFields,
+  failedUploadFields,
+  isVideoDeleted,
+} from './video_lifecycle.js';
 
 const MUX_API = 'https://api.mux.com';
 const MUX_STREAM_BASE = 'https://stream.mux.com';
@@ -45,7 +53,7 @@ function getCorsHeaders(request) {
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   };
 }
 
@@ -423,7 +431,7 @@ function buildFeedFieldBackfillUpdate(data = {}) {
   if (!isPublicVideoDoc(data)) return null;
 
   const update = {
-    status: 'active',
+    status: 'ready',
     isReadyForFeed: true,
     playbackReady: true,
     engagementScore:
@@ -1246,6 +1254,70 @@ function applyEventToMissionList(list, eventType, now) {
   return { list: out, xpGain };
 }
 
+function todayKeyUtc(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function yesterdayKeyUtc(date = new Date()) {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return todayKeyUtc(d);
+}
+
+function buildDailyQualificationUpdates(userData) {
+  const today = todayKeyUtc();
+  const yesterday = yesterdayKeyUtc();
+  const gam =
+    userData.gamification && typeof userData.gamification === 'object'
+      ? userData.gamification
+      : {};
+  const prevDate =
+    gam.lastActiveDate ||
+    userData.lastActiveDate ||
+    (userData.progressionSummary && userData.progressionSummary.lastActiveDate) ||
+    null;
+  if (prevDate === today) {
+    return { skipped: true };
+  }
+  let streakCount = readInt(
+    gam.streakCount ?? gam.streakDays ?? userData.streakCount ?? userData.streakDays,
+    0,
+  );
+  let streakExtended = false;
+  if (prevDate === yesterday) {
+    streakCount = Math.max(1, streakCount) + 1;
+    streakExtended = true;
+  } else {
+    streakCount = 1;
+    streakExtended = true;
+  }
+  const longestStreak = Math.max(
+    streakCount,
+    readInt(gam.longestStreak ?? userData.longestStreak, 0),
+  );
+  const mergedGam = {
+    ...gam,
+    lastActiveDate: today,
+    lastQualifiedActivityAt: { __timestamp: true },
+    streakCount,
+    streakDays: streakCount,
+    longestStreak,
+    updatedAt: { __timestamp: true },
+  };
+  return {
+    skipped: false,
+    streakExtended,
+    updates: {
+      lastActiveDate: today,
+      lastQualifiedActivityAt: { __timestamp: true },
+      streakCount,
+      streakDays: streakCount,
+      longestStreak,
+      gamification: mergedGam,
+    },
+  };
+}
+
 /** Merges `gamification` and mission arrays; preserves existing gamification keys (Part B: lib/features/gamification/firestore_user_shape.md). */
 async function applyGamificationMissions(env, uid, eventType, eventId) {
   const auditPath = `users/${uid}/gamification_audit/${eventId}`;
@@ -1255,8 +1327,9 @@ async function applyGamificationMissions(env, uid, eventType, eventId) {
   const data = (await firestoreGetDocument(env, userPath)) || {};
   const hasDaily = Array.isArray(data.dailyMissions);
   const hasWeekly = Array.isArray(data.missions);
+  const hasMissions = hasDaily || hasWeekly;
   const now = new Date();
-  if (!hasDaily && !hasWeekly) {
+  if (!hasMissions && eventType !== 'activity.day_qualified') {
     await firestoreWrite(
       env,
       'POST',
@@ -1271,11 +1344,26 @@ async function applyGamificationMissions(env, uid, eventType, eventId) {
     );
     return;
   }
-  const dailyRaw = hasDaily ? data.dailyMissions : undefined;
-  const missionsRaw = hasWeekly ? data.missions : undefined;
-  const r1 = applyEventToMissionList(dailyRaw, eventType, now);
-  const r2 = applyEventToMissionList(missionsRaw, eventType, now);
-  const xpGain = r1.xpGain + r2.xpGain;
+  let dailyRaw = hasDaily ? data.dailyMissions : undefined;
+  let missionsRaw = hasWeekly ? data.missions : undefined;
+  let xpGain = 0;
+  if (hasMissions) {
+    const r1 = applyEventToMissionList(dailyRaw, eventType, now);
+    const r2 = applyEventToMissionList(missionsRaw, eventType, now);
+    dailyRaw = r1.list !== undefined ? r1.list : dailyRaw;
+    missionsRaw = r2.list !== undefined ? r2.list : missionsRaw;
+    xpGain = r1.xpGain + r2.xpGain;
+  }
+  if (eventType === 'activity.day_qualified') {
+    const qual = buildDailyQualificationUpdates(data);
+    if (!qual.skipped && qual.updates && hasMissions && qual.streakExtended) {
+      const r3 = applyEventToMissionList(dailyRaw, 'streak.extended', now);
+      const r4 = applyEventToMissionList(missionsRaw, 'streak.extended', now);
+      dailyRaw = r3.list !== undefined ? r3.list : dailyRaw;
+      missionsRaw = r4.list !== undefined ? r4.list : missionsRaw;
+      xpGain += r3.xpGain + r4.xpGain;
+    }
+  }
   const gam =
     data.gamification && typeof data.gamification === 'object'
       ? data.gamification
@@ -1294,10 +1382,26 @@ async function applyGamificationMissions(env, uid, eventType, eventId) {
     rankTitle,
     updatedAt: { __timestamp: true },
   };
-  const patchFields = {};
-  if (r1.list !== undefined) patchFields.dailyMissions = r1.list;
-  if (r2.list !== undefined) patchFields.missions = r2.list;
-  patchFields.gamification = mergedGam;
+  const patchFields = { gamification: mergedGam };
+  if (dailyRaw !== undefined && hasDaily) patchFields.dailyMissions = dailyRaw;
+  if (missionsRaw !== undefined && hasWeekly) patchFields.missions = missionsRaw;
+  if (eventType === 'activity.day_qualified') {
+    const qual = buildDailyQualificationUpdates(data);
+    if (!qual.skipped && qual.updates) {
+      patchFields.lastActiveDate = qual.updates.lastActiveDate;
+      patchFields.lastQualifiedActivityAt = qual.updates.lastQualifiedActivityAt;
+      patchFields.streakCount = qual.updates.streakCount;
+      patchFields.streakDays = qual.updates.streakDays;
+      patchFields.longestStreak = qual.updates.longestStreak;
+      patchFields.gamification = {
+        ...mergedGam,
+        ...qual.updates.gamification,
+        totalXp: newXp,
+        level,
+        rankTitle,
+      };
+    }
+  }
   await firestorePatchDocument(env, userPath, patchFields);
   await firestoreWrite(
     env,
@@ -1496,10 +1600,6 @@ async function createMuxUpload(env, videoId, userId, isDraft = false) {
       new_asset_settings: {
         playback_policies: ['public'],
         video_quality: 'basic',
-        static_renditions: {
-          resolution: 'highest',
-        },
-        mp4_support: 'capped-1080p',
         passthrough: videoId,
         meta,
       },
@@ -1595,6 +1695,9 @@ export default {
       if (path === '/mux/direct-upload' && request.method === 'POST') {
         return await handleDirectUpload(request, env, cors);
       }
+      if (path === '/videos/delete' && request.method === 'POST') {
+        return await handleDeleteVideo(request, env, cors);
+      }
       if (path === '/api/crosspost/prepare-watermarked' && request.method === 'POST') {
         return await handlePrepareWatermarkedCrossPost(request, env, cors);
       }
@@ -1619,6 +1722,9 @@ export default {
       if (path === '/gamification/missions/claim' && request.method === 'POST') {
         return await handleMissionClaim(request, env, cors);
       }
+      if (path === '/creator-score/sync' && request.method === 'POST') {
+        return await handleCreatorScoreSync(request, env, cors);
+      }
 
       return jsonResponse({ error: 'Not found' }, 404, {}, cors);
     } catch (e) {
@@ -1631,6 +1737,353 @@ export default {
     }
   },
 };
+
+const CREATOR_SCORE_COUNTABLE_STATUSES = new Set(['ready', 'published', 'active']);
+const CREATOR_SCORE_HIDDEN_STATUSES = new Set([
+  'draft',
+  'scheduled',
+  'processing',
+  'failed',
+  'archived',
+  'deleted',
+  'hidden',
+  'moderation',
+  'private',
+]);
+
+function readCreatorScoreInt(value, fallback = 0) {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'string') return parseInt(value, 10) || fallback;
+  return fallback;
+}
+
+function clampCreatorScore(value, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function mapValue(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function creatorCounter(data, names) {
+  for (const name of names) {
+    const n = readCreatorScoreInt(data[name], -1);
+    if (n >= 0) return n;
+  }
+  const stats = mapValue(data.stats);
+  for (const name of names) {
+    const n = readCreatorScoreInt(stats[name], -1);
+    if (n >= 0) return n;
+  }
+  return 0;
+}
+
+function timestampMillis(value) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  const date = new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function hasCreatorText(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasCreatorList(value) {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function isCreatorScoreCountableVideo(data = {}) {
+  if (data.deleted === true || data.isDeleted === true || data.visible === false) return false;
+  const status = String(data.status || 'draft').toLowerCase();
+  const privacy = String(data.privacy || data.visibility || 'private').toLowerCase();
+  return CREATOR_SCORE_COUNTABLE_STATUSES.has(status) &&
+    !CREATOR_SCORE_HIDDEN_STATUSES.has(status) &&
+    privacy !== 'private';
+}
+
+async function queryCreatorVideos(env, uid, fieldName) {
+  const rows = await firestoreRunQuery(env, {
+    from: [{ collectionId: 'videos' }],
+    where: {
+      fieldFilter: {
+        field: { fieldPath: fieldName },
+        op: 'EQUAL',
+        value: { stringValue: uid },
+      },
+    },
+    limit: 200,
+  });
+  return rows.map((row) => row.data || {});
+}
+
+async function getCreatorVideos(env, uid) {
+  const seen = new Map();
+  const results = await Promise.allSettled([
+    queryCreatorVideos(env, uid, 'userId'),
+    queryCreatorVideos(env, uid, 'creatorId'),
+  ]);
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue;
+    for (const video of result.value) {
+      const id = video.__id || JSON.stringify(video);
+      seen.set(id, video);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+async function getScheduledPostCount(env, uid) {
+  try {
+    const rows = await firestoreRunQuery(env, {
+      from: [{ collectionId: 'scheduled_posts' }],
+      where: {
+        compositeFilter: {
+          op: 'AND',
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: 'userId' },
+                op: 'EQUAL',
+                value: { stringValue: uid },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: 'status' },
+                op: 'EQUAL',
+                value: { stringValue: 'scheduled' },
+              },
+            },
+          ],
+        },
+      },
+      limit: 50,
+    });
+    return rows.length;
+  } catch (e) {
+    console.warn('creator score scheduled_posts query skipped', uid, e.message || e);
+    return 0;
+  }
+}
+
+async function getCompletedMissionCount(env, uid) {
+  try {
+    const rows = await firestoreRunQuery(env, {
+      from: [{ collectionId: 'progression' }],
+      where: {
+        compositeFilter: {
+          op: 'AND',
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: '__name__' },
+                op: 'GREATER_THAN_OR_EQUAL',
+                value: {
+                  referenceValue:
+                    `projects/${env.FIREBASE_PROJECT_ID || 'streamerstip-6cfdb'}/databases/(default)/documents/users/${uid}/progression/`,
+                },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: 'completed' },
+                op: 'EQUAL',
+                value: { booleanValue: true },
+              },
+            },
+          ],
+        },
+      },
+      limit: 100,
+    });
+    return rows.length;
+  } catch (e) {
+    console.warn('creator score progression query skipped', uid, e.message || e);
+    return 0;
+  }
+}
+
+function creatorProfileCompletionScore(userData) {
+  const checks = [
+    hasCreatorText(userData.avatarURL) || hasCreatorText(userData.avatarUrl) || hasCreatorText(userData.photoURL),
+    hasCreatorText(userData.bio),
+    hasCreatorList(userData.hashtags) || hasCreatorList(userData.tags),
+    hasCreatorList(userData.platforms) || hasCreatorList(userData.connectedPlatforms),
+    hasCreatorText(userData.displayName) && hasCreatorText(userData.username),
+  ];
+  return clampCreatorScore((checks.filter(Boolean).length / checks.length) * 100);
+}
+
+function creatorConsistencyScore(userData, videos, completedMissions) {
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+  let recent7 = 0;
+  let recent30 = 0;
+  for (const video of videos) {
+    const at = timestampMillis(video.createdAt || video.publishedAt || video.timestamp);
+    if (!at) continue;
+    if (now - at <= sevenDays) recent7 += 1;
+    if (now - at <= thirtyDays) recent30 += 1;
+  }
+  const gam = mapValue(userData.gamification);
+  const streak = readCreatorScoreInt(userData.streakCount) ||
+    readCreatorScoreInt(userData.streakDays) ||
+    readCreatorScoreInt(gam.streakCount);
+  return clampCreatorScore(
+    Math.min(recent7, 3) * 18 +
+    Math.min(recent30, 8) * 4 +
+    Math.min(streak, 14) * 2 +
+    Math.min(completedMissions, 10) * 2
+  );
+}
+
+function creatorContentScore(userData, videos, scheduledPostCount) {
+  const countable = videos.filter(isCreatorScoreCountableVideo);
+  const postCount = Math.max(
+    countable.length,
+    creatorCounter(userData, ['postCount', 'postsCount', 'publishedPostCount'])
+  );
+  const drafts = creatorCounter(userData, ['draftCount', 'draftsCount']);
+  return clampCreatorScore(
+    Math.min(postCount, 20) * 4 +
+    Math.min(scheduledPostCount, 5) * 4 +
+    Math.min(drafts, 8) * 1.5
+  );
+}
+
+function creatorNetworkingScore(userData) {
+  const followers = creatorCounter(userData, ['followersCount', 'followerCount', 'followers']);
+  const following = creatorCounter(userData, ['followingCount', 'following']);
+  const connections = creatorCounter(userData, ['connectionsCount', 'connectionCount', 'connections']);
+  const shares = creatorCounter(userData, ['creatorCardShares', 'profileShares', 'shareCount']);
+  return clampCreatorScore(
+    Math.min(followers, 250) * 0.16 +
+    Math.min(following, 120) * 0.16 +
+    Math.min(connections, 80) * 0.28 +
+    Math.min(shares, 40) * 0.5
+  );
+}
+
+function creatorEngagementScore(userData, videos) {
+  let likes = creatorCounter(userData, ['totalLikes', 'likesCount', 'likeCount']);
+  let comments = creatorCounter(userData, ['totalComments', 'commentsCount', 'commentCount']);
+  let bookmarks = creatorCounter(userData, ['totalBookmarks', 'bookmarksCount', 'favoriteCount']);
+  let shares = creatorCounter(userData, ['totalShares', 'sharesCount', 'shareCount']);
+  let views = creatorCounter(userData, ['totalViews', 'viewsCount', 'viewCount']);
+  for (const video of videos) {
+    likes += readCreatorScoreInt(video.likes) + readCreatorScoreInt(video.likeCount);
+    comments += readCreatorScoreInt(video.comments) + readCreatorScoreInt(video.commentCount);
+    bookmarks += readCreatorScoreInt(video.bookmarks) + readCreatorScoreInt(video.favoriteCount);
+    shares += readCreatorScoreInt(video.shares) + readCreatorScoreInt(video.shareCount);
+    views += readCreatorScoreInt(video.views) + readCreatorScoreInt(video.viewCount);
+  }
+  return clampCreatorScore(
+    Math.min(likes, 500) * 0.06 +
+    Math.min(comments, 200) * 0.12 +
+    Math.min(bookmarks, 200) * 0.1 +
+    Math.min(shares, 120) * 0.12 +
+    Math.min(views, 5000) * 0.004
+  );
+}
+
+function creatorRankLabel(score) {
+  if (score >= 90) return 'Elite Creator';
+  if (score >= 75) return 'Rising Creator';
+  if (score >= 55) return 'Active Creator';
+  if (score >= 30) return 'Emerging Creator';
+  return 'New Creator';
+}
+
+function creatorRecommendations(scores, userData) {
+  const recs = [];
+  if (scores.consistencyScore < 70) recs.push('Post 2 more clips this week');
+  if (scores.contentScore < 70) recs.push('Schedule or publish your next creator post');
+  if (scores.networkingScore < 70) recs.push('Collaborate with 1 creator');
+  if (scores.engagementScore < 70) recs.push('Reply to comments and share your latest clip');
+  if (scores.profileCompletionScore < 90) recs.push('Complete your Creator Card');
+  if (!hasCreatorList(userData.platforms) && !hasCreatorList(userData.connectedPlatforms)) {
+    recs.push('Connect another platform');
+  }
+  return recs.slice(0, 4);
+}
+
+function creatorLevel(score, userData) {
+  const gam = mapValue(userData.gamification);
+  const summary = mapValue(userData.progressionSummary);
+  const existing =
+    readCreatorScoreInt(gam.level) ||
+    readCreatorScoreInt(summary.level) ||
+    readCreatorScoreInt(userData.level);
+  return existing > 0 ? existing : Math.max(1, Math.ceil(score / 8));
+}
+
+async function buildCreatorScore(env, uid) {
+  const userData = await firestoreGetDocument(env, `users/${uid}`);
+  if (!userData) {
+    throw new Error('Creator not found');
+  }
+  const [videos, scheduledPostCount, completedMissions] = await Promise.all([
+    getCreatorVideos(env, uid),
+    getScheduledPostCount(env, uid),
+    getCompletedMissionCount(env, uid),
+  ]);
+  const countableVideos = videos.filter(isCreatorScoreCountableVideo);
+  const scores = {
+    consistencyScore: creatorConsistencyScore(userData, countableVideos, completedMissions),
+    contentScore: creatorContentScore(userData, videos, scheduledPostCount),
+    networkingScore: creatorNetworkingScore(userData),
+    engagementScore: creatorEngagementScore(userData, videos),
+    profileCompletionScore: creatorProfileCompletionScore(userData),
+  };
+  const score = clampCreatorScore(
+    scores.consistencyScore * 0.30 +
+    scores.contentScore * 0.25 +
+    scores.networkingScore * 0.20 +
+    scores.engagementScore * 0.15 +
+    scores.profileCompletionScore * 0.10
+  );
+  return {
+    score,
+    rankLabel: creatorRankLabel(score),
+    level: creatorLevel(score, userData),
+    ...scores,
+    recommendations: creatorRecommendations(scores, userData),
+    updatedBy: 'cloudflareWorker',
+    lastCalculatedAt: { __timestamp: true },
+  };
+}
+
+async function handleCreatorScoreSync(request, env, cors) {
+  const auth = request.headers.get('Authorization');
+  if (!auth?.startsWith('Bearer ')) {
+    throw new Error('Missing Authorization: Bearer <firebase_id_token>');
+  }
+  const idToken = auth.slice(7).trim();
+  await verifyFirebaseToken(idToken, env.FIREBASE_WEB_API_KEY);
+  const body = await request.json().catch(() => ({}));
+  const uid = String(body.uid || '').trim();
+  if (!uid) {
+    return jsonResponse({ error: 'uid is required' }, 400, {}, cors);
+  }
+  const score = await buildCreatorScore(env, uid);
+  await firestorePatchDocument(env, `users/${uid}/creatorScore/current`, score);
+  return jsonResponse(
+    {
+      ok: true,
+      uid,
+      score: score.score,
+      rankLabel: score.rankLabel,
+      level: score.level,
+    },
+    200,
+    {},
+    cors
+  );
+}
 
 async function handleGamificationEvent(request, env, cors) {
   const auth = request.headers.get('Authorization');
@@ -1775,6 +2228,10 @@ async function handleHealth(request, env, cors) {
   return jsonResponse(checks, 200, {}, cors);
 }
 
+async function firestoreCreateVideoDoc(env, videoId, fields) {
+  await firestoreWrite(env, 'POST', `videos?documentId=${videoId}`, fields);
+}
+
 async function handleDirectUpload(request, env, cors) {
   const auth = request.headers.get('Authorization');
   if (!auth?.startsWith('Bearer ')) {
@@ -1789,9 +2246,6 @@ async function handleDirectUpload(request, env, cors) {
   if (clientUserId && clientUserId !== uid) {
     throw new Error('userId must match authenticated user');
   }
-  const videoId = (clientVideoId && clientVideoId.length > 0)
-    ? clientVideoId
-    : `vid_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
   const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
   let rateLimitResult;
@@ -1807,37 +2261,207 @@ async function handleDirectUpload(request, env, cors) {
     return jsonResponse({ error: 'Rate limit exceeded. Try again later.' }, 429, {}, cors);
   }
 
-  const isDraft = body.isDraft === true;
-  const { uploadUrl, uploadId } = await createMuxUpload(env, videoId, uid, isDraft);
+  const deps = { firestoreGetDocument };
+  let allocation = await allocateVideoIdForNewUpload(env, clientVideoId, uid, deps);
+  if (allocation.error) {
+    return jsonResponse(
+      {
+        error: allocation.message,
+        code: allocation.error,
+        existingVideoId: allocation.existingVideoId || null,
+      },
+      allocation.status || 409,
+      {},
+      cors,
+    );
+  }
 
-  await firestoreWrite(env, 'POST', `videos?documentId=${videoId}`, {
-    id: videoId,
-    userId: uid,
-    creatorId: uid,
-    creator_id: uid,
-    status: 'uploading',
-    processingState: 'uploading',
+  let videoId = allocation.videoId;
+  let replacedClientId = allocation.replacedClientId === true;
+  const isDraft = body.isDraft === true;
+
+  const writePendingDoc = async (targetId, uploadId = '') => {
+    await firestoreCreateVideoDoc(
+      env,
+      targetId,
+      pendingVideoFields({
+        videoId: targetId,
+        uid,
+        body,
+        uploadId,
+        isDraft,
+      }),
+    );
+  };
+
+  try {
+    try {
+      await writePendingDoc(videoId, '');
+    } catch (createErr) {
+      const msg = String(createErr.message || createErr);
+      if (msg.includes('409') || msg.includes('ALREADY_EXISTS')) {
+        videoId = generateVideoId();
+        replacedClientId = true;
+        await writePendingDoc(videoId, '');
+      } else {
+        throw createErr;
+      }
+    }
+
+    let uploadUrl;
+    let uploadId;
+    try {
+      const mux = await createMuxUpload(env, videoId, uid, isDraft);
+      uploadUrl = mux.uploadUrl;
+      uploadId = mux.uploadId;
+      await firestorePatchDocument(env, `videos/${videoId}`, {
+        muxUploadId: uploadId || '',
+        muxStatus: 'processing',
+        updatedAt: { __timestamp: true },
+      });
+    } catch (muxErr) {
+      await firestorePatchDocument(
+        env,
+        `videos/${videoId}`,
+        failedUploadFields(
+          'MUX_UPLOAD_CREATE_FAILED',
+          muxErr.message || 'Mux direct upload failed',
+        ),
+      );
+      return jsonResponse(
+        {
+          error: 'Mux upload session could not be created',
+          code: 'MUX_UPLOAD_CREATE_FAILED',
+          videoId,
+        },
+        502,
+        {},
+        cors,
+      );
+    }
+
+    return jsonResponse(
+      {
+        videoId,
+        uploadUrl,
+        uploadId,
+        replacedClientId,
+      },
+      200,
+      {},
+      cors,
+    );
+  } catch (e) {
+    const msg = String(e.message || e);
+    return jsonResponse(
+      {
+        error: msg.includes('Firestore') ? 'Firestore write failed' : msg,
+        code: 'UPLOAD_INIT_FAILED',
+      },
+      msg.includes('409') ? 409 : 500,
+      {},
+      cors,
+    );
+  }
+}
+
+async function handleDeleteVideo(request, env, cors) {
+  const auth = request.headers.get('Authorization');
+  if (!auth?.startsWith('Bearer ')) {
+    return jsonResponse({ error: 'Missing Authorization' }, 401, {}, cors);
+  }
+  const idToken = auth.slice(7).trim();
+  const { uid } = await verifyFirebaseToken(idToken, env.FIREBASE_WEB_API_KEY);
+  const body = await request.json().catch(() => ({}));
+  const videoId = String(body.videoId || '').trim();
+  if (!videoId) {
+    return jsonResponse({ error: 'videoId is required' }, 400, {}, cors);
+  }
+
+  const video = await firestoreGetDocument(env, `videos/${videoId}`);
+  if (!video || Object.keys(video).length === 0) {
+    return jsonResponse({ error: 'Video not found' }, 404, {}, cors);
+  }
+  const ownerId = String(
+    video.userId || video.creatorId || video.creator_id || '',
+  ).trim();
+  if (!ownerId || ownerId !== uid) {
+    return jsonResponse({ error: 'Forbidden' }, 403, {}, cors);
+  }
+  if (isVideoDeleted(video)) {
+    return jsonResponse({ ok: true, skipped: true, videoId }, 200, {}, cors);
+  }
+
+  await firestorePatchDocument(env, `videos/${videoId}`, {
+    isDeleted: true,
+    deleted: true,
+    deletedAt: { __timestamp: true },
+    deletedBy: uid,
+    status: 'deleted',
+    visibility: 'private',
+    visible: false,
     isReadyForFeed: false,
-    videoUrl: '',
-    thumbnailUrl: '',
-    hasMuxPlaybackId: false,
-    caption: body.caption || '',
-    hashtags: body.hashtags || [],
-    privacy: body.privacy || 'public',
-    visibility: body.visibility || body.privacy || 'public',
-    allowComments: body.allowComments !== false,
-    category: body.category || 'general',
-    views: 0,
-    likes: 0,
-    comments: 0,
-    isMux: true,
-    muxStatus: 'processing',
-    muxUploadId: uploadId || '',
-    createdAt: { __timestamp: true },
     updatedAt: { __timestamp: true },
   });
 
-  return jsonResponse({ videoId, uploadUrl, uploadId }, 200, {}, cors);
+  const indexPaths = [
+    `users/${ownerId}/videos/${videoId}`,
+    `feeds/for_you/videos/${videoId}`,
+    `feeds/following/videos/${videoId}`,
+  ];
+  const category = String(
+    video.category || video.categoryId || video.category_id || '',
+  ).trim();
+  if (category) {
+    indexPaths.push(`feeds/categories/${category}/videos/${videoId}`);
+  }
+  for (const path of indexPaths) {
+    try {
+      const token = await getFirestoreAccessToken(env);
+      const projectId = env.FIREBASE_PROJECT_ID || 'streamerstip-6cfdb';
+      const url = `${FIRESTORE_BASE}/projects/${projectId}/databases/(default)/documents/${path}`;
+      await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (_) {
+      /* index may not exist */
+    }
+  }
+
+  await softDeleteForumPostsForVideo(env, videoId);
+
+  return jsonResponse({ ok: true, videoId }, 200, {}, cors);
+}
+
+async function softDeleteForumPostsForVideo(env, videoId) {
+  const patchFields = {
+    deleted: true,
+    status: 'deleted',
+    deletedAt: { __timestamp: true },
+    deletedReason: 'source_video_deleted',
+    updatedAt: { __timestamp: true },
+    visible: false,
+  };
+  for (const field of ['linkedVideoId', 'videoId']) {
+    const rows = await firestoreRunQuery(env, {
+      from: [{ collectionId: 'forumPosts' }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: field },
+          op: 'EQUAL',
+          value: { stringValue: videoId },
+        },
+      },
+      limit: 100,
+    });
+    for (const row of rows) {
+      const docName = row.document?.name || '';
+      const postId = docName.split('/').pop();
+      if (!postId) continue;
+      await firestorePatchDocument(env, `forumPosts/${postId}`, patchFields);
+    }
+  }
 }
 
 async function handlePrepareWatermarkedCrossPost(request, env, cors) {
@@ -2283,6 +2907,37 @@ async function handleMuxWebhook(request, env, cors) {
 
   const processingState = allGatesPass ? 'ready' : 'failed';
   const isReadyForFeed = allGatesPass;
+  const existing = (await firestoreGetDocument(env, `videos/${videoId}`)) || {};
+  if (isVideoDeleted(existing)) {
+    console.log('[MuxWebhook] skip deleted video:', videoId);
+    return jsonResponse(
+      { ok: true, videoId, skipped: true, reason: 'deleted' },
+      200,
+      {},
+      cors,
+    );
+  }
+  const ownerId = String(
+    existing.userId ||
+      existing.creatorId ||
+      existing.creator_id ||
+      (data.meta && data.meta.creator_id) ||
+      ''
+  ).trim();
+  const privacy = existing.privacy || 'Everyone';
+  const visibility =
+    existing.visibility ||
+    (privacy === 'Everyone' || privacy === 'Public' || privacy === 'public'
+      ? 'public'
+      : privacy === 'Private' || privacy === 'private'
+        ? 'private'
+        : 'public');
+  const category = String(
+    existing.category ||
+      existing.categoryId ||
+      existing.category_id ||
+      'gaming'
+  ).trim();
 
   if (isWatermarkedVariant) {
     const existing = (await firestoreGetDocument(env, `videos/${videoId}`)) || {};
@@ -2332,7 +2987,10 @@ async function handleMuxWebhook(request, env, cors) {
     },
     status: isDraft ? 'draft' : (allGatesPass ? 'ready' : 'failed'),
     processingState,
-    isReadyForFeed,
+    isReadyForFeed: allGatesPass,
+    isDeleted: false,
+    visible: allGatesPass,
+    playbackReady: allGatesPass,
     transcodingStatus: 'completed',
     muxAssetId: data.id || '',
     muxPlaybackId: playbackId,
@@ -2351,6 +3009,33 @@ async function handleMuxWebhook(request, env, cors) {
   if (duration != null) {
     fields['metadata.duration'] = duration;
     fields['duration'] = duration;
+  }
+
+  if (ownerId) {
+    fields.userId = ownerId;
+    fields.creatorId = ownerId;
+    fields.creator_id = ownerId;
+  }
+  fields.privacy = privacy;
+  fields.visibility = visibility;
+  if (category) {
+    fields.category = category;
+    fields.categoryId = category;
+    fields.category_id = category;
+    fields.categories = Array.isArray(existing.categories)
+      ? existing.categories
+      : [category];
+  }
+
+  const existingCaption = String(existing.caption || '').trim();
+  const metadataCaption = String(
+    existing.metadata && existing.metadata.preview_manual_caption
+      ? existing.metadata.preview_manual_caption
+      : '',
+  ).trim();
+  const resolvedCaption = existingCaption || metadataCaption;
+  if (resolvedCaption) {
+    fields.caption = resolvedCaption;
   }
 
   if (allGatesPass) {
@@ -2377,6 +3062,51 @@ async function handleMuxWebhook(request, env, cors) {
     isReadyForFeed,
   });
   await firestoreWrite(env, 'PATCH', `videos/${videoId}`, fields);
+
+  if (ownerId && allGatesPass) {
+    await firestorePatchDocument(env, `users/${ownerId}/videos/${videoId}`, {
+      videoId,
+      userId: ownerId,
+      status: 'ready',
+      visible: true,
+      privacy,
+      visibility,
+      category,
+      addedAt: { __timestamp: true },
+      updatedAt: { __timestamp: true },
+    });
+    const isPublic =
+      privacy === 'Everyone' ||
+      privacy === 'Public' ||
+      privacy === 'public';
+    if (isPublic) {
+      const feedEntry = {
+        videoId,
+        userId: ownerId,
+        privacy,
+        category,
+        status: 'ready',
+        addedAt: { __timestamp: true },
+      };
+      await firestorePatchDocument(
+        env,
+        `feeds/for_you/videos/${videoId}`,
+        feedEntry
+      );
+      await firestorePatchDocument(
+        env,
+        `feeds/following/videos/${videoId}`,
+        feedEntry
+      );
+      if (category) {
+        await firestorePatchDocument(
+          env,
+          `feeds/categories/${category}/videos/${videoId}`,
+          feedEntry
+        );
+      }
+    }
+  }
 
   return jsonResponse({ ok: true, videoId, isReadyForFeed }, 200, {}, cors);
 }

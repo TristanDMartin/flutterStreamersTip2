@@ -16,7 +16,8 @@ class PostComposerIntegration extends StatefulWidget {
   });
 
   @override
-  State<PostComposerIntegration> createState() => _PostComposerIntegrationState();
+  State<PostComposerIntegration> createState() =>
+      _PostComposerIntegrationState();
 }
 
 class _PostComposerIntegrationState extends State<PostComposerIntegration> {
@@ -70,19 +71,19 @@ class _PostComposerIntegrationState extends State<PostComposerIntegration> {
           children: [
             // Media Preview
             _buildMediaPreview(),
-            
+
             const SizedBox(height: 24),
-            
+
             // Caption Input
             _buildCaptionInput(),
-            
+
             const SizedBox(height: 24),
-            
+
             // Platform Selection
             _buildPlatformSelection(),
-            
+
             const SizedBox(height: 24),
-            
+
             // Schedule Post Widget
             SchedulePostWidget(
               selectedPlatforms: widget.selectedPlatforms,
@@ -94,9 +95,9 @@ class _PostComposerIntegrationState extends State<PostComposerIntegration> {
                 });
               },
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Additional Options
             _buildAdditionalOptions(),
           ],
@@ -207,36 +208,39 @@ class _PostComposerIntegrationState extends State<PostComposerIntegration> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: widget.selectedPlatforms.map((platform) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF9248D2).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFF9248D2),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _getPlatformIcon(platform),
-                  size: 16,
-                  color: const Color(0xFF9248D2),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  _getPlatformName(platform),
-                  style: const TextStyle(
-                    color: Color(0xFF9248D2),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          )).toList(),
+          children: widget.selectedPlatforms
+              .map((platform) => Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF9248D2).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF9248D2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _getPlatformIcon(platform),
+                          size: 16,
+                          color: const Color(0xFF9248D2),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _getPlatformName(platform),
+                          style: const TextStyle(
+                            color: Color(0xFF9248D2),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
         ),
       ],
     );
@@ -371,19 +375,19 @@ class _PostComposerIntegrationState extends State<PostComposerIntegration> {
             ),
             const SizedBox(height: 16),
             ...PostVisibility.values.map((visibility) => ListTile(
-              title: Text(
-                _getVisibilityName(visibility),
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                _getVisibilityDescription(visibility),
-                style: const TextStyle(color: Colors.white70),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                // Handle visibility selection
-              },
-            )),
+                  title: Text(
+                    _getVisibilityName(visibility),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    _getVisibilityDescription(visibility),
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    // Handle visibility selection
+                  },
+                )),
           ],
         ),
       ),
@@ -452,29 +456,30 @@ class _PostComposerIntegrationState extends State<PostComposerIntegration> {
 
     try {
       HapticFeedback.mediumImpact();
-      
+
       // Simulate API call
       await Future.delayed(const Duration(seconds: 2));
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _schedule != null 
+              _schedule != null
                   ? 'Post scheduled successfully!'
                   : 'Post published successfully!',
             ),
             backgroundColor: Colors.green,
           ),
         );
-        
+
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to ${_schedule != null ? 'schedule' : 'publish'} post: $e'),
+            content: Text(
+                'Failed to ${_schedule != null ? 'schedule' : 'publish'} post: $e'),
             backgroundColor: Colors.red,
           ),
         );

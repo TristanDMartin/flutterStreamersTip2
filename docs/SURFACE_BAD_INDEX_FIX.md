@@ -1,6 +1,6 @@
 # Surface/MediaCodec BAD_INDEX Error Fix - Implementation Summary
 
-## Status: Phase 1 & Phase 2.1 Complete, Phase 2.3 In Progress
+## Status: Phase 1, 2.1–2.2 Complete, Phase 2.3 Implemented (surface-detach dispose)
 
 ### Phase 1: Instrumentation ✅ COMPLETE
 
@@ -71,27 +71,14 @@ key: ValueKey(_enableSurfaceWatchdogRecreate
 
 ---
 
-### Phase 2.3: Prevent Controller Disposal During Surface Binding ⚠️ IN PROGRESS
+### Phase 2.3: Prevent Controller Disposal During Surface Binding ✅ COMPLETE
 
-**Required Implementation:**
-1. Track "attached" state in GlobalPlaybackManager
-   - Map: `videoId -> controllerId` (hashCode)
-2. Add TTL (Time-To-Live) tracking
-   - Map: `videoId -> creationTimestamp`
-   - Minimum 5 seconds before eligible for disposal
-3. Update disposal guards to check:
-   - `attached == true` → Never dispose
-   - `initializing == true` → Never dispose (already implemented)
-   - `createdAt + TTL > now` → Never dispose (unless memory pressure)
-4. Add methods to mark controllers as attached/detached
-   - Called from VideoPlayerViewOptimized when controller is attached/detached
-
-**Next Steps:**
-- Add `_attachedControllers` and `_controllerCreatedAt` maps to GlobalPlaybackManager
-- Update `registerController()` to record creation timestamp
-- Update `disposeFarControllers()` to check attached state and TTL
-- Add `markControllerAttached()` / `markControllerDetached()` methods
-- Call these from VideoPlayerViewOptimized `_adoptController()` and `_disposeVideoController()`
+**Implemented:**
+1. `GlobalPlaybackManager` tracks attached controllers + 5s registration TTL
+2. `markControllerAttached()` / `markControllerDetached()` from `VideoPlayerViewOptimized`
+3. Pool eviction skips attached / initializing / TTL-protected controllers
+4. **Surface detach before dispose:** `_adoptController()` clears `VideoPlayer` from tree, waits ~700ms, then disposes replaced controller
+5. **Deferred pool dispose:** `registerController()` schedules old controller disposal after pause + delay (no sync dispose during surface bind)
 
 ---
 

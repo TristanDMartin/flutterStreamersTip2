@@ -5,7 +5,8 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 /// Service to handle comprehensive memory cleanup and garbage collection
 class MemoryCleanupService {
-  static final MemoryCleanupService _instance = MemoryCleanupService._internal();
+  static final MemoryCleanupService _instance =
+      MemoryCleanupService._internal();
   factory MemoryCleanupService() => _instance;
   MemoryCleanupService._internal();
 
@@ -17,7 +18,7 @@ class MemoryCleanupService {
     if (kDebugMode) {
       debugPrint('🧹 MemoryCleanupService: Initializing periodic cleanup');
     }
-    
+
     // Run cleanup every 30 seconds
     _cleanupTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _performLightCleanup();
@@ -27,17 +28,16 @@ class MemoryCleanupService {
   /// Perform light memory cleanup
   void _performLightCleanup() {
     if (_isCleaningUp) return;
-    
+
     try {
       _isCleaningUp = true;
       debugPrint('🧹 MemoryCleanupService: Performing light cleanup');
-      
+
       // Clear old cache entries
       _clearOldCacheEntries();
-      
+
       // Trigger garbage collection
       _triggerGarbageCollection();
-      
     } catch (e) {
       debugPrint('⚠️ MemoryCleanupService: Light cleanup failed: $e');
     } finally {
@@ -48,25 +48,24 @@ class MemoryCleanupService {
   /// Perform aggressive memory cleanup
   Future<void> performAggressiveCleanup() async {
     if (_isCleaningUp) return;
-    
+
     try {
       _isCleaningUp = true;
       debugPrint('🧹 MemoryCleanupService: Performing aggressive cleanup');
-      
+
       // Clear all caches
       _clearAllCaches();
-      
+
       // Clear old cache entries
       _clearOldCacheEntries();
-      
+
       // Trigger garbage collection multiple times
       for (int i = 0; i < 3; i++) {
         _triggerGarbageCollection();
         await Future.delayed(const Duration(milliseconds: 100));
       }
-      
+
       debugPrint('✅ MemoryCleanupService: Aggressive cleanup completed');
-      
     } catch (e) {
       debugPrint('⚠️ MemoryCleanupService: Aggressive cleanup failed: $e');
     } finally {
@@ -79,13 +78,13 @@ class MemoryCleanupService {
     try {
       // Clear default cache manager
       DefaultCacheManager().emptyCache();
-      
+
       // Clear optimized image cache
       CacheManager(Config('optimized_images')).emptyCache();
-      
+
       // Clear avatar cache
       CacheManager(Config('optimized_avatars')).emptyCache();
-      
+
       debugPrint('🧹 MemoryCleanupService: All caches cleared');
     } catch (e) {
       debugPrint('⚠️ MemoryCleanupService: Cache clearing failed: $e');

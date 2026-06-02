@@ -8,11 +8,11 @@ class QRCodeGenerator {
     Color foregroundColor = Colors.black,
     Color backgroundColor = Colors.white,
   }) {
-    // print('🔍 QRCodeGenerator: Starting generation for string: $data');
-    // print('🔍 QRCodeGenerator: Size: $size');
+    // appLog('🔍 QRCodeGenerator: Starting generation for string: $data');
+    // appLog('🔍 QRCodeGenerator: Size: $size');
 
     if (data.isEmpty) {
-    // print('❌ QR Code: Empty string provided');
+      // appLog('❌ QR Code: Empty string provided');
       return Container(
         width: size,
         height: size,
@@ -21,7 +21,7 @@ class QRCodeGenerator {
       );
     }
 
-    // print('🔍 QRCodeGenerator: Data length: ${data.length}');
+    // appLog('🔍 QRCodeGenerator: Data length: ${data.length}');
 
     try {
       final qrCode = QrPainter(
@@ -42,15 +42,15 @@ class QRCodeGenerator {
         // embeddedImageEmitsError removed (not supported by current qr_flutter)
       );
 
-    // print('🔍 QRCodeGenerator: QrPainter created successfully');
-    // print('✅ QR Code: Generated successfully for string: $data');
+      // appLog('🔍 QRCodeGenerator: QrPainter created successfully');
+      // appLog('✅ QR Code: Generated successfully for string: $data');
 
       return CustomPaint(
         size: Size(size, size),
         painter: qrCode,
       );
     } catch (e) {
-    // print('❌ QRCodeGenerator: Error generating QR code: $e');
+      // appLog('❌ QRCodeGenerator: Error generating QR code: $e');
       return Container(
         width: size,
         height: size,
@@ -82,11 +82,11 @@ class QRCodeGenerator {
     Color foregroundColor = Colors.black,
     Color backgroundColor = Colors.white,
   }) {
-    // print('🔍 QRCodeGenerator: Starting generation with QrImageView for string: $data');
-    // print('🔍 QRCodeGenerator: Size: $size');
+    // appLog('🔍 QRCodeGenerator: Starting generation with QrImageView for string: $data');
+    // appLog('🔍 QRCodeGenerator: Size: $size');
 
     if (data.isEmpty) {
-    // print('❌ QR Code: Empty string provided');
+      // appLog('❌ QR Code: Empty string provided');
       return Container(
         width: size,
         height: size,
@@ -95,7 +95,7 @@ class QRCodeGenerator {
       );
     }
 
-    // print('🔍 QRCodeGenerator: Data length: ${data.length}');
+    // appLog('🔍 QRCodeGenerator: Data length: ${data.length}');
 
     try {
       final qrCode = QrImageView(
@@ -117,12 +117,12 @@ class QRCodeGenerator {
         // embeddedImageEmitsError removed (not supported by current qr_flutter)
       );
 
-    // print('🔍 QRCodeGenerator: QrImageView created successfully');
-    // print('✅ QR Code: Generated successfully with QrImageView for string: $data');
+      // appLog('🔍 QRCodeGenerator: QrImageView created successfully');
+      // appLog('✅ QR Code: Generated successfully with QrImageView for string: $data');
 
       return qrCode;
     } catch (e) {
-    // print('❌ QRCodeGenerator: Error generating QR code with QrImageView: $e');
+      // appLog('❌ QRCodeGenerator: Error generating QR code with QrImageView: $e');
       return Container(
         width: size,
         height: size,

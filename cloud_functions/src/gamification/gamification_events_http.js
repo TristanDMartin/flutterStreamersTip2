@@ -4,41 +4,12 @@
  */
 const admin = require('firebase-admin');
 const {MISSION_TEMPLATES} = require('./mission_templates');
+const {levelFromTotalXp, rankTitleForLevel} = require('./level_table');
+const {syncGamificationState} = require('./gamification_state');
+const {buildDailyQualificationUpdates} = require('./daily_qualification');
 
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
-
-const cumulativeXpForLevel = [
-  0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3300, 4000, 4800, 5700,
-  6700,
-];
-
-function rankTitleForLevel(level) {
-  if (level <= 2) return 'New Creator';
-  if (level <= 4) return 'Active Creator';
-  if (level <= 6) return 'Rising Creator';
-  if (level <= 8) return 'Consistent Creator';
-  if (level <= 10) return 'Community Builder';
-  if (level <= 12) return 'Growth Creator';
-  if (level <= 14) return 'Pro Creator';
-  return 'Elite Creator';
-}
-
-function levelFromTotalXp(totalXp) {
-  const t = cumulativeXpForLevel;
-  let level = 1;
-  for (let lv = 2; lv <= t.length; lv++) {
-    if (totalXp >= t[lv - 1]) level = lv;
-  }
-  if (level < t.length) return level;
-  let floor = t[t.length - 1];
-  let lv = t.length;
-  while (totalXp >= floor + 1000) {
-    lv++;
-    floor += 1000;
-  }
-  return lv;
-}
 
 function readInt(v) {
   if (v === undefined || v === null) return 0;
@@ -121,7 +92,8 @@ async function applyGamificationMissions(db, uid, eventType, eventId) {
     const d = userSnap.exists ? userSnap.data() : {};
     const hasDaily = Array.isArray(d.dailyMissions);
     const hasWeekly = Array.isArray(d.missions);
-    if (!hasDaily && !hasWeekly) {
+    const hasMissions = hasDaily || hasWeekly;
+    if (!hasMissions && eventType !== 'activity.day_qualified') {
       tx.set(auditRef, {
         eventId,
         uid,
@@ -132,27 +104,59 @@ async function applyGamificationMissions(db, uid, eventType, eventId) {
       return;
     }
     const now = new Date();
-    const dailyRaw = hasDaily ? d.dailyMissions : undefined;
-    const missionsRaw = hasWeekly ? d.missions : undefined;
-    const r1 = applyEventToMissionList(dailyRaw, eventType, now);
-    const r2 = applyEventToMissionList(missionsRaw, eventType, now);
-    const xpGain = r1.xpGain + r2.xpGain;
-    const gam = d.gamification && typeof d.gamification === 'object'
-      ? d.gamification
-      : {};
+    let dailyRaw = hasDaily ? d.dailyMissions : undefined;
+    let missionsRaw = hasWeekly ? d.missions : undefined;
+    let xpGain = 0;
+    if (hasMissions) {
+      const r1 = applyEventToMissionList(dailyRaw, eventType, now);
+      const r2 = applyEventToMissionList(missionsRaw, eventType, now);
+      dailyRaw = r1.list !== undefined ? r1.list : dailyRaw;
+      missionsRaw = r2.list !== undefined ? r2.list : missionsRaw;
+      xpGain = r1.xpGain + r2.xpGain;
+    }
+    if (eventType === 'activity.day_qualified') {
+      const qual = buildDailyQualificationUpdates(d);
+      if (!qual.skipped && qual.updates) {
+        if (hasMissions && qual.streakExtended) {
+          const r3 = applyEventToMissionList(dailyRaw, 'streak.extended', now);
+          const r4 = applyEventToMissionList(missionsRaw, 'streak.extended', now);
+          dailyRaw = r3.list !== undefined ? r3.list : dailyRaw;
+          missionsRaw = r4.list !== undefined ? r4.list : missionsRaw;
+          xpGain += r3.xpGain + r4.xpGain;
+        }
+      }
+    }
+    const gam =
+      d.gamification && typeof d.gamification === 'object' ? d.gamification : {};
     const currentXp = readXp(gam);
     const newXp = currentXp + xpGain;
     const level = levelFromTotalXp(newXp);
     const rankTitle = rankTitleForLevel(level);
-    const updates = {
-      'gamification.totalXp': FieldValue.increment(xpGain),
-      'gamification.level': level,
-      'gamification.rankTitle': rankTitle,
-      'gamification.updatedAt': FieldValue.serverTimestamp(),
+    const mergedGam = {
+      ...gam,
+      totalXp: newXp,
+      level,
+      rankTitle,
+      updatedAt: FieldValue.serverTimestamp(),
     };
-    if (r1.list !== undefined) updates.dailyMissions = r1.list;
-    if (r2.list !== undefined) updates.missions = r2.list;
-    tx.update(userRef, updates);
+    const updates = {gamification: mergedGam};
+    if (dailyRaw !== undefined && hasDaily) updates.dailyMissions = dailyRaw;
+    if (missionsRaw !== undefined && hasWeekly) updates.missions = missionsRaw;
+    if (eventType === 'activity.day_qualified') {
+      const qual = buildDailyQualificationUpdates(d);
+      if (!qual.skipped && qual.updates) {
+        updates.lastActiveDate = qual.updates.lastActiveDate;
+        updates.lastQualifiedActivityAt = qual.updates.lastQualifiedActivityAt;
+        updates.streakCount = qual.updates.streakCount;
+        updates.streakDays = qual.updates.streakDays;
+        updates.longestStreak = qual.updates.longestStreak;
+        Object.assign(updates.gamification, qual.updates.gamification);
+        updates.gamification.totalXp = newXp;
+        updates.gamification.level = level;
+        updates.gamification.rankTitle = rankTitle;
+      }
+    }
+    tx.set(userRef, updates, {merge: true});
     tx.set(auditRef, {
       eventId,
       uid,
@@ -214,12 +218,15 @@ async function handleGamificationEvents(req, res) {
       await db.collection('gamification_events').doc(id).create({
         uid: verifiedUid,
         type: typeStr,
+        source: typeof body.source === 'string' ? body.source.trim() : 'unknown',
+        processed: false,
         createdAt: FieldValue.serverTimestamp(),
       });
     } catch (e) {
       if (!isAlreadyExistsError(e)) throw e;
     }
     await applyGamificationMissions(db, verifiedUid, typeStr, id);
+    await syncGamificationState(db, verifiedUid);
     res.status(200).json({ok: true});
   } catch (e) {
     console.error('gamificationEvents', e);

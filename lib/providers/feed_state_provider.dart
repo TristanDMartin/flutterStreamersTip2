@@ -1,8 +1,8 @@
-import 'dart:developer';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/feed_tab.dart';
 import '../services/global_playback_manager.dart';
 import 'home_provider.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Single source of truth for the active feed tab
 /// This provider manages the current feed selection and ensures consistent state
@@ -24,10 +24,11 @@ final NotifierProvider<ActiveFeedNotifier, FeedTab> activeFeedProvider =
 Future<void> switchFeed(WidgetRef ref, FeedTab newFeed) async {
   final FeedTab currentFeed = ref.read(activeFeedProvider);
   if (currentFeed == newFeed) {
-    log('⏭️ switchFeed: Already on ${newFeed.displayName}');
+    secureLog('⏭️ switchFeed: Already on ${newFeed.displayName}');
     return;
   }
-  log('🔄 switchFeed: ${currentFeed.displayName} → ${newFeed.displayName}');
+  secureLog(
+      '🔄 switchFeed: ${currentFeed.displayName} → ${newFeed.displayName}');
   final GlobalPlaybackManager playbackManager = ref.read(
     globalPlaybackManagerProvider,
   );
@@ -53,6 +54,64 @@ class HomeViewReactivateNotifier extends Notifier<bool> {
 }
 
 final NotifierProvider<HomeViewReactivateNotifier, bool>
-homeViewReactivateProvider = NotifierProvider<HomeViewReactivateNotifier, bool>(
+    homeViewReactivateProvider =
+    NotifierProvider<HomeViewReactivateNotifier, bool>(
   HomeViewReactivateNotifier.new,
+);
+
+/// Full-screen "Getting your feed ready" on Home after a successful publish.
+class PostPublishFeedPrepState {
+  const PostPublishFeedPrepState({
+    this.isActive = false,
+    this.videoId,
+  });
+
+  final bool isActive;
+  final String? videoId;
+}
+
+class PostPublishFeedPrepNotifier extends Notifier<PostPublishFeedPrepState> {
+  @override
+  PostPublishFeedPrepState build() => const PostPublishFeedPrepState();
+
+  void start({String? videoId}) {
+    state = PostPublishFeedPrepState(isActive: true, videoId: videoId);
+  }
+
+  void complete() {
+    state = const PostPublishFeedPrepState();
+  }
+}
+
+final NotifierProvider<PostPublishFeedPrepNotifier, PostPublishFeedPrepState>
+    postPublishFeedPrepProvider =
+    NotifierProvider<PostPublishFeedPrepNotifier, PostPublishFeedPrepState>(
+  PostPublishFeedPrepNotifier.new,
+);
+
+/// MainTabView listens and switches tabs (e.g. Home = 0 after publish).
+final StateProvider<int?> mainTabIndexRequestProvider =
+    StateProvider<int?>((Ref ref) => null);
+
+/// Jump the Home feed to a freshly published / ready upload.
+class HomeFeedScrollRequestNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void requestScrollToVideo(String videoId) {
+    if (videoId.isEmpty) {
+      return;
+    }
+    state = videoId;
+  }
+
+  void clear() {
+    state = null;
+  }
+}
+
+final NotifierProvider<HomeFeedScrollRequestNotifier, String?>
+    homeFeedScrollRequestProvider =
+    NotifierProvider<HomeFeedScrollRequestNotifier, String?>(
+  HomeFeedScrollRequestNotifier.new,
 );

@@ -278,17 +278,13 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
 
     final notificationType = (data['type'] ?? 'like').toString();
     final isRead = data['isRead'] == true;
+    final thumbnailUrl = await _resolvePrimaryThumbnail(data, videoId);
     return ActivityNotification(
       id: doc.id,
       type: _typeFromString(notificationType),
       user: await _mapToUser(data),
       timestamp: _getTimestamp(data),
-      postThumbnailUrl: _stringField(data, const [
-        'postThumbnailUrl',
-        'thumbnailUrl',
-        'thumbnailURL',
-        'imageUrl',
-      ]).ifEmpty(null),
+      postThumbnailUrl: thumbnailUrl.ifEmpty(null),
       commentText: _stringField(data, const ['commentText', 'body', 'title'])
           .ifEmpty(null),
       status: isRead ? 'delivered' : 'pending',
@@ -340,7 +336,17 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 
   Future<void> markAllDelivered(String userId) async {
+    final previousGrouped = state.grouped;
     try {
+      state = state.copyWith(
+        grouped: {
+          for (final entry in state.grouped.entries)
+            entry.key: entry.value
+                .map((notification) =>
+                    notification.copyWith(status: 'delivered'))
+                .toList(growable: false),
+        },
+      );
       int totalMarked = 0;
       final batch = _db.batch();
 
@@ -386,23 +392,28 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     } catch (e) {
       debugPrint('❌ Error marking all as read: $e');
       state = state.copyWith(
+        grouped: previousGrouped,
         hasError: true,
         error: 'Failed to mark notifications as read: ${e.toString()}',
       );
     }
   }
 
-  Future<void> markNotificationAsRead(String notificationId) async {
+  Future<bool> markNotificationAsRead(String notificationId) async {
+    final previousGrouped = state.grouped;
     try {
       final currentUser = fa.FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
+      if (currentUser == null) return false;
+
+      _patchNotificationStatus(notificationId, 'delivered');
 
       if (notificationId.startsWith(_forumIdPrefix)) {
         final forumId = notificationId.substring(_forumIdPrefix.length);
-        await _db
-            .collection('forumNotifications')
-            .doc(forumId)
-            .update({'read': true});
+        await _db.collection('forumNotifications').doc(forumId).update({
+          'read': true,
+          'readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
         debugPrint('✅ Marked forum notification $forumId as read');
       } else {
         await _db
@@ -418,25 +429,29 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         debugPrint('✅ Marked notification $notificationId as read');
       }
 
-      // Update local state immediately for better UX
-      final updatedGrouped =
-          Map<String, List<ActivityNotification>>.from(state.grouped);
-      for (final key in updatedGrouped.keys) {
-        final notifications = updatedGrouped[key]!;
-        for (int i = 0; i < notifications.length; i++) {
-          if (notifications[i].id == notificationId) {
-            updatedGrouped[key]![i] =
-                notifications[i].copyWith(status: 'delivered');
-            break;
-          }
-        }
-      }
-
-      state = state.copyWith(grouped: updatedGrouped);
       debugPrint('✅ Marked notification $notificationId as read');
+      return true;
     } catch (e) {
       debugPrint('❌ Error marking notification as read: $e');
+      state = state.copyWith(
+        grouped: previousGrouped,
+        hasError: false,
+        error: null,
+      );
+      return false;
     }
+  }
+
+  void _patchNotificationStatus(String notificationId, String status) {
+    final updatedGrouped = <String, List<ActivityNotification>>{};
+    for (final entry in state.grouped.entries) {
+      updatedGrouped[entry.key] = entry.value
+          .map((notification) => notification.id == notificationId
+              ? notification.copyWith(status: status)
+              : notification)
+          .toList(growable: false);
+    }
+    state = state.copyWith(grouped: updatedGrouped);
   }
 
   // Get count of unread notifications
@@ -496,6 +511,81 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           'mediaId',
         ]).ifEmpty((metadataMap?['videoId'] ?? '').toString().trim()) ??
         '';
+  }
+
+  Future<String> _resolvePrimaryThumbnail(
+    Map<String, dynamic> data,
+    String videoId,
+  ) async {
+    final directMuxId = _stringField(data, const <String>[
+      'muxPlaybackId',
+      'playbackId',
+      'mux_playback_id',
+    ]);
+    if (directMuxId.isNotEmpty) {
+      return _muxThumbnailUrl(directMuxId);
+    }
+
+    final directMuxThumbnail = _stringField(data, const <String>[
+      'muxThumbnailUrl',
+      'muxThumbnailURL',
+      'mux_thumbnail_url',
+    ]);
+    if (directMuxThumbnail.isNotEmpty) {
+      return _upgradeMuxThumbnailUrl(directMuxThumbnail);
+    }
+
+    if (videoId.isNotEmpty) {
+      try {
+        final videoDoc = await _db.collection('videos').doc(videoId).get();
+        final videoData = videoDoc.data();
+        if (videoData != null) {
+          final videoMuxId = _stringField(videoData, const <String>[
+            'muxPlaybackId',
+            'playbackId',
+            'mux_playback_id',
+          ]);
+          if (videoMuxId.isNotEmpty) {
+            return _muxThumbnailUrl(videoMuxId);
+          }
+          final videoMuxThumbnail = _stringField(videoData, const <String>[
+            'muxThumbnailUrl',
+            'muxThumbnailURL',
+            'mux_thumbnail_url',
+          ]);
+          if (videoMuxThumbnail.isNotEmpty) {
+            return _upgradeMuxThumbnailUrl(videoMuxThumbnail);
+          }
+        }
+      } catch (e) {
+        debugPrint(
+            '⚠️ ActivityNotifier: Failed to resolve video thumbnail: $e');
+      }
+    }
+
+    final fallback = _stringField(data, const <String>[
+      'postThumbnailUrl',
+      'thumbnailUrl',
+      'thumbnailURL',
+      'imageUrl',
+    ]);
+    return _upgradeMuxThumbnailUrl(fallback);
+  }
+
+  String _muxThumbnailUrl(String playbackId) {
+    return 'https://image.mux.com/$playbackId/thumbnail.jpg?width=720&height=1280&fit_mode=smartcrop';
+  }
+
+  String _upgradeMuxThumbnailUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host != 'image.mux.com') {
+      return url;
+    }
+    final params = Map<String, String>.from(uri.queryParameters);
+    params['width'] = '720';
+    params['height'] = '1280';
+    params['fit_mode'] = 'smartcrop';
+    return uri.replace(queryParameters: params).toString();
   }
 
   Future<app_user.User?> _fetchUser(String userId) async {

@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,16 +26,25 @@ class AppStartupWrapper extends ConsumerStatefulWidget {
   ConsumerState<AppStartupWrapper> createState() => _AppStartupWrapperState();
 }
 
+enum _StartupShell { firebaseWaiting, loading, home, auth }
+
 class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   bool _firebaseStartupGracePeriodElapsed = false;
+  bool _calendarCleanupStarted = false;
 
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlayStyle();
+    ref.listenManual<RobustAuthenticationService>(
+      robustAuthServiceProvider,
+      _onAuthServiceChanged,
+    );
     Future<void>.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
-      setState(() => _firebaseStartupGracePeriodElapsed = true);
+      _scheduleRebuild(() {
+        _firebaseStartupGracePeriodElapsed = true;
+      });
     });
   }
 
@@ -41,6 +52,56 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   void dispose() {
     _resetSystemUIOverlayStyle();
     super.dispose();
+  }
+
+  void _onAuthServiceChanged(
+    RobustAuthenticationService? previous,
+    RobustAuthenticationService next,
+  ) {
+    if (previous == null) {
+      return;
+    }
+    final bool loadingChanged =
+        previous.shouldShowLoading != next.shouldShowLoading;
+    final bool loginChanged = previous.isLoggedIn != next.isLoggedIn;
+    if (!loadingChanged && !loginChanged) {
+      return;
+    }
+    if (next.isLoggedIn && !next.shouldShowLoading) {
+      _runCalendarCleanup();
+    }
+    if (kDebugMode) {
+      debugPrint('🔄 AppStartupWrapper: Auth state changed');
+      debugPrint(
+        '   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}',
+      );
+      debugPrint(
+        '   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}',
+      );
+    }
+    _scheduleRebuild(() {});
+  }
+
+  void _scheduleRebuild(VoidCallback updateState) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(updateState);
+    });
+  }
+
+  _StartupShell _resolveShell(RobustAuthenticationService authService) {
+    if (Firebase.apps.isEmpty && !_firebaseStartupGracePeriodElapsed) {
+      return _StartupShell.firebaseWaiting;
+    }
+    if (authService.shouldShowLoading) {
+      return _StartupShell.loading;
+    }
+    if (authService.isLoggedIn) {
+      return _StartupShell.home;
+    }
+    return _StartupShell.auth;
   }
 
   void _setSystemUIOverlayStyle() {
@@ -67,10 +128,12 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
 
   /// Run calendar cleanup for logged-in user
   void _runCalendarCleanup() {
+    if (_calendarCleanupStarted) return;
     final authService = ref.read(robustAuthServiceProvider);
     final currentUser = authService.currentUser;
 
     if (currentUser != null) {
+      _calendarCleanupStarted = true;
       // Run cleanup in background (non-blocking)
       CalendarCleanupService().cleanupExpiredEvents(currentUser.id).then((_) {
         if (kDebugMode) {
@@ -86,70 +149,52 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch auth service to rebuild when state changes
-    final authService = ref.watch(robustAuthServiceProvider);
+    final RobustAuthenticationService authService =
+        ref.watch(robustAuthServiceProvider);
+    final _StartupShell shell = _resolveShell(authService);
 
-    // Give Firebase a brief chance to finish cold-start initialization, but do
-    // not trap users on the splash forever if initialization fails/degrades.
-    if (Firebase.apps.isEmpty && !_firebaseStartupGracePeriodElapsed) {
-      if (kDebugMode) {
-        debugPrint(
-            '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen');
-      }
-      return _buildLoadingScreen();
+    if (shell == _StartupShell.firebaseWaiting && kDebugMode) {
+      debugPrint(
+        '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen',
+      );
     } else if (Firebase.apps.isEmpty && kDebugMode) {
       debugPrint(
-          '⚠️ AppStartupWrapper: Firebase unavailable after startup grace period - continuing to auth UI');
-    }
-
-    // Listen to auth state changes and force rebuild
-    ref.listen(robustAuthServiceProvider, (previous, next) {
-      if (previous != null) {
-        final loadingChanged =
-            previous.shouldShowLoading != next.shouldShowLoading;
-        final loginChanged = previous.isLoggedIn != next.isLoggedIn;
-
-        if (loadingChanged || loginChanged) {
-          if (kDebugMode) {
-            debugPrint('🔄 AppStartupWrapper: Auth state changed');
-            debugPrint(
-                '   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}');
-            debugPrint(
-                '   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}');
-          }
-
-          if (mounted) {
-            setState(() {});
-          }
-        }
-      }
-    });
-
-    if (kDebugMode) {
-      debugPrint(
-          '🎯 AppStartupWrapper: isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, isCheckingAuth=${authService.isCheckingAuth}');
-    }
-
-    // Show splash screen while loading or checking auth
-    if (authService.shouldShowLoading) {
-      return _buildLoadingScreen();
-    }
-
-    // Show main app if logged in (email verification gate matches web)
-    if (authService.isLoggedIn) {
-      if (kDebugMode) {
-        debugPrint('🏠 AppStartupWrapper: Returning verified shell');
-      }
-      _runCalendarCleanup();
-      return _EmailVerificationOrHome(
-        initialTabIndex: widget.initialTabIndex,
+        '⚠️ AppStartupWrapper: Firebase unavailable after startup grace period - continuing to auth UI',
       );
     }
 
     if (kDebugMode) {
-      debugPrint('🔐 AppStartupWrapper: Showing auth modal');
+      debugPrint(
+        '🎯 AppStartupWrapper: shell=$shell, isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, isCheckingAuth=${authService.isCheckingAuth}',
+      );
     }
-    return const AuthModalView();
+
+    switch (shell) {
+      case _StartupShell.firebaseWaiting:
+      case _StartupShell.loading:
+        return KeyedSubtree(
+          key: const ValueKey<String>('app_startup_loading'),
+          child: _buildLoadingScreen(),
+        );
+      case _StartupShell.home:
+        if (kDebugMode) {
+          debugPrint('🏠 AppStartupWrapper: Returning verified shell');
+        }
+        return KeyedSubtree(
+          key: const ValueKey<String>('app_startup_home'),
+          child: _EmailVerificationOrHome(
+            initialTabIndex: widget.initialTabIndex,
+          ),
+        );
+      case _StartupShell.auth:
+        if (kDebugMode) {
+          debugPrint('🔐 AppStartupWrapper: Showing auth modal');
+        }
+        return const KeyedSubtree(
+          key: ValueKey<String>('app_startup_auth'),
+          child: AuthModalView(),
+        );
+    }
   }
 
   Widget _buildLoadingScreen() {
@@ -161,7 +206,6 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App Logo - Fits within a circular container with extra padding for rings
               Container(
                 width: 192,
                 height: 192,
@@ -201,8 +245,6 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
                 ),
               ),
               const SizedBox(height: 40),
-
-              // App Name
               const Text(
                 'StreamersTip',
                 style: TextStyle(
@@ -213,10 +255,8 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Tagline
               const Text(
-                'Connect • Create • Share',
+                'Connect - Create - Share',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -244,59 +284,84 @@ class _EmailVerificationOrHome extends StatefulWidget {
 }
 
 class _EmailVerificationOrHomeState extends State<_EmailVerificationOrHome> {
-  bool _ready = false;
-  bool _verified = false;
+  final GlobalKey _mainTabKey = GlobalKey();
+  late bool _verified;
   String _email = '';
 
   @override
   void initState() {
     super.initState();
-    _syncVerification();
+    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
+    _verified = user?.emailVerified ?? true;
+    _email = user?.email ?? '';
+    unawaited(_syncVerification());
   }
 
   Future<void> _syncVerification() async {
     final fa.User? user = fa.FirebaseAuth.instance.currentUser;
     if (user == null) {
-      if (mounted) {
+      if (!mounted) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
         setState(() {
-          _ready = true;
           _verified = true;
         });
-      }
+      });
       return;
     }
-    await user.reload();
+    try {
+      await user.reload().timeout(const Duration(seconds: 2));
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ Email verification refresh deferred: $e');
+      }
+    }
     final fa.User? fresh = fa.FirebaseAuth.instance.currentUser;
     if (!mounted) {
       return;
     }
-    setState(() {
-      _ready = true;
-      _verified = fresh?.emailVerified ?? false;
-      _email = fresh?.email ?? '';
+    final bool nextVerified = fresh?.emailVerified ?? false;
+    final String nextEmail = fresh?.email ?? '';
+    if (_verified == nextVerified && _email == nextEmail) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _verified = nextVerified;
+        _email = nextEmail;
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
+    if (!_verified) {
+      return KeyedSubtree(
+        key: const ValueKey<String>('app_startup_email_verification'),
+        child: EmailVerificationView(
+          email: _email,
+          navigateToHomeOnVerify: false,
+          onVerified: () {
+            _syncVerification();
+          },
         ),
       );
     }
-    if (!_verified) {
-      return EmailVerificationView(
-        email: _email,
-        navigateToHomeOnVerify: false,
-        onVerified: () {
-          _syncVerification();
-        },
-      );
-    }
-    return AccountStatusGuard(
-      child: MainTabView(initialTabIndex: widget.initialTabIndex),
+    return KeyedSubtree(
+      key: const ValueKey<String>('app_startup_main_tab'),
+      child: AccountStatusGuard(
+        child: MainTabView(
+          key: _mainTabKey,
+          initialTabIndex: widget.initialTabIndex,
+        ),
+      ),
     );
   }
 }

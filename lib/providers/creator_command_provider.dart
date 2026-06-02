@@ -26,7 +26,12 @@ final StreamProvider<List<Map<String, dynamic>>>
       ref.watch(creatorCommandFirestoreProvider);
   return firestore
       .collection('scheduled_posts')
-      .where('authorId', isEqualTo: userId)
+      .where(
+        Filter.or(
+          Filter('authorId', isEqualTo: userId),
+          Filter('userId', isEqualTo: userId),
+        ),
+      )
       .snapshots()
       .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
     return snapshot.docs
@@ -177,9 +182,12 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
   required Map<String, dynamic>? metrics,
   required List<Map<String, dynamic>> recentVideos,
 }) {
+  final String uid = userData['id'] as String? ?? '';
   final List<Map<String, dynamic>> creatorPosts = scheduledPosts
-      .where((Map<String, dynamic> post) =>
-          (post['authorId'] as String?) == userData['id'])
+      .where((Map<String, dynamic> post) => _scheduledPostBelongsToUser(
+            post,
+            uid,
+          ))
       .toList(growable: false);
   creatorPosts.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
     final DateTime? aTime = _readScheduledAt(a);
@@ -276,6 +284,10 @@ DateTime? _coerceToDateTime(Object? raw) {
 DateTime? _readScheduledAt(Map<String, dynamic>? post) {
   if (post == null) return null;
   final List<DateTime> candidates = <DateTime>[];
+  final DateTime? rootScheduledAt = _coerceToDateTime(post['scheduledAt']);
+  if (rootScheduledAt != null) {
+    candidates.add(rootScheduledAt);
+  }
   final Object? schedule = post['schedule'];
   if (schedule is Map<String, dynamic>) {
     final DateTime? root = _coerceToDateTime(schedule['scheduledAtUtc']);
@@ -342,4 +354,14 @@ double? _calculateUploadConsistency(List<Map<String, dynamic>> videos) {
     }
   }
   return weeksWithUploads / 10.0;
+}
+
+bool _scheduledPostBelongsToUser(Map<String, dynamic> post, String uid) {
+  if (uid.isEmpty) {
+    return false;
+  }
+  return (post['authorId'] as String?) == uid ||
+      (post['userId'] as String?) == uid ||
+      (post['creatorId'] as String?) == uid ||
+      (post['uid'] as String?) == uid;
 }

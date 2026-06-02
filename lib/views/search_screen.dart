@@ -7,7 +7,7 @@ import '../providers/follow_refresh_provider.dart';
 import '../routing/app_navigator.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../constants/app_colors.dart';
+import '../core/theme/support_shell_style.dart';
 
 /// StreamersTip search screen with unified results feed
 class SearchScreen extends ConsumerStatefulWidget {
@@ -235,46 +235,56 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         _loadThingsYouMayLike();
       }
     });
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Container(
-      decoration: const BoxDecoration(
+    return DecoratedBox(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: AppColors.supportSurfaceGradient,
+          colors: shell.pageGradient,
         ),
       ),
       child: Scaffold(
         backgroundColor: Colors.transparent,
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
+          foregroundColor: shell.onChrome,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(Icons.arrow_back_rounded, color: shell.onChrome),
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: _buildSearchBar(),
+          title: _buildSearchBar(cs, shell),
         ),
-        body: _searchQuery.isEmpty
-            ? _buildTrendingAndRecent()
-            : _buildSearchResults(),
+        body: Padding(
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: _searchQuery.isEmpty
+              ? _buildTrendingAndRecent(cs, shell)
+              : _buildSearchResults(cs, shell),
+        ),
       ),
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(ColorScheme cs, StSupportShellStyle shell) {
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: shell.panelSurface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: shell.panelBorder),
       ),
       child: Row(
-        children: [
+        children: <Widget>[
           const SizedBox(width: 12),
           Icon(
-            Icons.search,
-            color: Colors.white.withValues(alpha: 0.7),
+            Icons.search_rounded,
+            color: shell.iconDim,
             size: 20,
           ),
           const SizedBox(width: 8),
@@ -282,52 +292,62 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             child: TextField(
               controller: _searchController,
               focusNode: _searchFocusNode,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: cs.onSurface, fontSize: 16),
+              cursorColor: cs.primary,
               decoration: InputDecoration(
                 hintText: 'Search',
-                hintStyle:
-                    TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                hintStyle: TextStyle(color: cs.onSurfaceVariant),
                 border: InputBorder.none,
+                isDense: true,
                 contentPadding: EdgeInsets.zero,
               ),
               autofocus: false,
             ),
           ),
-          if (_searchController.text.isNotEmpty)
-            GestureDetector(
-              onTap: () {
-                _searchController.clear();
-                _searchFocusNode.unfocus();
-                setState(() {
-                  _searchQuery = '';
-                  _allResults = [];
-                });
-              },
-              child: Icon(
-                Icons.clear,
-                color: Colors.white.withValues(alpha: 0.7),
-                size: 20,
-              ),
-            ),
-          const SizedBox(width: 12),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _searchController,
+            builder: (BuildContext context, TextEditingValue v, Widget? _) {
+              if (v.text.isEmpty) {
+                return const SizedBox(width: 12);
+              }
+              return GestureDetector(
+                onTap: () {
+                  _searchController.clear();
+                  _searchFocusNode.unfocus();
+                  setState(() {
+                    _searchQuery = '';
+                    _allResults = [];
+                  });
+                },
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.clear_rounded,
+                    color: shell.iconDim,
+                    size: 20,
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTrendingAndRecent() {
+  Widget _buildTrendingAndRecent(ColorScheme cs, StSupportShellStyle shell) {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      children: [
+      children: <Widget>[
         // Recent Searches
-        if (_recentSearches.isNotEmpty) ...[
+        if (_recentSearches.isNotEmpty) ...<Widget>[
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
+            children: <Widget>[
+              Text(
                 'Recent Searches',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: shell.onChrome,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -340,18 +360,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       await FirebaseFirestore.instance
                           .collection('users')
                           .doc(currentUser.uid)
-                          .update({'recentSearches': []});
+                          .update({'recentSearches': <String>[]});
                       setState(() {
-                        _recentSearches = [];
+                        _recentSearches = <String>[];
                       });
                     } catch (e) {
                       // Handle error
                     }
                   }
                 },
-                child: const Text(
+                child: Text(
                   'Clear all',
-                  style: TextStyle(color: Colors.pink, fontSize: 14),
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -360,17 +384,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _recentSearches.map((search) {
+            children: _recentSearches.map((String search) {
               return Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: shell.chipUnselectedBg,
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: shell.chipUnselectedBorder),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: [
+                  children: <Widget>[
                     GestureDetector(
                       onTap: () {
                         _searchController.text = search;
@@ -381,8 +406,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       },
                       child: Text(
                         search,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: shell.chipUnselectedFg,
                           fontSize: 14,
                         ),
                       ),
@@ -391,8 +416,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     GestureDetector(
                       onTap: () => _deleteRecentSearch(search),
                       child: Icon(
-                        Icons.close,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        Icons.close_rounded,
+                        color: shell.iconDim,
                         size: 16,
                       ),
                     ),
@@ -407,67 +432,75 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         // Things You May Like
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
+          children: <Widget>[
+            Text(
               'Things You May Like',
               style: TextStyle(
-                color: Colors.white,
+                color: shell.onChrome,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             IconButton(
               icon: _isLoading
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        color: cs.primary,
                       ),
                     )
-                  : const Icon(Icons.refresh, color: Colors.white),
+                  : Icon(Icons.refresh_rounded, color: shell.onChrome),
               onPressed: _loadThingsYouMayLike,
             ),
           ],
         ),
         const SizedBox(height: 8),
         if (_isLoading)
-          const Center(
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
+          Center(
+            child: CircularProgressIndicator(color: cs.primary),
           )
         else if (_thingsYouMayLike.isEmpty)
-          const Center(
+          Center(
             child: Text(
               'Nothing to show yet',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: shell.muted),
             ),
           )
         else
-          ..._thingsYouMayLike.map((item) => _buildRecommendationCard(item)),
+          ..._thingsYouMayLike.map(
+            (Map<String, dynamic> item) =>
+                _buildRecommendationCard(item, cs, shell),
+          ),
       ],
     );
   }
 
-  Widget _buildRecommendationCard(Map<String, dynamic> item) {
+  Widget _buildRecommendationCard(
+    Map<String, dynamic> item,
+    ColorScheme cs,
+    StSupportShellStyle shell,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Icon(
-          item['type'] == 'hashtag' ? Icons.tag : Icons.video_library,
-          color: Colors.pink,
+          item['type'] == 'hashtag'
+              ? Icons.tag_rounded
+              : Icons.video_library_rounded,
+          color: cs.primary,
         ),
         title: Text(
           item['title'] ?? '',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: shell.onChrome,
             fontSize: 16,
             fontWeight: FontWeight.w500,
           ),
@@ -475,15 +508,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         subtitle: Text(
           item['subtitle'] ?? '',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
+            color: shell.muted,
             fontSize: 14,
           ),
         ),
         onTap: () {
           if (item['type'] == 'hashtag') {
-            _searchController.text = item['title'];
+            _searchController.text = item['title'] as String? ?? '';
             setState(() {
-              _searchQuery = item['title'];
+              _searchQuery = item['title'] as String? ?? '';
             });
             _performSearch();
           }
@@ -492,12 +525,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
-  Widget _buildSearchResults() {
+  Widget _buildSearchResults(ColorScheme cs, StSupportShellStyle shell) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-        ),
+      return Center(
+        child: CircularProgressIndicator(color: cs.primary),
       );
     }
 
@@ -505,17 +536,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+          children: <Widget>[
             Icon(
-              Icons.search_off,
+              Icons.search_off_rounded,
               size: 64,
-              color: Colors.white.withValues(alpha: 0.3),
+              color: shell.iconDim,
             ),
             const SizedBox(height: 16),
             Text(
               'No results found',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
+                color: shell.muted,
                 fontSize: 18,
               ),
             ),
@@ -526,19 +557,23 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: _allResults.map((result) {
+      children: _allResults.map((SearchResult result) {
         if (result.type == SearchResultType.user) {
-          return _buildUserCard(result);
-        } else if (result.type == SearchResultType.video) {
-          return _buildVideoCard(result);
-        } else {
-          return const SizedBox.shrink();
+          return _buildUserCard(result, cs, shell);
         }
+        if (result.type == SearchResultType.video) {
+          return _buildVideoCard(result, cs, shell);
+        }
+        return const SizedBox.shrink();
       }).toList(),
     );
   }
 
-  Widget _buildUserCard(SearchResult result) {
+  Widget _buildUserCard(
+    SearchResult result,
+    ColorScheme cs,
+    StSupportShellStyle shell,
+  ) {
     return InkWell(
       onTap: () {
         AppNavigator.openStreamerCard(
@@ -552,13 +587,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: shell.surfaceCard,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: shell.surfaceCardBorder),
         ),
         child: Row(
-          children: [
+          children: <Widget>[
             CircleAvatar(
               radius: 28,
+              backgroundColor: cs.surfaceContainerHighest,
               backgroundImage:
                   result.avatarUrl != null && result.avatarUrl!.isNotEmpty
                       ? NetworkImage(result.avatarUrl!)
@@ -568,7 +605,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       result.title.isNotEmpty
                           ? result.title[0].toUpperCase()
                           : '?',
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: cs.onSurface),
                     )
                   : null,
             ),
@@ -576,11 +613,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                children: <Widget>[
                   Text(
                     result.title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: shell.onChrome,
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -588,7 +625,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   Text(
                     result.subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: shell.muted,
                       fontSize: 14,
                     ),
                   ),
@@ -599,7 +636,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               Text(
                 '${result.followerCount} followers',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
+                  color: shell.mutedStrong,
                   fontSize: 12,
                 ),
               ),
@@ -609,17 +646,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
-  Widget _buildVideoCard(SearchResult result) {
+  Widget _buildVideoCard(
+    SearchResult result,
+    ColorScheme cs,
+    StSupportShellStyle shell,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
-        children: [
+        children: <Widget>[
           Container(
             width: 120,
             height: 180,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              color: Colors.grey[900],
+              color: cs.surfaceContainerHighest,
+              border: Border.all(color: shell.surfaceCardBorder),
             ),
             child: result.imageURL != null && result.imageURL!.isNotEmpty
                 ? ClipRRect(
@@ -627,27 +669,33 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     child: Image.network(
                       result.imageURL!,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Center(
-                          child:
-                              Icon(Icons.video_library, color: Colors.white54),
+                      errorBuilder:
+                          (BuildContext context, Object error, StackTrace? st) {
+                        return Center(
+                          child: Icon(
+                            Icons.video_library_rounded,
+                            color: shell.iconDim,
+                          ),
                         );
                       },
                     ),
                   )
-                : const Center(
-                    child: Icon(Icons.video_library, color: Colors.white54),
+                : Center(
+                    child: Icon(
+                      Icons.video_library_rounded,
+                      color: shell.iconDim,
+                    ),
                   ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 Text(
                   result.title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: shell.onChrome,
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
                   ),
@@ -658,7 +706,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 Text(
                   result.subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: shell.muted,
                     fontSize: 14,
                   ),
                 ),
@@ -668,7 +716,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     child: Text(
                       '${result.viewCount} views',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5),
+                        color: shell.mutedStrong,
                         fontSize: 12,
                       ),
                     ),

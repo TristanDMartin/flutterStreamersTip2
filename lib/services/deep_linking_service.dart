@@ -192,7 +192,8 @@ class DeepLinkingService {
       }
 
       if (identifier.length >= 20) {
-        final userDoc = await _firestore.collection('users').doc(identifier).get();
+        final userDoc =
+            await _firestore.collection('users').doc(identifier).get();
         if (!userDoc.exists) {
           throw Exception('User not found');
         }

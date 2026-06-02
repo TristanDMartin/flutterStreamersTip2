@@ -26,6 +26,7 @@ class UserEntitlementsModel {
       }
       return false;
     }
+
     bool readTippyEnabled() {
       final Object? v = m['tippyAi'] ?? m['tippy_ai'];
       if (v is bool) {
@@ -43,10 +44,12 @@ class UserEntitlementsModel {
       }
       return false;
     }
+
     return UserEntitlementsModel(
       tippyAi: readTippyEnabled(),
       crossPosting: read('crossPosting') || read('cross_posting'),
-      advancedAnalytics: read('advancedAnalytics') || read('advanced_analytics'),
+      advancedAnalytics:
+          read('advancedAnalytics') || read('advanced_analytics'),
       advancedPlanner: read('advancedPlanner') || read('advanced_planner'),
       premiumMissionTracks:
           read('premiumMissionTracks') || read('premium_mission_tracks'),

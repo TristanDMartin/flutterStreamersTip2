@@ -15,8 +15,7 @@ class PlatformCharacterLimits {
     'Other': 500,
   };
 
-  static int limitFor(String platformName) =>
-      limits[platformName] ?? 500;
+  static int limitFor(String platformName) => limits[platformName] ?? 500;
 }
 
 /// Reusable platform row for cross-posting in both QuickPublishSheet and
@@ -69,8 +68,7 @@ class _PlatformRowState extends State<PlatformRow> {
   void didUpdateWidget(PlatformRow old) {
     super.didUpdateWidget(old);
     // Sync caption if parent pushes a new initial value while toggled off.
-    if (!widget.isEnabled &&
-        _captionCtrl.text != widget.initialCaption) {
+    if (!widget.isEnabled && _captionCtrl.text != widget.initialCaption) {
       _captionCtrl.text = widget.initialCaption;
       _charCount = widget.initialCaption.length;
     }
@@ -225,8 +223,8 @@ class _PlatformRowState extends State<PlatformRow> {
                     maxLength: widget.characterLimit,
                     decoration: InputDecoration(
                       hintText: 'Caption for ${widget.platformName}…',
-                      hintStyle: const TextStyle(
-                          color: Colors.white38, fontSize: 13),
+                      hintStyle:
+                          const TextStyle(color: Colors.white38, fontSize: 13),
                       filled: true,
                       fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
@@ -240,8 +238,7 @@ class _PlatformRowState extends State<PlatformRow> {
                   const SizedBox(height: 4),
                   Text(
                     '$_charCount / ${widget.characterLimit}',
-                    style: TextStyle(
-                        color: _counterColor(), fontSize: 11),
+                    style: TextStyle(color: _counterColor(), fontSize: 11),
                   ),
                 ],
               ),

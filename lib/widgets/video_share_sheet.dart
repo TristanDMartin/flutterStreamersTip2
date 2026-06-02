@@ -25,7 +25,12 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
 
   // Mock data - replace with real data
   final List<String> _friends = [
-    "nikoleglenn", "BuzZz", "Reggie", "Ashley Fyl Johnson", "drina", "Camil"
+    "nikoleglenn",
+    "BuzZz",
+    "Reggie",
+    "Ashley Fyl Johnson",
+    "drina",
+    "Camil"
   ];
 
   @override
@@ -53,9 +58,9 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
         children: [
           // Header
           _buildHeader(),
-          
+
           const Divider(color: Colors.white24),
-          
+
           // Content
           Expanded(
             child: SingleChildScrollView(
@@ -64,12 +69,12 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
                 children: [
                   // Section 1: Send to Network
                   if (_friends.isNotEmpty) _buildNetworkSection(),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Section 2: Share to Platforms
                   _buildPlatformsSection(),
-                  
+
                   // Section 3: User Actions (for video owner only)
                   if (_isOwnVideo) ...[
                     const SizedBox(height: 24),
@@ -96,7 +101,6 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
               style: TextStyle(color: Colors.white),
             ),
           ),
-          
           const Expanded(
             child: Text(
               "Share",
@@ -108,7 +112,6 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
               textAlign: TextAlign.center,
             ),
           ),
-          
           TextButton(
             onPressed: () {
               // Search functionality
@@ -135,9 +138,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        
         const SizedBox(height: 16),
-        
         SizedBox(
           height: 100,
           child: ListView.builder(
@@ -170,9 +171,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
                           ),
                         ),
                       ),
-                      
                       const SizedBox(height: 8),
-                      
                       Text(
                         friend,
                         style: const TextStyle(
@@ -206,9 +205,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        
         const SizedBox(height: 16),
-        
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -244,21 +241,16 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        
         const SizedBox(height: 16),
-        
         Column(
           children: [
-            
             VideoShareActionButton(
               title: "Download",
               icon: Icons.download,
               color: Colors.green,
               onTap: _downloadVideo,
             ),
-            
             const SizedBox(height: 12),
-            
             VideoShareActionButton(
               title: "Delete",
               icon: Icons.delete,
@@ -331,7 +323,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   // MARK: - Actions
 
   void _sendToFriend(String friend) {
-    // print("📤 Sending video to $friend");
+    // appLog("📤 Sending video to $friend");
     // Implement in-app sharing
     widget.onDismiss?.call();
   }
@@ -339,7 +331,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   void _copyLink() {
     final videoLink = "https://streamerstip.com/video/${widget.video.id}";
     Clipboard.setData(ClipboardData(text: videoLink));
-    // print("📋 Copied link: $videoLink");
+    // appLog("📋 Copied link: $videoLink");
     widget.onDismiss?.call();
   }
 
@@ -354,20 +346,23 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   void _shareViaWhatsApp() {
     final videoLink = "https://streamerstip.com/video/${widget.video.id}";
     final message = "Check out this video: $videoLink";
-    final uri = Uri.parse("whatsapp://send?text=${Uri.encodeComponent(message)}");
+    final uri =
+        Uri.parse("whatsapp://send?text=${Uri.encodeComponent(message)}");
     _launchUrl(uri);
     widget.onDismiss?.call();
   }
 
   void _shareViaInstagram() {
     final videoLink = "https://streamerstip.com/video/${widget.video.id}";
-    final uri = Uri.parse("instagram://library?AssetPath=${Uri.encodeComponent(videoLink)}");
+    final uri = Uri.parse(
+        "instagram://library?AssetPath=${Uri.encodeComponent(videoLink)}");
     _launchUrl(uri);
     widget.onDismiss?.call();
   }
 
   void _shareToStories() {
-    final uri = Uri.parse("instagram-stories://share?source_application=streamerstip");
+    final uri =
+        Uri.parse("instagram-stories://share?source_application=streamerstip");
     _launchUrl(uri);
     widget.onDismiss?.call();
   }
@@ -375,7 +370,8 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   void _shareViaTwitter() {
     final videoLink = "https://streamerstip.com/video/${widget.video.id}";
     final message = "Check out this video: $videoLink";
-    final uri = Uri.parse("twitter://post?message=${Uri.encodeComponent(message)}");
+    final uri =
+        Uri.parse("twitter://post?message=${Uri.encodeComponent(message)}");
     _launchUrl(uri);
     widget.onDismiss?.call();
   }
@@ -390,14 +386,15 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   void _shareViaSystem() async {
     try {
       final videoLink = "https://streamerstip.com/video/${widget.video.id}";
-      final shareText = "Check out this awesome video on StreamersTip!\n$videoLink";
-      
+      final shareText =
+          "Check out this awesome video on StreamersTip!\n$videoLink";
+
       await SharePlus.instance.share(
         ShareParams(
           text: shareText,
         ),
       );
-      
+
       // Log the share action (replace with proper logging framework)
       debugPrint("📤 Shared via system: $videoLink");
     } catch (e) {
@@ -409,7 +406,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   }
 
   void _downloadVideo() {
-    // print("📥 Downloading video: ${widget.video.id}");
+    // appLog("📥 Downloading video: ${widget.video.id}");
     // Implement video download
     widget.onDismiss?.call();
   }
@@ -418,7 +415,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
-    // print("Could not launch $uri");
+      // appLog("Could not launch $uri");
     }
   }
 }
@@ -458,9 +455,7 @@ class SharePlatformButton extends StatelessWidget {
               size: 20,
             ),
           ),
-          
           const SizedBox(height: 8),
-          
           Text(
             title,
             style: const TextStyle(
@@ -508,9 +503,7 @@ class VideoShareActionButton extends StatelessWidget {
               color: color,
               size: 18,
             ),
-            
             const SizedBox(width: 12),
-            
             Text(
               title,
               style: const TextStyle(
@@ -519,9 +512,7 @@ class VideoShareActionButton extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            
             const Spacer(),
-            
             const Icon(
               Icons.chevron_right,
               color: Colors.grey,
@@ -575,9 +566,7 @@ class VideoAnalyticsView extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            
             const SizedBox(height: 20),
-            
             Column(
               children: [
                 AnalyticsRow(
@@ -586,27 +575,21 @@ class VideoAnalyticsView extends StatelessWidget {
                   icon: Icons.visibility,
                   color: Colors.blue,
                 ),
-                
                 const SizedBox(height: 16),
-                
                 AnalyticsRow(
                   title: "Likes",
                   value: "${video.likes}",
                   icon: Icons.favorite,
                   color: Colors.red,
                 ),
-                
                 const SizedBox(height: 16),
-                
                 AnalyticsRow(
                   title: "Comments",
                   value: "${video.comments}",
                   icon: Icons.chat_bubble,
                   color: Colors.green,
                 ),
-                
                 const SizedBox(height: 16),
-                
                 const AnalyticsRow(
                   title: "Shares",
                   value: "0",
@@ -615,7 +598,6 @@ class VideoAnalyticsView extends StatelessWidget {
                 ),
               ],
             ),
-            
             const Spacer(),
           ],
         ),
@@ -653,9 +635,7 @@ class AnalyticsRow extends StatelessWidget {
             color: color,
             size: 20,
           ),
-          
           const SizedBox(width: 12),
-          
           Text(
             title,
             style: const TextStyle(
@@ -663,9 +643,7 @@ class AnalyticsRow extends StatelessWidget {
               fontSize: 16,
             ),
           ),
-          
           const Spacer(),
-          
           Text(
             value,
             style: const TextStyle(

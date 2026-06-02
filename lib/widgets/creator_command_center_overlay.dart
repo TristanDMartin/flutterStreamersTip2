@@ -8,6 +8,7 @@ import '../features/gamification/models/subscription_plan.dart';
 import '../components/onboarding/product_tour_target_keys.dart';
 import '../models/creator_command_snapshot.dart';
 import '../providers/creator_command_provider.dart';
+import '../qa/qa_keys.dart';
 import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
 
@@ -202,6 +203,7 @@ class _CreatorCommandCenterOverlayState
     final bool isExpanded = widget.state == CreatorCommandCenterState.expanded;
 
     return Positioned.fill(
+      key: QaKeys.commandCenterOverlay,
       child: Stack(
         children: <Widget>[
           if (isExpanded)
@@ -254,6 +256,7 @@ class _CreatorCommandCenterOverlayState
                                 ),
                               ),
                               IconButton(
+                                key: QaKeys.commandCenterDismiss,
                                 onPressed: widget.onDismiss,
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(
@@ -354,6 +357,7 @@ class _CreatorCommandCenterOverlayState
                               ),
                             ),
                             IconButton(
+                              key: QaKeys.commandCenterDismiss,
                               onPressed: widget.onDismiss,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(
@@ -477,6 +481,7 @@ class _ExpandedHeader extends StatelessWidget {
         _PlanBadge(plan: snapshot.subscriptionPlan),
         const SizedBox(width: 6),
         IconButton(
+          key: QaKeys.commandCenterDismiss,
           onPressed: onDismiss,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -513,7 +518,7 @@ class _QuickCommandRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: _CommandButton(
-            key: ProductTourTargetKeys.tippyAi,
+            key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.tippyAi),
             icon: Icons.auto_awesome_rounded,
             label: snapshot.tippyAiEnabled ? 'Tippy' : 'Tippy (locked)',
             onTap: () => _executeTippyFromCommandCenter(
@@ -823,7 +828,7 @@ class _ActionStatusBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final String dueLabel;
     if (snapshot.nextPostDueAt == null) {
-      dueLabel = '—';
+      dueLabel = 'No video post scheduled';
     } else {
       final TimeOfDay time =
           TimeOfDay.fromDateTime(snapshot.nextPostDueAt!.toLocal());
@@ -861,7 +866,7 @@ class _ActionStatusBlock extends StatelessWidget {
             label: 'Queue',
             value: snapshot.scheduledQueueCount > 0
                 ? '${snapshot.scheduledQueueCount} scheduled'
-                : '—',
+                : '0 scheduled',
           ),
         ],
       ),

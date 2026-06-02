@@ -140,11 +140,10 @@ class NetworkViewController extends ChangeNotifier {
         _networkService.getFollowing(),
       ]);
 
-      final blockedUserIds =
-          (await (_blockedUsersLoader?.call() ??
-                  _blockingService?.getBlockedUsers() ??
-                  Future<List<String>>.value(const <String>[])))
-              .toSet();
+      final blockedUserIds = (await (_blockedUsersLoader?.call() ??
+              _blockingService?.getBlockedUsers() ??
+              Future<List<String>>.value(const <String>[])))
+          .toSet();
 
       _updateState(
         _state.copyWith(

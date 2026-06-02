@@ -100,14 +100,14 @@ class OnboardingState {
   final String creatorStatus;
 
   int get completedMissionCount => completedMissions
-      .where((String id) => levelOneMissions.any((m) => m.id == id))
+      .where((String id) => visibleLevelOneMissions.any((m) => m.id == id))
       .length;
 
   double get levelOneProgress =>
-      completedMissionCount / levelOneMissions.length;
+      completedMissionCount / visibleLevelOneMissions.length;
 
   OnboardingMission? get nextMission {
-    for (final OnboardingMission mission in levelOneMissions) {
+    for (final OnboardingMission mission in visibleLevelOneMissions) {
       if (!completedMissions.contains(mission.id)) return mission;
     }
     return null;
@@ -171,6 +171,8 @@ const OnboardingMission completeProfileSideMission = OnboardingMission(
   routeHint: 'Finish your profile in Edit Profile.',
 );
 
+const bool showPlatformConnectionTask = false;
+
 const List<OnboardingMission> levelOneMissions = <OnboardingMission>[
   completeProfileSideMission,
   OnboardingMission(
@@ -198,6 +200,13 @@ const List<OnboardingMission> levelOneMissions = <OnboardingMission>[
     routeHint: 'Share your creator identity with the world.',
   ),
 ];
+
+List<OnboardingMission> get visibleLevelOneMissions => levelOneMissions
+    .where(
+      (OnboardingMission mission) =>
+          showPlatformConnectionTask || mission.id != 'connect_platform',
+    )
+    .toList(growable: false);
 
 int levelForXp(int xp) {
   if (xp >= 5000) return 5;

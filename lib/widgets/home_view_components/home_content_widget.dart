@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:developer';
 import '../../components/onboarding/product_tour_target_keys.dart';
 import '../../models/home_video.dart';
 import '../../providers/home_provider.dart' as hp;
+import '../../providers/feed_state_provider.dart';
 import '../../models/feed_tab.dart';
 import '../../services/global_playback_manager.dart';
 import '../../constants/app_colors.dart';
@@ -13,6 +13,8 @@ import 'video_page_view_widget.dart';
 import 'loading_state_widget.dart';
 import '../../widgets/threads/threads_list_view.dart';
 import '../../features/gamification/widgets/creator_progression_panel.dart';
+import '../../qa/qa_keys.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Main content widget for HomeView (combines all components)
 class HomeContentWidget extends ConsumerStatefulWidget {
@@ -25,10 +27,10 @@ class HomeContentWidget extends ConsumerStatefulWidget {
   final Function(HomeVideo) onRightSwipe;
   final VoidCallback onDiscoverTap;
   final VoidCallback onNetworkTap;
-  final Function(VoidCallback)?
-      onScrollControllerReady; // Pass scroll callback up
+  final void Function(HomeFeedPageControls)? onScrollControllerReady;
   final bool showCommandCenterTrigger;
   final VoidCallback? onCommandCenterTap;
+  final ValueChanged<bool>? onFeedSelectorOpenChanged;
 
   const HomeContentWidget({
     super.key,
@@ -44,6 +46,7 @@ class HomeContentWidget extends ConsumerStatefulWidget {
     this.onScrollControllerReady,
     this.showCommandCenterTrigger = false,
     this.onCommandCenterTap,
+    this.onFeedSelectorOpenChanged,
   });
 
   @override
@@ -51,12 +54,12 @@ class HomeContentWidget extends ConsumerStatefulWidget {
 }
 
 class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
-  bool _showScrollToTop = false;
-  VoidCallback? _scrollCallback;
+  String? _lastBuildLogSignature;
+  DateTime? _lastBuildLogAt;
 
   /// Handle pull-to-refresh at top of feed (index 0)
   Future<void> _handlePullToRefresh(FeedTab activeTab) async {
-    log(
+    secureLog(
       '🔄 HomeContent: Pull-to-refresh triggered for ${activeTab.displayName} feed at index 0',
     );
     try {
@@ -76,13 +79,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
         if (videos.isNotEmpty) {
           final newTopVideo = videos[0];
           GlobalPlaybackManager.instance.onVisibleIndexChanged(0, newTopVideo);
-          log(
+          secureLog(
             '✅ HomeContent: Feed refreshed - newest video at index 0: ${newTopVideo.id}',
           );
         }
       }
     } catch (e) {
-      log('❌ HomeContent: Error refreshing feed: $e');
+      secureLog('❌ HomeContent: Error refreshing feed: $e');
       rethrow;
     }
   }
@@ -96,7 +99,8 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     final isLoading = feedData.isLoading;
     final hasError = feedData.hasError;
 
-    if (kDebugMode) {
+    if (kDebugMode &&
+        _shouldLogFeedBuild(activeFeed, videos, isLoading, hasError)) {
       debugPrint(
         '📊 HomeContent[$activeFeed]: videos=${videos.length}, isLoading=$isLoading, hasError=$hasError',
       );
@@ -106,9 +110,10 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     }
 
     return Stack(
+      key: activeFeed == FeedTab.forYou ? QaKeys.homeFeedSurface : null,
       children: <Widget>[
         KeyedSubtree(
-          key: ProductTourTargetKeys.homeFeed,
+          key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.homeFeed),
           child: Positioned.fill(
             child: _buildVideoContent(videos, isLoading, hasError),
           ),
@@ -135,8 +140,9 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           right: 0,
           child: FeedSelectorWidget(
             activeTab: widget.activeTab,
+            onDropdownOpenChanged: widget.onFeedSelectorOpenChanged,
             onTabSelected: (FeedTab selectedTab) {
-              log(
+              secureLog(
                 '🔘 HomeContent: ${selectedTab.displayName} tapped, current tab: ${widget.activeTab.displayName}',
               );
               widget.onTabChange(selectedTab);
@@ -144,48 +150,28 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
             onDiscoverTap: widget.onDiscoverTap,
           ),
         ),
-
-        // Scroll to top button (TikTok-style)
-        if (_showScrollToTop)
-          Positioned(
-            bottom: 100,
-            right: 16,
-            child: GestureDetector(
-              onTap: () {
-                log('⬆️ HomeContent: Scroll to top tapped');
-                // Call the scroll callback from VideoPageViewWidget
-                if (_scrollCallback != null) {
-                  _scrollCallback!();
-                  setState(() {
-                    _showScrollToTop = false;
-                  });
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: AppColors.supportAccentGradient,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.34),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.arrow_upward,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
-          ),
       ],
     );
+  }
+
+  bool _shouldLogFeedBuild(
+    FeedTab activeFeed,
+    List<HomeVideo> videos,
+    bool isLoading,
+    bool hasError,
+  ) {
+    final signature = '$activeFeed:${videos.length}:$isLoading:$hasError';
+    final now = DateTime.now();
+    final lastAt = _lastBuildLogAt;
+    final shouldLog = signature != _lastBuildLogSignature ||
+        lastAt == null ||
+        now.difference(lastAt) > const Duration(seconds: 5);
+
+    if (shouldLog) {
+      _lastBuildLogSignature = signature;
+      _lastBuildLogAt = now;
+    }
+    return shouldLog;
   }
 
   Widget _buildVideoContent(
@@ -193,6 +179,8 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     bool isLoading,
     bool hasError,
   ) {
+    final PostPublishFeedPrepState postPublishPrep =
+        ref.watch(postPublishFeedPrepProvider);
     final homeState = ref.read(hp.homeProvider);
     final activeFeed = widget.activeTab;
     // FeedTab.following is intentionally displayed as "Progression" in the
@@ -206,6 +194,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       return const ThreadsListView();
     }
 
+    if (postPublishPrep.isActive && activeFeed == FeedTab.forYou) {
+      return const LoadingStateWidget(
+        message: feedPrepAfterPublishMessage,
+        showProgress: true,
+      );
+    }
+
     if (hasError) {
       if (activeFeed == FeedTab.forYou && videos.isNotEmpty) {
         return VideoPageViewWidget(
@@ -214,30 +209,18 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           tabId: activeFeed.tabId,
           showCommandCenterTrigger: widget.showCommandCenterTrigger,
           onCommandCenterTap: widget.onCommandCenterTap,
-          onPageChanged: (index) {
-            widget.onPageChanged(index);
-            if (mounted) {
-              setState(() {
-                _showScrollToTop = index > 2;
-              });
-            }
-          },
+          onPageChanged: widget.onPageChanged,
           onVideoTap: widget.onVideoTap,
           onLeftSwipe: widget.onLeftSwipe,
           onRightSwipe: widget.onRightSwipe,
-          onControllerReady: (callback) {
-            _scrollCallback = callback;
-            if (widget.onScrollControllerReady != null) {
-              widget.onScrollControllerReady!(callback);
-            }
-          },
+          onControllerReady: widget.onScrollControllerReady,
           onRefresh: () => _handlePullToRefresh(activeFeed),
         );
       }
       return ErrorStateWidget(
         message: homeState.error ?? 'Failed to load videos. Please try again.',
         onRetry: () {
-          log('🔄 HomeContent: Retrying ${activeFeed.displayName} feed');
+          secureLog('🔄 HomeContent: Retrying ${activeFeed.displayName} feed');
           final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
           if (activeFeed == FeedTab.forYou) {
             homeProviderNotifier.retryLoadVideos();
@@ -248,7 +231,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       );
     }
 
-    if (isLoading && videos.isEmpty) {
+    if (videos.isEmpty && (isLoading || !homeState.hasLoaded)) {
       return const LoadingStateWidget(message: 'Loading videos...');
     }
 
@@ -265,26 +248,11 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       tabId: activeFeed.tabId,
       showCommandCenterTrigger: widget.showCommandCenterTrigger,
       onCommandCenterTap: widget.onCommandCenterTap,
-      onPageChanged: (index) {
-        widget.onPageChanged(index);
-        // Show scroll-to-top button when scrolled past first video
-        if (mounted) {
-          setState(() {
-            _showScrollToTop = index > 2; // Show after 3rd video
-          });
-        }
-      },
+      onPageChanged: widget.onPageChanged,
       onVideoTap: widget.onVideoTap,
       onLeftSwipe: widget.onLeftSwipe,
       onRightSwipe: widget.onRightSwipe,
-      onControllerReady: (callback) {
-        // Store callback locally for scroll-to-top button
-        _scrollCallback = callback;
-        // Also pass up to HomeView
-        if (widget.onScrollControllerReady != null) {
-          widget.onScrollControllerReady!(callback);
-        }
-      },
+      onControllerReady: widget.onScrollControllerReady,
       onRefresh: () => _handlePullToRefresh(activeFeed),
     );
   }
@@ -319,15 +287,16 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              message,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+            child: SelectableText.rich(
+              TextSpan(
+                text: message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              maxLines: 2,
             ),
           ),
           const SizedBox(width: 10),

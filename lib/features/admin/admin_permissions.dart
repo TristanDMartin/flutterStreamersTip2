@@ -73,8 +73,7 @@ class AdminPermissions {
         return AdminPermissions.full();
       }
       if (raw is Map<String, dynamic>) {
-        bool g(String k, bool d) =>
-            raw[k] is bool ? raw[k] as bool : d;
+        bool g(String k, bool d) => raw[k] is bool ? raw[k] as bool : d;
         return AdminPermissions(
           viewReports: g('viewReports', true),
           manageReports: g('manageReports', true),
@@ -95,8 +94,8 @@ class AdminPermissions {
           viewUploads: list.contains('view_uploads'),
           removeVideos: list.contains('remove_videos'),
           banUsers: list.contains('ban_users'),
-          manageUsers: list.contains('view_user_profiles') ||
-              list.contains('ban_users'),
+          manageUsers:
+              list.contains('view_user_profiles') || list.contains('ban_users'),
           viewAdminStats: list.contains('view_reports'),
           manageTiers: list.contains('manage_tiers'),
         );

@@ -12,6 +12,7 @@ Replaces Firebase Cloud Functions `createMuxDirectUpload` and `muxWebhook` with 
 | POST | `/webhooks/mux` | Mux-Signature header | Handle `video.asset.ready`, update Firestore with `hlsUrl`, `status: ready` |
 | POST | `/mux/backfill-assets` | X-Backfill-Secret header | Sync Mux assets to Firestore (for assets missed by webhook) |
 | POST | `/gamification/events` | Bearer (Firebase ID token) | Trusted gamification events; idempotent by `eventId` via Firestore `gamification_events` |
+| POST | `/creator-score/sync` | Bearer (Firebase ID token) | Calculate and write backend-owned `users/{uid}/creatorScore/current` |
 
 ## Setup
 
