@@ -39,5 +39,30 @@ void main() {
       expect(muteStates['v2'], isTrue);
       expect(muteStates.containsKey('v1'), isFalse);
     });
+
+    test('setActiveOwner is no-op when owner is already active', () {
+      final PlaybackFocusCoordinator focus = PlaybackFocusCoordinator();
+      focus.setVisibleOwner('home');
+      focus.publishActiveOwner('home');
+      final Map<String, VideoPlayerController> pool =
+          <String, VideoPlayerController>{
+        'v1': VideoPlayerController.networkUrl(
+          Uri.parse('https://example.com/1.mp4'),
+        ),
+      };
+      final Map<String, String> owners = <String, String>{'v1': 'discover'};
+      final Map<String, bool> muteStates = <String, bool>{};
+
+      coordinator.setActiveOwner(
+        owner: 'home',
+        focus: focus,
+        controllerPool: pool,
+        controllerOwners: owners,
+        muteStates: muteStates,
+        isControllerSafe: (_, __) => true,
+      );
+
+      expect(muteStates.containsKey('v1'), isFalse);
+    });
   });
 }

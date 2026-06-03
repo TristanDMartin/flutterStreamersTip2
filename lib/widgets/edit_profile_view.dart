@@ -22,6 +22,9 @@ import '../features/admin/views/admin_control_center_view.dart';
 import '../constants/app_colors.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../components/onboarding/onboarding_mission_actions.dart';
+import '../utils/platform_rules.dart';
+import '../utils/playback_route_suppression.dart';
+import '../routing/app_routes.dart';
 
 class EditProfileView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -53,6 +56,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   @override
   void initState() {
     super.initState();
+    PlaybackRouteSuppression.suppress(reason: 'edit_profile');
     _user = Map.from(widget.user);
     _profileUpdateService = ProfileUpdateService();
     _profileUpdateService!.addProfileViewListener(
@@ -128,6 +132,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/admin_control'),
         builder: (_) => const AdminControlCenterView(),
       ),
     );
@@ -568,7 +573,8 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
     Navigator.push(
       context,
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: AppRoutes.editField),
         builder: (context) => EditFieldView(
           title: field.title,
           text: currentValue,
@@ -723,16 +729,36 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
     Navigator.push(
       context,
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: AppRoutes.editLinks),
         builder: (context) => LinksEditView(
           platforms: currentPlatforms,
           onPlatformsUpdated: (updatedPlatforms) async {
             // Capture context and scaffold messenger before async operations
             final scaffoldMessenger = ScaffoldMessenger.of(context);
 
+            final String? platformRulesError =
+                PlatformRules.validatePlatformsList(updatedPlatforms);
+            if (platformRulesError != null) {
+              if (mounted) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(platformRulesError),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+              return;
+            }
+
+            final List<Map<String, dynamic>> normalizedPlatforms =
+                PlatformRules.normalizePlatformsForSave(updatedPlatforms);
+
             // Content moderation validation for platforms
-            final moderationResult =
-                ContentModerationService.validatePlatforms(updatedPlatforms);
+            final moderationResult = ContentModerationService.validatePlatforms(
+              normalizedPlatforms,
+            );
 
             if (!moderationResult.isAllowed) {
               if (mounted) {
@@ -750,7 +776,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
             // Update local state
             setState(() {
-              _user['platforms'] = updatedPlatforms;
+              _user['platforms'] = normalizedPlatforms;
             });
 
             // Update local callback
@@ -759,8 +785,9 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             // Update all profile views through ProfileUpdateService
             try {
               final profileUpdateService = ProfileUpdateService();
-              await profileUpdateService
-                  .updateUserData({'platforms': updatedPlatforms});
+              await profileUpdateService.updateUserData(
+                <String, dynamic>{'platforms': normalizedPlatforms},
+              );
               if (kDebugMode) {
                 // ✅ FIX #2: Wrap in kDebugMode
                 debugPrint(
@@ -890,7 +917,8 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 HapticFeedback.lightImpact();
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
+                  MaterialPageRoute<void>(
+                    settings: const RouteSettings(name: AppRoutes.settings),
                     builder: (context) => const SettingsView(
                       initialSearchQuery: 'Privacy',
                     ),

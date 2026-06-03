@@ -44,6 +44,7 @@ class BrandIcon extends StatelessWidget {
       case 'bluesky':
         return _buildBlueskyIcon(iconSize);
       case 'twitter':
+      case 'x':
         return _buildXIcon(iconSize);
       case 'discord':
         return _buildDiscordIcon(iconSize);
@@ -51,6 +52,12 @@ class BrandIcon extends StatelessWidget {
         return _buildInstagramIcon(iconSize);
       case 'reddit':
         return _buildRedditIcon(iconSize);
+      case 'patreon':
+        return _buildPatreonIcon(iconSize);
+      case 'onlyfans':
+        return _buildOnlyFansIcon(iconSize);
+      case 'other':
+        return Icon(Icons.link, color: Colors.white, size: iconSize);
       case 'whatsapp':
         return _buildWhatsAppIcon(iconSize);
       case 'sms':
@@ -176,6 +183,26 @@ class BrandIcon extends StatelessWidget {
     );
   }
 
+  Widget _buildPatreonIcon(double size) {
+    return SvgPicture.string(
+      '''<svg width="$size" height="$size" viewBox="0 0 24 24" fill="white">
+        <path d="M15.386.524c-8.007 0-14.524 6.517-14.524 14.524 0 8.008 6.517 14.524 14.524 14.524 8.008 0 14.524-6.516 14.524-14.524C29.91 7.04 23.393.524 15.386.524M11.17 19.74V7.577h4.216V19.74z"/>
+      </svg>''',
+      width: size,
+      height: size,
+    );
+  }
+
+  Widget _buildOnlyFansIcon(double size) {
+    return SvgPicture.string(
+      '''<svg width="$size" height="$size" viewBox="0 0 24 24" fill="white">
+        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm1.74 4.722c2.826.03 5.043 2.312 5.043 5.14 0 2.826-2.227 5.098-5.053 5.098h-5.039V8.412h5.049zm-1.743 1.828h-2.291v5.624h2.291c1.594 0 2.887-1.287 2.887-2.874 0-1.588-1.293-2.875-2.887-2.875z"/>
+      </svg>''',
+      width: size,
+      height: size,
+    );
+  }
+
   // Reddit Icon
   Widget _buildRedditIcon(double size) {
     return SvgPicture.string(
@@ -236,13 +263,20 @@ class BrandIcon extends StatelessWidget {
       case 'bluesky':
         return const Color(0xFF0085FF);
       case 'twitter':
-        return const Color(0xFF000000); // X (formerly Twitter) uses black
+      case 'x':
+        return const Color(0xFF000000);
       case 'discord':
         return const Color(0xFF5865F2); // Discord's brand color
       case 'instagram':
         return const Color(0xFFE4405F);
       case 'reddit':
         return const Color(0xFFFF4500);
+      case 'patreon':
+        return const Color(0xFFFF424D);
+      case 'onlyfans':
+        return const Color(0xFF00AFF0);
+      case 'other':
+        return Colors.grey;
       case 'whatsapp':
         return const Color(0xFF25D366);
       case 'sms':

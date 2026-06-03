@@ -42,6 +42,11 @@ class AppRoutes {
   static const String chat = '/chat';
   static const String tippyChat = '/tippy';
   static const String videoUnavailable = '/video-unavailable';
+  static const String editProfile = '/edit_profile';
+  static const String editLinks = '/edit_links';
+  static const String editField = '/edit_field';
+  static const String shareProfile = '/share_profile';
+  static const String menu = '/menu';
 
   static Route<dynamic> onGenerateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {

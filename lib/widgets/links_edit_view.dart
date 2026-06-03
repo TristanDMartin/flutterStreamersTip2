@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'brand_icons.dart';
 import '../constants/app_colors.dart';
 import '../core/theme/support_shell_style.dart';
+import '../utils/platform_rules.dart';
+import '../utils/playback_route_suppression.dart';
 
 class LinksEditView extends StatefulWidget {
   final List<Map<String, dynamic>> platforms;
@@ -22,84 +24,123 @@ class LinksEditView extends StatefulWidget {
 class _LinksEditViewState extends State<LinksEditView> {
   late List<PlatformLink> _platformLinks;
   final Set<String> _expandedPlatformTypes = <String>{};
+  final Map<String, TextEditingController> _usernameControllers =
+      <String, TextEditingController>{};
+  final Map<String, TextEditingController> _urlControllers =
+      <String, TextEditingController>{};
 
-  // Allowed platform types matching your design system
-  static const List<String> _allowedPlatforms = [
-    'twitch',
-    'youtube',
-    'kick',
-    'tiktok',
-    'instagram',
-    'twitter',
-    'discord',
-    'bluesky',
-    'reddit',
-    'facebook',
-    'other'
-  ];
+  static const List<String> _allowedPlatforms =
+      PlatformRules.editablePlatformTypes;
 
   @override
   void initState() {
     super.initState();
+    PlaybackRouteSuppression.suppress(reason: 'edit_links');
     _setupInitialLinks();
   }
 
+  @override
+  void dispose() {
+    for (final TextEditingController controller
+        in _usernameControllers.values) {
+      controller.dispose();
+    }
+    for (final TextEditingController controller in _urlControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
   void _setupInitialLinks() {
-    // Create a map of existing platforms for quick lookup
-    final existingPlatforms = <String, Map<String, dynamic>>{};
-    for (final platform in widget.platforms) {
-      final type = platform['type'] as String? ?? '';
+    final Map<String, Map<String, dynamic>> existingPlatforms =
+        <String, Map<String, dynamic>>{};
+    for (final Map<String, dynamic> platform in widget.platforms) {
+      final String type = PlatformRules.normalizePlatformType(
+        platform['type'] as String? ?? '',
+      );
       existingPlatforms[type] = platform;
     }
-
-    // Create platform links for all allowed platforms
-    _platformLinks = _allowedPlatforms.map((type) {
-      final existing = existingPlatforms[type];
+    _platformLinks = _allowedPlatforms.map((String type) {
+      final Map<String, dynamic>? existing = existingPlatforms[type];
+      final String username = existing?['username']?.toString() ?? '';
+      final String url = existing?['url']?.toString() ?? '';
+      _usernameControllers[type] = TextEditingController(text: username);
+      _urlControllers[type] = TextEditingController(text: url);
+      _usernameControllers[type]!.addListener(
+        () => _onFieldChanged(type),
+      );
+      _urlControllers[type]!.addListener(
+        () => _onFieldChanged(type),
+      );
       return PlatformLink(
         type: type,
-        username: existing?['username'] ?? '',
-        url: existing?['url'] ?? '',
+        username: username,
+        url: url,
       );
     }).toList();
-
     _expandedPlatformTypes
       ..clear()
       ..addAll(
-        _platformLinks.where((link) => !link.isLinked).map((link) => link.type),
+        _platformLinks.where((PlatformLink link) => !link.isLinked).map(
+              (PlatformLink link) => link.type,
+            ),
       );
   }
 
+  void _onFieldChanged(String type) {
+    final PlatformLink link =
+        _platformLinks.firstWhere((PlatformLink l) => l.type == type);
+    final bool wasLinked = link.isLinked;
+    link.username = _usernameControllers[type]!.text;
+    link.url = _urlControllers[type]!.text;
+    if (wasLinked != link.isLinked) {
+      setState(() {});
+    }
+  }
+
   void _saveLinks() {
-    final updatedPlatforms = <Map<String, dynamic>>[];
-
-    for (final link in _platformLinks) {
+    for (final PlatformLink link in _platformLinks) {
+      link.username = _usernameControllers[link.type]!.text.trim();
+      link.url = _urlControllers[link.type]!.text.trim();
+    }
+    final List<Map<String, dynamic>> draft = <Map<String, dynamic>>[];
+    for (final PlatformLink link in _platformLinks) {
       if (link.username.isNotEmpty || link.url.isNotEmpty) {
-        // Ensure URL has proper protocol
-        String urlString = link.url.trim();
-        if (urlString.isNotEmpty &&
-            !urlString.startsWith('http://') &&
-            !urlString.startsWith('https://')) {
-          urlString = 'https://$urlString';
-        }
-
-        updatedPlatforms.add({
+        draft.add(<String, dynamic>{
           'id': DateTime.now().millisecondsSinceEpoch.toString(),
           'type': link.type,
           'username': link.username,
-          'followers': 0, // Placeholder
-          'url': urlString.isEmpty ? null : urlString,
+          'followers': 0,
+          'url': link.url,
         });
       }
     }
-
+    final String? validationError = PlatformRules.validatePlatformsList(draft);
+    if (validationError != null) {
+      _showError(validationError);
+      return;
+    }
+    final List<Map<String, dynamic>> updatedPlatforms =
+        PlatformRules.normalizePlatformsForSave(draft);
     widget.onPlatformsUpdated(updatedPlatforms);
     Navigator.pop(context);
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: shell.scaffold,
       body: SafeArea(
         child: Column(
@@ -108,12 +149,16 @@ class _LinksEditViewState extends State<LinksEditView> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 8),
+                        horizontal: 6,
+                        vertical: 8,
+                      ),
                       child: Text(
                         'Connect your platforms',
                         style: TextStyle(
@@ -124,7 +169,7 @@ class _LinksEditViewState extends State<LinksEditView> {
                       ),
                     ),
                     for (int i = 0; i < _platformLinks.length; i++) ...[
-                      _buildPlatformLinkRow(_platformLinks[i], i),
+                      _buildPlatformLinkRow(_platformLinks[i]),
                       if (i < _platformLinks.length - 1)
                         const SizedBox(height: 12),
                     ],
@@ -185,10 +230,13 @@ class _LinksEditViewState extends State<LinksEditView> {
     );
   }
 
-  Widget _buildPlatformLinkRow(PlatformLink link, int index) {
+  Widget _buildPlatformLinkRow(PlatformLink link) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final isExpanded =
+    final bool isExpanded =
         !link.isLinked || _expandedPlatformTypes.contains(link.type);
+    final TextEditingController usernameController =
+        _usernameControllers[link.type]!;
+    final TextEditingController urlController = _urlControllers[link.type]!;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -225,7 +273,10 @@ class _LinksEditViewState extends State<LinksEditView> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Center(
-                    child: _buildPlatformIcon(link.type),
+                    child: BrandIcon(
+                      platformType: link.type,
+                      size: 24,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -234,7 +285,7 @@ class _LinksEditViewState extends State<LinksEditView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _getPlatformDisplayName(link.type),
+                        PlatformRules.displayNameForType(link.type),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -244,9 +295,7 @@ class _LinksEditViewState extends State<LinksEditView> {
                       const SizedBox(height: 2),
                       Text(
                         link.isLinked
-                            ? (link.username.isNotEmpty
-                                ? '@${link.username}'
-                                : link.url)
+                            ? _linkedSubtitle(link)
                             : 'Add a username and direct profile link',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.62),
@@ -262,8 +311,10 @@ class _LinksEditViewState extends State<LinksEditView> {
                 if (link.isLinked) ...[
                   const SizedBox(width: 10),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: AppColors.supportAccentGradient,
@@ -301,46 +352,22 @@ class _LinksEditViewState extends State<LinksEditView> {
                       const SizedBox(height: 16),
                       _buildInputField(
                         label: 'Username',
-                        value: link.username,
+                        controller: usernameController,
                         hintText: 'Enter username',
-                        onChanged: (value) {
-                          setState(() {
-                            link.username = value;
-                            if (link.isLinked) {
-                              _expandedPlatformTypes.add(link.type);
-                            }
-                          });
-                        },
                         onClear: () {
-                          setState(() {
-                            link.username = '';
-                            if (!link.isLinked) {
-                              _expandedPlatformTypes.add(link.type);
-                            }
-                          });
+                          usernameController.clear();
+                          _onFieldChanged(link.type);
                         },
                       ),
                       const SizedBox(height: 12),
                       _buildInputField(
                         label: 'URL',
-                        value: link.url,
+                        controller: urlController,
                         hintText: 'Enter URL',
                         keyboardType: TextInputType.url,
-                        onChanged: (value) {
-                          setState(() {
-                            link.url = value;
-                            if (link.isLinked) {
-                              _expandedPlatformTypes.add(link.type);
-                            }
-                          });
-                        },
                         onClear: () {
-                          setState(() {
-                            link.url = '';
-                            if (!link.isLinked) {
-                              _expandedPlatformTypes.add(link.type);
-                            }
-                          });
+                          urlController.clear();
+                          _onFieldChanged(link.type);
                         },
                       ),
                     ],
@@ -354,9 +381,8 @@ class _LinksEditViewState extends State<LinksEditView> {
 
   Widget _buildInputField({
     required String label,
-    required String value,
+    required TextEditingController controller,
     required String hintText,
-    required Function(String) onChanged,
     required VoidCallback onClear,
     TextInputType keyboardType = TextInputType.text,
   }) {
@@ -384,11 +410,11 @@ class _LinksEditViewState extends State<LinksEditView> {
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
-              controller: TextEditingController(text: value)
-                ..selection = TextSelection.collapsed(offset: value.length),
-              onChanged: onChanged,
+              controller: controller,
               keyboardType: keyboardType,
               textCapitalization: TextCapitalization.none,
+              autocorrect: false,
+              enableSuggestions: false,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 15,
@@ -401,55 +427,39 @@ class _LinksEditViewState extends State<LinksEditView> {
                 ),
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
+                isDense: true,
               ),
             ),
           ),
-          if (value.isNotEmpty)
-            GestureDetector(
-              onTap: onClear,
-              child: const Icon(
-                Icons.clear,
-                color: Colors.grey,
-                size: 20,
-              ),
-            ),
+          AnimatedBuilder(
+            animation: controller,
+            builder: (BuildContext context, Widget? child) {
+              if (controller.text.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return GestureDetector(
+                onTap: onClear,
+                child: const Icon(
+                  Icons.clear,
+                  color: Colors.grey,
+                  size: 20,
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildPlatformIcon(String platformType) {
-    return BrandIcon(
-      platformType: platformType,
-      size: 24.0,
-    );
-  }
-
-  String _getPlatformDisplayName(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return 'Twitch';
-      case 'youtube':
-        return 'YouTube';
-      case 'kick':
-        return 'Kick';
-      case 'tiktok':
-        return 'TikTok';
-      case 'facebook':
-        return 'Facebook';
-      case 'bluesky':
-        return 'Bluesky';
-      case 'twitter':
-        return 'X';
-      case 'discord':
-        return 'Discord';
-      case 'instagram':
-        return 'Instagram';
-      case 'reddit':
-        return 'Reddit';
-      default:
-        return platformType;
+  String _linkedSubtitle(PlatformLink link) {
+    if (PlatformRules.isAgeRestrictedType(link.type)) {
+      return '18+ external link (URL hidden on profile)';
     }
+    if (link.username.isNotEmpty) {
+      return '@${link.username}';
+    }
+    return link.url;
   }
 }
 

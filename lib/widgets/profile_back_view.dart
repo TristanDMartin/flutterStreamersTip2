@@ -12,6 +12,8 @@ import '../services/profile_update_service.dart';
 import '../services/calendar_cleanup_service.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'brand_icons.dart';
+import 'adult_external_link_dialog.dart';
+import '../utils/platform_rules.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -1097,8 +1099,15 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Future<void> _launchPlatformUrl(Map<String, dynamic> platform) async {
+    final String platformType =
+        PlatformRules.normalizePlatformType(platform['type']?.toString() ?? '');
+    if (PlatformRules.isAgeRestrictedEntry(platform)) {
+      final bool confirmed = await showAdultExternalLinkDialog(context);
+      if (!confirmed || !mounted) {
+        return;
+      }
+    }
     final url = platform['url'];
-    final platformType = platform['type'] ?? '';
     final username = platform['username'] ?? '';
 
     if (url != null && url.isNotEmpty) {
@@ -1201,45 +1210,25 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       case 'bluesky':
         return 'https://bsky.app/profile/$cleanUsername';
       case 'twitter':
-        return 'https://twitter.com/$cleanUsername';
+      case 'x':
+        return 'https://x.com/$cleanUsername';
       case 'instagram':
         return 'https://instagram.com/$cleanUsername';
       case 'reddit':
         return 'https://reddit.com/user/$cleanUsername';
       case 'discord':
-        // Discord doesn't have direct profile URLs, but we can open the Discord app or website
         return 'https://discord.com';
+      case 'patreon':
+        return 'https://patreon.com/$cleanUsername';
+      case 'onlyfans':
+        return 'https://onlyfans.com/$cleanUsername';
       default:
         return null;
     }
   }
 
   String _getPlatformDisplayName(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return 'Twitch';
-      case 'youtube':
-        return 'YouTube';
-      case 'kick':
-        return 'Kick';
-      case 'tiktok':
-        return 'TikTok';
-      case 'facebook':
-        return 'Facebook';
-      case 'bluesky':
-        return 'Bluesky';
-      case 'twitter':
-        return 'Twitter';
-      case 'instagram':
-        return 'Instagram';
-      // cspell:ignore reddit
-      case 'reddit':
-        return 'RedNote';
-      case 'discord':
-        return 'Discord';
-      default:
-        return platformType;
-    }
+    return PlatformRules.displayNameForType(platformType);
   }
 }
 
@@ -1303,8 +1292,11 @@ class _ClickablePlatformRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final platformType = platform['type'] as String? ?? '';
-    final username = platform['username'] as String? ?? '';
+    final String platformType = PlatformRules.normalizePlatformType(
+      platform['type'] as String? ?? '',
+    );
+    final String username = platform['username'] as String? ?? '';
+    final bool isAgeRestricted = PlatformRules.isAgeRestrictedEntry(platform);
     return GestureDetector(
       onTap: () {
         onTap();
@@ -1348,14 +1340,15 @@ class _ClickablePlatformRow extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (username.isNotEmpty)
-                    Text(
-                      '@$username',
-                      style: TextStyle(
-                        color: shell.muted,
-                        fontSize: 14,
-                      ),
+                  Text(
+                    isAgeRestricted
+                        ? '18+ external link'
+                        : (username.isNotEmpty ? '@$username' : 'Open link'),
+                    style: TextStyle(
+                      color: shell.muted,
+                      fontSize: 14,
                     ),
+                  ),
                 ],
               ),
             ),
@@ -1367,9 +1360,9 @@ class _ClickablePlatformRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
-                Icons.arrow_forward_ios,
+                isAgeRestricted ? Icons.lock_outline : Icons.arrow_forward_ios,
                 color: shell.muted,
-                size: 14,
+                size: isAgeRestricted ? 16 : 14,
               ),
             ),
           ],
@@ -1379,30 +1372,7 @@ class _ClickablePlatformRow extends StatelessWidget {
   }
 
   String _getPlatformDisplayName(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return 'Twitch';
-      case 'youtube':
-        return 'YouTube';
-      case 'kick':
-        return 'Kick';
-      case 'tiktok':
-        return 'TikTok';
-      case 'facebook':
-        return 'Facebook';
-      case 'twitter':
-        return 'Twitter';
-      case 'instagram':
-        return 'Instagram';
-      case 'bluesky':
-        return 'Bluesky';
-      case 'reddit':
-        return 'Reddit';
-      case 'discord':
-        return 'Discord';
-      default:
-        return platformType;
-    }
+    return PlatformRules.displayNameForType(platformType);
   }
 }
 

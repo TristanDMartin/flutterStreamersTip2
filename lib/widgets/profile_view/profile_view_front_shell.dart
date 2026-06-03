@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../routing/app_routes.dart';
 import '../../views/menu_view.dart';
 import 'profile_view_header_section.dart';
 import 'profile_view_tabbed_section.dart';
@@ -78,6 +79,7 @@ class ProfileViewFrontShell extends StatelessWidget {
                   HapticFeedback.lightImpact();
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
+                      settings: const RouteSettings(name: AppRoutes.menu),
                       builder: (BuildContext context) => const MenuView(),
                     ),
                   );

@@ -7,6 +7,7 @@ import '../constants/app_colors.dart';
 import '../components/onboarding/onboarding_mission_actions.dart';
 import '../services/profile_link_service.dart';
 import '../services/url_handler_service.dart';
+import '../utils/playback_route_suppression.dart';
 // Removed qr_flutter to avoid missing dependency for now
 
 class ShareProfileView extends StatefulWidget {
@@ -51,6 +52,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   @override
   void initState() {
     super.initState();
+    PlaybackRouteSuppression.suppress(reason: 'share_profile');
     _generateQRCode();
   }
 

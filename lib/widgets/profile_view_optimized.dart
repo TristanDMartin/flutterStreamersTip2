@@ -5,12 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 
 import '../components/onboarding/product_tour_target_keys.dart';
+import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart' as app_user;
 import '../providers/follow_refresh_provider.dart';
 import '../routing/app_navigator.dart';
 import '../services/profile_update_service.dart';
 import '../services/user_blocking_service.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../services/global_playback_manager.dart';
+import '../utils/playback_route_suppression.dart';
 import 'profile_back_view.dart';
 import 'profile_view/profile_post_count_reconcile.dart';
 import 'profile_view/profile_user_data_cache.dart';
@@ -159,8 +162,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     HapticFeedback.lightImpact();
     if (_isFront) {
       _flipController.forward();
+      PlaybackRouteSuppression.suppress(reason: 'profile_back_card');
     } else {
       _flipController.reverse();
+      GlobalPlaybackManager.instance.unblock();
     }
     _isFront = !_isFront;
   }
@@ -171,6 +176,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       AppNavigator.openStreamerCard(
         context,
         userId: widget.user.id,
+        initialCreator: CreatorProfileSnapshot.fromUser(widget.user),
         currentUserId: _profileUpdateService?.currentUser?.uid,
         onDismiss: () => Navigator.of(context).pop(),
       );

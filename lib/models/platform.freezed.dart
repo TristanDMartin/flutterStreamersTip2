@@ -15,6 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$Platform {
   String get id;
+  @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
   PlatformType get type;
   String get username;
   int get followers;
@@ -62,6 +63,7 @@ abstract mixin class $PlatformCopyWith<$Res> {
   @useResult
   $Res call(
       {String id,
+      @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
       PlatformType type,
       String username,
       int followers,
@@ -202,8 +204,13 @@ extension PlatformPatterns on Platform {
 
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
-    TResult Function(String id, PlatformType type, String username,
-            int followers, String? url)?
+    TResult Function(
+            String id,
+            @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
+            PlatformType type,
+            String username,
+            int followers,
+            String? url)?
         $default, {
     required TResult orElse(),
   }) {
@@ -232,8 +239,13 @@ extension PlatformPatterns on Platform {
 
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
-    TResult Function(String id, PlatformType type, String username,
-            int followers, String? url)
+    TResult Function(
+            String id,
+            @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
+            PlatformType type,
+            String username,
+            int followers,
+            String? url)
         $default,
   ) {
     final _that = this;
@@ -258,8 +270,13 @@ extension PlatformPatterns on Platform {
 
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
-    TResult? Function(String id, PlatformType type, String username,
-            int followers, String? url)?
+    TResult? Function(
+            String id,
+            @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
+            PlatformType type,
+            String username,
+            int followers,
+            String? url)?
         $default,
   ) {
     final _that = this;
@@ -278,6 +295,7 @@ extension PlatformPatterns on Platform {
 class _Platform implements Platform {
   const _Platform(
       {required this.id,
+      @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
       required this.type,
       required this.username,
       this.followers = 0,
@@ -288,6 +306,7 @@ class _Platform implements Platform {
   @override
   final String id;
   @override
+  @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
   final PlatformType type;
   @override
   final String username;
@@ -346,6 +365,7 @@ abstract mixin class _$PlatformCopyWith<$Res>
   @useResult
   $Res call(
       {String id,
+      @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
       PlatformType type,
       String username,
       int followers,

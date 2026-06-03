@@ -4,10 +4,24 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'platform.freezed.dart';
 part 'platform.g.dart';
 
+PlatformType platformTypeFromJson(Object? json) {
+  final String raw = json?.toString() ?? 'other';
+  if (raw == 'twitter') {
+    return PlatformType.x;
+  }
+  return PlatformType.values.firstWhere(
+    (PlatformType e) => e.name == raw,
+    orElse: () => PlatformType.other,
+  );
+}
+
+String platformTypeToJson(PlatformType type) => type.name;
+
 @freezed
 sealed class Platform with _$Platform {
   const factory Platform({
     required String id,
+    @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
     required PlatformType type,
     required String username,
     @Default(0) int followers,
@@ -23,35 +37,35 @@ enum PlatformType {
   youtube,
   kick,
   tiktok,
-  facebook,
-  bluesky,
-  twitter,
   instagram,
-  reddit,
+  x,
+  discord,
+  patreon,
+  onlyfans,
   other;
 
   String get displayName {
     switch (this) {
       case PlatformType.twitch:
-        return "Twitch";
+        return 'Twitch';
       case PlatformType.kick:
-        return "Kick";
+        return 'Kick';
       case PlatformType.tiktok:
-        return "TikTok";
+        return 'TikTok';
       case PlatformType.youtube:
-        return "YouTube";
-      case PlatformType.facebook:
-        return "Facebook";
-      case PlatformType.bluesky:
-        return "BlueSky";
-      case PlatformType.twitter:
-        return "X";
+        return 'YouTube';
       case PlatformType.instagram:
-        return "Instagram";
-      case PlatformType.reddit:
-        return "Reddit";
+        return 'Instagram';
+      case PlatformType.x:
+        return 'X';
+      case PlatformType.discord:
+        return 'Discord';
+      case PlatformType.patreon:
+        return 'Patreon';
+      case PlatformType.onlyfans:
+        return 'OnlyFans';
       case PlatformType.other:
-        return "Website";
+        return 'Other';
     }
   }
 
@@ -65,16 +79,16 @@ enum PlatformType {
         return Colors.black;
       case PlatformType.youtube:
         return Colors.red;
-      case PlatformType.facebook:
-        return Colors.blue;
-      case PlatformType.bluesky:
-        return Colors.cyan;
-      case PlatformType.twitter:
-        return Colors.black;
       case PlatformType.instagram:
         return Colors.purple;
-      case PlatformType.reddit:
-        return Colors.red;
+      case PlatformType.x:
+        return Colors.black;
+      case PlatformType.discord:
+        return const Color(0xFF5865F2);
+      case PlatformType.patreon:
+        return const Color(0xFFFF424D);
+      case PlatformType.onlyfans:
+        return const Color(0xFF00AFF0);
       case PlatformType.other:
         return Colors.grey;
     }

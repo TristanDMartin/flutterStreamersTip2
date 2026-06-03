@@ -7,6 +7,7 @@ import '../../core/theme/support_shell_style.dart';
 import '../../features/creator_score/creator_score_widgets.dart';
 import '../../models/user_status.dart' show UserPresence, UserStatus;
 import '../../providers/status_provider.dart';
+import '../../routing/app_routes.dart';
 import '../../utils/avatar_url_resolver.dart';
 import '../edit_profile_view.dart';
 import '../share_profile_view.dart';
@@ -286,6 +287,9 @@ class _ProfilePrimaryButtonsRow extends StatelessWidget {
               HapticFeedback.lightImpact();
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
+                  settings: const RouteSettings(
+                    name: AppRoutes.editProfile,
+                  ),
                   builder: (BuildContext context) => EditProfileView(
                     user: userData,
                     onUserUpdated: (Map<String, dynamic> updatedUser) {
@@ -306,6 +310,9 @@ class _ProfilePrimaryButtonsRow extends StatelessWidget {
               HapticFeedback.lightImpact();
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
+                  settings: const RouteSettings(
+                    name: AppRoutes.shareProfile,
+                  ),
                   builder: (BuildContext context) => ShareProfileView(
                     user: userData,
                     dismiss: () => Navigator.of(context).pop(),

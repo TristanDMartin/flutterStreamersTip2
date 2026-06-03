@@ -8,6 +8,7 @@ import '../core/theme/support_shell_style.dart';
 import '../services/hashtag_lock_service.dart';
 import '../services/rate_limiting_service.dart';
 import '../widgets/content_validation_field.dart';
+import '../utils/playback_route_suppression.dart';
 
 class EditFieldView extends ConsumerStatefulWidget {
   final String title;
@@ -64,6 +65,7 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
   @override
   void initState() {
     super.initState();
+    PlaybackRouteSuppression.suppress(reason: 'edit_field');
     _textController = TextEditingController(text: widget.text);
     _hashtagController = TextEditingController();
     _hashtagController.addListener(() => setState(() {}));
