@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 /// Vertical feed index ↔ videoId mapping and saved playback positions.
 class PlaybackFeedIndexTracker {
   int? currentFeedIndex;
+  int lastScrollDirection = 1;
   final Map<int, String> indexToVideoId = <int, String>{};
   final Map<String, int> videoIdToIndex = <String, int>{};
   final Map<int, Duration> lastKnownPositions = <int, Duration>{};
@@ -13,6 +14,7 @@ class PlaybackFeedIndexTracker {
 
   void clear() {
     currentFeedIndex = null;
+    lastScrollDirection = 1;
     indexToVideoId.clear();
     videoIdToIndex.clear();
     lastKnownPositions.clear();

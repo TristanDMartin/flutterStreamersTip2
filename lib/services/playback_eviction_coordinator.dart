@@ -8,6 +8,7 @@ import 'playback_controller_pool.dart';
 import 'playback_feed_index_tracker.dart';
 import 'playback_pool_policy.dart';
 import 'playback_preload_order.dart';
+import 'playback_warm_window_policy.dart';
 
 /// Preload window warming and two-stage controller eviction.
 class PlaybackEvictionCoordinator {
@@ -61,8 +62,11 @@ class PlaybackEvictionCoordinator {
       centerVideoId: centerVideoId,
     );
 
-    const int backwardRadius = 1;
-    const int forwardRadius = 1;
+    feedIndex.lastScrollDirection = direction;
+    final ({int backward, int forward}) radii =
+        PlaybackWarmWindowPolicy.radiiForDirection(direction);
+    final int backwardRadius = radii.backward;
+    final int forwardRadius = radii.forward;
 
     // 🔥 FIX: Wrap in try-catch to prevent crashes during rapid swiping
     try {
@@ -181,13 +185,18 @@ class PlaybackEvictionCoordinator {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         if (pool.controllers.length >
-                PlaybackEvictionCoordinator.maxControllerPoolSize ||
+                PlaybackWarmWindowPolicy.maxControllerPoolSize ||
             pool.controllers.keys.any((videoId) {
               final videoIndex = feedIndex.videoIdToIndex[videoId];
-              return videoIndex == null || (videoIndex - index).abs() > 1;
+              if (videoIndex == null) return true;
+              return PlaybackWarmWindowPolicy.isOutsideWarmWindow(
+                videoIndex: videoIndex,
+                currentIndex: index,
+                direction: feedIndex.lastScrollDirection,
+              );
             })) {
           secureLog(
-              '⚠️ PlaybackManager: Cleaning up outside 3-slot warm window (pool=${pool.controllers.length})');
+              '⚠️ PlaybackManager: Cleaning up outside warm window (pool=${pool.controllers.length})');
           onDisposeFarControllers(index);
         }
       } catch (e) {
@@ -215,8 +224,15 @@ class PlaybackEvictionCoordinator {
         onLogControllerEvent,
     void Function(String message)? log,
   }) {
-    // Protect only previous/current/next.
-    onUpdatePinSet(index, backwardRadius: 1, forwardRadius: 1);
+    final ({int backward, int forward}) radii =
+        PlaybackWarmWindowPolicy.radiiForDirection(
+      feedIndex.lastScrollDirection,
+    );
+    onUpdatePinSet(
+      index,
+      backwardRadius: radii.backward,
+      forwardRadius: radii.forward,
+    );
 
     // 🔥 FIX: Wrap entire method in try-catch to prevent crashes
     try {
@@ -247,6 +263,12 @@ class PlaybackEvictionCoordinator {
 
       // Clean up stale controllers
       for (final videoId in staleControllers) {
+        if (pool.initializing.contains(videoId) ||
+                pool.ownerOf(videoId) == PlaybackOwners.player ||
+                pool.ownerOf(videoId) == PlaybackOwners.discoverPlayer ||
+                pool.pinnedVideoIds.contains(videoId)) {
+          continue;
+        }
         try {
           onLogControllerEvent('DISPOSE_REQUESTED', videoId,
               reason: 'stale_controller');
@@ -282,7 +304,9 @@ class PlaybackEvictionCoordinator {
             if (pool.pinnedVideoIds.contains(videoId) ||
                 videoId == activeVideoId ||
                 isActiveVideo(videoId) ||
-                pool.initializing.contains(videoId)) {
+                pool.initializing.contains(videoId) ||
+                pool.ownerOf(videoId) == PlaybackOwners.player ||
+                pool.ownerOf(videoId) == PlaybackOwners.discoverPlayer) {
               // Cancel cooldown if video came back into protected zone
               if (pool.cooldownUntil.containsKey(videoId)) {
                 pool.cooldownUntil.remove(videoId);
@@ -317,10 +341,13 @@ class PlaybackEvictionCoordinator {
               continue;
             }
 
-            // Check if outside radius
+            // Check if outside warm window
             if (videoIndex != null &&
-                (videoIndex - index).abs() >
-                    PlaybackEvictionCoordinator.poolRadius) {
+                PlaybackWarmWindowPolicy.isOutsideWarmWindow(
+                  videoIndex: videoIndex,
+                  currentIndex: index,
+                  direction: feedIndex.lastScrollDirection,
+                )) {
               final controller = entry.value;
               if (!pool.isControllerSafe(videoId, controller)) continue;
 
@@ -505,13 +532,19 @@ class PlaybackEvictionCoordinator {
           final overflowEntries = pool.controllers.entries.where((entry) {
             final videoId = entry.key;
             final videoIndex = feedIndex.videoIdToIndex[videoId];
-            final outsideWarmWindow =
-                videoIndex == null || (videoIndex - index).abs() > 1;
+            final bool outsideWarmWindow = videoIndex == null ||
+                PlaybackWarmWindowPolicy.isOutsideWarmWindow(
+                  videoIndex: videoIndex,
+                  currentIndex: index,
+                  direction: feedIndex.lastScrollDirection,
+                );
             if (!outsideWarmWindow) return false;
             if (pool.pinnedVideoIds.contains(videoId) ||
                 videoId == activeVideoId ||
                 isActiveVideo(videoId) ||
-                pool.initializing.contains(videoId)) {
+                pool.initializing.contains(videoId) ||
+                pool.ownerOf(videoId) == PlaybackOwners.player ||
+                pool.ownerOf(videoId) == PlaybackOwners.discoverPlayer) {
               return false;
             }
             return pool.attached[videoId] != entry.value.hashCode;
