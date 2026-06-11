@@ -250,6 +250,8 @@ service cloud.firestore {
       allow update: if resource != null && isBookmarkFavoriteCountOnlyUpdate();
       allow update: if resource != null && isOwnerVideoCaptionOnlyUpdate();
       allow update: if resource != null
+        && isOwnerVideoMetadataBackfillUpdate(videoId);
+      allow update: if resource != null
         && isOwnerVideoMetadataUpdateCore()
         && (
           !exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -543,8 +545,9 @@ service cloud.firestore {
     match /support_tickets/{ticketId} {
       allow create: if request.auth != null &&
         request.auth.uid == request.resource.data.userId;
-      allow read, list: if request.auth != null &&
+      allow get: if request.auth != null &&
         (isUserAdmin() || request.auth.uid == resource.data.userId);
+      allow list: if isUserAdmin();
       allow update, delete: if isUserAdmin();
     }
 
@@ -733,13 +736,15 @@ service cloud.firestore {
     
     // Reports - content/user reporting system
     match /reports/{reportId} {
-      allow read: if request.auth != null && (
+      allow get: if request.auth != null && (
         request.auth.uid == resource.data.reporterId ||
+        request.auth.uid == resource.data.reporterUserId ||
         isAdmin()
       );
-      allow list: if isAdmin();
+      allow list: if isUserAdmin();
       allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.reporterId;
+        (request.auth.uid == request.resource.data.reporterId ||
+         request.auth.uid == request.resource.data.reporterUserId);
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly([
@@ -798,7 +803,7 @@ service cloud.firestore {
     
     // Admin logs - only admins can read/write
     match /admin_logs/{logId} {
-      allow read: if isUserAdmin();
+      allow read, list: if isUserAdmin();
       allow create: if isUserAdmin();
       allow update, delete: if isUserAdmin();
     }
@@ -919,6 +924,30 @@ service cloud.firestore {
       allow delete: if request.auth != null &&
         (request.auth.uid == resource.data.userId || isUserAdmin());
     }
+
+    match /analytics_events/{eventId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && isValidAnalyticsEventCreate();
+      allow read: if request.auth != null && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+      allow update, delete: if false;
+    }
+
+    match /users/{userId}/analyticsProfile/{profileId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || isAdmin()
+      );
+      allow write: if false;
+    }
+
+    match /gamification_events/{eventId} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['uid', 'type'])
+        && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if false;
+    }
   }
   
   // Video doc: bookmark / unbookmark by non-owner (client increment only).
@@ -956,13 +985,50 @@ service cloud.firestore {
       && data[field] == uid;
   }
 
+  function hasCanonicalVideoOwnerField(data) {
+    return (data.keys().hasAny(['userId'])
+        && data.userId is string
+        && data.userId.size() > 0)
+      || (data.keys().hasAny(['creatorId'])
+        && data.creatorId is string
+        && data.creatorId.size() > 0)
+      || (data.keys().hasAny(['creator_id'])
+        && data.creator_id is string
+        && data.creator_id.size() > 0);
+  }
+
+  function videoDocumentIdOwnedByAuthUser(videoId) {
+    return request.auth != null
+      && videoId.matches('^' + request.auth.uid + '_.+');
+  }
+
+  function isVideoMetadataBackfillActor(videoId) {
+    return isVideoDocumentOwner()
+      || (
+        resource != null
+        && !hasCanonicalVideoOwnerField(resource.data)
+        && videoDocumentIdOwnedByAuthUser(videoId)
+      );
+  }
+
+  function isOwnerVideoMetadataBackfillUpdate(videoId) {
+    return request.auth != null
+      && resource != null
+      && isVideoMetadataBackfillActor(videoId)
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'userId','creatorId','creator_id','ownerId',
+          'caption','privacy','visibility','updatedAt'
+        ]);
+  }
+
   function isOwnerVideoMetadataUpdateCore() {
     return request.auth != null
       && resource != null
       && isVideoDocumentOwner()
       && request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly([
-          'userId','creatorId','creator_id',
+          'userId','creatorId','creator_id','ownerId',
           'caption','hashtags','privacy','visibility','allowComments',
           'category','categoryId','category_id','categories',
           'updatedAt','deletedAt',
@@ -1075,25 +1141,83 @@ service cloud.firestore {
   
   // Admin: JWT claim and/or Firestore on the signed-in user (self-writes
   // cannot set role/admin — see users/{userId} allow write).
+  // Use (default) — admin helpers live outside match /databases/{database}/documents
+  // so $(database) is not in scope for get() paths.
+  function adminUserDocPath() {
+    return /databases/(default)/documents/users/$(request.auth.uid);
+  }
+
+  function isOwnerFallbackAdmin() {
+    return request.auth != null
+      && request.auth.uid == 'bU0RxyZ2L4ULAv1Co5L4f825yV73';
+  }
+
+  function authEmailFallbackAdmin() {
+    return request.auth != null
+      && request.auth.token is map
+      && 'email' in request.auth.token
+      && request.auth.token.email == 'technqs@gmail.com';
+  }
+
+  // Mirrors client AdminService fallback allowlist (username/email on user doc).
+  function isFallbackAdminProfile() {
+    let path = adminUserDocPath();
+    return request.auth != null
+      && exists(path)
+      && (
+        stringField(get(path).data, 'username').matches('(?i)^(technqs|buzzz)$')
+        || stringField(get(path).data, 'email').matches('(?i)^technqs@gmail\\.com$')
+      );
+  }
+
+  function truthyField(data, field) {
+    return data != null
+      && data.keys().hasAny([field])
+      && (data[field] == true || data[field] == 'true');
+  }
+
+  function adminStatusIsActive(data) {
+    return data != null
+      && data.keys().hasAny(['adminStatus'])
+      && data.adminStatus is string
+      && data.adminStatus.matches('(?i)^active$');
+  }
+
+  function hasActiveAdminAccess(data) {
+    return data != null && (
+      (truthyField(data, 'adminAccess') && adminStatusIsActive(data))
+      || (
+        data.keys().hasAny(['admin'])
+        && data.admin is map
+        && truthyField(data.admin, 'adminAccess')
+        && adminStatusIsActive(data.admin)
+      )
+    );
+  }
+
   function isFirestoreAdminSelf() {
-    let path = /databases/$(database)/documents/users/$(request.auth.uid);
-    return exists(path)
-      ? (
+    let path = adminUserDocPath();
+    return request.auth != null
+      && exists(path)
+      && (
         ('role' in get(path).data && get(path).data.role == 'admin') ||
-        ('isAdmin' in get(path).data && get(path).data.isAdmin == true) ||
+        truthyField(get(path).data, 'isAdmin') ||
         (
           'admin' in get(path).data &&
           get(path).data.admin is map &&
           get(path).data.admin.isAdmin == true
-        )
-      )
-      : false;
+        ) ||
+        hasActiveAdminAccess(get(path).data)
+      );
   }
 
   function isAdmin() {
     return request.auth != null && (
       hasAdminClaim() ||
-      isFirestoreAdminSelf()
+      isOwnerFallbackAdmin() ||
+      authEmailFallbackAdmin() ||
+      isFirestoreAdminSelf() ||
+      isFallbackAdminProfile()
     );
   }
 
@@ -1229,16 +1353,21 @@ service cloud.firestore {
       'creatorScore',
       'billing',
       'entitlements',
-      'subscription_events'
+      'subscription_events',
+      'analyticsProfile'
     ];
   }
 
-  // Trusted gamification events — clients may create; backend processes (Admin SDK / Worker)
-  match /gamification_events/{eventId} {
-    allow create: if request.auth != null
-      && request.resource.data.keys().hasAll(['uid', 'type'])
-      && request.resource.data.uid == request.auth.uid;
-    allow read, update, delete: if false;
+  function isValidAnalyticsEventCreate() {
+    return request.resource.data.keys().hasAll([
+      'uid', 'eventType', 'source', 'targetType', 'createdAt'
+    ])
+      && request.resource.data.uid is string
+      && request.resource.data.uid == request.auth.uid
+      && request.resource.data.eventType is string
+      && request.resource.data.source in ['app', 'website']
+      && request.resource.data.targetType is string
+      && request.resource.data.metadata is map;
   }
 
   function isAnalyticsCounterWrite() {
