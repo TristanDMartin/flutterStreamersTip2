@@ -75,6 +75,12 @@ Also check the **flutter run** terminal for:
 
 ---
 
+## Client backoff (Phase 2)
+
+If attestation fails, the app logs `APP_CHECK_ATTESTATION_FAILED` once per 30s
+and avoids hammering `getToken(true)`. Register the debug token or unenforce
+APIs as above — retries alone will not fix 403.
+
 ## Verify success
 
 | Log | Meaning |

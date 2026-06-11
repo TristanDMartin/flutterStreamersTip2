@@ -177,4 +177,33 @@ if [[ -n "${QA_PASSWORD:-}" ]]; then
 fi
 
 echo "Running: flutter test $TARGET -d $DEVICE ${EXTRA_ARGS[*]:-}"
+
+if [[ "$DEVICE" == ios ]] || flutter devices --machine --no-version-check | python3 -c "
+import json, sys
+device = sys.argv[1]
+for d in json.load(sys.stdin):
+    if d.get('id') == device:
+        tp = (d.get('targetPlatform') or '').lower()
+        print('ios' in tp or tp == 'ios')
+        break
+" "$DEVICE" 2>/dev/null | grep -q True; then
+  IOS_PREINSTALL="${IOS_PREINSTALL:-1}"
+  if [[ "$IOS_PREINSTALL" == "1" ]]; then
+    if flutter devices --machine --no-version-check | python3 -c "
+import json, sys
+device = sys.argv[1]
+for d in json.load(sys.stdin):
+    if d.get('id') == device:
+        print('yes' if d.get('emulator') else 'no')
+        break
+" "$DEVICE" 2>/dev/null | grep -q yes; then
+      echo "Pre-building iOS simulator app (avoids VM Service discovery hang)"
+      flutter build ios --simulator --debug --no-version-check
+    else
+      echo "Pre-installing iOS debug build on $DEVICE (avoids VM Service discovery hang)"
+      flutter install --debug -d "$DEVICE" --no-version-check || true
+    fi
+  fi
+fi
+
 exec flutter test "$TARGET" -d "$DEVICE" "${EXTRA_ARGS[@]}"

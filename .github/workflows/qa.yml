@@ -127,9 +127,13 @@ jobs:
           xcrun simctl boot "iPhone 16" || xcrun simctl boot "iPhone 15" || true
           xcrun simctl bootstatus booted -b
 
+      - name: Pre-build iOS simulator app (VM service discovery)
+        run: flutter build ios --simulator --debug
+
       - name: iOS home feed playback E2E
         env:
           PREFER_INTEGRATION_DEVICE: ios
+          IOS_PREINSTALL: "0"
           FLUTTER_INTEGRATION_TEST_TARGET: integration_test/home_feed_playback_e2e_test.dart
           RUN_MOBILE_FEED_E2E: "true"
           QA_EMAIL_OR_USERNAME: ${{ secrets.QA_EMAIL_OR_USERNAME }}
