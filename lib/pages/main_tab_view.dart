@@ -3,8 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../components/onboarding/onboarding_feature_tip.dart';
-import '../components/onboarding/onboarding_tester_config.dart';
+import '../components/onboarding/contextual_tip_overlay.dart';
+import '../components/onboarding/contextual_tips_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../services/first_steps_achievement_service.dart';
@@ -17,14 +17,21 @@ import 'home_view.dart';
 import '../models/user.dart';
 import '../services/network_view_model_advanced.dart';
 import '../services/profile_update_service.dart';
+import '../features/home/application/home_first_frame_gate.dart';
+import 'package:streamers_tip/utils/like_interaction_boundary.dart';
 import '../services/clean_relationship_service.dart';
-import '../providers/home_provider.dart';
 import '../providers/feed_state_provider.dart';
-import '../providers/product_tour_ui_provider.dart';
+import '../providers/main_tab_provider.dart';
+import '../providers/unread_messages_provider.dart';
+import '../providers/home_provider.dart' as hp;
+import '../features/billing/subscription_provider.dart';
+import '../features/main_tabs/application/main_tab_background_refresh.dart';
+import '../controllers/home_view_controller.dart';
 import '../services/global_playback_manager.dart';
 import '../routing/app_routes.dart';
 import '../constants/playback_owners.dart';
 import 'package:streamers_tip/qa/qa_runtime.dart';
+import 'package:streamers_tip/utils/interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
@@ -39,11 +46,10 @@ class MainTabView extends ConsumerStatefulWidget {
 class _MainTabViewState extends ConsumerState<MainTabView>
     with WidgetsBindingObserver {
   late int _currentIndex;
-  late PageController _pageController;
   late NetworkViewModelAdvanced _networkViewModel;
-  late HomeViewReactivateNotifier _homeReactivateNotifier;
+  final MainTabBackgroundRefreshScheduler _tabRefreshScheduler =
+      MainTabBackgroundRefreshScheduler();
   late RobustAuthenticationService _authService;
-  ProviderSubscription<int?>? _productTourTabSubscription;
 
   // ⏱️ MEMORY FIX: Timers for proper cancellation
   Timer? _unblockTimer;
@@ -59,17 +65,9 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentIndex = widget.initialTabIndex;
-    _pageController = PageController(initialPage: _currentIndex);
+    ref.read(mainTabActiveIndexProvider.notifier).setIndex(_currentIndex);
     _networkViewModel = NetworkViewModelAdvanced();
-    _homeReactivateNotifier = ref.read(homeViewReactivateProvider.notifier);
     _authService = ref.read(robustAuthServiceProvider);
-    _productTourTabSubscription = ref.listenManual<int?>(
-      productTourMainTabIndexRequestProvider,
-      (int? previous, int? next) {
-        _handleMainTabIndexRequest(
-            next, productTourMainTabIndexRequestProvider);
-      },
-    );
     ref.listenManual<int?>(
       mainTabIndexRequestProvider,
       (int? previous, int? next) {
@@ -83,7 +81,7 @@ class _MainTabViewState extends ConsumerState<MainTabView>
       unawaited(_maybeShowFirstStepsAchievementToast());
       if (!QaRuntime.isMobileFeedE2e) {
         Future<void>.delayed(const Duration(milliseconds: 900), () {
-          if (!context.mounted || _currentIndex != 0) return;
+          if (!mounted || _currentIndex != 0) return;
           unawaited(_showFirstTapTipIfNeeded(0));
         });
       }
@@ -93,12 +91,11 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _productTourTabSubscription?.close();
     // ⏱️ MEMORY FIX: Cancel all timers to prevent memory leaks
     _unblockTimer?.cancel();
     _cameraNavTimer?.cancel();
     _dataSyncRetryTimer?.cancel();
-    _pageController.dispose();
+    _tabRefreshScheduler.dispose();
     _networkViewModel.dispose();
     super.dispose();
   }
@@ -109,24 +106,11 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     if (state != AppLifecycleState.resumed || !mounted) {
       return;
     }
-
+    invalidateSubscriptionEntitlements(ref);
     _cameraNavTimer?.cancel();
-    _syncPlaybackForCurrentTab();
-    setState(() {});
-
-    unawaited(
-      GlobalPlaybackManager.instance.recoverInteractionOnAppResume(
-        fallbackOwner:
-            _currentIndex == 0 ? PlaybackOwners.home : PlaybackOwners.network,
-      ),
-    );
-  }
-
-  void _requestHomeReactivation(String reason) {
-    if (!mounted) return;
-    if (_currentIndex != 0) return;
-    _homeReactivateNotifier.triggerReactivation();
-    secureLog('▶️ MainTabView: Requested HomeView reactivation ($reason)');
+    if (_currentIndex != 0) {
+      _syncPlaybackForCurrentTab();
+    }
   }
 
   void _startDataSync() {
@@ -153,30 +137,38 @@ class _MainTabViewState extends ConsumerState<MainTabView>
         return;
       }
       _dataSyncCompleted = true;
-      try {
-        await CleanRelationshipService().initialize();
-      } catch (e) {
-        secureLog('⚠️ MainTabView: Clean relationship startup deferred: $e');
-      }
-      if (!mounted) {
-        return;
-      }
-      if (_authService.isLoggedIn && _authService.currentUser != null) {
-        try {
-          final ProfileUpdateService profileUpdateService =
-              ProfileUpdateService();
-          await profileUpdateService.initialize();
-          secureLog(
-            '✅ MainTabView: ProfileUpdateService initialized for user: ${_authService.currentUser!.displayName}',
-          );
-        } catch (e) {
-          secureLog(
-              '❌ MainTabView: Error initializing ProfileUpdateService: $e');
-        }
-        secureLog(
-          '🔄 MainTabView: Starting data sync for user: ${_authService.currentUser!.displayName}',
-        );
-      }
+      HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+        Timer(const Duration(seconds: 5), () async {
+          if (!mounted) {
+            return;
+          }
+          try {
+            await CleanRelationshipService().initialize();
+          } catch (e) {
+            secureLog(
+                '⚠️ MainTabView: Clean relationship startup deferred: $e');
+          }
+          if (!mounted) {
+            return;
+          }
+          if (_authService.isLoggedIn && _authService.currentUser != null) {
+            try {
+              final ProfileUpdateService profileUpdateService =
+                  ProfileUpdateService();
+              await profileUpdateService.initialize();
+              secureLog(
+                '✅ MainTabView: ProfileUpdateService initialized for user: ${_authService.currentUser!.displayName}',
+              );
+            } catch (e) {
+              secureLog(
+                  '❌ MainTabView: Error initializing ProfileUpdateService: $e');
+            }
+            secureLog(
+              '🔄 MainTabView: Starting data sync for user: ${_authService.currentUser!.displayName}',
+            );
+          }
+        });
+      });
     });
   }
 
@@ -191,9 +183,7 @@ class _MainTabViewState extends ConsumerState<MainTabView>
       return;
     }
     if (_currentIndex != next) {
-      setState(() => _currentIndex = next);
-      _pageController.jumpToPage(next);
-      _syncPlaybackForCurrentTab();
+      _activateTab(next, previousIndex: _currentIndex);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -204,36 +194,82 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   }
 
   Future<void> _onTabTapped(int index) async {
-    // Handle the creation screen (index 2) specially
+    LikeInteractionBoundary.markFirstUserInteraction();
+    InteractionDiagnostics.logBottomNavTap(index: index, blocked: false);
     if (index == 2) {
       unawaited(_showFirstTapTipIfNeeded(index));
       _onUploadTapped();
       return;
     }
 
-    // Handle Home tab (index 0) - refresh video feed if already on Home
     if (index == 0 && _currentIndex == 0) {
       _refreshHomeView();
       return;
     }
 
-    // Silence Home immediately when leaving it for another tab so audio
-    // cannot leak during the page animation into Network or other views.
-    if (_currentIndex == 0 && index != 0) {
-      _pauseAllHomeViewVideos(
-        nextOwner: index == 1 ? PlaybackOwners.network : null,
-      );
+    if (_currentIndex == index) {
+      return;
     }
 
-    setState(() {
-      _currentIndex = index;
-    });
-
-    _pageController.jumpToPage(index);
-    _syncPlaybackForCurrentTab();
+    _activateTab(index, previousIndex: _currentIndex);
 
     if (index != 0) {
       unawaited(_showFirstTapTipIfNeeded(index));
+    }
+  }
+
+  void _activateTab(int index, {required int previousIndex}) {
+    if (_currentIndex == 0 && index != 0) {
+      ref.read(homeViewControllerProvider.notifier).prepareForTabSwitchAway(
+            reason: 'main_tab_$index',
+            nextActiveOwner: _playbackOwnerForTab(index),
+          );
+    }
+
+    setState(() => _currentIndex = index);
+    ref.read(mainTabActiveIndexProvider.notifier).setIndex(index);
+    _syncPlaybackForCurrentTab();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _currentIndex != index) {
+        return;
+      }
+      _scheduleBackgroundRefreshForTab(index);
+    });
+  }
+
+  String? _playbackOwnerForTab(int index) {
+    return switch (index) {
+      0 => PlaybackOwners.home,
+      1 => PlaybackOwners.network,
+      3 => PlaybackOwners.profile,
+      _ => null,
+    };
+  }
+
+  void _scheduleBackgroundRefreshForTab(int index) {
+    _tabRefreshScheduler.schedule(
+      tabIndex: index,
+      currentTabIndex: _currentIndex,
+      isMounted: () => mounted,
+      refresh: () => _runBackgroundRefreshForTab(index),
+    );
+  }
+
+  Future<void> _runBackgroundRefreshForTab(int index) async {
+    switch (index) {
+      case 0:
+        final hp.HomeState homeState = ref.read(hp.homeProvider);
+        if (homeState.forYouVideos.isEmpty) {
+          return;
+        }
+        await ref.read(hp.homeProvider.notifier).runDeferredBackgroundRefresh();
+      case 1:
+        ref.read(networkTabBackgroundRefreshProvider.notifier).requestRefresh();
+      case 3:
+        ref.read(inboxTabBackgroundRefreshProvider.notifier).requestRefresh();
+      default:
+        break;
     }
   }
 
@@ -241,38 +277,41 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     if (QaRuntime.isMobileFeedE2e || !context.mounted) {
       return true;
     }
-    final OnboardingFeatureTip? tip = OnboardingFeatureTip.forTabIndex(index);
-    if (tip == null) {
+    final RobustAuthenticationService authService =
+        ref.read(robustAuthServiceProvider);
+    final String? userId = authService.currentUser?.id;
+    if (userId == null || userId.isEmpty) {
       return true;
     }
-    final authService = ref.read(robustAuthServiceProvider);
-    final String userId = authService.currentUser?.id ?? 'local';
-    final bool forceShow = OnboardingTesterConfig.isTesterUser(
-      userId: userId,
-      username: authService.currentUser?.username,
-    );
+    final ContextualTipsService tipsService = ContextualTipsService();
+    final ContextualTipsState tipsState = await tipsService.fetchTips(userId);
     if (!mounted) {
       return false;
     }
-    return showOnboardingFeatureTipIfNeeded(
+    await ContextualTipCatalog.showTabTipIfNeeded(
       context: context,
       userId: userId,
-      tip: tip,
-      forceShow: forceShow,
+      tabIndex: index,
+      service: tipsService,
+      tipsState: tipsState,
     );
+    return true;
   }
 
   void _syncPlaybackForCurrentTab() {
     if (!mounted) return;
-    final playbackManager = GlobalPlaybackManager.instance;
-    if (_currentIndex == 0) {
-      playbackManager.setVisibleOwner(PlaybackOwners.home);
-      playbackManager.resumeAfterTabSwitch();
-      _requestHomeReactivation('tab_sync');
+    final GlobalPlaybackManager playbackManager =
+        GlobalPlaybackManager.instance;
+    final String? owner = _playbackOwnerForTab(_currentIndex);
+    if (owner == null) {
+      playbackManager.pauseAllForTabSwitch();
       return;
     }
-
-    playbackManager.setVisibleOwner(PlaybackOwners.network);
+    if (_currentIndex == 0) {
+      ref.read(homeViewControllerProvider.notifier).resumeFromTabReturn();
+      return;
+    }
+    playbackManager.setVisibleOwner(owner);
   }
 
   void _onUploadTapped() {
@@ -296,7 +335,7 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   void _refreshHomeView() {
     try {
       // Refresh the home provider to reload videos
-      final homeNotifier = ref.read(homeProvider.notifier);
+      final homeNotifier = ref.read(hp.homeProvider.notifier);
       homeNotifier.loadVideos();
 
       secureLog('🔄 MainTabView: Refreshing HomeView video feed');
@@ -313,16 +352,10 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   void _pauseAllHomeViewVideos({String? nextOwner}) {
     try {
       secureLog('🚨 AUDIO FIX: Pausing HomeView videos for tab switch...');
-
-      // 🔊 AUDIO FIX: Use GlobalPlaybackManager for consistent audio control
-      final playbackManager = ref.read(globalPlaybackManagerProvider);
-      if (nextOwner != null) {
-        playbackManager.setVisibleOwner(nextOwner);
-      } else {
-        playbackManager.pauseAllForTabSwitch(); // Pause + mute all videos
-      }
-      // ❌ REMOVED: playbackManager.disposeAll() - too aggressive, causes disposal errors
-
+      ref.read(homeViewControllerProvider.notifier).prepareForTabSwitchAway(
+            reason: 'pause_home_videos',
+            nextActiveOwner: nextOwner,
+          );
       secureLog(
         '⏸️ MainTabView: Paused all HomeView videos (controllers kept alive)',
       );
@@ -337,35 +370,23 @@ class _MainTabViewState extends ConsumerState<MainTabView>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(unreadMessagesProvider);
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final Color on = colorScheme.onSurface;
     final Widget shell = Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody:
           true, // This allows content to extend behind the bottom navigation
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          if (_currentIndex != index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          }
-
-          _syncPlaybackForCurrentTab();
-        },
-        // Disable horizontal swipe on Home / Network so nested horizontal
-        // gestures (e.g. StreamerCardView) are not stolen.
-        physics: _currentIndex == 0 || _currentIndex == 1
-            ? const NeverScrollableScrollPhysics()
-            : const ClampingScrollPhysics(),
-        children: [
+      body: IndexedStack(
+        index: _currentIndex,
+        sizing: StackFit.expand,
+        children: <Widget>[
           HomeView(key: _homeViewKey),
-          NetworkView(),
+          const NetworkView(),
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              children: <Widget>[
                 Icon(
                   Icons.add_circle,
                   size: 80,

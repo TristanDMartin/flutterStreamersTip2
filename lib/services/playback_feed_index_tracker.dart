@@ -1,5 +1,7 @@
 import 'package:video_player/video_player.dart';
 
+import 'playback_loop_coordinator.dart';
+
 /// Vertical feed index ↔ videoId mapping and saved playback positions.
 class PlaybackFeedIndexTracker {
   int? currentFeedIndex;
@@ -69,7 +71,10 @@ class PlaybackFeedIndexTracker {
       if (!controller.value.isInitialized) {
         return;
       }
-      lastKnownPositions[index] = controller.value.position;
+      lastKnownPositions[index] = PlaybackLoopCoordinator.clampResumePosition(
+        controller.value.position,
+        controller.value.duration,
+      );
       if (logSuccess) {
         log?.call(
           '💾 PlaybackManager: Saved position '

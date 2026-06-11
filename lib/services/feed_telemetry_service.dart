@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+
+import 'creator_intelligence_analytics_service.dart';
 
 /// Service for feed telemetry per spec (video_impression, video_skip, etc.)
 class FeedTelemetryService {
@@ -11,6 +15,8 @@ class FeedTelemetryService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final CreatorIntelligenceAnalyticsService _creatorAnalytics =
+      CreatorIntelligenceAnalyticsService();
 
   /// Log video_impression — video enters viewport
   Future<void> logVideoImpression({
@@ -141,8 +147,54 @@ class FeedTelemetryService {
         if (fromTab != null) 'fromTab': fromTab,
         if (toTab != null) 'toTab': toTab,
       });
+      unawaited(_mirrorCreatorIntelligenceEvent(
+        event: event,
+        videoId: videoId,
+        watchedSeconds: watchedSeconds,
+        completionRate: completionRate,
+        feedPosition: feedPosition,
+      ));
     } catch (e) {
       debugPrint('⚠️ FeedTelemetryService: Failed to log $event: $e');
+    }
+  }
+
+  Future<void> _mirrorCreatorIntelligenceEvent({
+    required String event,
+    required String videoId,
+    double? watchedSeconds,
+    double? completionRate,
+    int? feedPosition,
+  }) async {
+    if (videoId.isEmpty) {
+      return;
+    }
+    final Map<String, dynamic> metadata = <String, dynamic>{
+      if (watchedSeconds != null) 'watchedSeconds': watchedSeconds,
+      if (completionRate != null) 'completionRate': completionRate,
+      if (feedPosition != null) 'feedPosition': feedPosition,
+    };
+    switch (event) {
+      case 'video_impression':
+      case 'video_play_start':
+        await _creatorAnalytics.trackVideoViewed(
+          videoId: videoId,
+          metadata: metadata,
+        );
+      case 'video_skip':
+        await _creatorAnalytics.trackVideoSkipped(
+          videoId: videoId,
+          metadata: metadata,
+        );
+      case 'video_watch_duration':
+        if ((completionRate ?? 0) >= 0.85) {
+          await _creatorAnalytics.trackVideoCompleted(
+            videoId: videoId,
+            metadata: metadata,
+          );
+        }
+      default:
+        break;
     }
   }
 }

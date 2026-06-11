@@ -92,7 +92,9 @@ class HomeFeedStartupLoader {
     String? cacheUserId,
   }) async {
     _log('🚀 HomeProvider: Loading fresh startup feed before first playback...');
-    await _videoService.loadAllVideos().timeout(
+    await _videoService
+        .loadAllVideos(source: 'home_startup')
+        .timeout(
       startupTimeout,
       onTimeout: () {
         _log('⏰ HomeProvider: Video load timed out; ending startup wait');

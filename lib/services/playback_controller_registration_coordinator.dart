@@ -5,13 +5,16 @@ import 'package:video_player/video_player.dart';
 import '../utils/playback_teardown.dart';
 import 'playback_controller_pool.dart';
 import 'playback_focus_coordinator.dart';
+import 'playback_pool_policy.dart';
+import 'playback_warm_window_policy.dart';
 
 /// Registers and unregisters pooled controllers with deferred native teardown.
 class PlaybackControllerRegistrationCoordinator {
   const PlaybackControllerRegistrationCoordinator();
 
   static const int poolRadius = 1;
-  static const int maxControllerPoolSize = 3;
+  static const int maxControllerPoolSize =
+      PlaybackPoolPolicy.maxControllerPoolSize;
 
   void registerController({
     required String videoId,
@@ -45,6 +48,7 @@ class PlaybackControllerRegistrationCoordinator {
       void Function(String message)? log,
     }) scheduleDeferredPoolControllerDispose,
     String? owner,
+    int scrollDirection = 1,
     void Function(String message)? log,
   }) {
     onLogControllerEvent(
@@ -105,7 +109,11 @@ class PlaybackControllerRegistrationCoordinator {
         final int? videoIndex = videoIdToIndex[id];
         final bool outsideWarmWindow = currentFeedIndex == null ||
             videoIndex == null ||
-            (videoIndex - currentFeedIndex).abs() > poolRadius;
+            PlaybackWarmWindowPolicy.isOutsideWarmWindow(
+              videoIndex: videoIndex,
+              currentIndex: currentFeedIndex,
+              direction: scrollDirection,
+            );
         if (!outsideWarmWindow) {
           continue;
         }
@@ -125,7 +133,11 @@ class PlaybackControllerRegistrationCoordinator {
           final int? videoIndex = videoIdToIndex[id];
           final bool outsideWarmWindow = currentFeedIndex == null ||
               videoIndex == null ||
-              (videoIndex - currentFeedIndex).abs() > poolRadius;
+              PlaybackWarmWindowPolicy.isOutsideWarmWindow(
+                videoIndex: videoIndex,
+                currentIndex: currentFeedIndex,
+                direction: scrollDirection,
+              );
           if (!outsideWarmWindow) return false;
           if (focus.activeVideoId == id || pool.initializing.contains(id)) {
             return false;
@@ -147,7 +159,7 @@ class PlaybackControllerRegistrationCoordinator {
           if (pool.length < maxControllerPoolSize) break;
           log?.call(
             '🗑️ PlaybackManager: Force-evicting ${entry.key} to keep '
-            'permanent 3-controller pool',
+            'permanent $maxControllerPoolSize-controller pool',
           );
           onUnregister(entry.key);
         }

@@ -44,6 +44,22 @@ void main() {
       expect(tracker.lastPositionAt(1), const Duration(seconds: 5));
     });
 
+    test('savePositionForIndex clamps near-end position to zero', () {
+      final PlaybackFeedIndexTracker tracker = PlaybackFeedIndexTracker();
+      tracker.syncMapping(index: 0, videoId: 'video-a');
+
+      tracker.savePositionForIndex(
+        index: 0,
+        resolveController: (_) => _FakeController(
+          isInitialized: true,
+          playbackPosition: const Duration(seconds: 29, milliseconds: 700),
+        ),
+        isControllerSafe: (_, __) => true,
+      );
+
+      expect(tracker.lastPositionAt(0), Duration.zero);
+    });
+
     test('clear resets all mappings', () {
       final PlaybackFeedIndexTracker tracker = PlaybackFeedIndexTracker();
       tracker.syncMapping(index: 0, videoId: 'video-a');
@@ -61,14 +77,18 @@ void main() {
 }
 
 class _FakeController extends Fake implements VideoPlayerController {
-  _FakeController({required this.isInitialized});
+  _FakeController({
+    required this.isInitialized,
+    this.playbackPosition = const Duration(seconds: 5),
+  });
 
   final bool isInitialized;
+  final Duration playbackPosition;
 
   @override
   VideoPlayerValue get value => VideoPlayerValue(
         duration: const Duration(seconds: 30),
-        position: const Duration(seconds: 5),
+        position: playbackPosition,
         isInitialized: isInitialized,
       );
 }

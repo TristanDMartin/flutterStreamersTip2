@@ -56,6 +56,7 @@ class PlaybackControllerFactory {
     }) registerController,
     required Future<VideoPlayerController?> Function(String videoId)
         waitForInitializing,
+    required void Function(String videoId, {String? owner}) ensureRoomFor,
     String? owner,
     void Function(String message)? log,
   }) async {
@@ -63,6 +64,7 @@ class PlaybackControllerFactory {
     if (existing != null && isControllerSafe(videoId, existing)) {
       try {
         if (existing.value.isInitialized && !existing.value.hasError) {
+          warmStartedAt.remove(videoId);
           log?.call(
             '✅ PlaybackManager: getOrCreateController reusing existing: '
             '$videoId',
@@ -102,6 +104,7 @@ class PlaybackControllerFactory {
       logPlaybackSwallowed('getOrCreateController.parseUrl', e, st);
       return null;
     }
+    ensureRoomFor(videoId, owner: owner);
     pool.markInitializing(videoId);
     warmStartedAt[videoId] = DateTime.now();
     VideoPlayerController? created;
@@ -115,9 +118,10 @@ class PlaybackControllerFactory {
       );
       pool.controllers[videoId] = created;
       await created.initialize().timeout(
-        const Duration(seconds: 8),
-        onTimeout: () => throw TimeoutException('getOrCreateController init 8s'),
-      );
+            const Duration(seconds: 8),
+            onTimeout: () =>
+                throw TimeoutException('getOrCreateController init 8s'),
+          );
       registerController(videoId, created, owner: owner ?? 'home/feed');
       final DateTime? warmStartedAtTime = warmStartedAt[videoId];
       final int? initMs = warmStartedAtTime == null

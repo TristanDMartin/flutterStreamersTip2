@@ -4,10 +4,10 @@ import 'package:streamers_tip/services/playback_preload_order.dart';
 
 void main() {
   group('PlaybackWarmWindowPolicy', () {
-    test('forward scroll keeps current + next + next+1', () {
+    test('forward scroll keeps previous + current + next + next+1', () {
       final ({int backward, int forward}) radii =
           PlaybackWarmWindowPolicy.radiiForDirection(1);
-      expect(radii.backward, 0);
+      expect(radii.backward, 1);
       expect(radii.forward, 2);
 
       final List<int> indices = computePlaybackPreloadIndices(
@@ -20,11 +20,11 @@ void main() {
       expect(indices, <int>[0, 1, 2]);
     });
 
-    test('backward scroll keeps current + previous + previous-1', () {
+    test('backward scroll keeps previous-1 + previous + current + next', () {
       final ({int backward, int forward}) radii =
           PlaybackWarmWindowPolicy.radiiForDirection(-1);
       expect(radii.backward, 2);
-      expect(radii.forward, 0);
+      expect(radii.forward, 1);
 
       final List<int> indices = computePlaybackPreloadIndices(
         index: 4,
@@ -39,11 +39,11 @@ void main() {
     test('isOutsideWarmWindow respects asymmetric radii', () {
       expect(
         PlaybackWarmWindowPolicy.isOutsideWarmWindow(
-          videoIndex: 0,
+          videoIndex: 1,
           currentIndex: 2,
           direction: 1,
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         PlaybackWarmWindowPolicy.isOutsideWarmWindow(

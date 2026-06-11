@@ -7,10 +7,17 @@ import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart' as app_user;
 import '../utils/public_video_count_rules.dart';
+import '../utils/category_schema.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/video_url_resolver.dart';
 import '../utils/video_caption_resolver.dart';
 import '../utils/video_health_gate.dart';
+import '../features/home/domain/feed_stats.dart';
+import '../features/home/domain/home_feed_mutator.dart';
+import '../utils/home_video_from_firestore.dart';
+import '../utils/like_interaction_boundary.dart';
+import '../utils/video_feed_diagnostics.dart';
+import '../utils/video_metadata_backfill.dart';
 import 'real_user_data_service.dart';
 import 'user_blocking_service.dart';
 
@@ -18,6 +25,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   VideoService() : super([]);
 
   static const int _feedDiversityWindow = 3;
+
+  bool isHydratingFeed = false;
+  bool isMergingProfileVideos = false;
+  Future<void>? _loadAllVideosInFlight;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -58,6 +69,16 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         debugPrint('🎬 VideoService: ${result.docs.length} videos ($label)');
         for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
             in result.docs) {
+          final Map<String, dynamic> data =
+              Map<String, dynamic>.from(doc.data());
+          data['id'] = doc.id;
+          final String? rejectReason = rejectFeedCandidateBeforeHydration(
+            data,
+            readOwnerId: getOwnerId,
+          );
+          if (rejectReason != null) {
+            continue;
+          }
           docMap.putIfAbsent(doc.id, () => doc);
         }
       } catch (e) {
@@ -129,7 +150,15 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   List<HomeVideo> _applyLightweightFeedDiversity(List<HomeVideo> videos) {
     if (videos.length <= 2) return videos;
 
-    final remaining = List<HomeVideo>.from(videos);
+    final List<HomeVideo> freshUploads =
+        videos.where((HomeVideo v) => isFreshUpload(v)).toList();
+    final List<HomeVideo> remainder =
+        videos.where((HomeVideo v) => !isFreshUpload(v)).toList();
+    if (remainder.length <= 2) {
+      return videos;
+    }
+
+    final remaining = List<HomeVideo>.from(remainder);
     final diversified = <HomeVideo>[];
 
     while (remaining.isNotEmpty) {
@@ -164,7 +193,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       remaining.removeAt(selectedIndex);
     }
 
-    return diversified;
+    return [...freshUploads, ...diversified];
   }
 
   /// Parse duration from various formats (string "M:SS", double, int) to seconds (double)
@@ -375,6 +404,12 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       return null;
     }
 
+    scheduleVideoMetadataBackfill(
+      firestore: _firestore,
+      videoId: doc.id,
+      cachedData: data,
+    );
+
     return _homeVideoFromRealtimeData(
       data,
       doc.id,
@@ -399,9 +434,12 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       }
     }
 
-    final List<HomeVideo> videos = unique.values.toList(growable: false);
-    state = videos;
-    return videos;
+    final List<HomeVideo> built = unique.values.toList(growable: false);
+    state = mergeHomeFeedPreserveOrder(
+      existing: state,
+      incoming: built,
+    );
+    return built;
   }
 
   Future<HomeVideo> _processingHomeVideoFromDoc(
@@ -425,7 +463,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       thumbnailURL: (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?,
       caption: resolveVideoCaptionFromFirestoreData(data),
       overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
-      categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+      categoryId: categoryIdFromVideoDocument(data),
       views: (data['views'] as num?)?.toInt() ?? 0,
       likes: (data['likes'] as num?)?.toInt() ?? 0,
       comments: (data['comments'] as num?)?.toInt() ?? 0,
@@ -444,10 +482,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     String userId, {
     required String playableUrl,
   }) async {
-    final app_user.User? creator = await _userDataService.getUserById(userId);
-    if (creator == null) {
-      return null;
-    }
+    final app_user.User? loadedCreator =
+        await _userDataService.getUserById(userId);
+    final app_user.User creator =
+        loadedCreator ?? _appUserFromVideoDocCreator(data, userId);
     final String? thumbnailUrl =
         (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
     VideoThumbnails? thumbnails;
@@ -469,7 +507,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       thumbnails: thumbnails,
       caption: resolveVideoCaptionFromFirestoreData(data),
       overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
-      categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+      categoryId: categoryIdFromVideoDocument(data),
       views: (data['views'] as num?)?.toInt() ?? 0,
       likes: (data['likes'] as num?)?.toInt() ?? 0,
       comments: (data['comments'] as num?)?.toInt() ?? 0,
@@ -482,8 +520,48 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     );
   }
 
+  app_user.User _appUserFromVideoDocCreator(
+    Map<String, dynamic> data,
+    String userId,
+  ) {
+    final embedded = creatorFromVideoDoc(data, userId);
+    return app_user.User(
+      id: embedded.id,
+      username: embedded.username,
+      displayName: embedded.displayName,
+      avatarURL: embedded.avatarURL,
+      bio: embedded.bio,
+      hashtags: embedded.hashtags,
+      followerCount: embedded.followerCount,
+      followingCount: embedded.followingCount,
+      postCount: embedded.postCount,
+      onlineStatus: embedded.onlineStatus,
+    );
+  }
+
   /// Load all videos from Firestore and store them in memory
-  Future<void> loadAllVideos() async {
+  Future<void> loadAllVideos({String source = 'unknown'}) async {
+    if (LikeInteractionBoundary.isActive) {
+      LikeInteractionBoundary.reportVideoServiceReload(source: 'loadAllVideos');
+      return;
+    }
+    if (_loadAllVideosInFlight != null) {
+      VideoFeedDiagnostics.logVideoLoadSkipped(
+        reason: 'in_flight_duplicate source=$source',
+      );
+      return _loadAllVideosInFlight!;
+    }
+    VideoFeedDiagnostics.logVideoLoadStart(source: source);
+    _loadAllVideosInFlight = _runLoadAllVideos();
+    try {
+      await _loadAllVideosInFlight;
+    } finally {
+      _loadAllVideosInFlight = null;
+    }
+  }
+
+  Future<void> _runLoadAllVideos() async {
+    isHydratingFeed = true;
     try {
       debugPrint('🎬 VideoService: ========== LOADING ALL VIDEOS ==========');
 
@@ -511,7 +589,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             '🚫 VideoService: Filtering ${blockedUserIds.length} blocked creators from feed');
       }
 
-      const limitCount = 20;
+      const limitCount = 30;
       const unorderedLimitCount = 100;
       final List<QueryDocumentSnapshot<Map<String, dynamic>>> candidateDocs =
           await _loadFeedCandidateDocs(
@@ -550,6 +628,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       final videos = <HomeVideo>[];
       int processedCount = 0;
       int skippedCount = 0;
+      int rejectedPreHydration = 0;
       final skipReasons = <String, int>{};
       final skippedVideoDetails = <String>[];
 
@@ -557,51 +636,26 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         final data = doc.data();
         data['id'] = doc.id;
 
-        debugPrint(
-            '🎬 VideoService: Processing video ${doc.id}: status=${data['status']}, privacy=${data['privacy']}, ownerId: ${getOwnerId(data)}');
-
-        if (!isVideoVisibleInFeed(data)) {
-          final reason = 'not visible in feed';
-          _recordSkip(skippedVideoDetails, skipReasons, doc.id, reason);
-          skippedCount++;
-          continue;
-        }
-
-        if (!isVideoEligibleForPublicFeed(data)) {
-          final reason = 'not public-visible';
-          _recordSkip(skippedVideoDetails, skipReasons, doc.id, reason);
-          skippedCount++;
-          continue;
-        }
-
-        final status = data['status'] as String?;
-
-        // isReadyForFeed gate — hard-skip if explicitly false.
-        // null → legacy video; let it through for backward compat.
-        if (data['isReadyForFeed'] == false) {
+        final String? preHydrationReject = rejectFeedCandidateBeforeHydration(
+          data,
+          readOwnerId: getOwnerId,
+        );
+        if (preHydrationReject != null) {
           _recordSkip(
             skippedVideoDetails,
             skipReasons,
             doc.id,
-            'isReadyForFeed',
+            preHydrationReject,
           );
           skippedCount++;
+          rejectedPreHydration++;
           continue;
         }
 
-        // Visibility/privacy gate — spec §3: only public videos in global feed.
-        // Handle both new 'visibility' field and legacy 'privacy' field.
-        final visibility = data['visibility'] as String?;
-        final privacy = data['privacy'] as String?;
-        final isPublic = visibility == 'public' ||
-            privacy == 'Everyone' ||
-            privacy == 'Public' ||
-            (visibility == null && privacy == null); // legacy: null = public
-        if (!isPublic) {
-          _recordSkip(skippedVideoDetails, skipReasons, doc.id, 'visibility');
-          skippedCount++;
-          continue;
-        }
+        debugPrint(
+            '🎬 VideoService: Processing video ${doc.id}: status=${data['status']}, privacy=${data['privacy']}, ownerId: ${getOwnerId(data)}');
+
+        final status = data['status'] as String?;
 
         // Canonical owner: single source of truth for filtering
         final resolvedUserId = getOwnerId(data) ??
@@ -675,18 +729,11 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
         debugPrint('🎬 VideoService: ✅ Playable ${doc.id} - gate-approved URL');
 
-        // Get creator data
-        final creator = await _userDataService.getUserById(userId);
-        if (creator == null) {
-          _recordSkip(
-            skippedVideoDetails,
-            skipReasons,
-            doc.id,
-            'missing_creator',
-          );
-          skippedCount++;
-          continue;
-        } else {
+        final app_user.User? loadedCreator =
+            await _userDataService.getUserById(userId);
+        final app_user.User creator =
+            loadedCreator ?? _appUserFromVideoDocCreator(data, userId);
+        if (loadedCreator != null) {
           debugPrint(
               '🎬 VideoService: ✅ Creator found for ${doc.id} - ${creator.displayName} (@${creator.username})');
         }
@@ -750,6 +797,12 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           }
         }
 
+        scheduleVideoMetadataBackfill(
+          firestore: _firestore,
+          videoId: doc.id,
+          cachedData: data,
+        );
+
         final video = HomeVideo(
           id: doc.id,
           creator: creator,
@@ -759,7 +812,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           thumbnails: thumbnails, // Add new thumbnails object
           caption: resolveVideoCaptionFromFirestoreData(data),
           overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
-          categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+          categoryId: categoryIdFromVideoDocument(data),
           views: data['views']?.toInt() ?? 0,
           likes: data['likes']?.toInt() ?? 0,
           comments: data['comments']?.toInt() ?? 0,
@@ -769,6 +822,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           // Store creation date for proper sorting
           createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
           status: (data['status'] as String?) ?? 'ready',
+          visibility: (data['visibility'] as String?) ??
+              kDefaultVideoVisibility,
         );
 
         debugPrint(
@@ -779,7 +834,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       }
 
       // Log summary after processing all videos (diagnostic for "new uploads not showing")
-      final totalFetched = docsList.length;
+      final totalFetched = candidateDocs.length;
+      final int skippedDuringHydration = skippedCount - rejectedPreHydration;
       debugPrint('🎬 VideoService: ========== FEED DIAGNOSTIC ==========');
       debugPrint(
           '   totalFetched: $totalFetched, playableCount: $processedCount, '
@@ -824,7 +880,19 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       final diversifiedVideos =
           _applyLightweightFeedDiversity(deduplicatedVideos);
 
+      FeedStats(
+        fetched: totalFetched,
+        rejectedPreHydration: rejectedPreHydration,
+        hydrated: processedCount,
+        skippedDuringHydration: skippedDuringHydration,
+        skipReasons: skipReasons,
+        ranked: diversifiedVideos.length,
+      ).logTo(debugPrint);
+
       state = diversifiedVideos;
+      VideoFeedDiagnostics.logVideoLoadDone(
+        videoCount: diversifiedVideos.length,
+      );
       debugPrint(
           '✅ VideoService: Loaded ${diversifiedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
 
@@ -918,7 +986,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           if (user != null) {
             debugPrint(
                 '🔄 VideoService: Retrying with authenticated user: ${user.uid}');
-            await loadAllVideos();
+            await loadAllVideos(source: 'load_all_videos_retry');
             return;
           }
         } catch (retryError) {
@@ -927,6 +995,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       }
 
       state = [];
+    } finally {
+      isHydratingFeed = false;
     }
   }
 
@@ -934,6 +1004,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   /// into [state]. The home feed only loads a small global slice; without this,
   /// [userVideosProvider] under-counts profile grids vs [reconcilePostCount].
   Future<void> mergeProfileVideosForUser(String profileUserId) async {
+    if (LikeInteractionBoundary.isActive) {
+      LikeInteractionBoundary.reportVideoServiceReload(
+        source: 'mergeProfileVideosForUser',
+      );
+      return;
+    }
+    isMergingProfileVideos = true;
     try {
       if (Firebase.apps.isEmpty) {
         return;
@@ -1002,6 +1079,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     } catch (e, stackTrace) {
       debugPrint('❌ VideoService: mergeProfileVideosForUser failed: $e');
       debugPrint('$stackTrace');
+    } finally {
+      isMergingProfileVideos = false;
     }
   }
 
@@ -1014,17 +1093,51 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     };
     final List<HomeVideo> next = <HomeVideo>[];
     final Set<String> seen = <String>{};
+    bool hasProfileGridChange = false;
     for (final HomeVideo v in state) {
       final HomeVideo u = profileById[v.id] ?? v;
-      next.add(u);
+      final bool shouldReplace =
+          !identical(u, v) && !_sameProfileGridVideo(v, u);
+      if (shouldReplace) {
+        hasProfileGridChange = true;
+      }
+      next.add(shouldReplace ? u : v);
       seen.add(u.id);
     }
     for (final HomeVideo v in profileVideos) {
       if (!seen.contains(v.id)) {
+        hasProfileGridChange = true;
         next.add(v);
       }
     }
+    if (!hasProfileGridChange) {
+      if (kDebugMode) {
+        debugPrint(
+          '🎬 VideoService: mergeProfileVideosForUser skipped state update; '
+          'profile grid unchanged',
+        );
+      }
+      return;
+    }
     state = next;
+  }
+
+  bool _sameProfileGridVideo(HomeVideo a, HomeVideo b) {
+    return a.id == b.id &&
+        a.creator.id == b.creator.id &&
+        a.videoURL == b.videoURL &&
+        a.thumbnailURL == b.thumbnailURL &&
+        a.thumbnails == b.thumbnails &&
+        a.caption == b.caption &&
+        a.isDraft == b.isDraft &&
+        a.categoryId == b.categoryId &&
+        a.duration == b.duration &&
+        a.createdAt == b.createdAt &&
+        a.visibility == b.visibility &&
+        a.status == b.status &&
+        a.isPinned == b.isPinned &&
+        listEquals(a.tags, b.tags) &&
+        listEquals(a.playlistIds, b.playlistIds);
   }
 
   Future<HomeVideo?> _homeVideoFromDocAfterPlayableGate(
@@ -1083,7 +1196,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         thumbnails: placeholderThumbnails,
         caption: resolveVideoCaptionFromFirestoreData(data),
         overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
-        categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+        categoryId: categoryIdFromVideoDocument(data),
         views: data['views']?.toInt() ?? 0,
         likes: data['likes']?.toInt() ?? 0,
         comments: data['comments']?.toInt() ?? 0,
@@ -1136,7 +1249,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       thumbnails: thumbnails,
       caption: resolveVideoCaptionFromFirestoreData(data),
       overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
-      categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+      categoryId: categoryIdFromVideoDocument(data),
       views: data['views']?.toInt() ?? 0,
       likes: data['likes']?.toInt() ?? 0,
       comments: data['comments']?.toInt() ?? 0,
@@ -1265,7 +1378,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   /// Refresh videos from Firestore (useful after uploads or scheduled posts)
   Future<void> refresh() async {
     debugPrint('🔄 VideoService: Refreshing videos...');
-    await loadAllVideos();
+    await loadAllVideos(source: 'video_service_refresh');
     debugPrint(
         '✅ VideoService: Refresh complete - ${state.length} videos loaded');
   }
@@ -1551,9 +1664,8 @@ final videoServiceStateProvider =
 // Helper providers for filtered videos
 final userVideosProvider =
     Provider.family<List<HomeVideo>, String>((ref, userId) {
-  final allVideos = ref.watch(videoServiceStateProvider);
-  debugPrint('🎬 userVideosProvider: Looking for userId: $userId');
-  debugPrint('🎬 userVideosProvider: Total videos: ${allVideos.length}');
+  ref.watch(_userVideosGridSignatureProvider(userId));
+  final allVideos = ref.read(videoServiceStateProvider);
 
   final userVideos = allVideos.where((video) {
     // Filter by user ID
@@ -1561,17 +1673,52 @@ final userVideosProvider =
     final isDraft = video.isDraft == true;
     final bool isVisible = isHomeVideoVisibleInFeed(video);
 
-    if (matchesUser && !isDraft && isVisible) {
-      debugPrint(
-          '🎬 userVideosProvider: Found matching video: ${video.id} by ${video.creator.displayName}');
-    }
-
     return matchesUser && !isDraft && isVisible;
   }).toList();
 
-  debugPrint(
-      '🎬 userVideosProvider: Found ${userVideos.length} published videos for user $userId');
   return userVideos;
+});
+
+final _userVideosGridSignatureProvider =
+    Provider.family<String, String>((ref, userId) {
+  return ref.watch(videoServiceStateProvider.select((videos) {
+    final StringBuffer buffer = StringBuffer();
+    for (final HomeVideo video in videos) {
+      if (video.creator.id != userId ||
+          video.isDraft == true ||
+          !isHomeVideoVisibleInFeed(video)) {
+        continue;
+      }
+      buffer
+        ..write(video.id)
+        ..write('|')
+        ..write(video.videoURL)
+        ..write('|')
+        ..write(video.thumbnailURL ?? '')
+        ..write('|')
+        ..write(video.thumbnails?.generatedAt?.millisecondsSinceEpoch ?? 0)
+        ..write('|')
+        ..write(video.thumbnails?.aspectRatio ?? 0)
+        ..write('|')
+        ..write(video.caption)
+        ..write('|')
+        ..write(video.duration ?? 0)
+        ..write('|')
+        ..write(video.createdAt?.millisecondsSinceEpoch ?? 0)
+        ..write('|')
+        ..write(video.visibility)
+        ..write('|')
+        ..write(video.status)
+        ..write('|')
+        ..write(video.isPinned)
+        ..write('|')
+        ..write(video.tags.join(','))
+        ..write('|')
+        ..write(video.playlistIds.join(','))
+        ..write('\n');
+    }
+    return buffer.toString();
+  }));
 });
 
 final categoryVideosProvider =

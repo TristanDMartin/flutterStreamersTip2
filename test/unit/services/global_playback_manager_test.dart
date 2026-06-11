@@ -1,5 +1,17 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:streamers_tip/constants/playback_owners.dart';
 import 'package:streamers_tip/services/global_playback_manager.dart';
+import 'package:video_player/video_player.dart';
+
+class _FakeVideoController extends Fake implements VideoPlayerController {
+  @override
+  VideoPlayerValue get value => const VideoPlayerValue(
+        duration: Duration(seconds: 30),
+        size: Size(100, 100),
+        isInitialized: true,
+      );
+}
 
 void main() {
   group('GlobalPlaybackManager', () {
@@ -142,5 +154,28 @@ void main() {
       // Should not throw when no controllers exist
       expect(() => manager.pauseAll(), returnsNormally);
     });
+
+    test(
+      'tab background retention keeps home controllers when visible owner changes',
+      () {
+        const String videoId = 'home-tab-video';
+        manager.registerController(
+          videoId,
+          _FakeVideoController(),
+          owner: PlaybackOwners.home,
+        );
+        expect(manager.hasController(videoId), isTrue);
+
+        manager.beginHomeTabBackgroundRetention();
+        manager.setVisibleOwner(PlaybackOwners.network);
+
+        expect(manager.hasController(videoId), isTrue);
+        expect(manager.isRetainingHomePoolForTabBackground, isTrue);
+
+        manager.endHomeTabBackgroundRetention();
+        manager.setVisibleOwner(PlaybackOwners.home);
+        expect(manager.isRetainingHomePoolForTabBackground, isFalse);
+      },
+    );
   });
 }

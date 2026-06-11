@@ -6,7 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:streamers_tip/utils/app_log.dart';
+import 'package:streamers_tip/utils/like_interaction_boundary.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
+import 'package:streamers_tip/utils/home_feed_interaction_diagnostics.dart';
+import 'package:streamers_tip/utils/interaction_diagnostics.dart';
 
 import '../constants/feed_config.dart';
 import '../models/feed_tab.dart';
@@ -15,11 +18,12 @@ import '../providers/home_provider.dart' as hp;
 import '../providers/discover_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/feed_state_provider.dart';
-import '../providers/product_tour_ui_provider.dart';
+import '../providers/main_tab_provider.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/unified_algorithm_service.dart';
+import '../features/home/application/home_feed_surface_warm.dart';
 import '../services/global_playback_manager.dart';
 import '../services/streamers_tip_like_service.dart';
 import '../services/unified_bookmark_service.dart';
@@ -34,11 +38,13 @@ import '../widgets/player_screen.dart';
 import '../widgets/creator_command_center_overlay.dart';
 import '../widgets/share_profile_view.dart';
 import '../models/user.dart';
+import '../models/creator_profile_snapshot.dart';
 import '../models/streamer_card.dart';
 import '../models/creator_command_snapshot.dart';
 import '../controllers/home_view_controller.dart';
 import '../routing/app_navigator.dart';
 import '../utils/home_video_playback.dart';
+import '../features/home/application/home_first_frame_gate.dart';
 import '../constants/playback_owners.dart';
 
 class HomeView extends ConsumerStatefulWidget {
@@ -51,7 +57,6 @@ class HomeView extends ConsumerStatefulWidget {
 class _HomeViewState extends ConsumerState<HomeView>
     with WidgetsBindingObserver {
   ProviderSubscription<bool>? _homeViewReactivateSubscription;
-  ProviderSubscription<ProductTourUiPhase>? _productTourUiPhaseSubscription;
   ProviderSubscription<String?>? _homeFeedScrollRequestSubscription;
   HomeFeedPageControls? _feedPageControls;
   late final HomeViewController _homeController;
@@ -90,7 +95,19 @@ class _HomeViewState extends ConsumerState<HomeView>
       ref
           .read(homeViewControllerProvider.notifier)
           .resetFeedPositionForColdOpen();
-      unawaited(ref.read(discoverProvider.notifier).loadTrendingCreators());
+      HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+        if (!mounted) return;
+        LikeInteractionBoundary.runAfterFirstInteraction(
+          () {
+            if (!mounted) return;
+            ref.read(discoverProvider);
+            unawaited(
+              ref.read(discoverProvider.notifier).loadTrendingCreators(),
+            );
+          },
+          fallbackTimeout: const Duration(seconds: 20),
+        );
+      });
     });
     _homeViewReactivateSubscription = ref.listenManual<bool>(
       homeViewReactivateProvider,
@@ -105,12 +122,6 @@ class _HomeViewState extends ConsumerState<HomeView>
         });
       },
     );
-    _productTourUiPhaseSubscription = ref.listenManual<ProductTourUiPhase>(
-      productTourUiPhaseProvider,
-      (ProductTourUiPhase? previous, ProductTourUiPhase next) {
-        _handleProductTourUiPhase(previous, next);
-      },
-    );
     _homeFeedScrollRequestSubscription = ref.listenManual<String?>(
       homeFeedScrollRequestProvider,
       (String? previous, String? next) {
@@ -121,42 +132,41 @@ class _HomeViewState extends ConsumerState<HomeView>
       },
     );
 
-    // Initialize services
+    // Lightweight sync init only; heavy analytics deferred until first frame.
     ErrorHandlingService().initialize();
-    OfflineDataService();
-    EngagementAnalyticsService().initialize();
 
-    // 🎯 SINGLE ACTIVE OWNER:
-    // Active owner is set centrally (MainTabView/AppNavigationObserver).
-    // Avoid setting it here to prevent ownership races during startup/rebuilds.
-
-    // 🚀 VIRAL ALGORITHM: Start tracking session for engagement analytics
-    // 🔥 CRITICAL FIX: Wrap Firebase access in try-catch to prevent crashes
-    try {
-      if (Firebase.apps.isNotEmpty) {
-        final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-        if (currentUser != null) {
-          UnifiedAlgorithmService.instance.startSession(currentUser.uid);
-          secureLog(
-            '🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}',
-          );
-        }
-      }
-    } catch (e) {
-      secureLog('⚠️ HomeView: Error accessing FirebaseAuth: $e');
-      // Continue without starting session - non-critical
-    }
-
-    // Setup favorites manager and load videos after the first frame so Riverpod
-    // listeners are not mutated while the widget tree is mounting.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(hp.homeProvider.notifier).ensureInstantFeedReady();
-      _startHomeServicesWhenFirebaseReady();
       if (ref.read(hp.homeProvider).forYouVideos.isNotEmpty) {
         _setDesiredFocusForCurrentIndex();
       }
+      HomeFirstFrameGate.instance.armFallbackUnblock();
+      HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+        if (!mounted) return;
+        OfflineDataService();
+        EngagementAnalyticsService().initialize();
+        _startUnifiedAlgorithmSession();
+        _startHomeServicesWhenFirebaseReady();
+      });
     });
+  }
+
+  void _startUnifiedAlgorithmSession() {
+    try {
+      if (Firebase.apps.isEmpty) {
+        return;
+      }
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        UnifiedAlgorithmService.instance.startSession(currentUser.uid);
+        secureLog(
+          '🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}',
+        );
+      }
+    } catch (e) {
+      secureLog('⚠️ HomeView: Error starting algorithm session: $e');
+    }
   }
 
   void _startHomeServicesWhenFirebaseReady({int attempt = 0}) {
@@ -196,77 +206,45 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
 
     if (!context.mounted) return;
+    final bool hasCachedFeed =
+        ref.read(hp.homeProvider).forYouVideos.isNotEmpty;
     _setupFavoritesManager();
     unawaited(_loadUserLikedVideos());
     unawaited(_loadUserFavorites());
-    unawaited(_loadVideos());
+    if (hasCachedFeed) {
+      unawaited(
+          ref.read(hp.homeProvider.notifier).runDeferredBackgroundRefresh());
+    } else {
+      unawaited(_loadVideos());
+    }
     _controller.markAsActiveOwner();
     ref.read(hp.homeProvider.notifier).startForYouRealtimeFeed();
-  }
-
-  void _handleProductTourUiPhase(
-    ProductTourUiPhase? previous,
-    ProductTourUiPhase next,
-  ) {
-    if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      switch (next) {
-        case ProductTourUiPhase.progressionView:
-          _closeCommandCenter();
-          unawaited(_handleFeedTabChange(FeedTab.following));
-          break;
-        case ProductTourUiPhase.threadsView:
-          _closeCommandCenter();
-          unawaited(_handleFeedTabChange(FeedTab.threads));
-          break;
-        case ProductTourUiPhase.tippyCommandCenter:
-          unawaited(_handleFeedTabChange(FeedTab.forYou));
-          setState(() {
-            _commandCenterState = CreatorCommandCenterState.expanded;
-          });
-          break;
-        case ProductTourUiPhase.idle:
-        case ProductTourUiPhase.progressionDropdown:
-          if (previous == ProductTourUiPhase.tippyCommandCenter) {
-            _closeCommandCenter();
-          }
-          break;
-      }
-    });
   }
 
   /// ✅ IMPROVEMENT: Handle return to HomeView with simplified logic
   void _handleReturnedToHome() {
     if (!context.mounted) return;
+    final bool isHomeTabVisible = ref.read(mainTabActiveIndexProvider) == 0;
+    final bool isRouteCurrent = ModalRoute.of(context)?.isCurrent ?? false;
     _controller.handleReturnedToHome(
-      isRouteCurrent: ModalRoute.of(context)?.isCurrent ?? false,
+      isRouteCurrent: isHomeTabVisible && isRouteCurrent,
     );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    _controller.handleAppLifecycleChanged(
-      appLifecycleState: state,
-      isRouteCurrent: ModalRoute.of(context)?.isCurrent ?? false,
-    );
     if (state == AppLifecycleState.resumed) {
       _commandCenterState = CreatorCommandCenterState.closed;
       _firebaseReadyRetryTimer?.cancel();
       _firebaseReadyRetryTimer = null;
-      _homeServicesStarted = false;
-      _startHomeServicesWhenFirebaseReady();
-      ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
-      unawaited(
-        GlobalPlaybackManager.instance.recoverInteractionOnAppResume(
-          fallbackOwner: PlaybackOwners.home,
-        ),
-      );
-      if (mounted) {
-        setState(() {});
-      }
     }
+    final bool isHomeTabVisible = ref.read(mainTabActiveIndexProvider) == 0;
+    final bool isRouteCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+    _controller.handleAppLifecycleChanged(
+      appLifecycleState: state,
+      isRouteCurrent: isHomeTabVisible && isRouteCurrent,
+    );
   }
 
   Widget _buildFirebaseStartupErrorBanner() {
@@ -395,8 +373,12 @@ class _HomeViewState extends ConsumerState<HomeView>
         unawaited(_primeFirstVideo(firstVideo));
 
         secureLog(
-            '🎬 HomeView: Preloading first video in background (non-blocking)');
-        GlobalPlaybackManager.instance.preloadAround(0, videos);
+            '🎬 HomeView: Preloading warm window from index 0 (non-blocking)');
+        HomeFeedSurfaceWarm().warmAround(
+          index: 0,
+          videos: videos,
+          direction: 1,
+        );
       }
 
       if (context.mounted) {
@@ -544,7 +526,6 @@ class _HomeViewState extends ConsumerState<HomeView>
     _firebaseReadyRetryTimer?.cancel();
     _firebaseReadyRetryTimer = null;
     _homeViewReactivateSubscription?.close();
-    _productTourUiPhaseSubscription?.close();
     _homeFeedScrollRequestSubscription?.close();
     _homeViewReactivateSubscription = null;
     WidgetsBinding.instance.removeObserver(this);
@@ -880,9 +861,96 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  Future<void> _onPageChanged(int index) async {
-    if (!mounted) return; // 🔒 SAFETY: Exit early if widget is disposed
+  void _scheduleAfterScrollIdle(VoidCallback work, {required String reason}) {
+    if (!LikeInteractionBoundary.shouldDeferHeavyWork) {
+      work();
+      return;
+    }
+    InteractionDiagnostics.logPageChangedDeferred(reason: reason);
+    LikeInteractionBoundary.runOrQueue(work, reason: reason);
+  }
 
+  Future<void> _runDeferredPageChangedWork({
+    required int index,
+    required int previousIndex,
+    required FeedTab activeFeed,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+    try {
+      if (_controllerState.currentIndex != index ||
+          ref.read(activeFeedProvider) != activeFeed) {
+        return;
+      }
+      final homeState = ref.read(hp.homeProvider);
+      final List<HomeVideo> videos = homeState.feedData(activeFeed).videos;
+      if (videos.isEmpty || index < 0 || index >= videos.length) {
+        return;
+      }
+      final HomeVideo currentVideo = videos[index];
+      if (currentVideo.id.isEmpty) {
+        return;
+      }
+      if (!isHomeVideoPlayable(currentVideo)) {
+        GlobalPlaybackManager.instance.pauseAll();
+        secureLog(
+          '⏸️ HomeView: Processing card at index $index — playback paused',
+        );
+        return;
+      }
+      final int direction =
+          index > previousIndex ? 1 : (index < previousIndex ? -1 : 0);
+      HomeFeedSurfaceWarm().warmAround(
+        index: index,
+        videos: videos,
+        direction: direction == 0 ? 1 : direction,
+      );
+      try {
+        await ref.read(hp.homeProvider.notifier).loadMoreVideosIfNeeded(
+              currentIndex: index,
+              feed: activeFeed,
+            );
+      } catch (e) {
+        secureLog('⚠️ HomeView: Error loading more videos: $e');
+      }
+    } catch (e, stackTrace) {
+      secureLog('❌ HomeView: Error in deferred page changed work: $e');
+      secureLog('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _activateVisibleVideo({
+    required int index,
+    required FeedTab activeFeed,
+  }) async {
+    if (!mounted || ref.read(activeFeedProvider) != activeFeed) {
+      return;
+    }
+    final List<HomeVideo> videos =
+        ref.read(hp.homeProvider).feedData(activeFeed).videos;
+    if (index < 0 || index >= videos.length) {
+      return;
+    }
+    final HomeVideo currentVideo = videos[index];
+    if (currentVideo.id.isEmpty || !isHomeVideoPlayable(currentVideo)) {
+      GlobalPlaybackManager.instance.pauseAll();
+      return;
+    }
+    try {
+      await GlobalPlaybackManager.instance.onVisibleIndexChanged(
+        index,
+        currentVideo,
+      );
+    } catch (e, stackTrace) {
+      secureLog('❌ HomeView: Error activating visible video: $e');
+      secureLog('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _onPageChanged(int index) async {
+    if (!mounted) return;
+    final Stopwatch pageWatch = Stopwatch()..start();
     try {
       final int previousIndex = _lastObservedFeedIndex;
       _lastObservedFeedIndex = index;
@@ -891,74 +959,32 @@ class _HomeViewState extends ConsumerState<HomeView>
       } else if (index < previousIndex) {
         _applyScrollDirectionToCommandCenter(HomeFeedScrollDirection.up);
       }
-
-      // TIKTOK-STYLE: Get current video for feed management (with safety checks)
-      try {
-        final homeState = ref.read(hp.homeProvider);
-        final activeFeed = ref.read(activeFeedProvider);
-        _controller.setCurrentIndexForFeed(activeFeed, index);
-        final List<HomeVideo> videos = homeState.feedData(activeFeed).videos;
-
-        // 🔒 SAFETY: Validate videos list and index before accessing
-        if (videos.isEmpty) {
-          secureLog('⚠️ HomeView: Videos list is empty, skipping index change');
-          return;
-        }
-
-        if (index >= 0 && index < videos.length) {
-          final currentVideo = videos[index];
-
-          if (currentVideo.id.isEmpty) {
-            secureLog('⚠️ HomeView: Invalid video at index $index, skipping');
-            return;
-          }
-
-          if (!isHomeVideoPlayable(currentVideo)) {
-            GlobalPlaybackManager.instance.pauseAll();
-            secureLog(
-              '⏸️ HomeView: Processing card at index $index — playback paused',
-            );
-            return;
-          }
-
-          // TIKTOK-STYLE: Notify GlobalPlaybackManager of index change
-          // 🔥 FIX: Wrap in try-catch to prevent crashes during swiping
-          try {
-            await GlobalPlaybackManager.instance.onVisibleIndexChanged(
-              index,
-              currentVideo,
-            );
-          } catch (e, stackTrace) {
-            secureLog('❌ HomeView: Error in onVisibleIndexChanged: $e');
-            secureLog('Stack trace: $stackTrace');
-            // Continue - don't crash
-          }
-
-          // 🔥 PAGINATION: Load more videos when user is near the end
-          try {
-            final homeNotifier = ref.read(hp.homeProvider.notifier);
-            await homeNotifier.loadMoreVideosIfNeeded(
-              currentIndex: index,
-              feed: activeFeed,
-            );
-          } catch (e) {
-            secureLog('⚠️ HomeView: Error loading more videos: $e');
-            // Continue - don't crash
-          }
-        } else {
-          secureLog(
-            '⚠️ HomeView: Index $index out of bounds (videos.length: ${videos.length})',
+      final FeedTab activeFeed = ref.read(activeFeedProvider);
+      _controller.setCurrentIndexForFeed(activeFeed, index);
+      unawaited(
+        _activateVisibleVideo(index: index, activeFeed: activeFeed),
+      );
+      _scheduleAfterScrollIdle(
+        () {
+          unawaited(
+            _runDeferredPageChangedWork(
+              index: index,
+              previousIndex: previousIndex,
+              activeFeed: activeFeed,
+            ),
           );
-        }
-      } catch (e, stackTrace) {
-        // Safety: If provider access fails, log and continue
-        secureLog('❌ HomeView: Error in TikTok-style feed management: $e');
-        secureLog('Stack trace: $stackTrace');
-      }
+        },
+        reason: 'page_changed_$index',
+      );
     } catch (e, stackTrace) {
       secureLog('❌ HomeView: Critical error in _onPageChanged: $e');
       secureLog('Stack trace: $stackTrace');
-      // Don't crash - just log the error
+    } finally {
+      HomeFeedInteractionDiagnostics.logPageChanged(
+        source: 'home_view',
+        index: index,
+        ms: pageWatch.elapsedMilliseconds,
+      );
     }
   }
 
@@ -1011,6 +1037,9 @@ class _HomeViewState extends ConsumerState<HomeView>
                 Positioned.fill(
                   child: StreamerCardView(
                     userId: _currentStreamerCard!.id,
+                    initialCreator: CreatorProfileSnapshot.fromStreamerCard(
+                      _currentStreamerCard!,
+                    ),
                     currentUserId:
                         firebase_auth.FirebaseAuth.instance.currentUser?.uid,
                     onDismiss: _dismissStreamerCard,

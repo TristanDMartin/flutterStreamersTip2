@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../models/home_video.dart';
+import '../../../utils/feed_snapshot_engagement_filter.dart';
+import '../../../utils/video_feed_diagnostics.dart';
+import '../../../utils/interaction_diagnostics.dart';
+import '../../../utils/like_interaction_boundary.dart';
 import '../data/home_for_you_feed_repository.dart';
 
 /// Result of processing a debounced For You Firestore snapshot.
@@ -43,6 +47,8 @@ class HomeForYouRealtimeFeedListener {
   Timer? _debounce;
   int _generation = 0;
   bool _usingFallbackFeedListener = false;
+  Map<String, Map<String, dynamic>> _lastFeedDocDataById =
+      <String, Map<String, dynamic>>{};
 
   bool get isListening => _subscription != null;
   bool get usingFallbackFeedListener => _usingFallbackFeedListener;
@@ -55,6 +61,9 @@ class HomeForYouRealtimeFeedListener {
   }
 
   void dispose() {
+    VideoFeedDiagnostics.logHomeForYouListenerDisposed(
+      reason: 'listener_dispose',
+    );
     _debounce?.cancel();
     _debounce = null;
     _generation++;
@@ -69,6 +78,9 @@ class HomeForYouRealtimeFeedListener {
     final Query<Map<String, dynamic>> query =
         _repository.canonicalPublicFeedQuery();
 
+    VideoFeedDiagnostics.logHomeForYouListenerRegistered(
+      queryLabel: 'canonical_for_you',
+    );
     _subscription = query.snapshots().listen(
       _handleForYouFeedSnapshot,
       onError: (Object error, StackTrace stackTrace) {
@@ -87,6 +99,9 @@ class HomeForYouRealtimeFeedListener {
     final Query<Map<String, dynamic>> query =
         _repository.fallbackBroadFeedQuery();
 
+    VideoFeedDiagnostics.logHomeForYouListenerRegistered(
+      queryLabel: 'fallback_for_you',
+    );
     _subscription = query.snapshots().listen(
       _handleForYouFeedSnapshot,
       onError: (Object error, StackTrace stackTrace) {
@@ -108,10 +123,39 @@ class HomeForYouRealtimeFeedListener {
     _debounce = Timer(debounceDuration, () async {
       final int generation = ++_generation;
       try {
+        if (FeedSnapshotEngagementFilter.shouldSkipRebuild(
+          snapshot: snapshot,
+          previousDocDataById: _lastFeedDocDataById,
+        )) {
+          _lastFeedDocDataById =
+              FeedSnapshotEngagementFilter.snapshotDocDataById(snapshot);
+          if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+            LikeInteractionBoundary.reportFeedRefresh(
+              source: 'engagement_only_snapshot',
+            );
+          }
+          return;
+        }
+        if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+          LikeInteractionBoundary.reportFeedRefresh(
+            source: 'live_feed_snapshot',
+          );
+        }
+        final int docCount = snapshot.docs.length;
         final List<HomeVideo> liveVideos =
             await buildVideosFromSnapshot(snapshot.docs);
         if (generation != _generation) {
           return;
+        }
+        InteractionDiagnostics.logRealtimeFeedBuild(
+          docCount: docCount,
+          builtCount: liveVideos.length,
+        );
+        if (docCount > 3 && liveVideos.length < docCount ~/ 2) {
+          _log(
+            '⚠️ HomeProvider: Realtime snapshot built ${liveVideos.length}/'
+            '$docCount playable videos — merge will preserve existing feed',
+          );
         }
         final HomeForYouFeedSnapshotResult result =
             HomeForYouFeedSnapshotResult(
@@ -127,6 +171,8 @@ class HomeForYouRealtimeFeedListener {
           return;
         }
         await onSnapshotReady(result);
+        _lastFeedDocDataById =
+            FeedSnapshotEngagementFilter.snapshotDocDataById(snapshot);
       } catch (e) {
         _log('⚠️ HomeProvider: Live feed snapshot refresh failed: $e');
       }

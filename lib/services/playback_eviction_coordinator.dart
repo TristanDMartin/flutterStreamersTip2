@@ -15,7 +15,8 @@ class PlaybackEvictionCoordinator {
   const PlaybackEvictionCoordinator();
 
   static const int poolRadius = 1;
-  static const int maxControllerPoolSize = 3;
+  static const int maxControllerPoolSize =
+      PlaybackPoolPolicy.maxControllerPoolSize;
 
   void preloadAround({
     required int index,
@@ -97,9 +98,6 @@ class PlaybackEvictionCoordinator {
         // 🔒 SAFETY: Double-check bounds before accessing
         if (n >= 0 && n < videos.length) {
           try {
-            if (n == index) {
-              continue;
-            }
             final video = videos[n];
 
             // 🔒 SAFETY: Validate video object before preloading
@@ -112,9 +110,22 @@ class PlaybackEvictionCoordinator {
             final videoId = video.id;
             onSyncFeedIndexMapping(n, videoId);
 
-            // Keep only the adjacent warm slots. The visible/current video is
-            // created by the page activation path, not by scroll prewarm.
             if (!pool.controllers.containsKey(videoId)) {
+              final int distanceFromCurrent = (n - index).abs();
+              if (pool.controllers.length >
+                  PlaybackWarmWindowPolicy.maxControllerPoolSize) {
+                onDisposeFarControllers(index);
+              }
+              if (distanceFromCurrent > 2 &&
+                  pool.controllers.length >=
+                      PlaybackWarmWindowPolicy.maxControllerPoolSize) {
+                secureLog(
+                  '⏭️ PlaybackManager: Skipping distant preload at index $n '
+                  '(pool=${pool.controllers.length}, cap='
+                  '${PlaybackWarmWindowPolicy.maxControllerPoolSize})',
+                );
+                continue;
+              }
               // Next videos - preload in background (fire-and-forget)
               secureLog(
                   '🔄 PlaybackManager: Preloading next video controller for index $n (video: $videoId)');
@@ -264,9 +275,16 @@ class PlaybackEvictionCoordinator {
       // Clean up stale controllers
       for (final videoId in staleControllers) {
         if (pool.initializing.contains(videoId) ||
-                pool.ownerOf(videoId) == PlaybackOwners.player ||
-                pool.ownerOf(videoId) == PlaybackOwners.discoverPlayer ||
-                pool.pinnedVideoIds.contains(videoId)) {
+            videoId == activeVideoId ||
+            isActiveVideo(videoId) ||
+            pool.ownerOf(videoId) == PlaybackOwners.player ||
+            pool.ownerOf(videoId) == PlaybackOwners.discoverPlayer ||
+            pool.pinnedVideoIds.contains(videoId)) {
+          onLogControllerEvent(
+            'CLEANUP_SKIPPED_ACTIVE_VIDEO',
+            videoId,
+            reason: 'stale_protected',
+          );
           continue;
         }
         try {
@@ -307,6 +325,13 @@ class PlaybackEvictionCoordinator {
                 pool.initializing.contains(videoId) ||
                 pool.ownerOf(videoId) == PlaybackOwners.player ||
                 pool.ownerOf(videoId) == PlaybackOwners.discoverPlayer) {
+              if (videoId == activeVideoId || isActiveVideo(videoId)) {
+                onLogControllerEvent(
+                  'CLEANUP_SKIPPED_ACTIVE_VIDEO',
+                  videoId,
+                  reason: 'cooldown_protected',
+                );
+              }
               // Cancel cooldown if video came back into protected zone
               if (pool.cooldownUntil.containsKey(videoId)) {
                 pool.cooldownUntil.remove(videoId);
@@ -315,15 +340,24 @@ class PlaybackEvictionCoordinator {
               }
               continue;
             }
-            // 🔥 PHASE 2.3: Never dispose controller currently attached to a view
+            // 🔥 PHASE 2.3: Protect attached controllers only inside warm window
             final attachedId = pool.attached[videoId];
             if (attachedId != null && attachedId == entry.value.hashCode) {
-              if (pool.cooldownUntil.containsKey(videoId)) {
-                pool.cooldownUntil.remove(videoId);
-                onLogControllerEvent('COOLDOWN_CANCELLED', videoId,
-                    reason: 'attached');
+              final bool attachedInWarmWindow = videoIndex != null &&
+                  !PlaybackWarmWindowPolicy.isOutsideWarmWindow(
+                    videoIndex: videoIndex,
+                    currentIndex: index,
+                    direction: feedIndex.lastScrollDirection,
+                  );
+              if (attachedInWarmWindow) {
+                if (pool.cooldownUntil.containsKey(videoId)) {
+                  pool.cooldownUntil.remove(videoId);
+                  onLogControllerEvent('COOLDOWN_CANCELLED', videoId,
+                      reason: 'attached');
+                }
+                continue;
               }
-              continue;
+              pool.markDetached(videoId);
             }
             // 🔥 PHASE 2.3: Don't dispose within TTL of registration (reduces surface churn on scroll-back)
             final createdAt = pool.createdAt[videoId];
@@ -491,6 +525,13 @@ class PlaybackEvictionCoordinator {
                 e.key == activeVideoId ||
                 isActiveVideo(e.key) ||
                 pool.initializing.contains(e.key)) {
+              if (e.key == activeVideoId || isActiveVideo(e.key)) {
+                onLogControllerEvent(
+                  'CLEANUP_SKIPPED_ACTIVE_VIDEO',
+                  e.key,
+                  reason: 'pool_size_protected',
+                );
+              }
               return false;
             }
             try {
@@ -545,6 +586,13 @@ class PlaybackEvictionCoordinator {
                 pool.initializing.contains(videoId) ||
                 pool.ownerOf(videoId) == PlaybackOwners.player ||
                 pool.ownerOf(videoId) == PlaybackOwners.discoverPlayer) {
+              if (videoId == activeVideoId || isActiveVideo(videoId)) {
+                onLogControllerEvent(
+                  'CLEANUP_SKIPPED_ACTIVE_VIDEO',
+                  videoId,
+                  reason: 'hard_cap_protected',
+                );
+              }
               return false;
             }
             return pool.attached[videoId] != entry.value.hashCode;
@@ -565,8 +613,12 @@ class PlaybackEvictionCoordinator {
             final videoId = entry.key;
             final controller = pool.controllers.remove(videoId);
             if (controller == null) continue;
+            if (pool.isAttachedTo(videoId, controller)) {
+              pool.controllers[videoId] = controller;
+              continue;
+            }
             onLogControllerEvent('DISPOSE_REQUESTED', videoId,
-                reason: 'hard_3_slot_cap');
+                reason: 'hard_pool_cap');
             try {
               pool.owners.remove(videoId);
               muteStates.remove(videoId);
@@ -585,7 +637,7 @@ class PlaybackEvictionCoordinator {
                 controller.dispose();
               }
               onLogControllerEvent('DISPOSED', videoId,
-                  reason: 'hard_3_slot_cap');
+                  reason: 'hard_pool_cap');
             } catch (e) {
               secureLog(
                   '❌ PlaybackManager: Error hard-disposing controller $videoId: $e');

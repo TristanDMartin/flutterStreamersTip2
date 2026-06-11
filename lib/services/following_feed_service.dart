@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/video_caption_resolver.dart';
 import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
@@ -251,7 +252,7 @@ class FollowingFeedService {
     Map<String, dynamic> data,
     List<String> authorIds,
   ) {
-    if (data['isReadyForFeed'] == false) return false;
+    if (data['isReadyForFeed'] != true) return false;
 
     final String status =
         (data['status'] ?? '').toString().trim().toLowerCase();
@@ -401,7 +402,8 @@ class FollowingFeedService {
       likes: data['likes'] ?? data['likesCount'] ?? 0,
       comments: data['comments'] ?? data['commentsCount'] ?? 0,
       views: data['views'] ?? data['viewsCount'] ?? 0,
-      caption: data['caption'] ?? data['description'] ?? '',
+      caption: resolveVideoCaptionFromFirestoreData(data),
+      overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
       isLiked: data['isLiked'] ?? false,
       isFavorited: data['isFavorited'] ?? false,
       isDraft: data['isDraft'] ?? false,

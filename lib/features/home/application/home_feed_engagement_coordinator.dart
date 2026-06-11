@@ -32,6 +32,14 @@ class HomeFeedEngagementCoordinator {
     return applyLikeStateToVideo(video, _likeService.getLikeState(video.id));
   }
 
+  /// Hydrates like/bookmark flags from in-memory caches only (non-blocking).
+  void warmEngagementFromCache(List<HomeVideo> videos) {
+    for (final HomeVideo video in videos) {
+      mapLikeStateForVideo(video);
+      _bookmarkService.isBookmarked(video.id);
+    }
+  }
+
   Future<List<HomeVideo>> syncLikeStatesForVideos(
     List<HomeVideo> videos,
     String userId,

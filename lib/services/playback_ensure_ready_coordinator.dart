@@ -4,6 +4,7 @@ import '../constants/playback_owners.dart';
 import '../models/home_video.dart';
 import '../utils/video_health_gate.dart';
 import 'playback_controller_pool.dart';
+import 'playback_loop_coordinator.dart';
 
 /// Warms a controller for a feed index (health gate + pool + optional seek).
 class PlaybackEnsureReadyCoordinator {
@@ -93,7 +94,14 @@ class PlaybackEnsureReadyCoordinator {
         return;
       }
       syncFeedIndexMapping(index, videoId);
-      final Duration? lastPos = lastKnownPositions[index];
+      Duration? lastPos = lastKnownPositions[index];
+      if (lastPos != null && lastPos > Duration.zero) {
+        final Duration duration = controller.value.duration;
+        lastPos = PlaybackLoopCoordinator.clampResumePosition(
+          lastPos,
+          duration,
+        );
+      }
       if (lastPos != null && lastPos > Duration.zero) {
         try {
           await controller.seekTo(lastPos).timeout(

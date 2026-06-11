@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
+import 'playback_loop_coordinator.dart';
+
 /// Playback state memo for resume logic
 class PlaybackMemo {
   final Duration lastPlaybackPosition;
@@ -37,18 +39,23 @@ class VideoResumeService {
     // Debounce rapid page changes
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounceDelay, () {
-      final isFinished =
-          position >= (duration - const Duration(milliseconds: 300));
+      final Duration savedPosition = PlaybackLoopCoordinator.clampResumePosition(
+        position,
+        duration,
+      );
+      final bool isFinished = duration > Duration.zero &&
+          savedPosition > Duration.zero &&
+          savedPosition >= duration - const Duration(milliseconds: 300);
 
       _playbackState[postId] = PlaybackMemo(
-        lastPlaybackPosition: position,
+        lastPlaybackPosition: savedPosition,
         lastSeenAt: DateTime.now(),
         lastKnownDuration: duration,
         finished: isFinished,
       );
 
       debugPrint(
-          '📝 VideoResumeService: Saved state for $postId - position: ${position.inSeconds}s, finished: $isFinished');
+          '📝 VideoResumeService: Saved state for $postId - position: ${savedPosition.inSeconds}s, finished: $isFinished');
     });
   }
 
@@ -68,9 +75,19 @@ class VideoResumeService {
     final resumeAllowed = away <= _resumeGraceWindow && !memo.finished;
 
     if (resumeAllowed && memo.lastPlaybackPosition >= _minimumResumePosition) {
+      final Duration resumePosition =
+          PlaybackLoopCoordinator.clampResumePosition(
+        memo.lastPlaybackPosition,
+        memo.lastKnownDuration,
+      );
+      if (resumePosition <= Duration.zero) {
+        debugPrint(
+            '📝 VideoResumeService: Restarting $postId (near end of video)');
+        return null;
+      }
       debugPrint(
-          '📝 VideoResumeService: Resuming $postId from ${memo.lastPlaybackPosition.inSeconds}s (away: ${away.inMilliseconds}ms)');
-      return memo.lastPlaybackPosition;
+          '📝 VideoResumeService: Resuming $postId from ${resumePosition.inSeconds}s (away: ${away.inMilliseconds}ms)');
+      return resumePosition;
     } else {
       debugPrint(
           '📝 VideoResumeService: Restarting $postId (away: ${away.inMilliseconds}ms, grace: ${_resumeGraceWindow.inMilliseconds}ms, finished: ${memo.finished}, position: ${memo.lastPlaybackPosition.inSeconds}s)');

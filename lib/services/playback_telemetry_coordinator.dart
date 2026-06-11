@@ -50,13 +50,58 @@ class PlaybackTelemetryCoordinator {
       'controllerId=$controllerIdStr $isPinned $isInitializing $inCooldown '
       'reason=${reason ?? "N/A"}',
     );
+    _emitPoolAuditIfNeeded(
+      event: event,
+      videoId: videoId,
+      reason: reason,
+      log: log,
+    );
     if (event.contains('CREATE') ||
         event.contains('DISPOSE') ||
         event.contains('ACQUIRE') ||
         event.contains('RELEASE') ||
-        event.contains('COOLDOWN')) {
+        event.contains('COOLDOWN') ||
+        event.contains('REGISTER') ||
+        event.contains('EVICT')) {
       onPoolSnapshot(reason: event);
     }
+  }
+
+  void logPoolAudit({
+    required String action,
+    required String videoId,
+    required int poolSize,
+    String? reason,
+    void Function(String message)? log,
+  }) {
+    log?.call(
+      'POOL_AUDIT action=$action videoId=$videoId poolSize=$poolSize '
+      'reason=${reason ?? 'n/a'}',
+    );
+  }
+
+  void _emitPoolAuditIfNeeded({
+    required String event,
+    required String videoId,
+    String? reason,
+    void Function(String message)? log,
+  }) {
+    String? action;
+    if (event.contains('REGISTER') || event.contains('CREATE')) {
+      action = 'created';
+    } else if (event.contains('DISPOSED') || event.contains('DISPOSE')) {
+      action = 'disposed';
+    } else if (event.contains('START_COOLDOWN')) {
+      action = 'cooldownStarted';
+    } else if (event.contains('COOLDOWN_CANCELLED')) {
+      action = 'cooldownCancelled';
+    }
+    if (action == null) {
+      return;
+    }
+    log?.call(
+      'POOL_AUDIT action=$action videoId=$videoId reason=${reason ?? event}',
+    );
   }
 
   void logPoolSnapshot({
@@ -70,8 +115,11 @@ class PlaybackTelemetryCoordinator {
     final String snapshot = pool.keys
         .map((String videoId) => pool.snapshotTokenFor(videoId))
         .join(', ');
+    final int livePinnedCount = pinnedVideoIds
+        .where((String videoId) => pool.containsKey(videoId))
+        .length;
     log?.call(
-      '📊 POOL_SNAPSHOT: size=${pool.length} pinned=${pinnedVideoIds.length} '
+      '📊 POOL_SNAPSHOT: size=${pool.length} pinned=$livePinnedCount '
       'init=${initializingControllers.length} cooldown=${cooldownUntil.length} '
       'reason=${reason ?? "periodic"} [$snapshot]',
     );

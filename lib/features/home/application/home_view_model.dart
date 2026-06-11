@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'home_first_frame_gate.dart';
 import 'home_feed_background_refresh.dart';
 import 'home_feed_engagement_coordinator.dart';
 import 'home_feed_startup_loader.dart';
@@ -14,6 +15,7 @@ import 'home_for_you_realtime_feed_listener.dart';
 import '../data/home_for_you_feed_repository.dart';
 import '../domain/home_feed_engagement_mapper.dart';
 import '../domain/home_feed_mutator.dart';
+import '../domain/home_feed_pagination.dart';
 import '../domain/home_feed_processing.dart';
 import '../models/home_feed_state.dart';
 import '../../../models/feed_tab.dart';
@@ -28,6 +30,9 @@ import '../../../services/unified_bookmark_service.dart';
 import '../../../services/algorithm_cache_service.dart';
 import '../../../services/global_playback_manager.dart';
 import '../../../constants/playback_owners.dart';
+import 'package:streamers_tip/utils/home_feed_interaction_diagnostics.dart';
+import 'package:streamers_tip/utils/interaction_diagnostics.dart';
+import 'package:streamers_tip/utils/like_interaction_boundary.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
 class HomeViewModel extends StateNotifier<HomeState> {
@@ -50,6 +55,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
   HomeForYouRealtimeFeedListener? _forYouRealtimeFeedListener;
   String? _lastForYouFeedFingerprint;
   Future<void>? _freshVideosRefreshInFlight;
+  int _avatarPreloadEpoch = 0;
+  int _forYouRecycleCycle = 0;
 
   StreamSubscription<String>? _feedRefreshSubscription;
 
@@ -81,7 +88,6 @@ class HomeViewModel extends StateNotifier<HomeState> {
     );
     updateVideoLikeState = _updateVideoLikeState;
     updateVideoFavoriteState = _updateVideoFavoriteState;
-    startForYouRealtimeFeed();
   }
 
   @override
@@ -111,24 +117,110 @@ class HomeViewModel extends StateNotifier<HomeState> {
     if (!mounted) {
       return;
     }
-    final List<HomeVideo> mergedVideos = _mergeIncomingForYouVideos(
-      result.videos,
-    );
-    _updateForYouFeed(
-      videos: mergedVideos,
-      isLoading: false,
-      nextCursor: null,
-      clearError: true,
+    if (!HomeFirstFrameGate.instance.isFirstFrameRendered) {
+      HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+        unawaited(_applyForYouRealtimeSnapshot(result));
+      });
+      return;
+    }
+    _applyLiveFeedSnapshot(
+      incoming: result.videos,
+      reason: 'live_feed_snapshot',
     );
     if (result.videos.isNotEmpty) {
       GlobalPlaybackManager.instance.preloadStartupWindow(
-        _readyVideosFromFeed(result.videos),
+        _readyVideosFromFeed(state.forYouVideos),
         requestFocusOnStart: false,
       );
     }
+  }
+
+  void _applyLiveFeedSnapshot({
+    required List<HomeVideo> incoming,
+    required String reason,
+  }) {
+    if (!mounted) {
+      return;
+    }
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      LikeInteractionBoundary.reportFeedRefresh(source: reason);
+      final List<HomeVideo> queuedIncoming =
+          List<HomeVideo>.unmodifiable(incoming);
+      LikeInteractionBoundary.runOrQueue(
+        () => _applyLiveFeedSnapshot(
+          incoming: queuedIncoming,
+          reason: '${reason}_queued_after_interaction',
+        ),
+        reason: reason,
+      );
+      return;
+    }
+    final List<HomeVideo> current = List<HomeVideo>.from(state.forYouVideos);
+    HomeFeedInteractionDiagnostics.logFeedReplaceAttempt(
+      reason: reason,
+      incomingCount: incoming.length,
+      currentCount: current.length,
+    );
+    if (current.isNotEmpty && incoming.length < current.length) {
+      InteractionDiagnostics.logBlockedFeedReplacement(
+        incomingCount: incoming.length,
+        currentCount: current.length,
+      );
+      final List<HomeVideo> patched = mergeHomeFeedPreserveOrder(
+        existing: current,
+        incoming: incoming,
+      );
+      if (!_feedListsEquivalent(current, patched)) {
+        _updateForYouFeed(
+          videos: patched,
+          isLoading: false,
+          nextCursor: currentForYouSlice(state).nextCursor,
+          clearError: true,
+        );
+        secureLog(
+          '✅ HomeProvider: Patched feed from partial snapshot ($reason) '
+          'incoming=${incoming.length} current=${current.length} '
+          'result=${patched.length}',
+        );
+      }
+      return;
+    }
+    if (shouldRejectShrinkingFeedReplacement(
+      current: current,
+      incoming: incoming,
+      reason: reason,
+    )) {
+      HomeFeedInteractionDiagnostics.logFeedReplaceBlocked(reason: reason);
+      secureLog(
+        '⏭️ HomeProvider: Blocked feed replacement ($reason) '
+        'incoming=${incoming.length} current=${current.length}',
+      );
+      return;
+    }
+    final List<HomeVideo> mergedVideos = _mergeIncomingForYouVideos(incoming);
+    if (mergedVideos.length < current.length) {
+      HomeFeedInteractionDiagnostics.logFeedReplaceBlocked(
+        reason: 'merge_shrink_guard',
+      );
+      secureLog(
+        '⏭️ HomeProvider: Blocked shrinking merge ($reason) '
+        'merged=${mergedVideos.length} current=${current.length}',
+      );
+      return;
+    }
+    _updateForYouFeed(
+      videos: mergedVideos,
+      isLoading: false,
+      nextCursor: currentForYouSlice(state).nextCursor,
+      clearError: true,
+    );
+    HomeFeedInteractionDiagnostics.logFeedReplaceApplied(
+      reason: reason,
+      resultCount: mergedVideos.length,
+    );
     secureLog(
       '🔄 HomeProvider: Live feed snapshot applied '
-      '(${result.videos.length} videos)',
+      '(${mergedVideos.length} videos, reason=$reason)',
     );
   }
 
@@ -154,16 +246,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
     if (!mounted) {
       return;
     }
-    final List<HomeVideo> readyVideos = _videoService.getAllVideos();
-    final List<HomeVideo> sourceVideos = readyVideos.isNotEmpty
-        ? readyVideos
-        : _readyVideosFromFeed(state.forYouVideos);
-    _updateForYouFeed(
-      videos: sourceVideos,
-      isLoading: state.isLoading,
-      nextCursor: currentForYouSlice(state).nextCursor,
-      clearError: state.error == null,
-      error: state.error,
+    final List<HomeVideo> serviceVideos = _videoService.getAllVideos();
+    if (serviceVideos.isEmpty) {
+      return;
+    }
+    _applyLiveFeedSnapshot(
+      incoming: serviceVideos,
+      reason: 'optimistic_overlay_refresh',
     );
   }
 
@@ -183,6 +272,15 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   static HomeState _initialStateFromWarmMemory() {
+    final CachedFeedResult? warm = AlgorithmCacheService().peekForYouWarmFeed();
+    if (warm != null && warm.videos.isNotEmpty) {
+      return HomeState(
+        forYouVideos: warm.videos,
+        isLoading: false,
+        hasLoaded: true,
+        hasMoreContent: true,
+      );
+    }
     return const HomeState(isLoading: true);
   }
 
@@ -241,35 +339,31 @@ class HomeViewModel extends StateNotifier<HomeState> {
   String _feedFingerprint(List<HomeVideo> videos) {
     return videos.map((HomeVideo video) {
       return '${video.id}:${video.status}:${video.videoURL}:'
-          '${video.likes}:${video.comments}:${video.isLiked}:'
-          '${video.isFavorited}';
+          '${video.caption}:${video.overlayCaption}:'
+          '${video.comments}:${video.isFavorited}';
     }).join('|');
+  }
+
+  bool _feedListsEquivalent(List<HomeVideo> a, List<HomeVideo> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) {
+        return false;
+      }
+    }
+    return true;
   }
 
   List<HomeVideo> _mergeIncomingForYouVideos(List<HomeVideo> incomingVideos) {
     final List<HomeVideo> incoming =
         dedupeHomeVideosById(_readyVideosFromFeed(incomingVideos));
-    if (incoming.isEmpty || state.forYouVideos.isEmpty) {
-      return incoming;
-    }
-
-    final List<HomeVideo> existing =
-        List<HomeVideo>.from(_readyVideosFromFeed(state.forYouVideos));
-    final Map<String, HomeVideo> incomingById = <String, HomeVideo>{
-      for (final HomeVideo video in incoming) video.id: video,
-    };
-    final Set<String> existingIds =
-        existing.map((HomeVideo video) => video.id).toSet();
-    final List<HomeVideo> newVideos = incoming
-        .where((HomeVideo video) => !existingIds.contains(video.id))
-        .toList(growable: false);
-    final List<HomeVideo> updatedExisting = existing
-        .map((HomeVideo video) => incomingById[video.id] ?? video)
-        .toList(growable: false);
-    return dedupeHomeVideosById(<HomeVideo>[
-      ...newVideos,
-      ...updatedExisting,
-    ]);
+    final List<HomeVideo> existing = dedupeHomeVideosById(state.forYouVideos);
+    return mergeHomeFeedPreserveOrder(
+      existing: existing,
+      incoming: incoming,
+    );
   }
 
   void _updateFollowingFeed({
@@ -288,6 +382,94 @@ class HomeViewModel extends StateNotifier<HomeState> {
       lastDocument: lastDocument,
       error: error,
       clearError: clearError,
+    );
+  }
+
+  void _appendRecycledForYouFeed({
+    required int currentIndex,
+    String reason = 'end_of_feed',
+  }) {
+    final List<HomeVideo> current = List<HomeVideo>.from(state.forYouVideos);
+    if (current.length < 2) {
+      secureLog(
+        'END_FEED_RECYCLE_SKIPPED reason=$reason count=${current.length}',
+      );
+      return;
+    }
+
+    final int safeIndex = currentIndex.clamp(0, current.length - 1);
+    final Set<String> recentIds = <String>{};
+    for (int index = safeIndex; index >= 0 && recentIds.length < 3; index--) {
+      recentIds.add(current[index].id);
+    }
+    final String currentVideoId = current[safeIndex].id;
+    final List<HomeVideo> ranked = List<HomeVideo>.from(current);
+    ranked.sort((HomeVideo a, HomeVideo b) {
+      final bool aRecent = recentIds.contains(a.id);
+      final bool bRecent = recentIds.contains(b.id);
+      if (aRecent != bRecent) {
+        return aRecent ? 1 : -1;
+      }
+      final int aEngagement = a.likes + a.comments + a.views;
+      final int bEngagement = b.likes + b.comments + b.views;
+      if (aEngagement != bEngagement) {
+        return bEngagement.compareTo(aEngagement);
+      }
+      final int aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+      final int bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+      return bTime.compareTo(aTime);
+    });
+
+    final List<HomeVideo> recycled = <HomeVideo>[];
+    String? previousId = currentVideoId;
+    for (final HomeVideo video in ranked) {
+      if (video.id == previousId) {
+        continue;
+      }
+      recycled.add(video);
+      previousId = video.id;
+      if (recycled.length >= current.length.clamp(2, 12)) {
+        break;
+      }
+    }
+
+    if (recycled.isEmpty) {
+      secureLog(
+        'END_FEED_RECYCLE_SKIPPED reason=$reason no_candidate '
+        'currentVideoId=$currentVideoId',
+      );
+      return;
+    }
+
+    _forYouRecycleCycle++;
+    final List<HomeVideo> appended = <HomeVideo>[...current, ...recycled];
+    final FeedSlice slice = currentForYouSlice(state).copyWith(
+      items: appended,
+      nextCursor: HomeFeedPagination.exhaustedCursor,
+      isLoading: false,
+      clearError: true,
+    );
+    _lastForYouFeedFingerprint = _feedFingerprint(appended);
+    state = state.copyWith(
+      forYouVideos: appended,
+      forYouSlice: slice,
+      isLoading: false,
+      hasLoaded: true,
+      hasMoreContent: true,
+      clearError: true,
+    );
+    secureLog(
+      'END_FEED_RECYCLE_APPEND feed=forYou cycle=$_forYouRecycleCycle '
+      'sessionCycleId=forYou_$_forYouRecycleCycle '
+      'from=${current.length} appended=${recycled.length} '
+      'total=${appended.length}',
+    );
+    final int preloadIndex = (safeIndex + 1).clamp(0, appended.length - 1);
+    GlobalPlaybackManager.instance.preloadAround(
+      preloadIndex,
+      appended,
+      direction: 1,
+      controllerOwner: PlaybackOwners.home,
     );
   }
 
@@ -322,6 +504,20 @@ class HomeViewModel extends StateNotifier<HomeState> {
     secureLog('🔄 Refreshing ${feedTab.name} feed...');
     try {
       if (feedTab == FeedTab.forYou) {
+        final List<HomeVideo> existingVideos =
+            List<HomeVideo>.from(state.forYouVideos);
+        if (existingVideos.isNotEmpty) {
+          GlobalPlaybackManager.instance.preloadAround(
+            0,
+            existingVideos,
+            direction: 1,
+            controllerOwner: PlaybackOwners.home,
+          );
+          GlobalPlaybackManager.instance.setDesiredFocus(
+            existingVideos.first.id,
+            PlaybackOwners.home,
+          );
+        }
         final rid = DateTime.now().microsecondsSinceEpoch.toString();
         _updateForYouFeed(
           videos: state.forYouVideos,
@@ -334,6 +530,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
           forYouSlice: currentForYouSlice(state).copyWith(requestId: rid),
         );
         await _refreshForYou(rid: rid);
+        _warmTopForYouPlaybackAfterRefresh();
         secureLog(
             '✅ For You feed refreshed: ${state.forYouVideos.length} videos');
       } else if (feedTab == FeedTab.following) {
@@ -345,6 +542,26 @@ class HomeViewModel extends StateNotifier<HomeState> {
       secureLog('❌ Error refreshing ${feedTab.name} feed: $e');
       rethrow; // Re-throw to handle in UI
     }
+  }
+
+  void _warmTopForYouPlaybackAfterRefresh() {
+    if (!mounted || state.forYouVideos.isEmpty) {
+      return;
+    }
+    final List<HomeVideo> videos = List<HomeVideo>.from(state.forYouVideos);
+    GlobalPlaybackManager.instance.preloadAround(
+      0,
+      videos,
+      direction: 1,
+      controllerOwner: PlaybackOwners.home,
+    );
+    unawaited(
+      GlobalPlaybackManager.instance.onVisibleIndexChanged(0, videos.first),
+    );
+    secureLog(
+      'TOP_REFRESH_PLAYBACK_READY index=0 videoId=${videos.first.id} '
+      'preloadNext=${videos.length > 1} preloadNext2=${videos.length > 2}',
+    );
   }
 
   /// Update For You videos with ranked/personalized feed
@@ -425,19 +642,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
       );
       state = state.copyWith(isLoading: false, hasLoaded: true);
       GlobalPlaybackManager.instance.preloadStartupWindow(state.forYouVideos);
-      unawaited(
-        Future<void>(() async {
-          try {
-            await _fetchFreshVideosInBackground();
-            if (!mounted) return;
-            await _loadUserLikeStates();
-            if (!mounted) return;
-            _preloadAvatars();
-          } catch (e) {
-            secureLog('❌ HomeProvider: Background refresh failed: $e');
-          }
-        }),
-      );
+      HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+        unawaited(runDeferredBackgroundRefresh());
+      });
       return;
     }
 
@@ -463,17 +670,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
     try {
       await _loadCachedVideos();
       state = state.copyWith(hasLoaded: true);
-      // Run non-blocking in background so first video can play immediately
-      Future(() async {
-        try {
-          await _fetchFreshVideosInBackground();
-          if (!mounted) return;
-          await _loadUserLikeStates();
-          if (!mounted) return;
-          _preloadAvatars();
-        } catch (e) {
-          secureLog('❌ HomeProvider: Background load failed: $e');
-        }
+      HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+        unawaited(runDeferredBackgroundRefresh());
       });
       secureLog('✅ loadVideos() completed successfully');
     } catch (e) {
@@ -508,7 +706,46 @@ class HomeViewModel extends StateNotifier<HomeState> {
       state = state.copyWith(isLoading: true);
     }
     unawaited(warmStartFromCache());
-    startForYouRealtimeFeed();
+  }
+
+  /// Runs after first frame: network refresh, likes, avatars.
+  Future<void> runDeferredBackgroundRefresh() async {
+    if (!mounted) {
+      return;
+    }
+    try {
+      await _awaitDeferredBackgroundRefreshGate();
+      if (!mounted) {
+        return;
+      }
+      await _fetchFreshVideosInBackground();
+      if (!mounted) {
+        return;
+      }
+      await _preloadAvatars();
+    } catch (e) {
+      secureLog('❌ HomeProvider: Deferred background refresh failed: $e');
+    }
+  }
+
+  Future<void> _awaitDeferredBackgroundRefreshGate() async {
+    if (!LikeInteractionBoundary.hasFirstUserInteraction) {
+      final Completer<void> gateCompleter = Completer<void>();
+      LikeInteractionBoundary.runAfterFirstInteraction(
+        () {
+          if (!gateCompleter.isCompleted) {
+            gateCompleter.complete();
+          }
+        },
+        fallbackTimeout: const Duration(seconds: 8),
+      );
+      try {
+        await gateCompleter.future.timeout(const Duration(seconds: 9));
+      } on TimeoutException {
+        // Proceed after fallback timeout.
+      }
+    }
+    await LikeInteractionBoundary.waitUntilIdle();
   }
 
   Future<void> warmStartFromCache() async {
@@ -628,92 +865,115 @@ class HomeViewModel extends StateNotifier<HomeState> {
     GlobalPlaybackManager.instance.preloadStartupWindow(cachedVideos);
   }
 
-  /// Preload avatars for instant display (conservative to prevent buffer overflow)
+  /// Preload avatars for current + next + next+1 (non-blocking for playback).
   Future<void> _preloadAvatars() async {
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      LikeInteractionBoundary.runOrQueue(
+        () => unawaited(_preloadAvatars()),
+        reason: 'preload_avatars',
+      );
+      return;
+    }
     try {
-      final avatarUrls = <String>[];
+      final List<String> avatarUrls = <String>[];
+      void collectFromFeed(List<HomeVideo> videos) {
+        final int limit = videos.length < 3 ? videos.length : 3;
+        for (int i = 0; i < limit; i++) {
+          final String? url = videos[i].creator.avatarURL;
+          if (url != null && url.isNotEmpty && !avatarUrls.contains(url)) {
+            avatarUrls.add(url);
+          }
+        }
+      }
 
-      // Only preload first video to prevent buffer overflow
       if (state.forYouVideos.isNotEmpty) {
-        final firstVideo = state.forYouVideos.first;
-        if (firstVideo.creator.avatarURL?.isNotEmpty == true) {
-          avatarUrls.add(firstVideo.creator.avatarURL!);
-        }
+        collectFromFeed(state.forYouVideos);
       }
-
-      // Only preload first following video if different from For You
       if (state.followingVideos.isNotEmpty) {
-        final firstFollowingVideo = state.followingVideos.first;
-        if (firstFollowingVideo.creator.avatarURL?.isNotEmpty == true &&
-            !avatarUrls.contains(firstFollowingVideo.creator.avatarURL!)) {
-          avatarUrls.add(firstFollowingVideo.creator.avatarURL!);
-        }
+        collectFromFeed(state.followingVideos);
       }
 
-      // Preload avatars for instant display with timeout
       if (avatarUrls.isNotEmpty) {
-        await UnifiedAvatarService().preloadAvatars(avatarUrls).timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            secureLog(
-              '⏰ Avatar preloading timeout - continuing without preloaded avatars',
-            );
-          },
-        );
+        final int epoch = ++_avatarPreloadEpoch;
+        unawaited(Future<void>.delayed(const Duration(milliseconds: 2500), () {
+          if (!mounted || epoch != _avatarPreloadEpoch) {
+            return Future<void>.value();
+          }
+          return UnifiedAvatarService().preloadAvatars(avatarUrls).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              secureLog(
+                '⏰ Avatar preloading timeout - continuing without preloaded avatars',
+              );
+            },
+          );
+        }));
         secureLog(
-            '✅ Preloaded ${avatarUrls.length} avatars for instant display');
+          '✅ Queued ${avatarUrls.length} avatars for warm-window preload',
+        );
       }
     } catch (e) {
       secureLog('⚠️ Failed to preload avatars: $e (non-critical)');
     }
   }
 
-  /// Load user's like states for all videos
-  Future<void> _loadUserLikeStates() async {
-    try {
-      secureLog('💖 Loading user like states for all videos...');
-
-      // Load like states for For You videos
-      await _loadLikeStatesForFeed(state.forYouVideos, 'For You');
-
-      // Load like states for Following videos
-      await _loadLikeStatesForFeed(state.followingVideos, 'Following');
-
-      secureLog('✅ User like states loaded successfully');
-    } catch (e) {
-      secureLog('⚠️ Failed to load user like states: $e (non-critical)');
-    }
-  }
-
-  /// Load like states for a specific feed
-  Future<void> _loadLikeStatesForFeed(
-    List<HomeVideo> videos,
-    String feedName,
+  Future<void> _applyBackgroundVideoRefresh(
+    HomeFeedBackgroundRefreshVideos refreshed,
   ) async {
-    if (videos.isEmpty) {
-      return;
-    }
-    try {
-      secureLog(
-        '💖 Loading like states for $feedName feed (${videos.length} videos)',
-      );
-      final List<HomeVideo> updatedVideos =
-          await _engagementCoordinator.loadLikeStatesInBatches(videos);
+    void applySnapshot() {
       if (!mounted) {
         return;
       }
-      if (feedName == 'For You') {
-        state = state.copyWith(forYouVideos: updatedVideos);
-      } else if (feedName == 'Following') {
-        state = state.copyWith(followingVideos: updatedVideos);
-      }
-      secureLog(
-        '✅ Loaded like states for $feedName feed '
-        '(${updatedVideos.length} videos)',
+      final Stopwatch applyWatch = Stopwatch()..start();
+      _applyLiveFeedSnapshot(
+        incoming: refreshed.videos,
+        reason: 'background_video_refresh',
       );
-    } catch (e) {
-      secureLog('❌ Error loading like states for $feedName feed: $e');
+      HomeFeedInteractionDiagnostics.logBgRefreshPhase(
+        'APPLY_DONE',
+        ms: applyWatch.elapsedMilliseconds,
+      );
+      final String? userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null && state.forYouVideos.isNotEmpty) {
+        unawaited(
+          _cacheForYouFeed(
+            userId: userId,
+            videos: state.forYouVideos,
+          ),
+        );
+      }
     }
+
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      HomeFeedInteractionDiagnostics.logBgRefreshPhase(
+        'APPLY_SKIPPED',
+        reason: 'scroll',
+      );
+      LikeInteractionBoundary.runOrQueue(
+        applySnapshot,
+        reason: 'background_video_refresh',
+      );
+      return;
+    }
+    applySnapshot();
+  }
+
+  Future<void> _syncEngagementStatesWhenIdle() async {
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      HomeFeedInteractionDiagnostics.logBgRefreshPhase(
+        'SYNC_SKIPPED',
+        reason: 'scroll',
+      );
+      LikeInteractionBoundary.runOrQueue(
+        () => unawaited(_syncEngagementStatesWhenIdle()),
+        reason: 'engagement_sync',
+      );
+      return;
+    }
+    await Future.wait(<Future<void>>[
+      syncFavoriteStates(),
+      syncCommentCounts(),
+    ]).timeout(_backgroundRefresh.engagementSyncTimeout);
   }
 
   /// Fetch fresh videos in background with improved error handling
@@ -738,41 +998,28 @@ class HomeViewModel extends StateNotifier<HomeState> {
     if (!mounted) {
       return;
     }
+    final Stopwatch refreshWatch = Stopwatch()..start();
+    HomeFeedInteractionDiagnostics.logBgRefreshPhase('START');
     try {
       secureLog('🔄 Fetching fresh videos in background...');
       try {
         final HomeFeedBackgroundRefreshVideos? refreshed =
             await _backgroundRefresh.fetchRefreshedVideos();
+        HomeFeedInteractionDiagnostics.logBgRefreshPhase(
+          'FETCH_DONE',
+          ms: refreshWatch.elapsedMilliseconds,
+        );
         if (!mounted) {
           return;
         }
         if (refreshed != null) {
-          final List<HomeVideo> mergedVideos = _mergeIncomingForYouVideos(
-            refreshed.videos,
-          );
-          _updateForYouFeed(
-            videos: mergedVideos,
-            isLoading: false,
-            nextCursor: null,
-            lastDocument: null,
-            clearError: true,
-          );
-          final String? userId = FirebaseAuth.instance.currentUser?.uid;
-          if (userId != null) {
-            unawaited(
-              _cacheForYouFeed(userId: userId, videos: mergedVideos),
-            );
-          }
+          await _applyBackgroundVideoRefresh(refreshed);
         }
       } catch (e) {
         secureLog('⚠️ Background video refresh failed (non-critical): $e');
       }
       try {
-        await _backgroundRefresh.syncEngagementStates(
-          syncLikeStates: syncLikeStates,
-          syncFavoriteStates: syncFavoriteStates,
-          syncCommentCounts: syncCommentCounts,
-        );
+        await _syncEngagementStatesWhenIdle();
       } catch (e) {
         secureLog('⚠️ Video state sync failed: $e (non-critical)');
       }
@@ -858,7 +1105,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         return;
       }
       final List<HomeVideo> mergedVideos = _mergeIncomingForYouVideos(
-        page.videos,
+        rankHomeVideosForFeed(page.videos),
       );
       _updateForYouFeed(
         videos: mergedVideos,
@@ -894,11 +1141,70 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
   }
 
+  Future<void> _bootstrapExpandForYouFeed(
+      List<HomeVideo> existingVideos) async {
+    if (existingVideos.isEmpty) {
+      return;
+    }
+    state = state.copyWith(isLoadingMore: true);
+    try {
+      final HomeForYouFeedPage page = await _forYouFeedLoader.refresh(
+        previousVideos: existingVideos,
+        previousCursor: currentForYouSlice(state).nextCursor,
+        previousLastDocument: state.lastForYouDoc,
+      );
+      final List<HomeVideo> mergedVideos = _mergeIncomingForYouVideos(
+        page.videos,
+      );
+      final bool grew = mergedVideos.length > existingVideos.length ||
+          _feedFingerprint(mergedVideos) != _feedFingerprint(existingVideos);
+      _updateForYouFeed(
+        videos: mergedVideos,
+        isLoading: false,
+        nextCursor: grew ? page.nextCursor : HomeFeedPagination.exhaustedCursor,
+        lastDocument: page.lastDocument,
+        clearError: page.clearError,
+        error: page.error,
+      );
+      if (mergedVideos.isNotEmpty) {
+        final String? userId = FirebaseAuth.instance.currentUser?.uid;
+        if (userId != null) {
+          unawaited(
+            _cacheForYouFeed(
+              userId: userId,
+              videos: mergedVideos,
+              nextCursor: page.nextCursor,
+            ),
+          );
+        } else {
+          unawaited(
+            _algorithmCacheService.cacheLastKnownForYouFeed(
+              videos: mergedVideos,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      secureLog('⚠️ HomeProvider: Bootstrap feed expand failed: $e');
+    } finally {
+      state = state.copyWith(isLoadingMore: false);
+    }
+  }
+
   Future<void> fetchMoreActive() async {
     final FeedTab active = state.activeFeed ?? FeedTab.forYou;
     if (active == FeedTab.forYou) {
       final FeedSlice s = currentForYouSlice(state);
-      if (s.isLoading || s.nextCursor == null) return;
+      if (s.isLoading) {
+        return;
+      }
+      if (s.nextCursor == null || s.nextCursor?['bootstrap'] == true) {
+        await _bootstrapExpandForYouFeed(s.items);
+        return;
+      }
+      if (HomeFeedPagination.isExhausted(s.nextCursor)) {
+        return;
+      }
       final String rid = DateTime.now().microsecondsSinceEpoch.toString();
       state = state.copyWith(
         forYouSlice: s.copyWith(isLoading: true, requestId: rid),
@@ -1040,10 +1346,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
   // MARK: - Load More Content
 
   bool shouldLoadMoreContent(int currentIndex, FeedTab feed) {
-    final videos = this.videos(feed);
-    return currentIndex >= videos.length - 2 &&
-        hasMoreContent &&
-        !isLoadingMore;
+    final List<HomeVideo> feedVideos = videos(feed);
+    if (feedVideos.isEmpty || isLoadingMore) {
+      return false;
+    }
+    final int triggerIndex =
+        (feedVideos.length - 3).clamp(0, feedVideos.length - 1);
+    return currentIndex >= triggerIndex;
   }
 
   Future<void> loadMoreVideosIfNeeded({
@@ -1052,6 +1361,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }) async {
     if (!shouldLoadMoreContent(currentIndex, feed)) return;
 
+    final List<HomeVideo> beforeVideos = videos(feed);
+    final int beforeLength = beforeVideos.length;
     state = state.copyWith(isLoadingMore: true);
 
     try {
@@ -1061,8 +1372,27 @@ class HomeViewModel extends StateNotifier<HomeState> {
       if (feed != FeedTab.threads) {
         await fetchMoreActive();
       }
+      final List<HomeVideo> afterVideos = videos(feed);
+      final bool atFinalVideo = currentIndex >= afterVideos.length - 1;
+      final bool didAppend = afterVideos.length > beforeLength;
+      if (feed == FeedTab.forYou && atFinalVideo && !didAppend) {
+        await Future<void>.delayed(const Duration(milliseconds: 180));
+        if (!mounted) {
+          return;
+        }
+        _appendRecycledForYouFeed(
+          currentIndex: currentIndex,
+          reason: 'load_more_exhausted',
+        );
+      }
     } catch (e) {
       secureLog('Error loading more videos: $e');
+      if (feed == FeedTab.forYou) {
+        _appendRecycledForYouFeed(
+          currentIndex: currentIndex,
+          reason: 'load_more_error',
+        );
+      }
     } finally {
       state = state.copyWith(isLoadingMore: false);
     }
@@ -1112,15 +1442,29 @@ class HomeViewModel extends StateNotifier<HomeState> {
       secureLog('syncLikeStates: no user');
       return;
     }
-    await _engagementCoordinator.preloadUserLikes(user.uid);
-    _replaceVideoFeeds(
-      (HomeVideo video) => applyLikeStateToVideo(
-          video, _engagementCoordinator.likeStateFor(video.id)),
+    if (state.forYouVideos.isEmpty && state.followingVideos.isEmpty) {
+      return;
+    }
+    HomeFeedInteractionDiagnostics.logFeedReplaceAttempt(
+      reason: 'like_sync',
+      incomingCount: 0,
+      currentCount: state.forYouVideos.length,
     );
-    secureLog('Syncing like states: done');
+    HomeFeedInteractionDiagnostics.logFeedReplaceBlocked(reason: 'like_sync');
+    secureLog(
+      '⏭️ syncLikeStates: skipped full feed touch '
+      '(use per-video like provider; likes load on startup)',
+    );
   }
 
   Future<void> syncFavoriteStates() async {
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      LikeInteractionBoundary.runOrQueue(
+        () => unawaited(syncFavoriteStates()),
+        reason: 'syncFavoriteStates',
+      );
+      return;
+    }
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       secureLog('syncFavoriteStates: no user');
@@ -1136,6 +1480,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   Future<void> syncCommentCounts() async {
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      LikeInteractionBoundary.runOrQueue(
+        () => unawaited(syncCommentCounts()),
+        reason: 'syncCommentCounts',
+      );
+      return;
+    }
     secureLog('Syncing comment counts...');
     try {
       final List<HomeVideo> allVideos = <HomeVideo>[

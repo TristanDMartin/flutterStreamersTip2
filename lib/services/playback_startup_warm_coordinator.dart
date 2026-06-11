@@ -3,6 +3,7 @@ import 'dart:async';
 import '../constants/playback_owners.dart';
 import '../models/home_video.dart';
 import 'playback_preload_order.dart';
+import 'playback_warm_window_policy.dart';
 import '../utils/secure_log.dart';
 
 /// Coordinates startup warm-window preloads with generation cancellation.
@@ -29,9 +30,11 @@ class PlaybackStartupWarmCoordinator {
     }
     final int safeIndex = startIndex.clamp(0, videos.length - 1);
     final int generation = beginWarmWindow();
+    final ({int backward, int forward}) radii =
+        PlaybackWarmWindowPolicy.radiiForDirection(1);
     log?.call(
       '🚀 PlaybackManager: Startup warm window from index $safeIndex '
-      '(videos=${videos.length})',
+      '(videos=${videos.length}, forward=${radii.forward})',
     );
 
     Future<void>(() async {
@@ -39,8 +42,8 @@ class PlaybackStartupWarmCoordinator {
         index: safeIndex,
         videoCount: videos.length,
         direction: 1,
-        backwardRadius: 1,
-        forwardRadius: 1,
+        backwardRadius: radii.backward,
+        forwardRadius: radii.forward,
       );
 
       for (final int index in indices) {

@@ -148,6 +148,9 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
 
   void prepareForRouteNavigation({required String reason}) {
     secureLog('🔇 HomeViewController: Navigating away ($reason)');
+    if (reason.contains('discover')) {
+      GlobalPlaybackManager.instance.setVisibleOwner(PlaybackOwners.discover);
+    }
     _pauseAndBlock(
       reason: reason,
       leaveHomeView: true,
@@ -155,9 +158,59 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     );
   }
 
-  void resumeAfterOverlayDismissal() {
+  /// Main-tab leave (IndexedStack): pause only — keep pool, index, and pins.
+  void prepareForTabSwitchAway({
+    required String reason,
+    String? nextActiveOwner,
+  }) {
+    secureLog('⏸️ HomeViewController: Tab switch away ($reason)');
     final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
-    manager.unblock();
+    markAsBackground(shouldResumeOnReturn: true);
+    manager.beginHomeTabBackgroundRetention(
+      currentIndex: state.currentIndex,
+    );
+    manager.pauseAllForTabSwitch();
+    if (nextActiveOwner != null) {
+      manager.setVisibleOwner(nextActiveOwner);
+    }
+    manager.block(reason: reason);
+  }
+
+  void resumeFromTabReturn() {
+    secureLog('▶️ HomeViewController: Tab return — instant resume');
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    manager.endHomeTabBackgroundRetention();
+    if (manager.isPlaybackBlocked) {
+      manager.forceUnblock();
+    }
+    manager.setVisibleOwner(PlaybackOwners.home);
+    manager.setActiveOwner(PlaybackOwners.home);
+    pinHomeWarmWindowForCurrentIndex();
+    markAsActiveOwner();
+    manager.restoreCurrentFeedFocus();
+    _resumeCurrentVideoInstantly();
+    state = state.copyWith(shouldResumeOnReturn: false);
+  }
+
+  void pinHomeWarmWindowForCurrentIndex() {
+    GlobalPlaybackManager.instance.pinHomeWarmWindowAtIndex(state.currentIndex);
+  }
+
+  void resumeAfterOverlayDismissal() {
+    _restoreHomePlaybackAfterSuppression(reason: 'overlay_dismissed');
+  }
+
+  void resumeAfterOnboardingCompleted() {
+    _restoreHomePlaybackAfterSuppression(reason: 'onboarding_completed');
+  }
+
+  void _restoreHomePlaybackAfterSuppression({required String reason}) {
+    secureLog('▶️ HomeViewController: Restoring home playback ($reason)');
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    if (manager.isPlaybackBlocked) {
+      manager.forceUnblock();
+    }
+    manager.setVisibleOwner(PlaybackOwners.home);
     manager.setActiveOwner(PlaybackOwners.home);
     markAsActiveOwner();
     manager.restoreCurrentFeedFocus();
@@ -171,11 +224,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
   void handleReturnedToHome({required bool isRouteCurrent}) {
     if (!isRouteCurrent) return;
     if (state.isNavigatingToDiscover) return;
-    _reactivateFeed(
-      reason: 'return_to_home',
-      requireCooldown: false,
-      resumeOnlyWhenNeeded: false,
-    );
+    resumeFromTabReturn();
   }
 
   void handleAppLifecycleChanged({
@@ -183,7 +232,16 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     required bool isRouteCurrent,
   }) {
     GlobalPlaybackManager.instance.onAppLifecycleChanged(appLifecycleState);
-    if (appLifecycleState != AppLifecycleState.resumed) return;
+    if (appLifecycleState == AppLifecycleState.paused ||
+        appLifecycleState == AppLifecycleState.inactive) {
+      if (isRouteCurrent) {
+        markAsBackground(shouldResumeOnReturn: true);
+      }
+      return;
+    }
+    if (appLifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
     if (!isRouteCurrent) {
       secureLog(
           '🔄 HomeViewController: App resumed but route not current → skip');
@@ -196,7 +254,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
       _reactivateFeed(
         reason: 'app_resumed_visible',
         requireCooldown: false,
-        resumeOnlyWhenNeeded: false,
+        resumeOnlyWhenNeeded: true,
       );
     });
   }

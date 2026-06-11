@@ -3,19 +3,20 @@ class PlaybackWarmWindowPolicy {
   const PlaybackWarmWindowPolicy._();
 
   /// Max controllers kept live in the global pool.
-  static const int maxControllerPoolSize = 3;
+  static const int maxControllerPoolSize = 4;
 
-  /// Forward-biased warm slots while scrolling down (current + next + next+1).
+  /// Forward-biased warm slots while scrolling down.
+  /// Keeps previous + current + next + next+1 ready.
   static const int forwardScrollForwardRadius = 2;
-  static const int forwardScrollBackwardRadius = 0;
+  static const int forwardScrollBackwardRadius = 1;
 
-  /// Backward-biased warm slots while scrolling up.
-  static const int backwardScrollForwardRadius = 0;
+  /// Backward-biased warm slots while scrolling up, while preserving next.
+  static const int backwardScrollForwardRadius = 1;
   static const int backwardScrollBackwardRadius = 2;
 
-  /// Neutral/startup bias — prefer upcoming videos.
+  /// Neutral/startup bias — keep current + two upcoming + previous when present.
   static const int neutralForwardRadius = 2;
-  static const int neutralBackwardRadius = 0;
+  static const int neutralBackwardRadius = 1;
 
   static ({int backward, int forward}) radiiForDirection(int direction) {
     if (direction < 0) {

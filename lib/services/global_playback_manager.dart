@@ -23,14 +23,19 @@ import 'playback_active_owner_coordinator.dart';
 import 'playback_dispose_pool_coordinator.dart';
 import 'playback_app_resume_coordinator.dart';
 import 'playback_ensure_ready_coordinator.dart';
+import 'playback_loop_coordinator.dart';
 import 'playback_volume_coordinator.dart';
 import 'playback_recover_controller_coordinator.dart';
 import 'playback_telemetry_coordinator.dart';
+import 'playback_pool_cap_coordinator.dart';
 import '../models/home_video.dart';
 import '../constants/playback_owners.dart';
 import '../utils/playback_teardown.dart';
+import 'playback_warm_window_policy.dart';
+import '../features/home/application/home_first_frame_gate.dart';
 import '../utils/video_health_gate.dart';
-import 'package:streamers_tip/utils/secure_log.dart';
+import '../utils/secure_log.dart';
+import '../utils/like_interaction_boundary.dart';
 
 /// Enhanced Global Playback Manager - Single source of truth for video playback
 ///
@@ -87,10 +92,14 @@ class GlobalPlaybackManager {
       PlaybackPreloadBurstGuard();
 
   final PlaybackFeedIndexTracker _feedIndex = PlaybackFeedIndexTracker();
+  int _visibleIndexGeneration = 0;
+  final PlaybackFeedIndexTracker _discoverCategoryFeedIndex =
+      PlaybackFeedIndexTracker();
   final PlaybackTabLifecycleCoordinator _tabLifecycle =
       PlaybackTabLifecycleCoordinator();
   final PlaybackStartupWarmCoordinator _startupWarm =
       PlaybackStartupWarmCoordinator();
+  DateTime? _startupWarmCompletedAt;
   final PlaybackEvictionCoordinator _eviction =
       const PlaybackEvictionCoordinator();
   final PlaybackHomeLifecycleCoordinator _homeLifecycle =
@@ -117,12 +126,18 @@ class GlobalPlaybackManager {
       PlaybackAppResumeCoordinator();
   static const PlaybackEnsureReadyCoordinator _ensureReadyCoordinator =
       PlaybackEnsureReadyCoordinator();
+  final PlaybackLoopCoordinator _loopCoordinator = PlaybackLoopCoordinator();
   static const PlaybackVolumeCoordinator _volumeCoordinator =
       PlaybackVolumeCoordinator();
   static const PlaybackRecoverControllerCoordinator _recoverCoordinator =
       PlaybackRecoverControllerCoordinator();
   static const PlaybackTelemetryCoordinator _telemetryCoordinator =
       PlaybackTelemetryCoordinator();
+  static const PlaybackPoolCapCoordinator _poolCap =
+      PlaybackPoolCapCoordinator();
+
+  /// IndexedStack tab switch: HomeView stays mounted; keep home pool alive.
+  bool _retainHomePoolForTabBackground = false;
 
   int? get _currentFeedIndex => _feedIndex.currentFeedIndex;
 
@@ -173,10 +188,15 @@ class GlobalPlaybackManager {
         '📌 PlaybackManager: Controller attached videoId=$videoId controllerId=$controllerId');
   }
 
+  bool isControllerAttachedToView(String videoId, int controllerId) {
+    return _pool.attached[videoId] == controllerId;
+  }
+
   /// 🔥 PHASE 2.3: Mark controller as detached from view (eligible for disposal after cooldown)
   void markControllerDetached(String videoId) {
     if (_pool.attached.remove(videoId) != null) {
       secureLog('📌 PlaybackManager: Controller detached videoId=$videoId');
+      _enforcePoolCap(reason: 'view_detached');
     }
   }
 
@@ -191,10 +211,12 @@ class GlobalPlaybackManager {
   VideoPlayerController? _currentlyPlayingController;
 
   /// Configuration
-  // TikTok-style: keep current + one previous + one next warm.
+  // TikTok-style: keep current + forward warm slots, with room for one
+  // transition controller during fast page changes.
   static const int poolRadius = 1;
   static const int recoveryTimeoutMs = 5000;
-  static const int maxControllerPoolSize = 3;
+  static const int maxControllerPoolSize =
+      PlaybackPoolPolicy.maxControllerPoolSize;
 
   // ============================================
   // STREAMS
@@ -331,9 +353,18 @@ class GlobalPlaybackManager {
   }
 
   void setVisibleOwner(String owner) {
+    if (_focus.visibleOwner == owner && _focus.activeOwner == owner) {
+      return;
+    }
+    final String? previousVisible = _focus.visibleOwner;
     _focus.setVisibleOwner(owner);
-    secureLog('👁️ PlaybackManager: Visible owner set to: $owner');
+    secureLog(
+      '👁️ PlaybackManager: Visible owner set to: $owner '
+      '(was $previousVisible)',
+    );
+    _reconcilePoolForVisibleOwner(owner);
     setActiveOwner(owner);
+    _enforcePoolCap(reason: 'visible_owner_$owner');
   }
 
   /// Force unblock completely (sets block level to 0)
@@ -414,6 +445,43 @@ class GlobalPlaybackManager {
     return true;
   }
 
+  bool _shouldLoopVideo(String videoId) {
+    if (_focus.activeVideoId != videoId) {
+      return false;
+    }
+    if (_focus.blockLevel > 0) {
+      return false;
+    }
+    if (_tabLifecycle.isPaused) {
+      return false;
+    }
+    final String? owner = _controllerOwners[videoId];
+    if (!PlaybackLoopCoordinator.isFeedLoopOwner(owner)) {
+      return false;
+    }
+    if (!_focus.ownerMatchesVisibleOwner(owner!)) {
+      return false;
+    }
+    if (_focus.activeOwner == null) {
+      return false;
+    }
+    return canPlay(owner);
+  }
+
+  Future<void> _configureControllerLooping(
+    String videoId,
+    VideoPlayerController controller,
+  ) {
+    return _loopCoordinator.configureForVideo(
+      videoId: videoId,
+      controller: controller,
+      shouldLoop: _shouldLoopVideo,
+      canPlay: canPlay,
+      resolveOwner: (String id) => _controllerOwners[id],
+      log: secureLog,
+    );
+  }
+
   // ============================================
   // CORE METHODS
   // ============================================
@@ -451,6 +519,25 @@ class GlobalPlaybackManager {
       _currentlyPlayingController = controller;
       _focusRequestedAt[targetVideoId] = DateTime.now();
       _firstFrameLoggedForActivation.remove(targetVideoId);
+      try {
+        await controller.setLooping(true);
+        secureLog('LOOP_ENABLED videoId=$targetVideoId reason=focus');
+        secureLog('LOOP_NATIVE_ENABLED videoId=$targetVideoId reason=focus');
+      } catch (e, st) {
+        ignorePlaybackTeardownError('global_playback', e, st);
+      }
+      final Duration duration = value.duration;
+      if (duration > Duration.zero && value.position >= duration) {
+        secureLog(
+          'LOOP_ENDED_DETECTED videoId=$targetVideoId '
+          'position=${value.position.inMilliseconds} '
+          'duration=${duration.inMilliseconds} reason=focus',
+        );
+        secureLog(
+          'LOOP_MANUAL_SKIPPED_NATIVE_ACTIVE videoId=$targetVideoId '
+          'reason=focus',
+        );
+      }
       if (value.isPlaying && value.position > Duration.zero) {
         if (_focus.activeVideoId == targetVideoId &&
             _controllerPool[targetVideoId] == controller) {
@@ -895,11 +982,34 @@ class GlobalPlaybackManager {
       scheduleDeferredPoolControllerDispose:
           _registration.scheduleDeferredPoolControllerDispose,
       owner: owner,
+      scrollDirection: _feedIndex.lastScrollDirection,
       log: secureLog,
     );
+    _configureControllerLooping(videoId, controller).catchError((Object e) {
+      secureLog('⚠️ PlaybackManager: Error configuring loop for $videoId: $e');
+    });
+    _logPoolAudit('created', videoId, reason: owner ?? 'register');
+    _enforcePoolCap(reason: 'register', requestedVideoId: videoId);
   }
 
   void unregisterController(String videoId) {
+    final VideoPlayerController? controller = _controllerPool[videoId];
+    if (videoId == _focus.activeVideoId &&
+        controller != null &&
+        _isControllerSafe(videoId, controller)) {
+      try {
+        if (controller.value.isPlaying) {
+          secureLog(
+            'ACTIVE_CONTROLLER_DISPOSE_ATTEMPT_BLOCKED videoId=$videoId '
+            'controller=${controller.hashCode}',
+          );
+          return;
+        }
+      } catch (e, st) {
+        ignorePlaybackTeardownError('global_playback', e, st);
+      }
+    }
+    _loopCoordinator.detachForVideo(videoId);
     _registration.unregisterController(
       videoId: videoId,
       pool: _pool,
@@ -1003,6 +1113,7 @@ class GlobalPlaybackManager {
   /// Dispose all controllers and clear state (for tab switches).
   /// 🔥 PHASE 2.3: Skips controllers still attached (view will dispose them).
   void disposeAll() {
+    _retainHomePoolForTabBackground = false;
     _disposePoolCoordinator.disposeAll(
       pool: _pool,
       focus: _focus,
@@ -1042,6 +1153,41 @@ class GlobalPlaybackManager {
     );
   }
 
+  /// Pin home warm window and retain pooled controllers during main-tab leave.
+  void beginHomeTabBackgroundRetention({int? currentIndex}) {
+    _retainHomePoolForTabBackground = true;
+    final int? index = currentIndex ?? _currentFeedIndex;
+    if (index != null) {
+      pinHomeWarmWindowAtIndex(index);
+      final String? currentVideoId = _indexToVideoId[index];
+      if (currentVideoId != null && currentVideoId.isNotEmpty) {
+        _pinCurrentVideo(currentVideoId, reason: 'tab_background');
+      }
+    }
+    secureLog('📌 PlaybackManager: Home tab background retention ON');
+  }
+
+  void endHomeTabBackgroundRetention() {
+    _retainHomePoolForTabBackground = false;
+    secureLog('📌 PlaybackManager: Home tab background retention OFF');
+  }
+
+  bool get isRetainingHomePoolForTabBackground =>
+      _retainHomePoolForTabBackground;
+
+  /// Protects current ± warm-window indices from pool eviction.
+  void pinHomeWarmWindowAtIndex(int index) {
+    final ({int backward, int forward}) radii =
+        PlaybackWarmWindowPolicy.radiiForDirection(
+      _feedIndex.lastScrollDirection,
+    );
+    _updatePinSet(
+      index,
+      backwardRadius: radii.backward,
+      forwardRadius: radii.forward,
+    );
+  }
+
   /// Resume playback after tab switch
   /// ⚠️ DEPRECATED: Use setActiveOwner() instead for proper single active owner model
   void resumeAfterTabSwitch() {
@@ -1071,7 +1217,8 @@ class GlobalPlaybackManager {
 
     // Check if controller is safe before returning
     if (!_isControllerSafe(videoId, controller)) {
-      if (_initializingControllers.contains(videoId)) {
+      if (_initializingControllers.contains(videoId) ||
+          shouldRetainController(videoId)) {
         return null;
       }
       secureLog(
@@ -1091,16 +1238,46 @@ class GlobalPlaybackManager {
     return _isControllerSafe(videoId, controller);
   }
 
+  /// Pins Discover full-screen feed controllers so eviction does not churn them.
+  void pinSessionVideoIds(Iterable<String> videoIds) {
+    for (final String videoId in videoIds) {
+      if (videoId.isEmpty) {
+        continue;
+      }
+      _pool.pinnedVideoIds.add(videoId);
+      _logControllerEvent('PIN_SET', videoId, reason: 'discover_session');
+    }
+    _logPoolSnapshot(reason: 'discover_session_pin');
+  }
+
+  void unpinSessionVideoIds(Iterable<String> videoIds) {
+    for (final String videoId in videoIds) {
+      if (videoId.isEmpty) {
+        continue;
+      }
+      _pool.pinnedVideoIds.remove(videoId);
+    }
+    _logPoolSnapshot(reason: 'discover_session_unpin');
+  }
+
   bool shouldRetainController(String videoId) {
     if (videoId.isEmpty) return false;
     if (_focus.activeVideoId == videoId) return true;
     if (_initializingControllers.contains(videoId)) return true;
     if (_pinnedVideoIds.contains(videoId)) return true;
+    if (_controllerOwners[videoId] == PlaybackOwners.player ||
+        _controllerOwners[videoId] == PlaybackOwners.discoverPlayer) {
+      return true;
+    }
     final int? currentIndex = _currentFeedIndex;
     final int? videoIndex = _videoIdToIndex[videoId];
     if (currentIndex != null &&
         videoIndex != null &&
-        (videoIndex - currentIndex).abs() <= poolRadius) {
+        !PlaybackWarmWindowPolicy.isOutsideWarmWindow(
+          videoIndex: videoIndex,
+          currentIndex: currentIndex,
+          direction: _feedIndex.lastScrollDirection,
+        )) {
       return true;
     }
     return false;
@@ -1146,15 +1323,18 @@ class GlobalPlaybackManager {
     preloadAround(
       currentIndex,
       videos,
-      direction: 1,
+      direction: _feedIndex.lastScrollDirection,
       controllerOwner: controllerOwner,
     );
-    final int lastIndex = currentIndex + count;
+    final ({int backward, int forward}) radii =
+        PlaybackWarmWindowPolicy.radiiForDirection(
+            _feedIndex.lastScrollDirection);
+    final int maxOffset =
+        radii.forward > radii.backward ? radii.forward : radii.backward;
     for (int index = currentIndex + 1;
-        index <= lastIndex && index < videos.length;
+        index <= currentIndex + maxOffset && index < videos.length;
         index++) {
-      if ((index - currentIndex).abs() > poolRadius) break;
-      final video = videos[index];
+      final HomeVideo video = videos[index];
       if (video.id.isEmpty || video.videoURL.isEmpty) continue;
       unawaited(
         ensureControllerReady(
@@ -1205,8 +1385,9 @@ class GlobalPlaybackManager {
     String videoId,
     String url, {
     String? owner,
-  }) {
-    return _controllerFactory.getOrCreate(
+  }) async {
+    final VideoPlayerController? controller =
+        await _controllerFactory.getOrCreate(
       videoId: videoId,
       url: url,
       pool: _pool,
@@ -1214,9 +1395,73 @@ class GlobalPlaybackManager {
       isControllerSafe: _isControllerSafe,
       registerController: registerController,
       waitForInitializing: _waitForInitializingController,
+      ensureRoomFor: _ensureRoomForController,
       owner: owner,
       log: secureLog,
     );
+    if (controller != null &&
+        _controllerPool[videoId] == controller &&
+        _isControllerSafe(videoId, controller)) {
+      await _configureControllerLooping(videoId, controller);
+    } else if (controller != null) {
+      secureLog(
+        'CONTROLLER_RETURNED_DISPOSED_BUG videoId=$videoId '
+        'controller=${controller.hashCode} '
+        'pooled=${_controllerPool[videoId]?.hashCode ?? 'none'}',
+      );
+      return null;
+    }
+    return controller;
+  }
+
+  Set<String> _protectedVideoIdsForPoolCap({String? requestedVideoId}) {
+    return <String>{
+      if (requestedVideoId != null && requestedVideoId.isNotEmpty)
+        requestedVideoId,
+      ..._pendingFocusRequests.keys,
+    };
+  }
+
+  void _pinCurrentVideo(String videoId, {String? owner, String? reason}) {
+    if (videoId.isEmpty) {
+      return;
+    }
+    _pool.pinnedVideoIds.add(videoId);
+    secureLog(
+      'CURRENT_VIDEO_PINNED videoId=$videoId '
+      'owner=${owner ?? _controllerOwners[videoId] ?? 'unknown'} '
+      'reason=${reason ?? 'current'}',
+    );
+  }
+
+  void _ensureRoomForController(String videoId, {String? owner}) {
+    if (videoId.isEmpty || _pool.containsKey(videoId)) {
+      return;
+    }
+    _pinCurrentVideo(videoId, owner: owner, reason: 'before_create');
+    if (_pool.length < maxControllerPoolSize) {
+      return;
+    }
+    final int evicted = _poolCap.enforcePoolCap(
+      pool: _pool,
+      feedIndex: _feedIndexForPoolCap(),
+      activeVideoId: _focus.activeVideoId,
+      isActiveVideo: _isActiveVideo,
+      onUnregister: unregisterController,
+      onPoolAudit: _logPoolAudit,
+      protectedVideoIds: _protectedVideoIdsForPoolCap(
+        requestedVideoId: videoId,
+      ),
+      maxSize: maxControllerPoolSize - 1,
+      reason: 'ensure_room_before_create',
+    );
+    if (evicted == 0 && _pool.length >= maxControllerPoolSize) {
+      secureLog(
+        'EVICTION_BLOCKED_CURRENT videoId=$videoId '
+        'pool=${_pool.length} cap=$maxControllerPoolSize '
+        'pendingFocus=${_pendingFocusRequests.keys.toList()}',
+      );
+    }
   }
 
   // ============================================
@@ -1242,6 +1487,7 @@ class GlobalPlaybackManager {
 
   /// Clean up streams (call when app is closing)
   void dispose() {
+    _loopCoordinator.detachAll();
     disposeAll();
     _focus.dispose();
   }
@@ -1289,6 +1535,12 @@ class GlobalPlaybackManager {
   }
 
   void _logPoolSnapshot({String? reason}) {
+    if (LikeInteractionBoundary.isActive) {
+      secureLog(
+        'POOL_SIZE_DURING_DOUBLE_TAP size=${_pool.length} '
+        'cap=$maxControllerPoolSize reason=${reason ?? 'unknown'}',
+      );
+    }
     _telemetryCoordinator.logPoolSnapshot(
       pool: _pool,
       pinnedVideoIds: _pinnedVideoIds,
@@ -1323,6 +1575,7 @@ class GlobalPlaybackManager {
             reason: 'index=$index offset=$offset');
       }
     }
+    _enforcePoolCap(reason: 'pin_set_update');
     _logPoolSnapshot(reason: 'pin_set_update');
   }
 
@@ -1334,7 +1587,7 @@ class GlobalPlaybackManager {
   /// 🎯 SINGLE ACTIVE OWNER: Uses setActiveOwner instead of unblock
   void onEnterHomeView() {
     _homeLifecycle.onEnterHomeView(
-      setActiveOwner: setActiveOwner,
+      setActiveOwner: setVisibleOwner,
       restoreCurrentFeedFocus: restoreCurrentFeedFocus,
       log: secureLog,
     );
@@ -1394,9 +1647,14 @@ class GlobalPlaybackManager {
     final activationMs = activationStartedAt == null
         ? null
         : now.difference(activationStartedAt).inMilliseconds;
-    final warmToFrameMs = warmStartedAt == null
+    final int? controllerAgeMs = warmStartedAt == null
         ? null
         : now.difference(warmStartedAt).inMilliseconds;
+    final int? activationToFirstFrameMs = activationMs;
+    final int? warmReuseMs =
+        controllerAgeMs != null && activationToFirstFrameMs != null
+            ? controllerAgeMs - activationToFirstFrameMs
+            : controllerAgeMs;
     final key = '$videoId:${activationStartedAt?.millisecondsSinceEpoch ?? 0}';
     if (_firstFrameLoggedForActivation.contains(key)) return;
     _firstFrameLoggedForActivation.add(key);
@@ -1404,25 +1662,37 @@ class GlobalPlaybackManager {
       '🎞️ PlaybackManager: first_frame video=$videoId '
       'controller=${controllerId ?? 'unknown'} '
       'size=${size == null ? 'unknown' : '${size.width.toStringAsFixed(0)}x${size.height.toStringAsFixed(0)}'} '
-      'activationMs=${activationMs ?? 'n/a'} warmToFrameMs=${warmToFrameMs ?? 'n/a'} '
+      'activationToFirstFrameMs=${activationToFirstFrameMs ?? 'n/a'} '
+      'controllerAgeMs=${controllerAgeMs ?? 'n/a'} '
+      'warmReuseMs=${warmReuseMs ?? 'n/a'} '
       'pool=${_controllerPool.length}',
+    );
+    HomeFirstFrameGate.instance.markFirstFrameRendered(
+      videoId: videoId,
+      source: 'playback_manager',
     );
   }
 
   /// Called when visible index changes in vertical feed.
   /// Mutes all videos first (await) then ensures controller exists and queues focus.
   Future<void> onVisibleIndexChanged(int newIndex, HomeVideo video) {
+    final int generation = ++_visibleIndexGeneration;
     return _visibleIndexCoordinator.onVisibleIndexChanged(
       newIndex: newIndex,
       video: video,
+      requestGeneration: generation,
+      isRequestStale: () => generation != _visibleIndexGeneration,
       feedIndex: _feedIndex,
       savePositionForIndex: _savePositionForIndex,
       syncFeedIndexMapping: _syncFeedIndexMapping,
       clearDesiredFocus: clearDesiredFocus,
       clearDesiredFocusForOwner: clearDesiredFocusForOwner,
+      getPooledController: getController,
+      waitForInitializing: _waitForInitializingController,
       getOrCreateController: getOrCreateController,
       requestFocus: requestFocus,
       resolvePlayableSource: VideoHealthGate.instance.resolvePlayableSource,
+      isControllerReady: _isControllerSafe,
       log: secureLog,
     );
   }
@@ -1466,13 +1736,30 @@ class GlobalPlaybackManager {
     int startIndex = 0,
     bool requestFocusOnStart = true,
   }) {
+    final DateTime? completedAt = _startupWarmCompletedAt;
+    if (completedAt != null &&
+        startIndex == 0 &&
+        DateTime.now().difference(completedAt) < const Duration(seconds: 20)) {
+      secureLog(
+        '⏭️ PlaybackManager: Skipping duplicate startup preload '
+        '(first video already warm)',
+      );
+      return;
+    }
     _startupWarm.preloadStartupWindow(
       videos: videos,
       startIndex: startIndex,
       requestFocusOnStart: requestFocusOnStart,
       onSyncMapping: _syncFeedIndexMapping,
-      onUpdatePinSet: (int index) =>
-          _updatePinSet(index, backwardRadius: 1, forwardRadius: 1),
+      onUpdatePinSet: (int index) {
+        final ({int backward, int forward}) radii =
+            PlaybackWarmWindowPolicy.radiiForDirection(1);
+        _updatePinSet(
+          index,
+          backwardRadius: radii.backward,
+          forwardRadius: radii.forward,
+        );
+      },
       onEnsureReady: ensureControllerReady,
       onRequestFocus: requestFocus,
       onDisposeFarControllers: disposeFarControllers,
@@ -1480,9 +1767,138 @@ class GlobalPlaybackManager {
     );
   }
 
+  /// Await first playable controller before HomeView is shown (startup path).
+  Future<void> warmFirstFeedController(
+    List<HomeVideo> videos, {
+    int startIndex = 0,
+  }) async {
+    if (videos.isEmpty) {
+      return;
+    }
+    final int safeIndex = startIndex.clamp(0, videos.length - 1);
+    final HomeVideo video = videos[safeIndex];
+    if (video.id.isEmpty) {
+      return;
+    }
+    _syncFeedIndexMapping(safeIndex, video.id);
+    final ({int backward, int forward}) radii =
+        PlaybackWarmWindowPolicy.radiiForDirection(1);
+    _updatePinSet(
+      safeIndex,
+      backwardRadius: radii.backward,
+      forwardRadius: radii.forward,
+    );
+    _feedIndex.lastScrollDirection = 1;
+    secureLog(
+      '🚀 PlaybackManager: Blocking warm for first feed videos from index '
+      '$safeIndex (count=${radii.forward + 1})',
+    );
+    final int warmEnd = (safeIndex + radii.forward).clamp(0, videos.length - 1);
+    await ensureControllerReady(safeIndex, videos[safeIndex]);
+    if (warmEnd > safeIndex) {
+      await Future.wait<void>(<Future<void>>[
+        for (int index = safeIndex + 1; index <= warmEnd; index++)
+          ensureControllerReady(index, videos[index]),
+      ]);
+    }
+    _startupWarmCompletedAt = DateTime.now();
+  }
+
   /// Preload controllers around given index
   /// 🔒 SAFETY: Defers disposal to avoid disposing controllers during widget build
   /// 🔥 FIX SLOW LOADING: Preloads videos in background (non-blocking) for instant UI response
+  /// Binds Discover category swipe feed without touching Home index mappings.
+  void bindDiscoverCategoryFeed(List<HomeVideo> videos) {
+    _discoverCategoryFeedIndex.clear();
+    for (int index = 0; index < videos.length; index++) {
+      final String videoId = videos[index].id;
+      if (videoId.isEmpty) {
+        continue;
+      }
+      _discoverCategoryFeedIndex.syncMapping(
+        index: index,
+        videoId: videoId,
+      );
+    }
+    if (videos.isNotEmpty) {
+      _discoverCategoryFeedIndex.currentFeedIndex = 0;
+    }
+    secureLog(
+      '📋 PlaybackManager: Bound Discover category feed (${videos.length} videos)',
+    );
+  }
+
+  void preloadDiscoverCategoryAround(
+    int index,
+    List<HomeVideo> videos, {
+    int direction = 0,
+  }) {
+    if (videos.isEmpty || index < 0 || index >= videos.length) {
+      return;
+    }
+    _eviction.preloadAround(
+      index: index,
+      videos: videos,
+      pool: _pool,
+      feedIndex: _discoverCategoryFeedIndex,
+      burstGuard: _preloadBurstGuard,
+      onSyncFeedIndexMapping: (int mappedIndex, String videoId) {
+        _discoverCategoryFeedIndex.syncMapping(
+          index: mappedIndex,
+          videoId: videoId,
+        );
+      },
+      onUpdatePinSet: _updateDiscoverCategoryPinSet,
+      onEnsureControllerReady: ensureControllerReady,
+      onDisposeFarControllers: (int currentIndex) {
+        _eviction.disposeFarControllers(
+          index: currentIndex,
+          pool: _pool,
+          feedIndex: _discoverCategoryFeedIndex,
+          muteStates: _muteStates,
+          activeVideoId: _focus.activeVideoId,
+          isActiveVideo: _isActiveVideo,
+          onUpdatePinSet: _updateDiscoverCategoryPinSet,
+          onLogControllerEvent: (String event, String videoId,
+              {String? reason}) {
+            _logControllerEvent(event, videoId, reason: reason);
+          },
+          log: secureLog,
+        );
+      },
+      direction: direction,
+      controllerOwner: PlaybackOwners.discoverPlayer,
+      log: secureLog,
+    );
+    _discoverCategoryFeedIndex.currentFeedIndex = index;
+    requestFocus(videos[index].id, PlaybackOwners.discoverPlayer);
+  }
+
+  void _updateDiscoverCategoryPinSet(
+    int currentIndex, {
+    int backwardRadius = 1,
+    int forwardRadius = 1,
+  }) {
+    _pool.updatePinSet(
+      currentIndex: currentIndex,
+      indexToVideoId: _discoverCategoryFeedIndex.indexToVideoId,
+      backwardRadius: backwardRadius,
+      forwardRadius: forwardRadius,
+    );
+    for (int offset = -backwardRadius; offset <= forwardRadius; offset++) {
+      final int mappedIndex = currentIndex + offset;
+      final String? videoId =
+          _discoverCategoryFeedIndex.indexToVideoId[mappedIndex];
+      if (videoId != null && _pool.containsKey(videoId)) {
+        _logControllerEvent(
+          'PIN_SET',
+          videoId,
+          reason: 'discover_category index=$mappedIndex',
+        );
+      }
+    }
+  }
+
   void preloadAround(
     int index,
     List<HomeVideo> videos, {
@@ -1521,6 +1937,69 @@ class GlobalPlaybackManager {
       onLogControllerEvent: (String event, String videoId, {String? reason}) {
         _logControllerEvent(event, videoId, reason: reason);
       },
+      log: secureLog,
+    );
+    _enforcePoolCap(reason: 'dispose_far_$index');
+  }
+
+  void _reconcilePoolForVisibleOwner(String visibleOwner) {
+    if (_retainHomePoolForTabBackground &&
+        visibleOwner != PlaybackOwners.home &&
+        !visibleOwner.startsWith('${PlaybackOwners.home}/')) {
+      secureLog(
+        '👁️ PlaybackManager: Skipping home pool strip — tab background '
+        'retention active',
+      );
+      return;
+    }
+    final int stripped = _poolCap.stripConflictingSurfaceControllers(
+      visibleOwner: visibleOwner,
+      pool: _pool,
+      controllerOwners: _controllerOwners,
+      onUnregister: unregisterController,
+      onPoolAudit: _logPoolAudit,
+    );
+    if (stripped > 0) {
+      _logPoolSnapshot(reason: 'surface_handoff_$visibleOwner');
+    }
+  }
+
+  PlaybackFeedIndexTracker _feedIndexForPoolCap() {
+    final String? visible = _focus.visibleOwner;
+    if (visible == PlaybackOwners.discoverPlayer) {
+      return _discoverCategoryFeedIndex;
+    }
+    return _feedIndex;
+  }
+
+  void _enforcePoolCap({required String reason, String? requestedVideoId}) {
+    final int evicted = _poolCap.enforcePoolCap(
+      pool: _pool,
+      feedIndex: _feedIndexForPoolCap(),
+      activeVideoId: _focus.activeVideoId,
+      isActiveVideo: _isActiveVideo,
+      onUnregister: unregisterController,
+      onPoolAudit: _logPoolAudit,
+      protectedVideoIds: _protectedVideoIdsForPoolCap(
+        requestedVideoId: requestedVideoId,
+      ),
+      reason: reason,
+    );
+    if (evicted > 0) {
+      _logPoolSnapshot(reason: reason);
+    }
+  }
+
+  void _logPoolAudit(
+    String action,
+    String videoId, {
+    String? reason,
+  }) {
+    _telemetryCoordinator.logPoolAudit(
+      action: action,
+      videoId: videoId,
+      poolSize: _pool.length,
+      reason: reason,
       log: secureLog,
     );
   }

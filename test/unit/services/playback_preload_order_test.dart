@@ -3,15 +3,15 @@ import 'package:streamers_tip/services/playback_preload_order.dart';
 
 void main() {
   group('computePlaybackPreloadIndices', () {
-    test('forward bias visits next before previous', () {
+    test('forward bias with radius 2 visits next two before previous', () {
       final List<int> actual = computePlaybackPreloadIndices(
         index: 5,
         videoCount: 10,
         direction: 1,
         backwardRadius: 1,
-        forwardRadius: 1,
+        forwardRadius: 2,
       );
-      expect(actual, <int>[5, 6, 4]);
+      expect(actual, <int>[5, 6, 7, 4]);
     });
 
     test('backward bias visits previous before next', () {

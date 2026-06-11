@@ -99,14 +99,15 @@ void main() {
         'v0': 10,
         'v1': 1,
         'v2': 5,
+        'v3': 2,
       };
-      for (int i = 0; i < 3; i++) {
+      for (int i = 0; i < 4; i++) {
         pool.recordRegister('v$i', newController());
         pool.setOwner('v$i', 'home');
       }
 
       coordinator.registerController(
-        videoId: 'v3',
+        videoId: 'v4',
         controller: newController(),
         pool: pool,
         focus: focus,
@@ -130,7 +131,7 @@ void main() {
       );
 
       expect(unregistered, containsAll(<String>['v0', 'v2']));
-      expect(pool.containsKey('v3'), isTrue);
+      expect(pool.containsKey('v4'), isTrue);
     });
   });
 }

@@ -8,6 +8,7 @@ import '../utils/category_schema.dart';
 import '../utils/firestore_strip_nulls.dart';
 import '../utils/upload_error_classifier.dart';
 import '../utils/video_caption_firestore.dart';
+import '../utils/video_caption_resolver.dart';
 
 class OptimisticVideoService extends ChangeNotifier {
   static final OptimisticVideoService _instance =
@@ -201,11 +202,16 @@ class OptimisticVideoService extends ChangeNotifier {
     };
     metadata.removeWhere((_, dynamic v) => v == null);
 
+    final String resolvedCaption = resolveUploadCaption(
+      caption: video.caption,
+      additionalMetadata: metadata,
+    );
     final Map<String, dynamic> videoData = <String, dynamic>{
       'userId': video.ownerId,
       'creatorId': video.ownerId,
       'creator_id': video.ownerId,
-      'caption': video.caption,
+      'caption': resolvedCaption,
+      if (resolvedCaption.isNotEmpty) 'description': resolvedCaption,
       ...categoryFields,
       'createdAt': FieldValue.serverTimestamp(),
       'status': 'processing',

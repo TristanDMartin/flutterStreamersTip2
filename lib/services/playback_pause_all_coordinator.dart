@@ -1,5 +1,7 @@
 import 'package:video_player/video_player.dart';
 
+import 'playback_pool_policy.dart';
+
 /// Pauses and mutes every controller in the pool (mute-first ordering).
 class PlaybackPauseAllCoordinator {
   const PlaybackPauseAllCoordinator();
@@ -16,6 +18,14 @@ class PlaybackPauseAllCoordinator {
   }) {
     log?.call('⏸️ PlaybackManager: Pausing and muting ALL videos');
     setCurrentlyPlayingController(null);
+    final int poolSize = controllerPool.length;
+    if (poolSize > PlaybackPoolPolicy.maxControllerPoolSize) {
+      log?.call(
+        '⚠️ PlaybackManager: Pool size $poolSize exceeds cap '
+        '${PlaybackPoolPolicy.maxControllerPoolSize} — possible leak or '
+        'cap bypass',
+      );
+    }
     final List<MapEntry<String, VideoPlayerController>> entries =
         List<MapEntry<String, VideoPlayerController>>.from(
       controllerPool.entries,
@@ -55,5 +65,12 @@ class PlaybackPauseAllCoordinator {
     log?.call(
       '✅ PlaybackManager: Paused $pausedCount videos, muted $mutedCount videos',
     );
+    if (pausedCount > PlaybackPoolPolicy.maxControllerPoolSize) {
+      log?.call(
+        '⚠️ PlaybackManager: pauseAll touched $pausedCount controllers '
+        '(expected ≤ ${PlaybackPoolPolicy.maxControllerPoolSize}) — possible '
+        'leak or cap bypass',
+      );
+    }
   }
 }
