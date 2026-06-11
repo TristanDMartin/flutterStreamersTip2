@@ -22,8 +22,6 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -35,6 +33,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -52,18 +52,16 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>StreamersTip uses the camera to record videos and capture profile media.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>StreamersTip uses the microphone when you record videos in the app.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>StreamersTip uses your location only when needed to support location-aware creator discovery and safety features.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>StreamersTip uses your location only while you use the app to support location-aware creator discovery and safety features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>StreamersTip uses the microphone when you record videos in the app.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>StreamersTip saves exported media to your photo library when you choose to save it.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>StreamersTip uses your photo library so you can select videos and images to upload.</string>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -85,6 +83,12 @@
 			</array>
 		</dict>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

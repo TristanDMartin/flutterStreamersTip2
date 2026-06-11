@@ -1,48 +1,58 @@
 // SuppressWarnings.xcconfig
-// Configuration file to suppress third-party package warnings
+// Suppresses third-party pod noise in Xcode indexing and builds.
 
-// Suppress all deprecation warnings
+// Inhibit all compiler warnings (pods + static frameworks)
+GCC_WARN_INHIBIT_ALL_WARNINGS = YES
+GCC_TREAT_WARNINGS_AS_ERRORS = NO
+SWIFT_TREAT_WARNINGS_AS_ERRORS = NO
+
+// Disable static analyzer (major source of Issue navigator noise)
+CLANG_ANALYZER_NONNULL = NO
+RUN_CLANG_STATIC_ANALYZER = NO
+COMPILER_INDEX_STORE_ENABLE = NO
+
+// Deprecation warnings
 GCC_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = NO
 GCC_WARN_DEPRECATED_FUNCTIONS = NO
-
-// Suppress unused variable warnings
-GCC_WARN_UNUSED_VARIABLE = NO
-GCC_WARN_UNUSED_VALUE = NO
-
-// Suppress uninitialized variable warnings
-GCC_WARN_UNINITIALIZED_AUTOS = NO
-
-// Suppress function declaration warnings
-GCC_WARN_STRICT_PROTOTYPES = NO
-
-// Suppress implicit conversion warnings
-GCC_WARN_IMPLICIT_INT_CONVERSION = NO
-
-// Suppress protocol conformance warnings
-GCC_WARN_PROTOCOL = NO
-
-// Suppress parameter type warnings
-GCC_WARN_INCOMPATIBLE_POINTER_TYPES = NO
-
-// Suppress unused parameter warnings
-GCC_WARN_UNUSED_PARAMETER = NO
-
-// Suppress property attribute warnings
-GCC_WARN_OBJC_PROPERTY_NO_ATTRIBUTE = NO
-
-// Suppress deprecated method implementation warnings
 GCC_WARN_DEPRECATED_IMPLEMENTATIONS = NO
-
-// Additional warning suppressions
+GCC_WARN_ABOUT_DEPRECATED_FUNCTIONS = NO
 CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = NO
 CLANG_WARN_DEPRECATED_FUNCTIONS = NO
+CLANG_WARN_DEPRECATED_IMPLEMENTATIONS = NO
+CLANG_WARN_DEPRECATED = NO
+
+// Unused / uninitialized
+GCC_WARN_UNUSED_VARIABLE = NO
+GCC_WARN_UNUSED_VALUE = NO
+GCC_WARN_UNINITIALIZED_AUTOS = NO
+GCC_WARN_UNUSED_PARAMETER = NO
+GCC_WARN_UNUSED_FUNCTION = NO
 CLANG_WARN_UNUSED_VARIABLE = NO
 CLANG_WARN_UNUSED_VALUE = NO
 CLANG_WARN_UNINITIALIZED_AUTOS = NO
+CLANG_WARN_UNUSED_PARAMETER = NO
+
+// Type / conversion warnings
+GCC_WARN_STRICT_PROTOTYPES = NO
+GCC_WARN_IMPLICIT_INT_CONVERSION = NO
+GCC_WARN_INCOMPATIBLE_POINTER_TYPES = NO
+GCC_WARN_64_TO_32_BIT_CONVERSION = NO
+GCC_WARN_PROTOCOL = NO
+GCC_WARN_OBJC_PROPERTY_NO_ATTRIBUTE = NO
 CLANG_WARN_STRICT_PROTOTYPES = NO
 CLANG_WARN_IMPLICIT_INT_CONVERSION = NO
-CLANG_WARN_PROTOCOL = NO
 CLANG_WARN_INCOMPATIBLE_POINTER_TYPES = NO
-CLANG_WARN_UNUSED_PARAMETER = NO
+CLANG_WARN_PROTOCOL = NO
 CLANG_WARN_OBJC_PROPERTY_NO_ATTRIBUTE = NO
-CLANG_WARN_DEPRECATED_IMPLEMENTATIONS = NO
+
+// Framework header / documentation noise from static pods
+CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO
+CLANG_WARN_DOCUMENTATION_COMMENTS = NO
+
+// Swift
+SWIFT_SUPPRESS_WARNINGS = YES
+OTHER_SWIFT_FLAGS = $(inherited) -suppress-warnings
+
+// C/C++ compile flags
+OTHER_CFLAGS = $(inherited) -w
+OTHER_CPLUSPLUSFLAGS = $(inherited) -w

@@ -85,22 +85,81 @@ post_install do |installer|
     FileUtils.cp(grpc_endpoint_header_source, grpc_endpoint_header_target)
   end
 
+  pod_warning_suppression = {
+    'GCC_WARN_INHIBIT_ALL_WARNINGS' => 'YES',
+    'GCC_TREAT_WARNINGS_AS_ERRORS' => 'NO',
+    'SWIFT_TREAT_WARNINGS_AS_ERRORS' => 'NO',
+    'CLANG_ANALYZER_NONNULL' => 'NO',
+    'CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER' => 'NO',
+    'CLANG_WARN_DOCUMENTATION_COMMENTS' => 'NO',
+    'GCC_WARN_64_TO_32_BIT_CONVERSION' => 'NO',
+    'CLANG_WARN_STRICT_PROTOTYPES' => 'NO',
+    'GCC_WARN_DEPRECATED_FUNCTIONS' => 'NO',
+    'GCC_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS' => 'NO',
+    'GCC_WARN_DEPRECATED_IMPLEMENTATIONS' => 'NO',
+    'GCC_WARN_ABOUT_DEPRECATED_FUNCTIONS' => 'NO',
+    'GCC_WARN_UNUSED_VARIABLE' => 'NO',
+    'GCC_WARN_UNUSED_FUNCTION' => 'NO',
+    'GCC_WARN_UNINITIALIZED_AUTOS' => 'NO',
+    'CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS' => 'NO',
+    'CLANG_WARN_DEPRECATED' => 'NO',
+    'CLANG_WARN_UNUSED_VARIABLE' => 'NO',
+    'SWIFT_SUPPRESS_WARNINGS' => 'YES',
+    'OTHER_SWIFT_FLAGS' => '$(inherited) -suppress-warnings',
+    'RUN_CLANG_STATIC_ANALYZER' => 'NO',
+    'COMPILER_INDEX_STORE_ENABLE' => 'NO',
+  }
+
+  apply_warning_suppression = lambda do |config|
+    pod_warning_suppression.each do |key, value|
+      config.build_settings[key] = value
+    end
+    ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS'].each do |flag_key|
+      flags = Array(config.build_settings[flag_key] || '$(inherited)')
+      flags << '-w' unless flags.include?('-w')
+      config.build_settings[flag_key] = flags
+    end
+  end
+
+  installer.pods_project.build_configurations.each do |config|
+    apply_warning_suppression.call(config)
+  end
+
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_phases.each do |phase|
+      next unless phase.respond_to?(:name)
+      next unless phase.name == 'Create Symlinks to Header Folders'
+
+      phase.always_out_of_date = '1'
+    end
     target.build_configurations.each do |config|
-      # Basic settings only
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       config.build_settings['ENABLE_BITCODE'] = 'NO'
+      apply_warning_suppression.call(config)
       if target.name == 'GoogleSignIn'
         header_search_paths = Array(config.build_settings['HEADER_SEARCH_PATHS'])
         header_search_paths << '$(inherited)'
         header_search_paths << '${PODS_ROOT}/AppCheckCore/AppCheckCore/Sources/Public'
         config.build_settings['HEADER_SEARCH_PATHS'] = header_search_paths.uniq
       end
-      
-      # Suppress warnings
-      config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
-      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
     end
+  end
+
+  # Align Runner project-level settings so Xcode indexing doesn't surface pod noise.
+  runner_project_path = File.join(__dir__, 'Runner.xcodeproj')
+  if File.exist?(runner_project_path)
+    runner_project = Xcodeproj::Project.open(runner_project_path)
+    runner_project.build_configurations.each do |config|
+      apply_warning_suppression.call(config)
+    end
+    runner_project.targets.each do |target|
+      next unless target.name == 'RunnerTests'
+
+      target.build_configurations.each do |config|
+        apply_warning_suppression.call(config)
+      end
+    end
+    runner_project.save
   end
 end

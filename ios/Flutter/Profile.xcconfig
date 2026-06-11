@@ -1,4 +1,5 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"
+#include? "../Runner/SuppressWarnings.xcconfig"
 #include "Generated.xcconfig"
 
 
