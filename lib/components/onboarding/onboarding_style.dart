@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/design/st_radius.dart';
+
 class OnboardingStyle {
   static const Color background = Color(0xFF0F172A);
   static const Color surface = Color(0xFF1E293B);
@@ -29,6 +31,116 @@ class OnboardingStyle {
 
   static Color borderFor(BuildContext context) {
     return isLight(context) ? const Color(0xFFE5E7EB) : border;
+  }
+
+  static TextStyle plainTextStyle(TextStyle style) {
+    return style.copyWith(
+      decoration: TextDecoration.none,
+      decorationColor: Colors.transparent,
+    );
+  }
+
+  static TextStyle titleFor(BuildContext context, {double fontSize = 28}) {
+    return plainTextStyle(
+      TextStyle(
+        color: textPrimaryFor(context),
+        fontSize: fontSize,
+        fontWeight: FontWeight.w900,
+        height: 1.15,
+      ),
+    );
+  }
+
+  static TextStyle bodyFor(BuildContext context, {double fontSize = 15}) {
+    return plainTextStyle(
+      TextStyle(
+        color: textSecondaryFor(context),
+        fontSize: fontSize,
+        height: 1.4,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+
+  static TextStyle labelFor(BuildContext context) {
+    return plainTextStyle(
+      TextStyle(
+        color: textSecondaryFor(context),
+        fontWeight: FontWeight.w600,
+        fontSize: 13,
+      ),
+    );
+  }
+
+  static TextStyle tipTitleFor(BuildContext context) {
+    return plainTextStyle(
+      TextStyle(
+        color: textPrimaryFor(context),
+        fontSize: 18,
+        fontWeight: FontWeight.w800,
+        height: 1.2,
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+
+  static TextStyle tipBodyFor(BuildContext context) {
+    return plainTextStyle(
+      TextStyle(
+        color: textSecondaryFor(context),
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        height: 1.45,
+      ),
+    );
+  }
+
+  static TextStyle tipLabelFor(BuildContext context) {
+    return plainTextStyle(
+      TextStyle(
+        color: const Color(0xFF9248D2).withValues(alpha: 0.9),
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+      ),
+    );
+  }
+
+  static BoxDecoration tipCardDecoration(BuildContext context) {
+    final bool light = isLight(context);
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(STRadius.sheet),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: light
+            ? <Color>[
+                Colors.white,
+                const Color(0xFFF8F5FF),
+              ]
+            : <Color>[
+                const Color(0xFF1E1B2E),
+                const Color(0xFF12101C),
+              ],
+      ),
+      border: Border.all(
+        color: light
+            ? const Color(0xFF9248D2).withValues(alpha: 0.22)
+            : const Color(0xFF9248D2).withValues(alpha: 0.38),
+      ),
+      boxShadow: <BoxShadow>[
+        BoxShadow(
+          color: const Color(0xFF9248D2).withValues(alpha: light ? 0.08 : 0.18),
+          blurRadius: 28,
+          offset: const Offset(0, 10),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: light ? 0.08 : 0.42),
+          blurRadius: 24,
+          offset: const Offset(0, 12),
+        ),
+      ],
+    );
   }
 
   static BoxDecoration cardDecoration({
@@ -93,9 +205,12 @@ class GradientPillButton extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
+                    style: OnboardingStyle.plainTextStyle(
+                      const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
                 ),

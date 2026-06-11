@@ -1,34 +1,12 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../features/gamification/create_gamification_event.dart';
+import '../../features/gamification/gamification_event_types.dart';
+import '../../utils/user_profile_firestore.dart';
 import 'onboarding_models.dart';
-
-class OnboardingMissionResult {
-  const OnboardingMissionResult({
-    required this.mission,
-    required this.newXp,
-    required this.newLevel,
-    required this.completedLevelOne,
-    required this.wasAlreadyComplete,
-  });
-
-  final OnboardingMission mission;
-  final int newXp;
-  final int newLevel;
-  final bool completedLevelOne;
-  final bool wasAlreadyComplete;
-}
-
-OnboardingMission _missionForId(String missionId) {
-  for (final OnboardingMission item in levelOneMissions) {
-    if (item.id == missionId) {
-      return item;
-    }
-  }
-  if (missionId == completeProfileSideMission.id) {
-    return completeProfileSideMission;
-  }
-  throw ArgumentError('Unknown onboarding mission $missionId');
-}
+import 'onboarding_v1_constants.dart';
 
 class OnboardingService {
   OnboardingService({FirebaseFirestore? firestore})
@@ -65,367 +43,325 @@ class OnboardingService {
   }
 
   Future<OnboardingState> fetchOnboarding(String userId) async {
-    final snapshot = await _userRef(userId).get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+        await _userRef(userId).get();
     return OnboardingState.fromUserMap(snapshot.data());
+  }
+
+  /// Existing users bypass onboarding on first V1 migration.
+  Future<OnboardingState> ensureMigrated(String userId) async {
+    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+        await _userRef(userId).get();
+    final Map<String, dynamic>? data = snapshot.data();
+    if (data == null) {
+      await _safeUserSet(userId, _newUserOnboardingPayload(step: 0));
+      return OnboardingState.initial();
+    }
+    final OnboardingState current = OnboardingState.fromUserMap(data);
+    if (current.completed) {
+      return current;
+    }
+    final Map<String, dynamic> onboarding =
+        (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+    final int? version = onboarding['version'] as int?;
+    if (version == OnboardingV1Constants.version) {
+      return current;
+    }
+    if (_isExistingUser(data)) {
+      await _safeUserSet(userId, _completedMigrationPayload());
+      return OnboardingState.fromUserMap(<String, dynamic>{
+        ...data,
+        'hasCompletedOnboarding': true,
+        'onboarding': _completedMigrationPayload()['onboarding'],
+      });
+    }
+    await _safeUserSet(userId, _newUserOnboardingPayload(step: current.currentStep));
+    return fetchOnboarding(userId);
+  }
+
+  bool _isExistingUser(Map<String, dynamic> data) {
+    if (data['hasCompletedOnboarding'] == true) {
+      return true;
+    }
+    final Map<String, dynamic> onboarding =
+        (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+    if (onboarding['hasCompletedOnboarding'] == true ||
+        onboarding['hasCompletedProductTour'] == true ||
+        onboarding['hasSeenIntro'] == true) {
+      return true;
+    }
+    final String displayName = (data['displayName'] as String?)?.trim() ?? '';
+    final String username = (data['username'] as String?)?.trim() ?? '';
+    if (displayName.length >= 2 && username.length >= 2) {
+      return true;
+    }
+    final int xp = _readInt(data['xp']) ?? 0;
+    if (xp > 0) {
+      return true;
+    }
+    final Timestamp? createdAt = data['createdAt'] as Timestamp?;
+    if (createdAt != null) {
+      final DateTime created = createdAt.toDate();
+      final DateTime launchCutoff = DateTime(2026, 3, 1);
+      if (created.isBefore(launchCutoff)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Map<String, dynamic> _newUserOnboardingPayload({required int step}) {
+    return <String, dynamic>{
+      'hasCompletedOnboarding': false,
+      'onboarding': <String, dynamic>{
+        'version': OnboardingV1Constants.version,
+        'status': step > 0
+            ? OnboardingStatus.inProgress
+            : OnboardingStatus.notStarted,
+        'completed': false,
+        'currentStep': step,
+        'hasSeenIntro': false,
+        'completedAt': null,
+        'creatorGoals': <String>[],
+        'platforms': <String>[],
+        'premiumOfferDismissed': false,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      },
+    };
+  }
+
+  Map<String, dynamic> _completedMigrationPayload() {
+    return <String, dynamic>{
+      'hasCompletedOnboarding': true,
+      'onboarding': <String, dynamic>{
+        'version': OnboardingV1Constants.version,
+        'status': OnboardingStatus.completed,
+        'completed': true,
+        'currentStep': OnboardingV1Constants.completedStepMarker,
+        'hasSeenIntro': true,
+        'completedAt': FieldValue.serverTimestamp(),
+        'premiumOfferDismissed': true,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      },
+    };
+  }
+
+  Future<void> advanceToStep(String userId, int step) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.inProgress,
+          'currentStep': step,
+          'hasSeenIntro': step > 0,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> saveCreatorGoals(String userId, List<String> goals) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'creatorGoals': goals,
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.inProgress,
+          'currentStep': 2,
+          'creatorGoals': goals,
+          'hasSeenIntro': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> savePlatforms(String userId, List<String> platforms) {
+    final List<Map<String, dynamic>> platformStubs =
+        UserProfileFirestore.platformStubsFromSelection(platforms);
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        UserProfileFirestore.platformsField: platformStubs,
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.inProgress,
+          'currentStep': 3,
+          'platforms': platforms,
+          'hasSeenIntro': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> saveCreatorCard({
+    required String userId,
+    required String displayName,
+    required String username,
+    required String bio,
+    required String categoryId,
+    String? avatarUrl,
+    List<Map<String, dynamic>>? platforms,
+  }) async {
+    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+        await _userRef(userId).get();
+    final Map<String, dynamic>? existing = snapshot.data();
+    final Map<String, dynamic> existingOnboarding =
+        (existing?['onboarding'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+    final bool alreadyCompleted =
+        existingOnboarding['creatorCardCompleted'] == true;
+    final Map<String, dynamic> profile = <String, dynamic>{
+      'displayName': displayName.trim(),
+      'username': username.trim().toLowerCase(),
+      'bio': bio.trim(),
+      'categoryId': categoryId,
+      'category': categoryId,
+    };
+    if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
+      profile['avatarURL'] = avatarUrl.trim();
+      profile['photoURL'] = avatarUrl.trim();
+    }
+    if (platforms != null) {
+      profile[UserProfileFirestore.platformsField] =
+          UserProfileFirestore.normalizePlatformsForFirestore(platforms);
+    }
+    await _safeUserSet(
+      userId,
+      <String, dynamic>{
+        ...profile,
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.inProgress,
+          'currentStep': 4,
+          'hasSeenIntro': true,
+          'creatorCardCompleted': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+    if (alreadyCompleted) {
+      return;
+    }
+    _scheduleOnboardingGamificationEvent(
+      type: GamificationEventTypes.creatorCardCompleted,
+      entityType: 'user',
+      entityId: userId,
+      metadata: <String, dynamic>{
+        'rewardXp': OnboardingV1Constants.creatorCardRewardXp,
+        'source': 'onboarding_v1',
+      },
+    );
+    _scheduleOnboardingGamificationEvent(
+      type: GamificationEventTypes.profileCompleted,
+      entityType: 'user',
+      entityId: userId,
+      metadata: <String, dynamic>{'source': 'onboarding_v1'},
+    );
+  }
+
+  Future<void> completeOnboarding(
+    String userId, {
+    bool skippedByTester = false,
+  }) async {
+    await _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'hasCompletedOnboarding': true,
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.completed,
+          'completed': true,
+          'currentStep': OnboardingV1Constants.completedStepMarker,
+          'hasSeenIntro': true,
+          'completedAt': FieldValue.serverTimestamp(),
+          'lastSeenAt': FieldValue.serverTimestamp(),
+          if (skippedByTester) 'skippedByTester': true,
+          if (skippedByTester) 'skippedSteps': <String>['all'],
+        },
+      },
+    );
+    _scheduleOnboardingGamificationEvent(
+      type: GamificationEventTypes.userOnboardingCompleted,
+      entityType: 'user',
+      entityId: userId,
+      metadata: <String, dynamic>{
+        'rewardXp': OnboardingV1Constants.levelOneUnlockRewardXp,
+        'source': 'onboarding_v1',
+        if (skippedByTester) 'skippedByTester': true,
+      },
+    );
+  }
+
+  Future<void> skipOnboardingAsTester(String userId) {
+    return completeOnboarding(userId, skippedByTester: true);
+  }
+
+  void _scheduleOnboardingGamificationEvent({
+    required String type,
+    String? entityType,
+    String? entityId,
+    Map<String, dynamic>? metadata,
+  }) {
+    unawaited(() async {
+      try {
+        await createGamificationEvent(
+          type: type,
+          entityType: entityType,
+          entityId: entityId,
+          metadata: metadata,
+        );
+      } catch (_) {}
+    }());
+  }
+
+  Future<void> dismissPremiumOffer(String userId) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'premiumOfferDismissed': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
   }
 
   Future<void> resetForDeveloperTesterInstall(String userId) {
     return _safeUserSet(
       userId,
       <String, dynamic>{
+        'hasCompletedOnboarding': false,
         'onboarding': <String, dynamic>{
-          'hasSeenIntro': false,
-          'hasCompletedProductTour': false,
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.notStarted,
+          'completed': false,
           'hasCompletedOnboarding': false,
+          'hasCompletedProductTour': false,
           'hasCompletedLevelOne': false,
+          'currentStep': 0,
           'currentOnboardingStep': 0,
-          'creatorGoal': null,
-          'completedMissions': <String>[],
+          'hasSeenIntro': false,
+          'completedAt': null,
+          'creatorGoals': <String>[],
+          'platforms': <String>[],
+          'premiumOfferDismissed': false,
           'skippedSteps': <String>[],
           'lastSeenAt': FieldValue.serverTimestamp(),
         },
-        'hasCompletedOnboarding': false,
-        'xp': 0,
-        'level': 1,
-        'creatorStatus': CreatorStatus.newCreator.value,
       },
     );
   }
 
-  Future<void> completeIntro(String userId, String creatorGoal) {
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'onboarding': <String, dynamic>{
-          'hasSeenIntro': true,
-          'currentOnboardingStep': 0,
-          'creatorGoal': creatorGoal,
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-        'xp': FieldValue.increment(0),
-        'level': 1,
-        'creatorStatus': CreatorStatus.newCreator.value,
-      },
-    );
-  }
-
-  Future<void> completeProductTour(String userId) {
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'onboarding': <String, dynamic>{
-          'hasCompletedProductTour': true,
-          'currentOnboardingStep': 999,
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-      },
-    );
-  }
-
-  Future<void> skipProductTour(String userId, int currentStep) {
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'onboarding': <String, dynamic>{
-          'hasCompletedProductTour': true,
-          'currentOnboardingStep': currentStep,
-          'skippedSteps': FieldValue.arrayUnion(<String>['product_tour']),
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-      },
-    );
-  }
-
-  Future<void> completeOnboarding(String userId) {
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'hasCompletedOnboarding': true,
-        'onboarding': <String, dynamic>{
-          'hasCompletedOnboarding': true,
-          'completedAt': FieldValue.serverTimestamp(),
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-      },
-    );
-  }
-
-  Future<void> dismissLevelOneChecklist(String userId) {
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'onboarding': <String, dynamic>{
-          'skippedSteps':
-              FieldValue.arrayUnion(<String>['level_one_checklist']),
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-      },
-    );
-  }
-
-  Future<void> markContextualTipSeen(String userId, String tipId) {
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'onboarding': <String, dynamic>{
-          'skippedSteps': FieldValue.arrayUnion(<String>['tip_$tipId']),
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-      },
-    );
-  }
-
-  Future<void> resetContextualTips(String userId) {
-    const List<String> tipIds = <String>[
-      'tip_home',
-      'tip_network',
-      'tip_create',
-      'tip_inbox',
-      'tip_profile',
-      'tip_comments',
-      'tip_tippy_ai',
-      'tip_content_planner',
-    ];
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'onboarding': <String, dynamic>{
-          'skippedSteps': FieldValue.arrayRemove(tipIds),
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-      },
-    );
-  }
-
-  /// Marks Level 1 missions complete from existing account data only (no XP).
-  /// Used so Progression "First things to do" matches real activity.
-  Future<void> syncLevelOneMissionsFromAccountEvidence(String userId) async {
-    final List<String> inferredIds = <String>[];
-    final DocumentSnapshot<Map<String, dynamic>> userSnap =
-        await _userRef(userId).get();
-    final Map<String, dynamic>? root = userSnap.data();
-    if (root == null) {
-      return;
-    }
-    if (_inferCompleteProfile(root)) {
-      inferredIds.add(completeProfileSideMission.id);
-    }
-    if (await _userHasAnyVideo(userId)) {
-      inferredIds.add('upload_first_post');
-    }
-    if (_userHasConnectedPlatform(root)) {
-      inferredIds.add('connect_platform');
-    }
-    if (await _userHasContentPlan(userId)) {
-      inferredIds.add('create_content_plan');
-    }
-    if (_userHasSharedCreatorCard(root)) {
-      inferredIds.add('share_creator_card');
-    }
-    final Set<String> inferred = inferredIds.toSet();
-    if (inferred.isEmpty) {
-      return;
-    }
-    await _firestore.runTransaction((Transaction tx) async {
-      final DocumentSnapshot<Map<String, dynamic>> snap =
-          await tx.get(_userRef(userId));
-      final Map<String, dynamic>? data = snap.data();
-      if (data == null) {
-        return;
-      }
-      final OnboardingState current = OnboardingState.fromUserMap(data);
-      final Set<String> before = current.completedMissions.toSet();
-      if (inferred.difference(before).isEmpty) {
-        return;
-      }
-      final Map<String, dynamic> nextOnboarding = Map<String, dynamic>.from(
-        (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{},
-      );
-      final Set<String> mergedSet = <String>{...before, ...inferred};
-      final List<String> merged = mergedSet.toList()..sort();
-      final bool allLevelOne = visibleLevelOneMissions.every(
-        (OnboardingMission m) => merged.contains(m.id),
-      );
-      nextOnboarding['completedMissions'] = merged;
-      nextOnboarding['hasCompletedLevelOne'] = allLevelOne;
-      nextOnboarding['lastSeenAt'] = FieldValue.serverTimestamp();
-      if (allLevelOne && current.hasCompletedProductTour) {
-        nextOnboarding['hasCompletedOnboarding'] = true;
-      }
-      final Map<String, dynamic> write = <String, dynamic>{
-        'onboarding': nextOnboarding,
-      };
-      if (allLevelOne && current.hasCompletedProductTour) {
-        write['hasCompletedOnboarding'] = true;
-      }
-      tx.set(_userRef(userId), write, SetOptions(merge: true));
-    });
-  }
-
-  bool _inferCompleteProfile(Map<String, dynamic> data) {
-    final String dn = (data['displayName'] as String?)?.trim() ?? '';
-    final String un = (data['username'] as String?)?.trim() ?? '';
-    if (dn.length < 2 || un.length < 2) {
-      return false;
-    }
-    final String bio = (data['bio'] as String?)?.trim() ?? '';
-    final bool hasAvatar = _hasNonEmptyString(
-      data['avatarURL'] ?? data['photoURL'] ?? data['avatarUrl'],
-    );
-    return bio.isNotEmpty && hasAvatar;
-  }
-
-  bool _hasNonEmptyString(Object? value) {
-    if (value is String) {
-      return value.trim().isNotEmpty;
-    }
-    return false;
-  }
-
-  bool _userHasConnectedPlatform(Map<String, dynamic> data) {
-    final Object? raw = data['platforms'];
-    if (raw is! List || raw.isEmpty) {
-      return false;
-    }
-    const Set<String> keys = <String>{
-      'youtube',
-      'twitch',
-      'tiktok',
-      'kick',
-      'instagram',
-    };
-    for (final Object? item in raw) {
-      if (item is Map) {
-        final String t = (item['type'] as String? ?? '').trim().toLowerCase();
-        if (keys.contains(t)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  bool _userHasSharedCreatorCard(Map<String, dynamic> data) {
-    if (data['hasSharedCreatorCard'] == true ||
-        data['creatorCardShared'] == true ||
-        data['sharedCreatorCard'] == true) {
-      return true;
-    }
-    final Object? shareStats = data['shareStats'];
-    if (shareStats is Map) {
-      final Object? count =
-          shareStats['creatorCardShares'] ?? shareStats['creator_card'];
-      if (count is num && count > 0) {
-        return true;
-      }
-    }
-    final Object? creatorCard = data['creatorCard'];
-    if (creatorCard is Map) {
-      final Object? count = creatorCard['shareCount'] ?? creatorCard['shares'];
-      if (count is num && count > 0) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Future<bool> _userHasAnyVideo(String userId) async {
-    for (final String field in <String>[
-      'userId',
-      'user_id',
-      'creatorId',
-      'creator_id',
-      'authorId',
-      'uid',
-    ]) {
-      final QuerySnapshot<Map<String, dynamic>> q = await _firestore
-          .collection('videos')
-          .where(field, isEqualTo: userId)
-          .limit(1)
-          .get();
-      if (q.docs.isNotEmpty) {
-        return true;
-      }
-    }
-    final QuerySnapshot<Map<String, dynamic>> userVideos = await _firestore
-        .collection('user_videos')
-        .doc(userId)
-        .collection('posts')
-        .limit(1)
-        .get();
-    if (userVideos.docs.isNotEmpty) {
-      return true;
-    }
-    return false;
-  }
-
-  Future<bool> _userHasContentPlan(String userId) async {
-    final QuerySnapshot<Map<String, dynamic>> q = await _firestore
-        .collection('users')
-        .doc(userId)
-        .collection('contentPlans')
-        .limit(1)
-        .get();
-    return q.docs.isNotEmpty;
-  }
-
-  Future<OnboardingMissionResult> completeMission(
-    String userId,
-    String missionId,
-  ) async {
-    final OnboardingMission mission = _missionForId(missionId);
-
-    return _firestore
-        .runTransaction<OnboardingMissionResult>((transaction) async {
-      final DocumentReference<Map<String, dynamic>> ref = _userRef(userId);
-      final DocumentSnapshot<Map<String, dynamic>> snapshot =
-          await transaction.get(ref);
-      final OnboardingState current =
-          OnboardingState.fromUserMap(snapshot.data());
-      if (current.completedMissions.contains(missionId)) {
-        return OnboardingMissionResult(
-          mission: mission,
-          newXp: current.xp,
-          newLevel: current.level,
-          completedLevelOne: current.hasCompletedLevelOne,
-          wasAlreadyComplete: true,
-        );
-      }
-
-      final List<String> completed = <String>[
-        ...current.completedMissions,
-        missionId,
-      ];
-      // TODO Phase B: stop writing users.xp; use createGamificationEvent only.
-      final int newXp = current.xp + mission.rewardXp;
-      final int newLevel = levelForXp(newXp);
-      final bool completedLevelOne = visibleLevelOneMissions.every(
-        (OnboardingMission item) => completed.contains(item.id),
-      );
-
-      transaction.set(
-        ref,
-        <String, dynamic>{
-          'xp': newXp,
-          'level': newLevel,
-          'creatorStatus': CreatorStatus.fromXp(newXp).value,
-          'onboarding': <String, dynamic>{
-            'completedMissions': completed,
-            'hasCompletedLevelOne': completedLevelOne,
-            'lastSeenAt': FieldValue.serverTimestamp(),
-          },
-        },
-        SetOptions(merge: true),
-      );
-
-      return OnboardingMissionResult(
-        mission: mission,
-        newXp: newXp,
-        newLevel: newLevel,
-        completedLevelOne: completedLevelOne,
-        wasAlreadyComplete: false,
-      );
-    });
+  int? _readInt(Object? value) {
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 }
