@@ -74,7 +74,7 @@ function isPublicFeedEligible(data) {
   if (!visibility && privacy && !['everyone', 'public'].includes(privacy)) {
     return false;
   }
-  if (data.isReadyForFeed === false) return false;
+  if (data.isReadyForFeed !== true) return false;
   return isReadyStatus(data) && !!resolveCanonicalPlaybackUrl(data);
 }
 

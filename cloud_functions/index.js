@@ -2561,3 +2561,20 @@ exports.manualCleanupCalendarEvents = onCall({region}, async (request) => {
 const {adminExecute, adminDashboardStats} = require('./src/admin/admin_execute');
 exports.adminExecute = adminExecute(region);
 exports.adminDashboardStats = adminDashboardStats(region);
+
+const {aggregateAnalyticsProfile} = require('./src/analytics/aggregate_analytics_profile');
+const {onDocumentCreated} = require('firebase-functions/v2/firestore');
+exports.onAnalyticsEventCreated = onDocumentCreated(
+    {document: 'analytics_events/{eventId}', region},
+    async (event) => {
+      const data = event.data?.data();
+      if (!data || !data.uid) {
+        return;
+      }
+      try {
+        await aggregateAnalyticsProfile(String(data.uid), data);
+      } catch (e) {
+        console.error('onAnalyticsEventCreated failed', e);
+      }
+    },
+);

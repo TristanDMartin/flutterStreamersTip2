@@ -27,6 +27,10 @@ const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 
 const ALLOWED_PRODUCT_IDS = new Set([
+  'creator_pro_monthly',
+  'creator_pro_yearly',
+  'creator_studio_monthly',
+  'creator_studio_yearly',
   'streamerstip_pro_monthly',
   'streamerstip_pro_yearly',
   'streamerstip_studio_monthly',

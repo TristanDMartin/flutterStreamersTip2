@@ -2,7 +2,9 @@
 
 const admin = require('firebase-admin');
 
-const DEFAULT_CREDIT_LIMIT = 250;
+const {getAiCreditLimitForTier} = require('./entitlements');
+
+const DEFAULT_CREDIT_LIMIT = getAiCreditLimitForTier('pro');
 
 function toNum(val) {
   if (val === undefined || val === null) {

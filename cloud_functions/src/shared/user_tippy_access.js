@@ -1,12 +1,11 @@
 'use strict';
 
 const {resolveTierFromUserDoc} = require('./subscription_tier');
-
-const TIER_CREDIT_LIMITS = {
-  starter: 10,
-  pro: 250,
-  studio: 963,
-};
+const {
+  getAiCreditLimitForTier,
+  getCrossPostWeeklyLimitForTier,
+  getEntitlementsForTier,
+} = require('./entitlements');
 
 const STUDIO_BYPASS_UIDS = new Set([
   'bU0RxyZ2L4ULAv1Co5L4f825yV73',
@@ -41,8 +40,8 @@ function resolveStudioBypass({uid, email, userData = {}} = {}) {
     canUseTippy: true,
     hasStudioAccess: true,
     billingRequired: false,
-    crossPostLimit: -1,
-    limit: TIER_CREDIT_LIMITS.studio,
+    crossPostLimit: getCrossPostWeeklyLimitForTier('studio'),
+    limit: getAiCreditLimitForTier('studio'),
   };
 }
 
@@ -81,18 +80,18 @@ function resolveSubscriptionStatus(userData) {
 
 function resolvePlanLimit({tier, hasEntitlement}) {
   if (tier === 'studio') {
-    return TIER_CREDIT_LIMITS.studio;
+    return getAiCreditLimitForTier('studio');
   }
   if (tier === 'pro') {
-    return TIER_CREDIT_LIMITS.pro;
+    return getAiCreditLimitForTier('pro');
   }
   if (hasEntitlement) {
-    return TIER_CREDIT_LIMITS.pro;
+    return getAiCreditLimitForTier('pro');
   }
   if (tier === 'unknown' || tier === 'starter') {
-    return TIER_CREDIT_LIMITS.starter;
+    return getAiCreditLimitForTier('starter');
   }
-  return TIER_CREDIT_LIMITS[tier] || 0;
+  return getAiCreditLimitForTier(tier);
 }
 
 function buildUserAccess(userData, options = {}) {
@@ -115,23 +114,25 @@ function buildUserAccess(userData, options = {}) {
   const isTierAllowed = tier === 'pro' || tier === 'studio';
   const canUseTippy =
     hasEntitlement || (hasActiveSubscription && isTierAllowed);
+  const effectiveTier =
+    tier === 'unknown' ? 'starter' : tier;
   return {
-    tier,
+    tier: effectiveTier,
     tierSource,
     status,
     hasEntitlement,
     canUseTippy,
-    hasStudioAccess: tier === 'studio' && canUseTippy,
+    hasStudioAccess: effectiveTier === 'studio' && canUseTippy,
     billingRequired: true,
-    crossPostLimit: tier === 'starter' ? 1 : -1,
-    limit: resolvePlanLimit({tier, hasEntitlement}),
+    crossPostLimit: getCrossPostWeeklyLimitForTier(effectiveTier),
+    limit: resolvePlanLimit({tier: effectiveTier, hasEntitlement}),
+    entitlements: getEntitlementsForTier(effectiveTier),
   };
 }
 
 module.exports = {
   STUDIO_BYPASS_UIDS,
   STUDIO_BYPASS_EMAILS,
-  TIER_CREDIT_LIMITS,
   buildUserAccess,
   normalizeEmail,
   resolveHasTippyEntitlement,

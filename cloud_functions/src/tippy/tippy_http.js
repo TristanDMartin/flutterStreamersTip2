@@ -15,6 +15,7 @@ const {
   buildCreditWrite,
   resolveCreditsForUser,
 } = require('../shared/tippy_credits');
+const {applyCreditDeduction} = require('../shared/tippy_credit_manager');
 const {runAnthropicTippy} = require('./anthropic_tippy');
 
 function emitRequestLog(payload) {
@@ -461,20 +462,14 @@ async function reserveCreditAtomically(uid, email = '') {
       };
     }
     const current = resolveCreditsForUser(userData, access);
-    if (current.remaining <= 0) {
+    const nextCredits = applyCreditDeduction(current, 'captionRewrite');
+    if (nextCredits == null) {
       return {
         ok: false,
         reason: 'INSUFFICIENT_CREDITS',
         credits: current,
       };
     }
-    const nextCredits = {
-      remaining: current.remaining - 1,
-      used: current.used + 1,
-      limit: current.limit,
-      tier: current.tier,
-      resetAt: current.resetAt,
-    };
     tx.set(
       userRef,
       buildCreditWrite(nextCredits, access),
@@ -497,7 +492,7 @@ async function rollbackReservedCreditAtomically(uid, email = '') {
     const access = buildUserAccess(userData, {uid, email});
     const current = resolveCreditsForUser(userData, access);
     const restored = {
-      remaining: current.remaining + 1,
+      remaining: Math.min(current.limit, current.remaining + 1),
       used: current.used > 0 ? current.used - 1 : 0,
       limit: current.limit,
       tier: current.tier,

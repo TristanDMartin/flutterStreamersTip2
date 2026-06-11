@@ -4,6 +4,7 @@ const admin = require('firebase-admin');
 
 const firestore = admin.firestore();
 const {buildUserAccess} = require('../shared/user_tippy_access');
+const {getEntitlementsForTier} = require('../shared/entitlements');
 const {resolveCreditsForUser} = require('../shared/tippy_credits');
 
 function buildErrorResponse({
@@ -151,6 +152,7 @@ async function handleMeEntitlements(req, res) {
   });
   const credits = resolveCreditsForUser(userData, access);
   const monthlyCredits = credits.limit;
+  const tierEntitlements = getEntitlementsForTier(access.tier);
 
   res.status(200).json({
     success: true,
@@ -165,6 +167,16 @@ async function handleMeEntitlements(req, res) {
       crossPostLimit: access.crossPostLimit,
       aiCreditsMonthlyLimit: monthlyCredits,
       billingRequired: access.billingRequired !== false,
+      limits: {
+        aiCreditsPerMonth: tierEntitlements.aiCreditsPerMonth,
+        analyticsWindowDays: tierEntitlements.analyticsWindowDays,
+        contentPlans: tierEntitlements.contentPlans,
+        connectedPlatforms: tierEntitlements.connectedPlatforms,
+        teamMembers: tierEntitlements.teamMembers,
+        crossPostWeeklyLimit: tierEntitlements.crossPostWeeklyLimit,
+        schedulingEnabled: tierEntitlements.schedulingEnabled,
+      },
+      features: tierEntitlements.features,
       tippyAi: {
         enabled: access.canUseTippy,
         monthlyCredits,
