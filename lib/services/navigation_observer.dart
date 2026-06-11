@@ -64,7 +64,7 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
 
   void _activateVideoSurface(String owner) {
     _manager.unblock();
-    _manager.setActiveOwner(owner);
+    _manager.setVisibleOwner(owner);
   }
 
   void _suppressPlayback({required String reason, String? visibleOwner}) {
@@ -92,6 +92,13 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     if (PlaybackRoutePolicies.isShellRoute(routeName)) {
       debugPrint(
         '🎛️ NavigationObserver: Shell route — tab owns playback',
+      );
+      return;
+    }
+
+    if (PlaybackRoutePolicies.isOnboardingRoute(routeName)) {
+      debugPrint(
+        '🎓 NavigationObserver: Onboarding route — gate owns playback',
       );
       return;
     }

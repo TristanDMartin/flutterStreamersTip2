@@ -1,30 +1,35 @@
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
+
+import '../core/theme/support_shell_style.dart';
+import '../features/analytics/widgets/creator_insights_hero.dart';
+import '../features/billing/subscription_provider.dart';
 import '../models/insights_data.dart';
 import '../models/profile_video.dart';
 import '../services/insights_firebase_service.dart';
 import '../services/video_analytics_aggregation_service.dart';
+import '../utils/insights_metrics.dart';
 import '../utils/user_facing_error.dart';
+import 'insights_engagement_tab.dart';
 import 'insights_overview_tab.dart';
 import 'insights_viewers_tab.dart';
-import 'insights_engagement_tab.dart';
 import 'video_selector_widget.dart';
 
-/// Main Insights View with tabbed interface for video analytics
-enum _InsightsLoadState { loading, ready, empty, error }
+enum _InsightsLoadState { loading, ready, empty, error, accessDenied }
 
 class InsightsView extends ConsumerStatefulWidget {
-  final String videoId;
-  final String videoTitle;
-
   const InsightsView({
     super.key,
     required this.videoId,
-    required this.videoTitle,
+    this.videoTitle,
   });
+
+  final String videoId;
+  final String? videoTitle;
 
   @override
   ConsumerState<InsightsView> createState() => _InsightsViewState();
@@ -33,20 +38,17 @@ class InsightsView extends ConsumerStatefulWidget {
 class _InsightsViewState extends ConsumerState<InsightsView>
     with TickerProviderStateMixin {
   late TabController _tabController;
-  InsightsData? _insightsData;
+  CreatorInsightsSnapshot? _snapshot;
   _InsightsLoadState _loadState = _InsightsLoadState.loading;
   String? _errorMessage;
   ProfileVideo? _selectedVideo;
-  StreamSubscription<InsightsData?>? _insightsSubscription;
+  StreamSubscription<CreatorInsightsSnapshot?>? _insightsSubscription;
 
   @override
   void initState() {
     super.initState();
-    debugPrint(
-        '🔍 InsightsView initState called for videoId: ${widget.videoId}');
     _tabController = TabController(length: 3, vsync: this);
-    _startRealTimeInsights(widget.videoId);
-    _loadInsightsData();
+    _bootstrap(widget.videoId);
   }
 
   @override
@@ -56,117 +58,145 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     super.dispose();
   }
 
-  Future<void> _loadInsightsData() async {
-    final videoId = _selectedVideo?.id ?? widget.videoId;
-    final insightsService = ref.read(insightsFirebaseServiceProvider);
+  int _analyticsWindowDays() {
+    return ref.read(subscriptionSnapshotProvider).valueOrNull
+            ?.entitlements.analyticsWindowDays ??
+        7;
+  }
 
-    debugPrint('🔍 InsightsView: Loading insights for videoId: $videoId');
-
+  Future<void> _bootstrap(String videoId) async {
     if (mounted) {
       setState(() {
         _loadState = _InsightsLoadState.loading;
         _errorMessage = null;
       });
     }
-
     try {
-      // First, trigger aggregation to ensure we have the latest data
-      final aggregationService = VideoAnalyticsAggregationService();
-      await aggregationService.aggregateVideoAnalytics(videoId);
-
-      // Then fetch the aggregated insights
-      final insights = await insightsService.getVideoInsights(videoId);
-
-      if (mounted) {
-        setState(() {
-          if (insights != null) {
-            debugPrint(
-                '✅ InsightsView: Real data loaded - Views: ${insights.overview.totalViews}, Likes: ${insights.engagement.likes}');
-            _insightsData = insights;
-            _loadState = _InsightsLoadState.ready;
-          } else {
-            debugPrint(
-                '⚠️ InsightsView: No analytics data found for video: $videoId');
-            _insightsData = null;
-            _loadState = _InsightsLoadState.empty;
-          }
-        });
+      final InsightsFirebaseService service =
+          ref.read(insightsFirebaseServiceProvider);
+      await VideoAnalyticsAggregationService().aggregateVideoAnalytics(videoId);
+      final CreatorInsightsSnapshot? initial = await service.getCreatorInsights(
+        videoId: videoId,
+        analyticsWindowDays: _analyticsWindowDays(),
+      );
+      if (!mounted) {
+        return;
       }
+      if (initial == null) {
+        setState(() {
+          _loadState = _InsightsLoadState.empty;
+        });
+        return;
+      }
+      setState(() {
+        _snapshot = initial;
+        _selectedVideo = initial.video;
+        _loadState = _InsightsLoadState.ready;
+      });
+      _startRealtime(initial.video.id);
+    } on StateError catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loadState = _InsightsLoadState.accessDenied;
+        _errorMessage = e.message;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          debugPrint('❌ InsightsView: Error loading insights: $e');
-          _insightsData = null;
-          _errorMessage = UserFacingError.message(e);
-          _loadState = _InsightsLoadState.error;
-        });
+      if (!mounted) {
+        return;
       }
-      debugPrint('Error loading insights: $e');
+      setState(() {
+        _loadState = _InsightsLoadState.error;
+        _errorMessage = UserFacingError.message(e);
+      });
     }
+  }
+
+  void _startRealtime(String videoId) {
+    final InsightsFirebaseService service =
+        ref.read(insightsFirebaseServiceProvider);
+    _insightsSubscription?.cancel();
+    _insightsSubscription = service
+        .watchCreatorInsights(
+          videoId: videoId,
+          analyticsWindowDays: _analyticsWindowDays(),
+        )
+        .listen(
+      (CreatorInsightsSnapshot? value) {
+        if (!mounted || value == null) {
+          return;
+        }
+        setState(() {
+          _snapshot = value;
+          _selectedVideo = value.video;
+          _loadState = _InsightsLoadState.ready;
+          _errorMessage = null;
+        });
+      },
+      onError: (Object error) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _loadState = _InsightsLoadState.error;
+          _errorMessage = UserFacingError.message(error);
+        });
+      },
+    );
   }
 
   void _onVideoSelected(ProfileVideo video) {
     setState(() {
       _selectedVideo = video;
-      _insightsData = null;
+      _snapshot = null;
       _loadState = _InsightsLoadState.loading;
       _errorMessage = null;
     });
-
-    // Cancel previous subscription
     _insightsSubscription?.cancel();
-
-    _startRealTimeInsights(video.id);
-    _loadInsightsData();
+    unawaited(_bootstrap(video.id));
   }
 
-  void _startRealTimeInsights(String videoId) {
-    final insightsService = ref.read(insightsFirebaseServiceProvider);
-
-    _insightsSubscription =
-        insightsService.listenToVideoInsights(videoId).listen(
-      (insights) {
-        if (mounted && insights != null) {
-          setState(() {
-            _insightsData = insights;
-            _loadState = _InsightsLoadState.ready;
-            _errorMessage = null;
-          });
-        }
-      },
-      onError: (error) {
-        if (mounted) {
-          setState(() {
-            _loadState = _InsightsLoadState.error;
-            _errorMessage = UserFacingError.message(error);
-          });
-        }
-        debugPrint('Real-time insights error: $error');
-      },
-    );
+  Future<void> _refreshCurrent() async {
+    final String videoId = _selectedVideo?.id ?? widget.videoId;
+    await _bootstrap(videoId);
   }
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
+      backgroundColor: shell.scaffold,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: shell.pageGradient,
           ),
         ),
         child: SafeArea(
           child: Column(
-            children: [
-              _buildHeader(),
-              _buildVideoSelector(),
-              _buildTabBar(),
-              Expanded(
-                child: _buildBody(),
-              ),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _buildHeader(shell),
+              if (_loadState == _InsightsLoadState.ready &&
+                  _snapshot != null) ...<Widget>[
+                CreatorInsightsHero(
+                  video: _snapshot!.video,
+                  isLive: _snapshot!.isLive,
+                  lastUpdated: _snapshot!.lastUpdated,
+                  views: _snapshot!.insights.overview.totalViews,
+                  likes: _snapshot!.insights.engagement.likes,
+                  comments: _snapshot!.insights.overview.comments,
+                  shares: _snapshot!.insights.overview.shares,
+                  bookmarks: _snapshot!.insights.bookmarks,
+                ),
+                _buildVideoSelector(),
+              ],
+              if (_loadState == _InsightsLoadState.ready)
+                _buildTabBar(shell),
+              Expanded(child: _buildBody(shell)),
             ],
           ),
         ),
@@ -174,87 +204,53 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20),
+  Widget _buildHeader(StSupportShellStyle shell) {
+    final String title = widget.videoTitle ??
+        _selectedVideo?.caption ??
+        _snapshot?.video.caption ??
+        'Creator Insights';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
       child: Row(
-        children: [
-          // Back button
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.of(context).pop();
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  width: 1,
-                ),
-              ),
-              child: const Icon(
-                Icons.arrow_back_ios_new,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
+        children: <Widget>[
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: Icon(Icons.arrow_back, color: shell.onChrome),
           ),
-
-          const SizedBox(width: 16),
-
-          // Title
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Video Insights',
+              children: <Widget>[
+                Text(
+                  'Creator Insights',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                    color: shell.onChrome,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 4),
                 Text(
-                  widget.videoTitle,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: shell.muted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
           ),
-
-          // Share button
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              _shareInsights();
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  width: 1,
-                ),
-              ),
-              child: const Icon(
-                Icons.share_outlined,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
+          IconButton(
+            onPressed: _exportInsightsJson,
+            icon: Icon(Icons.download_rounded, color: shell.onChrome),
+            tooltip: 'Export JSON',
+          ),
+          IconButton(
+            onPressed: _shareInsights,
+            icon: Icon(Icons.ios_share_rounded, color: shell.onChrome),
+            tooltip: 'Share',
           ),
         ],
       ),
@@ -263,45 +259,34 @@ class _InsightsViewState extends ConsumerState<InsightsView>
 
   Widget _buildVideoSelector() {
     return VideoSelectorWidget(
-      selectedVideoId: widget.videoId,
+      selectedVideoId: _selectedVideo?.id ?? widget.videoId,
       onVideoSelected: _onVideoSelected,
     );
   }
 
-  Widget _buildTabBar() {
-    return Opacity(
-      opacity: _loadState == _InsightsLoadState.ready ? 1 : 0.65,
+  Widget _buildTabBar(StSupportShellStyle shell) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
-            width: 1,
-          ),
+          color: shell.surfaceCard,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: shell.surfaceCardBorder),
         ),
         child: TabBar(
           controller: _tabController,
           indicator: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(12),
+            color: shell.chipSelectedBg,
+            borderRadius: BorderRadius.circular(10),
           ),
           indicatorSize: TabBarIndicatorSize.tab,
           indicatorPadding: const EdgeInsets.all(4),
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white.withValues(alpha: 0.6),
-          labelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-          tabs: const [
+          labelColor: shell.chipSelectedFg,
+          unselectedLabelColor: shell.chipUnselectedFg,
+          dividerHeight: 0,
+          tabs: const <Widget>[
             Tab(text: 'Overview'),
-            Tab(text: 'Viewers'),
+            Tab(text: 'Audience'),
             Tab(text: 'Engagement'),
           ],
         ),
@@ -309,25 +294,61 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(StSupportShellStyle shell) {
     switch (_loadState) {
       case _InsightsLoadState.loading:
-        return _buildLoadingState();
+        return const Center(child: CircularProgressIndicator());
+      case _InsightsLoadState.accessDenied:
+        return _buildStatusCard(
+          shell: shell,
+          icon: Icons.lock_outline,
+          title: 'Access denied',
+          message: _errorMessage ??
+              'You can only view insights for your own videos.',
+          accentColor: Colors.redAccent,
+        );
       case _InsightsLoadState.error:
-        return _buildErrorState();
+        return _buildStatusCard(
+          shell: shell,
+          icon: Icons.cloud_off_outlined,
+          title: 'Insights unavailable',
+          message:
+              'We could not load analytics right now. Only verified data is shown.',
+          detail: _errorMessage,
+          accentColor: Colors.orange,
+          actionLabel: 'Try again',
+          onAction: _refreshCurrent,
+        );
       case _InsightsLoadState.empty:
-        return _isLikelyCollectingFreshData()
-            ? _buildDataCollectingState()
-            : _buildNoDataState();
+        return _buildStatusCard(
+          shell: shell,
+          icon: Icons.insights_outlined,
+          title: 'No insights yet',
+          message:
+              'Upload a video to start tracking views, engagement, and audience signals.',
+          accentColor: const Color(0xFF3D99F7),
+        );
       case _InsightsLoadState.ready:
-        final insights = _insightsData;
+        final InsightsData? insights = _snapshot?.insights;
         if (insights == null) {
-          return _buildNoDataState();
+          return _buildStatusCard(
+            shell: shell,
+            icon: Icons.insights_outlined,
+            title: 'No insights yet',
+            message: 'Analytics will appear once your video gets activity.',
+            accentColor: const Color(0xFF3D99F7),
+            actionLabel: 'Refresh',
+            onAction: _refreshCurrent,
+          );
         }
+        final int windowDays = _analyticsWindowDays();
         return TabBarView(
           controller: _tabController,
-          children: [
-            InsightsOverviewTab(insights: insights),
+          children: <Widget>[
+            InsightsOverviewTab(
+              insights: insights,
+              analyticsWindowDays: windowDays,
+            ),
             InsightsViewersTab(insights: insights),
             InsightsEngagementTab(insights: insights),
           ],
@@ -335,193 +356,8 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     }
   }
 
-  bool _isLikelyCollectingFreshData() {
-    final video = _selectedVideo;
-    if (video == null) {
-      return false;
-    }
-
-    final hoursSinceUpload = DateTime.now().difference(video.createdAt).inHours;
-    return hoursSinceUpload < 24;
-  }
-
-  Widget _buildDataCollectingState() {
-    final remainingHours = _selectedVideo != null
-        ? 24 - DateTime.now().difference(_selectedVideo!.createdAt).inHours
-        : 24;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(
-                Icons.analytics_outlined,
-                color: Colors.white70,
-                size: 64,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Collecting Data',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'We\'re gathering insights for your video. This process takes up to 24 hours after upload.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8),
-                fontSize: 16,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.orange.withValues(alpha: 0.5),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.schedule,
-                    color: Colors.orange,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    remainingHours > 1
-                        ? 'Estimated time remaining: ${remainingHours.toInt()} hours'
-                        : 'Estimated time remaining: ${(remainingHours * 60).toInt()} minutes',
-                    style: const TextStyle(
-                      color: Colors.orange,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'What we\'re tracking:',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTrackingItem('Views and watch time'),
-                  _buildTrackingItem('Engagement rates'),
-                  _buildTrackingItem('Audience demographics'),
-                  _buildTrackingItem('Traffic sources'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTrackingItem(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle_outline,
-            color: Colors.green.withValues(alpha: 0.8),
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoadingState() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Loading insights...',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNoDataState() {
-    return _buildStatusCard(
-      icon: Icons.insights_outlined,
-      title: 'No Insights Yet',
-      message:
-          'This video does not have enough processed analytics to show a breakdown yet. Check back after views and engagement start coming in.',
-      accentColor: const Color(0xFF40DCD1),
-      actionLabel: 'Refresh',
-      onAction: _loadInsightsData,
-    );
-  }
-
-  Widget _buildErrorState() {
-    return _buildStatusCard(
-      icon: Icons.cloud_off_outlined,
-      title: 'Insights Unavailable',
-      message:
-          'We couldn\'t load analytics for this video right now. No placeholder data is being shown.',
-      detail: _errorMessage,
-      accentColor: Colors.orange,
-      actionLabel: 'Try Again',
-      onAction: _loadInsightsData,
-    );
-  }
-
   Widget _buildStatusCard({
+    required StSupportShellStyle shell,
     required IconData icon,
     required String title,
     required String message,
@@ -532,83 +368,55 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   }) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(24),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 520),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.16),
-              width: 1,
-            ),
+            color: shell.surfaceCard,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: shell.surfaceCardBorder),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.16),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: accentColor, size: 32),
-              ),
-              const SizedBox(height: 20),
+            children: <Widget>[
+              Icon(icon, color: accentColor, size: 40),
+              const SizedBox(height: 16),
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                style: TextStyle(
+                  color: shell.onChrome,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 message,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.82),
-                  fontSize: 15,
-                  height: 1.45,
+                  color: shell.muted,
+                  fontSize: 14,
+                  height: 1.4,
                 ),
               ),
-              if (detail != null && detail.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    detail,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.72),
+              if (detail != null && detail.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 12),
+                SelectableText.rich(
+                  TextSpan(
+                    text: detail,
+                    style: const TextStyle(
+                      color: Colors.redAccent,
                       fontSize: 13,
                     ),
                   ),
+                  textAlign: TextAlign.center,
                 ),
               ],
-              if (actionLabel != null && onAction != null) ...[
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: onAction,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF1C135D),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
-                    ),
-                  ),
-                  icon: const Icon(Icons.refresh),
-                  label: Text(actionLabel),
-                ),
+              if (actionLabel != null && onAction != null) ...<Widget>[
+                const SizedBox(height: 16),
+                FilledButton(onPressed: onAction, child: Text(actionLabel)),
               ],
             ],
           ),
@@ -618,33 +426,53 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   }
 
   Future<void> _shareInsights() async {
-    final insights = _insightsData;
+    final InsightsData? insights = _snapshot?.insights;
     if (insights == null || _loadState != _InsightsLoadState.ready) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Insights can be shared once analytics are available.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
       return;
     }
-
-    final shareText = StringBuffer()
-      ..writeln('Video insights for "${widget.videoTitle}"')
+    final String caption = _snapshot?.video.caption ?? widget.videoTitle ?? '';
+    final double engagement = InsightsMetrics.engagementRatePercent(
+      views: insights.overview.totalViews,
+      likes: insights.engagement.likes,
+      comments: insights.overview.comments,
+      shares: insights.overview.shares,
+      bookmarks: insights.bookmarks,
+    );
+    final StringBuffer shareText = StringBuffer()
+      ..writeln('Creator insights for "$caption"')
       ..writeln()
       ..writeln('Views: ${insights.overview.totalViews}')
-      ..writeln('Watch time: ${insights.overview.totalWatchTime.inMinutes} min')
-      ..writeln(
-          'Retention: ${(insights.overview.retentionRate * 100).toStringAsFixed(1)}%')
       ..writeln('Likes: ${insights.engagement.likes}')
-      ..writeln('Comments: ${insights.engagement.comments}')
-      ..writeln('Shares: ${insights.engagement.shares}')
-      ..writeln('Unique viewers: ${insights.viewers.uniqueViewers}');
-
+      ..writeln('Comments: ${insights.overview.comments}')
+      ..writeln('Shares: ${insights.overview.shares}')
+      ..writeln('Saves: ${insights.bookmarks}')
+      ..writeln(
+        'Engagement: ${InsightsMetrics.formatPercent(engagement)}',
+      );
     await SharePlus.instance.share(
       ShareParams(
         text: shareText.toString(),
-        subject: 'Video insights for ${widget.videoTitle}',
+        subject: 'Creator insights',
+      ),
+    );
+  }
+
+  Future<void> _exportInsightsJson() async {
+    final CreatorInsightsSnapshot? snapshot = _snapshot;
+    if (snapshot == null || _loadState != _InsightsLoadState.ready) {
+      return;
+    }
+    final Map<String, dynamic> payload = <String, dynamic>{
+      'videoId': snapshot.insights.videoId,
+      'caption': snapshot.video.caption,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'stats': snapshot.insights.toJson(),
+    };
+    final String jsonText = const JsonEncoder.withIndent('  ').convert(payload);
+    await SharePlus.instance.share(
+      ShareParams(
+        text: jsonText,
+        subject: 'video-insights-${snapshot.insights.videoId}.json',
       ),
     );
   }

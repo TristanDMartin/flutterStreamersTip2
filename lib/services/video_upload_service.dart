@@ -338,6 +338,7 @@ class VideoUploadService {
           userId: userId,
           privacy: privacy,
           category: category,
+          caption: resolvedCaption,
         );
         unawaited(
           VideoPublishFinalizeService.instance.waitUntilDiscoverable(
@@ -345,6 +346,7 @@ class VideoUploadService {
             userId: userId,
             privacy: privacy,
             category: category,
+            caption: resolvedCaption,
           ),
         );
       } catch (e) {
@@ -491,8 +493,10 @@ class VideoUploadService {
     required String userId,
     required String privacy,
     required String category,
+    required String caption,
   }) async {
     try {
+      final String trimmedCaption = caption.trim();
       await _firestore
           .collection('users')
           .doc(userId)
@@ -505,6 +509,9 @@ class VideoUploadService {
         'visible': false,
         'privacy': privacy,
         'category': category,
+        if (trimmedCaption.isNotEmpty) 'caption': trimmedCaption,
+        if (trimmedCaption.isNotEmpty) 'description': trimmedCaption,
+        if (trimmedCaption.isNotEmpty) 'title': trimmedCaption,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -676,6 +683,8 @@ class VideoUploadService {
 
     final data = <String, dynamic>{
       'caption': caption,
+      if (caption.trim().isNotEmpty) 'description': caption,
+      if (caption.trim().isNotEmpty) 'title': caption,
       'hashtags': hashtags,
       'privacy': privacy, // legacy field — keep for backward compat
       'visibility': visibility, // spec §2 canonical field

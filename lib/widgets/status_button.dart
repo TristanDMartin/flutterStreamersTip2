@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
@@ -34,7 +35,7 @@ class StatusButton extends ConsumerWidget {
   Widget _buildStatusButton(
     BuildContext context,
     UserStatus status,
-    void Function(UserStatus) updateStatus,
+    Future<StatusUpdateOutcome> Function(UserStatus) updateStatus,
   ) {
     return GestureDetector(
       onTap: onTap ?? () => _showStatusPicker(context, status, updateStatus),
@@ -155,18 +156,56 @@ class StatusButton extends ConsumerWidget {
   void _showStatusPicker(
     BuildContext context,
     UserStatus currentStatus,
-    void Function(UserStatus) updateStatus,
+    Future<StatusUpdateOutcome> Function(UserStatus) updateStatus,
   ) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => StatusPickerModal(
-        currentStatus: currentStatus,
-        onStatusSelected: (status) {
-          updateStatus(status);
-          Navigator.pop(context);
-        },
-      ),
+      builder: (BuildContext sheetContext) {
+        final double bottomInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: StatusPickerModal(
+            currentStatus: currentStatus,
+            onStatusSelected: (UserStatus status) async {
+              StatusUpdateOutcome outcome;
+              try {
+                outcome = await updateStatus(status);
+              } on PlatformException catch (e) {
+                debugPrint(
+                  'STATUS_PLATFORM_EXCEPTION code=${e.code} '
+                  'message=${e.message}',
+                );
+                outcome = StatusUpdateOutcome.failed(
+                  userMessage: 'Status could not sync. Try again.',
+                  pendingRetry: true,
+                );
+              } catch (e) {
+                debugPrint('STATUS_UPDATE_FAILED ui_error=$e');
+                outcome = StatusUpdateOutcome.failed(
+                  userMessage: 'Status could not sync. Try again.',
+                  pendingRetry: true,
+                );
+              }
+              if (!outcome.success && sheetContext.mounted) {
+                ScaffoldMessenger.of(sheetContext).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      outcome.userMessage ??
+                          'Status could not sync. Try again.',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+              if (sheetContext.mounted) {
+                Navigator.pop(sheetContext);
+              }
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -178,7 +217,7 @@ class StatusButton extends ConsumerWidget {
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple
@@ -198,6 +237,7 @@ class StatusPickerModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -211,57 +251,57 @@ class StatusPickerModal extends StatelessWidget {
         ),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Row(
-                children: [
-                  const Text(
-                    'Set Status',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(bottom: bottomInset + 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Set Status',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.white,
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-
-            // Status options
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Column(
-                children: UserStatus.values.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final status = entry.value;
-                  final isSelected = status == currentStatus;
-                  final isLast = index == UserStatus.values.length - 1;
-                  return _buildStatusOption(
-                    context,
-                    status,
-                    isSelected,
-                    isLast,
-                    () => onStatusSelected(status),
-                  );
-                }).toList(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Column(
+                  children: UserStatus.values.asMap().entries.map((entry) {
+                    final int index = entry.key;
+                    final UserStatus status = entry.value;
+                    final bool isSelected = status == currentStatus;
+                    final bool isLast =
+                        index == UserStatus.values.length - 1;
+                    return _buildStatusOption(
+                      context,
+                      status,
+                      isSelected,
+                      isLast,
+                      () => onStatusSelected(status),
+                    );
+                  }).toList(),
+                ),
               ),
-            ),
-
-            // Extra bottom padding to prevent cutoff on devices with home indicators
-            const SizedBox(height: 100),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -339,7 +379,7 @@ class StatusPickerModal extends StatelessWidget {
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple
@@ -354,8 +394,8 @@ class StatusPickerModal extends StatelessWidget {
         return 'Appears offline to others';
       case UserStatus.busy:
         return 'Available but may be slow to respond';
-      case UserStatus.dnd:
-        return 'Do not disturb - no notifications';
+      case UserStatus.away:
+        return 'Away - may be slow to respond';
       case UserStatus.streaming:
         return 'Currently live streaming';
     }

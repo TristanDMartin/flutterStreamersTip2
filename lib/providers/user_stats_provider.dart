@@ -6,9 +6,19 @@ import '../models/user_stats.dart';
 final StreamProviderFamily<UserStats, String> watchUserStatsProvider =
     StreamProvider.family<UserStats, String>((ref, userId) {
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
-  return firestore.collection('users').doc(userId).snapshots().map((snapshot) {
-    final Map<String, Object?> data =
-        snapshot.data() ?? const <String, Object?>{};
-    return UserStats.fromUserDocData(data);
-  });
+  return firestore
+      .collection('users')
+      .doc(userId)
+      .snapshots()
+      .map((snapshot) {
+        final Map<String, Object?> data =
+            snapshot.data() ?? const <String, Object?>{};
+        return UserStats.fromUserDocData(data);
+      })
+      .distinct((UserStats previous, UserStats next) {
+        return previous.postsCount == next.postsCount &&
+            previous.followersCount == next.followersCount &&
+            previous.followingCount == next.followingCount &&
+            previous.connectionsCount == next.connectionsCount;
+      });
 });

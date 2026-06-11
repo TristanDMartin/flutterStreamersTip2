@@ -1,10 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../services/admin_service.dart';
 import '../admin_backend_service.dart';
 import '../admin_permissions.dart';
+import '../models/admin_overview_metric.dart';
+import 'admin_creator_intelligence_view.dart';
+import 'admin_overview_detail_view.dart';
 import 'admin_audit_log_view.dart';
 import 'admin_reports_view.dart';
 import 'admin_uploads_view.dart';
@@ -26,13 +31,16 @@ class _AdminControlCenterViewState extends State<AdminControlCenterView>
   List<Widget> _tabBodies = [];
   bool _loading = true;
   AdminPermissions? _perms;
+  int _overviewEpoch = 0;
 
   (List<Tab>, List<Widget>) _makeTabs(AdminPermissions perms) {
     final List<Tab> tabs = [];
     final List<Widget> bodies = [];
     if (perms.viewAdminStats) {
       tabs.add(const Tab(text: 'Overview'));
-      bodies.add(const _OverviewPane());
+      bodies.add(_OverviewPane(key: ValueKey<int>(_overviewEpoch)));
+      tabs.add(const Tab(text: 'Analytics'));
+      bodies.add(const AdminCreatorIntelligenceView());
     }
     if (perms.viewReports) {
       tabs.add(const Tab(text: 'Reports'));
@@ -52,7 +60,7 @@ class _AdminControlCenterViewState extends State<AdminControlCenterView>
     }
     if (tabs.isEmpty) {
       tabs.add(const Tab(text: 'Overview'));
-      bodies.add(const _OverviewPane());
+      bodies.add(_OverviewPane(key: ValueKey<int>(_overviewEpoch)));
     }
     return (tabs, bodies);
   }
@@ -64,21 +72,53 @@ class _AdminControlCenterViewState extends State<AdminControlCenterView>
   }
 
   Future<void> _bootstrap() async {
-    await AdminService.instance.refreshIdTokenForAdminSession();
-    final bool ok = await AdminService.instance.hasFirestoreRulesAdminAccess();
+    final User? authUser = FirebaseAuth.instance.currentUser;
+    debugPrint('ADMIN_BUTTON_TAPPED source=control_center_bootstrap');
+    Map<String, dynamic>? userData;
+    if (authUser != null) {
+      final DocumentSnapshot<Map<String, dynamic>> doc = await FirebaseFirestore
+          .instance
+          .collection('users')
+          .doc(authUser.uid)
+          .get();
+      userData = doc.data();
+      if (userData != null) {
+        userData['id'] = authUser.uid;
+        userData['uid'] = authUser.uid;
+        if (authUser.email != null) {
+          userData['email'] = authUser.email;
+        }
+      }
+    }
+    final bool ok = await AdminService.instance.resolveAdminAccess(
+      cachedUserMap: userData,
+    );
     if (!mounted) {
       return;
     }
     if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Admin access required'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       Navigator.pop(context);
       return;
     }
-    final DocumentSnapshot<Map<String, dynamic>> doc = await FirebaseFirestore
-        .instance
-        .collection('users')
-        .doc(FirebaseAuth.instance.currentUser!.uid)
-        .get();
-    final AdminPermissions perms = AdminPermissions.fromUserDoc(doc.data());
+    await AdminService.instance.ensureOwnerAdminActivation(
+      cachedUserMap: userData,
+    );
+    await AdminService.instance.refreshIdTokenForAdminSession();
+    if (authUser != null) {
+      final DocumentSnapshot<Map<String, dynamic>> doc = await FirebaseFirestore
+          .instance
+          .collection('users')
+          .doc(authUser.uid)
+          .get();
+      userData = doc.data();
+    }
+    final AdminPermissions perms = AdminPermissions.fromUserDoc(userData);
     final (List<Tab> tabs, List<Widget> bodies) = _makeTabs(perms);
     if (!mounted) {
       return;
@@ -98,6 +138,7 @@ class _AdminControlCenterViewState extends State<AdminControlCenterView>
     if (!mounted || _perms == null) {
       return;
     }
+    _overviewEpoch++;
     final (List<Tab> tabs, List<Widget> bodies) = _makeTabs(_perms!);
     setState(() {
       _tabs?.dispose();
@@ -145,21 +186,42 @@ class _AdminControlCenterViewState extends State<AdminControlCenterView>
 }
 
 class _OverviewPane extends StatefulWidget {
-  const _OverviewPane();
+  const _OverviewPane({super.key});
 
   @override
   State<_OverviewPane> createState() => _OverviewPaneState();
 }
 
 class _OverviewPaneState extends State<_OverviewPane> {
-  late Future<Map<String, dynamic>> _statsFuture =
-      AdminBackendService.dashboardStats();
+  Future<Map<String, dynamic>>? _statsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
 
   Future<void> _reload() async {
     final Future<Map<String, dynamic>> next =
         AdminBackendService.dashboardStats();
-    setState(() => _statsFuture = next);
+    setState(() {
+      _statsFuture = next;
+    });
     await next;
+  }
+
+  String _statsErrorMessage(Object err) {
+    if (err is FirebaseFunctionsException && err.code == 'permission-denied') {
+      return 'Admin dashboard stats are unavailable for this session. '
+          'Tap the key icon to refresh, or deploy the latest admin '
+          'Cloud Functions.\n\n$err';
+    }
+    if (err is PlatformException &&
+        (err.message ?? '').toLowerCase().contains('permission-denied')) {
+      return 'Admin dashboard stats were denied by the server. '
+          'Pull to refresh after tapping the key icon.\n\n$err';
+    }
+    return 'Stats error: $err';
   }
 
   @override
@@ -169,17 +231,17 @@ class _OverviewPaneState extends State<_OverviewPane> {
       child: FutureBuilder<Map<String, dynamic>>(
         future: _statsFuture,
         builder: (context, snap) {
+          if (_statsFuture == null || snap.connectionState == ConnectionState.waiting) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 120),
+                Center(child: CircularProgressIndicator()),
+              ],
+            );
+          }
           if (snap.hasError) {
-            final Object err = snap.error!;
-            String message = 'Stats error: $err';
-            if (err is FirebaseException &&
-                err.plugin == 'firebase_functions' &&
-                err.code == 'permission-denied') {
-              message =
-                  'Admin access is not active for this session yet. Tap the '
-                  'key icon to refresh your session, then try again.\n\n'
-                  'If this keeps happening, contact support.';
-            }
+            final String message = _statsErrorMessage(snap.error!);
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
@@ -195,16 +257,7 @@ class _OverviewPaneState extends State<_OverviewPane> {
               ],
             );
           }
-          if (!snap.hasData) {
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: const [
-                SizedBox(height: 120),
-                Center(child: CircularProgressIndicator()),
-              ],
-            );
-          }
-          final Map<String, dynamic> d = snap.data!;
+          final Map<String, dynamic> d = snap.data ?? <String, dynamic>{};
           int g(String k) {
             final Object? v = d[k];
             if (v is int) {
@@ -216,30 +269,51 @@ class _OverviewPaneState extends State<_OverviewPane> {
             return 0;
           }
 
-          final List<(String, int)> tiles = [
-            ('Open reports', g('openReports')),
-            ('Flagged videos', g('flaggedVideos')),
-            ('Failed uploads', g('failedUploads')),
-            ('Banned users', g('bannedUsers')),
-            ('New users today', g('newUsersToday')),
-            ('Total uploads', g('totalUploads')),
-            ('Processing videos', g('processingVideos')),
+          final List<(AdminOverviewMetric, int)> tiles =
+              <(AdminOverviewMetric, int)>[
+            (AdminOverviewMetric.openReports, g('openReports')),
+            (AdminOverviewMetric.flaggedVideos, g('flaggedVideos')),
+            (AdminOverviewMetric.failedUploads, g('failedUploads')),
+            (AdminOverviewMetric.bannedUsers, g('bannedUsers')),
+            (AdminOverviewMetric.newUsersToday, g('newUsersToday')),
+            (AdminOverviewMetric.totalUploads, g('totalUploads')),
+            (AdminOverviewMetric.processingVideos, g('processingVideos')),
           ];
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
             children: tiles
                 .map(
-                  ((String, int) e) => Card(
+                  ((AdminOverviewMetric, int) e) => Card(
                     child: ListTile(
-                      title: Text(e.$1),
-                      trailing: Text(
-                        '${e.$2}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                      title: Text(e.$1.title),
+                      subtitle: Text(e.$1.description),
+                      isThreeLine: true,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${e.$2}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.chevron_right),
+                        ],
                       ),
+                      onTap: () {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => AdminOverviewDetailView(
+                              metric: e.$1,
+                              summaryCount: e.$2,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 )

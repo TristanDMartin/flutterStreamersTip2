@@ -19,6 +19,7 @@ import '../routing/app_routes.dart';
 import '../widgets/activity_row_view.dart';
 import '../widgets/threads/thread_detail_screen.dart';
 import '../models/activity_notification.dart';
+import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart';
 import '../core/theme/support_shell_style.dart';
 
@@ -947,6 +948,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     AppNavigator.openStreamerCard(
       context,
       userId: user.id,
+      initialCreator: CreatorProfileSnapshot.fromUser(user),
       currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
       onDismiss: () => Navigator.of(context).pop(),
     );

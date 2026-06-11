@@ -25,6 +25,8 @@ class PushNotificationService {
   StreamSubscription<String>? _tokenRefreshSub;
 
   String? _fcmToken;
+  Future<void>? _initializationInFlight;
+  bool _isInitialized = false;
 
   static const Duration _initTimeout = Duration(seconds: 25);
   static const Duration _tokenTimeout = Duration(seconds: 12);
@@ -32,6 +34,23 @@ class PushNotificationService {
 
   /// Initialize push notification service
   Future<void> initialize() async {
+    if (_isInitialized) {
+      return;
+    }
+    final Future<void>? inFlight = _initializationInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final Future<void> initialization = _initializeOnce();
+    _initializationInFlight = initialization;
+    return initialization.whenComplete(() {
+      if (identical(_initializationInFlight, initialization)) {
+        _initializationInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _initializeOnce() async {
     try {
       await _initializeImpl().timeout(
         _initTimeout,
@@ -52,41 +71,28 @@ class PushNotificationService {
     LoggingService.instance.debug('🔔 Initializing push notification service',
         tag: 'PushNotificationService');
 
-    await _requestPermission();
-
     await _initializeLocalNotifications();
 
-    await _getFCMToken();
-
     await _setupMessageHandlers();
+
+    final NotificationSettings settings =
+        await _messaging.getNotificationSettings();
+    if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional) {
+      await _getFCMToken();
+    } else {
+      LoggingService.instance.debug(
+        'Push permission not granted; token registration deferred',
+        tag: 'PushNotificationService',
+      );
+    }
 
     _tokenRefreshSub?.cancel();
     _tokenRefreshSub = _messaging.onTokenRefresh.listen(_onTokenRefresh);
 
     LoggingService.instance.debug('✅ Push notification service initialized',
         tag: 'PushNotificationService');
-  }
-
-  /// Request notification permission
-  Future<void> _requestPermission() async {
-    try {
-      final settings = await _messaging.requestPermission(
-        alert: true,
-        announcement: false,
-        badge: true,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-        sound: true,
-      );
-
-      LoggingService.instance.debug(
-          'Notification permission status: ${settings.authorizationStatus}',
-          tag: 'PushNotificationService');
-    } catch (e) {
-      LoggingService.instance.error('Error requesting notification permission',
-          tag: 'PushNotificationService', error: e);
-    }
+    _isInitialized = true;
   }
 
   /// Initialize local notifications
@@ -95,9 +101,9 @@ class PushNotificationService {
       const androidSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
       const iosSettings = DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
       );
 
       const initSettings = InitializationSettings(
@@ -148,8 +154,10 @@ class PushNotificationService {
         },
       );
       if (_fcmToken != null) {
-        LoggingService.instance
-            .debug('FCM Token: $_fcmToken', tag: 'PushNotificationService');
+        LoggingService.instance.debug(
+          'FCM token obtained',
+          tag: 'PushNotificationService',
+        );
         await _saveTokenToFirestore(_fcmToken!).timeout(
           _firestoreSaveTimeout,
           onTimeout: () {
@@ -595,8 +603,10 @@ class PushNotificationService {
 
   /// Handle token refresh
   void _onTokenRefresh(String token) {
-    LoggingService.instance
-        .debug('FCM token refreshed: $token', tag: 'PushNotificationService');
+    LoggingService.instance.debug(
+      'FCM token refreshed',
+      tag: 'PushNotificationService',
+    );
     _fcmToken = token;
     _saveTokenToFirestore(token);
   }

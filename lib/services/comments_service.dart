@@ -9,6 +9,7 @@ import 'event_trigger_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
 import 'progression_service.dart';
+import 'creator_intelligence_analytics_service.dart';
 
 class VideoCommentsSnapshot {
   final List<Comment> comments;
@@ -455,6 +456,12 @@ class CommentsService {
         ProgressionTaskIds.firstCommentMade,
         source: 'comments',
       ));
+      unawaited(
+        CreatorIntelligenceAnalyticsService().trackCommentCreated(
+          videoId: videoId,
+          commentId: commentWithId.id,
+        ),
+      );
 
       return commentWithId;
     } catch (e) {

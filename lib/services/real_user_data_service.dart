@@ -195,21 +195,14 @@ class RealUserDataService {
           '🔥 Loading trending creators based on video performance...',
           tag: 'RealUserDataService');
 
-      // Step 1: Get recent videos with high engagement (last 7 days)
       final now = DateTime.now();
       final sevenDaysAgo = now.subtract(const Duration(days: 7));
-
-      final trendingVideosSnapshot = await _firestore
-          .collection('videos')
-          .where('createdAt', isGreaterThan: Timestamp.fromDate(sevenDaysAgo))
-          .where('isDraft', isEqualTo: false)
-          .orderBy('createdAt', descending: true)
-          .limit(100) // Get more videos to analyze
-          .get();
+      final QuerySnapshot<Map<String, dynamic>> trendingVideosSnapshot =
+          await _loadTrendingCandidateVideos(sevenDaysAgo);
 
       if (trendingVideosSnapshot.docs.isEmpty) {
         LoggingService.instance.debug(
-            '⚠️ No recent videos found, falling back to active users',
+            '⚠️ No feed-eligible videos found, falling back to active users',
             tag: 'RealUserDataService');
         return await _getFallbackTrendingCreators(limit);
       }
@@ -219,11 +212,11 @@ class RealUserDataService {
 
       for (final videoDoc in trendingVideosSnapshot.docs) {
         final videoData = videoDoc.data();
-        final creatorId = videoData['userId'] ??
-            videoData['creatorId'] ??
-            videoData['creator_id'];
-
-        if (creatorId == null) continue;
+        if (_isDraftVideo(videoData)) {
+          continue;
+        }
+        final String? creatorId = getOwnerId(videoData);
+        if (creatorId == null || creatorId.isEmpty) continue;
 
         // Calculate video trending score
         final videoScore = _calculateVideoTrendingScore(videoData, now);
@@ -257,11 +250,6 @@ class RealUserDataService {
             if (!creatorDoc.exists) return null;
 
             final creatorData = creatorDoc.data()!;
-
-            // Only include active creators
-            if ((creatorData['onlineStatus'] ?? 'offline') != 'online') {
-              return null;
-            }
 
             userDataByCreatorId[score.creatorId] = creatorData;
             return TrendingCreator(
@@ -301,6 +289,47 @@ class RealUserDataService {
           tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
       return await _getFallbackTrendingCreators(limit);
     }
+  }
+
+  bool _isDraftVideo(Map<String, dynamic> data) {
+    if (data['isDraft'] == true || data['draft'] == true) {
+      return true;
+    }
+    final String status = (data['status'] as String? ?? '').toLowerCase();
+    return status == 'draft';
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _loadTrendingCandidateVideos(
+    DateTime sevenDaysAgo,
+  ) async {
+    try {
+      final QuerySnapshot<Map<String, dynamic>> recentSnapshot = await _firestore
+          .collection('videos')
+          .where(
+            'createdAt',
+            isGreaterThan: Timestamp.fromDate(sevenDaysAgo),
+          )
+          .orderBy('createdAt', descending: true)
+          .limit(100)
+          .get();
+      if (recentSnapshot.docs.isNotEmpty) {
+        return recentSnapshot;
+      }
+    } catch (e) {
+      LoggingService.instance.warning(
+        'Recent trending video query failed, using feed-ready fallback: $e',
+        tag: 'RealUserDataService',
+      );
+    }
+    return _firestore
+        .collection('videos')
+        .where(
+          'status',
+          whereIn: const <String>['ready', 'active', 'published'],
+        )
+        .orderBy('createdAt', descending: true)
+        .limit(200)
+        .get();
   }
 
   /// Calculate trending score for a video based on engagement and recency

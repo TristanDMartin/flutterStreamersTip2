@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 
+import '../features/billing/entitlement_sentinel.dart';
+import '../features/billing/tier_display_names.dart';
+
 class VideoWatermarkService {
   static const String starterTier = 'starter';
   static const String proTier = 'pro';
@@ -12,6 +15,14 @@ class VideoWatermarkService {
   factory VideoWatermarkService() => _instance;
   VideoWatermarkService._internal();
 
+  int maxPlatformsForLimit(int maxPlatforms) {
+    if (isEntitlementUnlimited(maxPlatforms)) {
+      return 999;
+    }
+    return maxPlatforms < 1 ? 1 : maxPlatforms;
+  }
+
+  @Deprecated('Use maxPlatformsForLimit from /api/user/entitlements')
   int maxPlatformsForTier(String tier) {
     switch (tier.toLowerCase()) {
       case proTier:
@@ -28,17 +39,7 @@ class VideoWatermarkService {
     return tier.toLowerCase() == starterTier;
   }
 
-  String planLabel(String tier) {
-    switch (tier.toLowerCase()) {
-      case proTier:
-        return 'Pro';
-      case studioTier:
-        return 'Studio';
-      case starterTier:
-      default:
-        return 'Free';
-    }
-  }
+  String planLabel(String tier) => tierDisplayNameForApi(tier);
 
   /// Adds watermark to video file when cross-platform sharing is enabled
   Future<File?> addWatermarkToVideo({

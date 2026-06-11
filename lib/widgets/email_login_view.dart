@@ -258,39 +258,43 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 28),
-            _buildFieldLabel("Email or Username"),
-            const SizedBox(height: 8),
-            _buildTextField(
-              qaKey: QaKeys.authLoginEmailOrUsername,
-              controller: _emailController,
-              hint: "yourname or you@example.com",
-              icon: Icons.person_outline_rounded,
-              focusNode: _emailFocusNode,
-              keyboardType: TextInputType.emailAddress,
-              textInputAction: TextInputAction.next,
-              autofillHints: const [
-                AutofillHints.username,
-                AutofillHints.email
-              ],
-              validator: _validateEmailOrUsername,
-              onEditingComplete: () {
-                _passwordFocusNode.requestFocus();
-              },
-            ),
-            const SizedBox(height: 16),
-            _buildFieldLabel("Password"),
-            const SizedBox(height: 8),
-            _buildTextField(
-              qaKey: QaKeys.authLoginPassword,
-              controller: _passwordController,
-              hint: "Enter your password",
-              icon: Icons.lock_outline_rounded,
-              focusNode: _passwordFocusNode,
-              isPassword: true,
-              textInputAction: TextInputAction.done,
-              autofillHints: const [AutofillHints.password],
-              validator: _validatePassword,
-              onSubmitted: (_) => _handleSignIn(),
+            AutofillGroup(
+              child: Column(
+                children: [
+                  _buildTextField(
+                    qaKey: QaKeys.authLoginEmailOrUsername,
+                    controller: _emailController,
+                    label: "Email or Username",
+                    hint: "yourname or you@example.com",
+                    icon: Icons.person_outline_rounded,
+                    focusNode: _emailFocusNode,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [
+                      AutofillHints.username,
+                      AutofillHints.email,
+                    ],
+                    validator: _validateEmailOrUsername,
+                    onEditingComplete: () {
+                      _passwordFocusNode.requestFocus();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    qaKey: QaKeys.authLoginPassword,
+                    controller: _passwordController,
+                    label: "Password",
+                    hint: "Enter your password",
+                    icon: Icons.lock_outline_rounded,
+                    focusNode: _passwordFocusNode,
+                    isPassword: true,
+                    textInputAction: TextInputAction.done,
+                    autofillHints: const [AutofillHints.password],
+                    validator: _validatePassword,
+                    onSubmitted: (_) => _handleSignIn(),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 28),
             _buildSignInButton(),
@@ -302,25 +306,10 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     );
   }
 
-  Widget _buildFieldLabel(String text) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: scheme.onSurfaceVariant,
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
-  }
-
   Widget _buildTextField({
     Key? qaKey,
     required TextEditingController controller,
+    required String label,
     required String hint,
     required IconData icon,
     FocusNode? focusNode,
@@ -338,12 +327,21 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       alpha: isDark ? 0.55 : 0.75,
     );
     final Color border = scheme.outline.withValues(alpha: 0.4);
+    final Color focusedBorder = scheme.primary.withValues(alpha: 0.7);
     final Color iconFg = scheme.onSurface.withValues(alpha: 0.65);
-    return Container(
+    final BorderRadius borderRadius = BorderRadius.circular(18);
+    InputBorder outlineBorder(
+      Color color, {
+      double width = 1,
+    }) {
+      return OutlineInputBorder(
+        borderRadius: borderRadius,
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border, width: 1),
+        borderRadius: borderRadius,
         boxShadow: [
           BoxShadow(
             color: scheme.shadow.withValues(alpha: isDark ? 0.35 : 0.08),
@@ -367,6 +365,19 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         onFieldSubmitted: onSubmitted,
         style: TextStyle(color: scheme.onSurface),
         decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: scheme.onSurfaceVariant,
+            letterSpacing: 0.2,
+          ),
+          floatingLabelStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: scheme.primary,
+            letterSpacing: 0.2,
+          ),
           hintText: hint,
           hintStyle: TextStyle(
             color: scheme.onSurfaceVariant.withValues(alpha: 0.85),
@@ -385,7 +396,13 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                   },
                 )
               : null,
-          border: InputBorder.none,
+          filled: true,
+          fillColor: fill,
+          border: outlineBorder(border),
+          enabledBorder: outlineBorder(border),
+          focusedBorder: outlineBorder(focusedBorder, width: 1.5),
+          errorBorder: outlineBorder(scheme.error),
+          focusedErrorBorder: outlineBorder(scheme.error, width: 1.5),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 18,
             vertical: 18,
@@ -399,7 +416,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     final authService = ref.watch(robustAuthServiceProvider);
     final isEnabled = _emailController.text.isNotEmpty &&
         _passwordController.text.isNotEmpty &&
-        !authService.shouldShowLoading;
+        !authService.isAuthSubmitting;
 
     return Opacity(
       opacity: isEnabled ? 1.0 : 0.5,
@@ -525,13 +542,13 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       final bool isEmail = AuthLoginInput.isEmailFormat(emailOrUsername);
       late final AuthRequestResult result;
       if (isEmail) {
-        debugPrint("🔐 Signing in with email: $emailOrUsername");
+        debugPrint('AUTH_TRANSITION email sign_in_requested');
         result = await authService.debouncedSignInWithEmail(
           emailOrUsername,
           password,
         );
       } else {
-        debugPrint("🔐 Signing in with username: $emailOrUsername");
+        debugPrint('AUTH_TRANSITION username sign_in_requested');
         result = await authService.debouncedSignInWithUsername(
           emailOrUsername,
           password,
@@ -539,7 +556,9 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       }
       if (!result.success && mounted) {
         setState(() {
-          _alertMessage = _getUserFriendlyErrorMessage(result.error ?? '');
+          _alertMessage = result.error?.isNotEmpty == true
+              ? result.error!
+              : _getUserFriendlyErrorMessage('');
           _showAlert = true;
         });
       } else if (result.success && result.requires2FA && mounted) {
@@ -675,22 +694,33 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   String _getUserFriendlyErrorMessage(String error) {
-    if (error.contains('user-not-found') ||
-        error.contains('Username not found') ||
-        error.contains('No account found')) {
-      return 'No account found with this email or username.';
-    } else if (error.contains('wrong-password') ||
-        error.contains('invalid-credential')) {
-      return 'Incorrect password';
-    } else if (error.contains('invalid-email')) {
-      return 'Invalid email format';
-    } else if (error.contains('too-many-requests')) {
-      return 'Too many attempts. Please try again later';
-    } else if (error.contains('network')) {
-      return 'Network error. Please check your connection';
-    } else {
-      return 'Sign-in failed. Please check your credentials';
+    if (error.contains('No account found with that username')) {
+      return 'No account found with that username.';
     }
+    if (error.contains('user-not-found') ||
+        error.contains('No account found with this email')) {
+      return 'No account found with this email.';
+    }
+    if (error.contains('wrong-password') ||
+        error.contains('invalid-credential') ||
+        error.contains('Incorrect password')) {
+      return 'Incorrect password.';
+    }
+    if (error.contains('invalid-email') ||
+        error.contains('Invalid email address')) {
+      return 'Invalid email address.';
+    }
+    if (error.contains('user-disabled') ||
+        error.contains('account has been disabled')) {
+      return 'This account has been disabled.';
+    }
+    if (error.contains('too-many-requests')) {
+      return 'Too many attempts. Please try again later.';
+    }
+    if (error.contains('network')) {
+      return 'Network error. Please check your connection.';
+    }
+    return 'Sign-in failed. Please check your credentials.';
   }
 }
 

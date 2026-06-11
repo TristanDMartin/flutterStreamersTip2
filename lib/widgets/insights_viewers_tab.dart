@@ -13,6 +13,9 @@ class InsightsViewersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!insights.hasAudienceBreakdown) {
+      return _buildAudiencePendingState(context);
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -857,6 +860,55 @@ class InsightsViewersTab extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAudiencePendingState(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(
+              Icons.groups_outlined,
+              size: 48,
+              color: Colors.white.withValues(alpha: 0.55),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Audience breakdown pending',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Demographics and location data appear once enough verified '
+              'viewership is collected. Core stats above stay live from your video.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 14,
+                height: 1.45,
+              ),
+            ),
+            if (insights.viewers.uniqueViewers > 0) ...<Widget>[
+              const SizedBox(height: 14),
+              Text(
+                'Unique viewers tracked: ${insights.viewers.uniqueViewers}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

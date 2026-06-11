@@ -3,6 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../utils/avatar_url_resolver.dart';
+import '../utils/interaction_diagnostics.dart';
+import '../utils/like_interaction_boundary.dart';
+import '../utils/profile_user_doc_fields.dart';
+import '../utils/user_profile_firestore.dart';
 
 /// Service to handle profile updates across all views
 /// This ensures that ProfileView, ProfileBackView, StreamerCardView, and StreamerCardBackView
@@ -18,10 +22,8 @@ class ProfileUpdateService extends ChangeNotifier {
   bool _isLoading = false;
   DateTime? _lastNotificationTime;
 
-  // Real-time Firestore listener for avatar and profile updates
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
 
-  // Listeners for different views
   final List<VoidCallback> _profileViewListeners = [];
   final List<VoidCallback> _profileBackViewListeners = [];
   final List<VoidCallback> _streamerCardViewListeners = [];
@@ -31,7 +33,6 @@ class ProfileUpdateService extends ChangeNotifier {
   Map<String, dynamic>? get userData => _userData;
   bool get isDataLoaded => _userData != null;
 
-  /// Initialize the service with current user
   Future<void> initialize() async {
     final firebase_auth.User? user =
         firebase_auth.FirebaseAuth.instance.currentUser;
@@ -52,11 +53,8 @@ class ProfileUpdateService extends ChangeNotifier {
     }
   }
 
-  /// Load user data from Firestore and set up real-time listener
   Future<void> _loadUserData() async {
     if (_currentUser == null) return;
-
-    // Prevent infinite loops by checking if we're already loading
     if (_isLoading) {
       debugPrint(
           "🔍 ProfileUpdateService: Already loading user data, skipping...");
@@ -68,7 +66,6 @@ class ProfileUpdateService extends ChangeNotifier {
       debugPrint(
           "🔍 ProfileUpdateService: Loading user data for UID: ${_currentUser!.uid}");
 
-      // Load initial data
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
@@ -79,10 +76,9 @@ class ProfileUpdateService extends ChangeNotifier {
         final newData = doc.data();
         _userData = newData;
         debugPrint("🔍 ProfileUpdateService: Loaded initial user data");
-        notifyAllListeners();
+        _notifyAllChannels(reason: 'initial_load');
       }
 
-      // Set up real-time listener for avatar and profile updates (from website or app)
       _userDataSubscription?.cancel();
       _userDataSubscription = FirebaseFirestore.instance
           .collection('users')
@@ -91,29 +87,7 @@ class ProfileUpdateService extends ChangeNotifier {
           .listen(
         (snapshot) {
           if (snapshot.exists && snapshot.data() != null) {
-            final newData = snapshot.data()!;
-
-            // Check if avatar URL changed
-            final newAvatarURL = resolveAvatarUrl(newData);
-            final currentAvatarURL = resolveAvatarUrl(_userData);
-
-            // Only notify if data has actually changed
-            if (_userData == null || !_mapsEqual(_userData!, newData)) {
-              _userData = newData;
-              debugPrint(
-                  "🔄 ProfileUpdateService: User data updated from Firestore (real-time)");
-              debugPrint("   Avatar URL: ${newAvatarURL ?? 'null'}");
-              notifyAllListeners();
-            } else if (newAvatarURL != currentAvatarURL &&
-                newAvatarURL != null) {
-              // Avatar specifically changed, update and notify
-              _userData = newData;
-              debugPrint(
-                  "🔄 ProfileUpdateService: Avatar updated from Firestore (real-time)");
-              debugPrint("   Old: ${currentAvatarURL ?? 'null'}");
-              debugPrint("   New: $newAvatarURL");
-              notifyAllListeners();
-            }
+            _handleUserDocumentSnapshot(snapshot.data()!);
           }
         },
         onError: (error) {
@@ -130,7 +104,58 @@ class ProfileUpdateService extends ChangeNotifier {
     }
   }
 
-  /// Update user data and notify all views
+  void _handleUserDocumentSnapshot(Map<String, dynamic> newData) {
+    final Map<String, dynamic>? before = _userData;
+    final String? newAvatarURL = resolveAvatarUrl(newData);
+    final String? currentAvatarURL = resolveAvatarUrl(before);
+    final bool avatarUrlChanged = newAvatarURL != currentAvatarURL &&
+        (newAvatarURL != null || currentAvatarURL != null);
+
+    final List<String> changedFields = ProfileUserDocFields.changedRelevantFields(
+      before: before,
+      after: newData,
+    );
+
+    InteractionDiagnostics.logUserDocChanged(
+      changedFields: changedFields,
+      notifiesProfile: ProfileUserDocFields.affectsProfileShell(changedFields) ||
+          avatarUrlChanged,
+    );
+
+    if (ProfileUserDocFields.hasOnlyIgnoredChanges(
+          before: before,
+          after: newData,
+        ) &&
+        !avatarUrlChanged) {
+      _userData = newData;
+      return;
+    }
+
+    _userData = newData;
+
+    if (changedFields.isEmpty && !avatarUrlChanged) {
+      return;
+    }
+
+    if (avatarUrlChanged) {
+      InteractionDiagnostics.logProfileRebuildTrigger(
+        source: 'user_doc_avatar',
+      );
+      _notifyAvatarChannel(reason: 'avatar_change');
+    }
+
+    if (ProfileUserDocFields.affectsProfileShell(changedFields)) {
+      InteractionDiagnostics.logProfileRebuildTrigger(
+        source: 'user_doc_profile_shell',
+      );
+      debugPrint(
+        '🔄 ProfileUpdateService: Profile shell fields changed: '
+        '${changedFields.join(', ')}',
+      );
+      _notifyProfileShellChannel(reason: 'user_doc_change');
+    }
+  }
+
   Future<void> updateUserData(Map<String, dynamic> updates) async {
     if (_currentUser == null) return;
 
@@ -142,17 +167,26 @@ class ProfileUpdateService extends ChangeNotifier {
         normalizedUpdates['photoURL'] = resolvedAvatar;
       }
 
-      // Update Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
           .update(normalizedUpdates);
 
-      // Update local data
+      if (normalizedUpdates.containsKey(
+        UserProfileFirestore.platformsField,
+      )) {
+        final Object? raw = normalizedUpdates[UserProfileFirestore.platformsField];
+        final int count = raw is List ? raw.length : 0;
+        UserProfileFirestore.logPlatformSave(
+          uid: _currentUser!.uid,
+          view: 'EditProfileView',
+          count: count,
+        );
+      }
+
       _userData = {...?_userData, ...normalizedUpdates};
 
-      // Notify all listeners
-      notifyAllListeners();
+      _notifyAllChannels(reason: 'edit_profile_update');
 
       debugPrint('✅ ProfileUpdateService: User data updated successfully');
     } catch (e) {
@@ -161,109 +195,107 @@ class ProfileUpdateService extends ChangeNotifier {
     }
   }
 
-  /// Add listener for ProfileView updates
   void addProfileViewListener(VoidCallback listener) {
     _profileViewListeners.add(listener);
   }
 
-  /// Remove listener for ProfileView updates
   void removeProfileViewListener(VoidCallback listener) {
     _profileViewListeners.remove(listener);
   }
 
-  /// Add listener for ProfileBackView updates
   void addProfileBackViewListener(VoidCallback listener) {
     _profileBackViewListeners.add(listener);
   }
 
-  /// Remove listener for ProfileBackView updates
   void removeProfileBackViewListener(VoidCallback listener) {
     _profileBackViewListeners.remove(listener);
   }
 
-  /// Add listener for StreamerCardView updates
   void addStreamerCardViewListener(VoidCallback listener) {
     _streamerCardViewListeners.add(listener);
   }
 
-  /// Remove listener for StreamerCardView updates
   void removeStreamerCardViewListener(VoidCallback listener) {
     _streamerCardViewListeners.remove(listener);
   }
 
-  /// Add listener for StreamerCardBackView updates
   void addStreamerCardBackViewListener(VoidCallback listener) {
     _streamerCardBackViewListeners.add(listener);
   }
 
-  /// Remove listener for StreamerCardBackView updates
   void removeStreamerCardBackViewListener(VoidCallback listener) {
     _streamerCardBackViewListeners.remove(listener);
   }
 
-  /// Notify all listeners with debouncing to prevent excessive notifications
-  void notifyAllListeners() {
-    final now = DateTime.now();
+  void _notifyAllChannels({required String reason}) {
+    _notifyProfileShellChannel(reason: reason);
+    _notifyAvatarChannel(reason: reason);
+    _notifyStreamerCardChannel(reason: reason);
+  }
 
-    // Debounce notifications - only notify once every 1000ms (1 second)
+  void _notifyProfileShellChannel({required String reason}) {
+    void emit() {
+      if (!_shouldEmitNotification()) {
+        return;
+      }
+      InteractionDiagnostics.logProfileNotifyListeners(reason: reason);
+      InteractionDiagnostics.logProfileNotify(reason: reason);
+      _invokeListeners(_profileViewListeners, 'ProfileView');
+      _invokeListeners(_profileBackViewListeners, 'ProfileBackView');
+    }
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      LikeInteractionBoundary.reportProfileRebuild(source: reason);
+      LikeInteractionBoundary.runOrQueue(
+        emit,
+        reason: 'profile_shell_$reason',
+      );
+      return;
+    }
+    emit();
+  }
+
+  void _notifyAvatarChannel({required String reason}) {
+    if (!_shouldEmitNotification()) {
+      return;
+    }
+    InteractionDiagnostics.logProfileNotifyListeners(reason: 'avatar:$reason');
+  }
+
+  void _notifyStreamerCardChannel({required String reason}) {
+    if (!_shouldEmitNotification()) {
+      return;
+    }
+    _invokeListeners(_streamerCardViewListeners, 'StreamerCardView');
+    _invokeListeners(_streamerCardBackViewListeners, 'StreamerCardBackView');
+  }
+
+  bool _shouldEmitNotification() {
+    final DateTime now = DateTime.now();
     if (_lastNotificationTime != null &&
         now.difference(_lastNotificationTime!).inMilliseconds < 1000) {
       debugPrint(
           "🔍 ProfileUpdateService: Debouncing notification (too frequent)");
-      return;
+      return false;
     }
     _lastNotificationTime = now;
+    return true;
+  }
 
-    debugPrint(
-        "🔍 ProfileUpdateService: Notifying ${_profileViewListeners.length} ProfileView listeners, ${_profileBackViewListeners.length} ProfileBackView listeners, ${_streamerCardViewListeners.length} StreamerCardView listeners");
-
-    // Notify ProfileView listeners
-    for (final listener in _profileViewListeners) {
+  void _invokeListeners(List<VoidCallback> listeners, String label) {
+    for (final VoidCallback listener in listeners) {
       try {
         listener();
       } catch (e) {
         debugPrint(
-            '❌ ProfileUpdateService: Error notifying ProfileView listener: $e');
-      }
-    }
-
-    // Notify ProfileBackView listeners
-    for (final listener in _profileBackViewListeners) {
-      try {
-        listener();
-      } catch (e) {
-        debugPrint(
-            '❌ ProfileUpdateService: Error notifying ProfileBackView listener: $e');
-      }
-    }
-
-    // Notify StreamerCardView listeners
-    for (final listener in _streamerCardViewListeners) {
-      try {
-        listener();
-      } catch (e) {
-        debugPrint(
-            '❌ ProfileUpdateService: Error notifying StreamerCardView listener: $e');
-      }
-    }
-
-    // Notify StreamerCardBackView listeners
-    for (final listener in _streamerCardBackViewListeners) {
-      try {
-        listener();
-      } catch (e) {
-        debugPrint(
-            '❌ ProfileUpdateService: Error notifying StreamerCardBackView listener: $e');
+            '❌ ProfileUpdateService: Error notifying $label listener: $e');
       }
     }
   }
 
-  /// Get user data for a specific field
   dynamic getUserField(String field) {
     return _userData?[field];
   }
 
-  /// Clear all listeners (useful for cleanup)
   void clearAllListeners() {
     _profileViewListeners.clear();
     _profileBackViewListeners.clear();
@@ -271,24 +303,21 @@ class ProfileUpdateService extends ChangeNotifier {
     _streamerCardBackViewListeners.clear();
   }
 
-  /// Dispose the service and cancel subscriptions
+  /// Stops Firestore user doc listener and clears cached session data on logout.
+  void teardownUserSession() {
+    _userDataSubscription?.cancel();
+    _userDataSubscription = null;
+    _currentUser = null;
+    _userData = null;
+    _isLoading = false;
+    debugPrint('🧹 ProfileUpdateService: user session torn down');
+  }
+
   @override
   void dispose() {
     _userDataSubscription?.cancel();
     _userDataSubscription = null;
     clearAllListeners();
     super.dispose();
-  }
-
-  /// Helper method to compare two maps for equality
-  bool _mapsEqual(Map<String, dynamic> map1, Map<String, dynamic> map2) {
-    if (map1.length != map2.length) return false;
-
-    for (final key in map1.keys) {
-      if (!map2.containsKey(key)) return false;
-      if (map1[key] != map2[key]) return false;
-    }
-
-    return true;
   }
 }

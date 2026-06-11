@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'forgot_password_verification_view.dart';
+import '../services/robust_auth_service.dart';
 
 class ForgotPasswordView extends ConsumerStatefulWidget {
   const ForgotPasswordView({super.key});
@@ -13,12 +13,20 @@ class ForgotPasswordView extends ConsumerStatefulWidget {
 class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
   final TextEditingController _emailController = TextEditingController();
   bool _showAlert = false;
-  String _alertMessage = "";
+  String _alertMessage = '';
+  bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
+    _emailController.addListener(_handleInputChanged);
     _setSystemUIOverlayStyle();
+  }
+
+  void _handleInputChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _setSystemUIOverlayStyle() {
@@ -40,6 +48,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
 
   @override
   void dispose() {
+    _emailController.removeListener(_handleInputChanged);
     _emailController.dispose();
     _resetSystemUIOverlayStyle();
     super.dispose();
@@ -115,7 +124,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     title: const Text(
-                      "Error",
+                      'Error',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -123,7 +132,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
                     ),
                     content: Text(
                       _alertMessage.isEmpty
-                          ? "Something went wrong."
+                          ? 'Something went wrong.'
                           : _alertMessage,
                       style: const TextStyle(
                         color: Colors.white70,
@@ -133,13 +142,22 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
                     actions: [
                       TextButton(
                         onPressed: () => setState(() => _showAlert = false),
-                        child: const Text("OK"),
+                        child: const Text('OK'),
                       ),
                     ],
                   ),
                 ),
               ),
             ],
+            if (_isSubmitting)
+              Container(
+                color: Colors.black45,
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -152,7 +170,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
             icon: const Icon(
               Icons.arrow_back,
               color: Colors.white,
@@ -172,7 +190,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
     return Column(
       children: [
         const Text(
-          "Find your account",
+          'Find your account',
           style: TextStyle(
             fontSize: 34,
             fontWeight: FontWeight.bold,
@@ -181,7 +199,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
         ),
         const SizedBox(height: 16),
         const Text(
-          "Enter your email or username.",
+          'Enter your email or username.',
           style: TextStyle(
             fontSize: 16,
             color: Colors.grey,
@@ -192,7 +210,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
         _buildTextField(),
         const SizedBox(height: 16),
         const Text(
-          "You may receive WhatsApp and SMS notifications from us for security and login purposes.",
+          'You may receive WhatsApp and SMS notifications from us for security and login purposes.',
           style: TextStyle(
             fontSize: 12,
             color: Colors.grey,
@@ -221,12 +239,13 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
       ),
       child: TextField(
         controller: _emailController,
+        enabled: !_isSubmitting,
         keyboardType: TextInputType.emailAddress,
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => _handleContinue(),
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
-          hintText: "Email or username",
+          hintText: 'Email or username',
           hintStyle: TextStyle(
             color: Colors.white.withValues(alpha: 0.5),
           ),
@@ -245,7 +264,8 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
   }
 
   Widget _buildContinueButton() {
-    final isEnabled = _emailController.text.isNotEmpty;
+    final bool isEnabled =
+        _emailController.text.trim().isNotEmpty && !_isSubmitting;
 
     return Opacity(
       opacity: isEnabled ? 1.0 : 0.5,
@@ -264,7 +284,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
           ),
           child: const Center(
             child: Text(
-              "Continue",
+              'Continue',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -289,7 +309,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            "OR",
+            'OR',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.7),
               fontSize: 14,
@@ -343,7 +363,7 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
             ),
             const SizedBox(width: 12),
             const Text(
-              "Log in with Facebook",
+              'Log in with Facebook',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
@@ -356,23 +376,83 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
     );
   }
 
-  void _handleContinue() {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
+  Future<void> _handleContinue() async {
+    if (_isSubmitting) {
+      return;
+    }
+    final String identifier = _emailController.text.trim();
+    if (identifier.isEmpty) {
       setState(() {
-        _alertMessage = "Please enter your email or username";
+        _alertMessage = 'Please enter your email or username';
         _showAlert = true;
       });
       return;
     }
+    setState(() {
+      _isSubmitting = true;
+    });
+    try {
+      final PasswordResetRequestResult result = await ref
+          .read(robustAuthServiceProvider)
+          .sendPasswordResetForIdentifier(identifier);
+      if (!mounted) {
+        return;
+      }
+      if (result.success) {
+        await _showSuccessDialog(
+          result.message ??
+              'Password reset email sent if an account exists for that address.',
+        );
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      } else {
+        setState(() {
+          _alertMessage = result.error ?? 'Something went wrong.';
+          _showAlert = true;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
 
-    // Navigate to verification screen
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ForgotPasswordVerificationView(
-          email: email,
-        ),
-      ),
+  Future<void> _showSuccessDialog(String message) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Check your email',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white70,
+              height: 1.3,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

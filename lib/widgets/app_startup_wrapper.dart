@@ -6,8 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:firebase_core/firebase_core.dart';
+import '../core/theme/st_theme_tokens.dart';
+import '../services/auth_transition_state.dart';
 import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
+import '../utils/auth_post_login_navigation.dart';
 import '../widgets/auth_modal_view.dart';
 import '../widgets/email_verification_view.dart';
 import '../pages/main_tab_view.dart';
@@ -26,19 +29,53 @@ class AppStartupWrapper extends ConsumerStatefulWidget {
   ConsumerState<AppStartupWrapper> createState() => _AppStartupWrapperState();
 }
 
-enum _StartupShell { firebaseWaiting, loading, home, auth }
+enum StartupShell { firebaseWaiting, loading, home, auth }
+
+StartupShell resolveStartupShell({
+  required bool firebaseInitialized,
+  required bool startupGracePeriodElapsed,
+  required ConnectionState authConnectionState,
+  required bool hasFirebaseUser,
+  required bool isSigningOut,
+  required bool isCheckingAuth,
+  required bool isOauthInProgress,
+}) {
+  // Keep splash until Firebase is ready — avoids auth flash on slow cold start.
+  if (!firebaseInitialized) {
+    return StartupShell.loading;
+  }
+  if (resolveStartupShowsAuthLoading(
+    isSigningOut: isSigningOut,
+    hasFirebaseUser: hasFirebaseUser,
+    isCheckingAuth: isCheckingAuth,
+    isOauthInProgress: isOauthInProgress,
+    authConnectionState: authConnectionState,
+  )) {
+    return StartupShell.loading;
+  }
+  return hasFirebaseUser ? StartupShell.home : StartupShell.auth;
+}
 
 class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   bool _firebaseStartupGracePeriodElapsed = false;
   bool _calendarCleanupStarted = false;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applyThemeSystemUi();
+  }
+
+  @override
   void initState() {
     super.initState();
     _setSystemUIOverlayStyle();
-    ref.listenManual<RobustAuthenticationService>(
-      robustAuthServiceProvider,
-      _onAuthServiceChanged,
+    ref.listenManual<(bool, bool)>(
+      robustAuthServiceProvider.select(
+        (RobustAuthenticationService auth) =>
+            (auth.shouldShowLoading, auth.isLoggedIn),
+      ),
+      _onAuthStateChanged,
     );
     Future<void>.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
@@ -54,29 +91,28 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     super.dispose();
   }
 
-  void _onAuthServiceChanged(
-    RobustAuthenticationService? previous,
-    RobustAuthenticationService next,
+  void _onAuthStateChanged(
+    (bool, bool)? previous,
+    (bool, bool) next,
   ) {
     if (previous == null) {
       return;
     }
-    final bool loadingChanged =
-        previous.shouldShowLoading != next.shouldShowLoading;
-    final bool loginChanged = previous.isLoggedIn != next.isLoggedIn;
+    final bool loadingChanged = previous.$1 != next.$1;
+    final bool loginChanged = previous.$2 != next.$2;
     if (!loadingChanged && !loginChanged) {
       return;
     }
-    if (next.isLoggedIn && !next.shouldShowLoading) {
+    if (next.$2 && !next.$1) {
       _runCalendarCleanup();
     }
     if (kDebugMode) {
       debugPrint('🔄 AppStartupWrapper: Auth state changed');
       debugPrint(
-        '   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}',
+        '   Loading: ${previous.$1} -> ${next.$1}',
       );
       debugPrint(
-        '   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}',
+        '   Logged in: ${previous.$2} -> ${next.$2}',
       );
     }
     _scheduleRebuild(() {});
@@ -91,26 +127,29 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     });
   }
 
-  _StartupShell _resolveShell(RobustAuthenticationService authService) {
-    if (Firebase.apps.isEmpty && !_firebaseStartupGracePeriodElapsed) {
-      return _StartupShell.firebaseWaiting;
-    }
-    if (authService.shouldShowLoading) {
-      return _StartupShell.loading;
-    }
-    if (authService.isLoggedIn) {
-      return _StartupShell.home;
-    }
-    return _StartupShell.auth;
-  }
-
   void _setSystemUIOverlayStyle() {
+    // Default chrome until [didChangeDependencies] applies theme-aware values.
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
-        statusBarColor: Color(0xFF6137EB),
-        statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFF6137EB),
-        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+  }
+
+  void _applyThemeSystemUi() {
+    final ThemeData theme = Theme.of(context);
+    final Brightness brightness = theme.brightness;
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: theme.colorScheme.surface,
+        systemNavigationBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
       ),
     );
   }
@@ -151,32 +190,95 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   Widget build(BuildContext context) {
     final RobustAuthenticationService authService =
         ref.watch(robustAuthServiceProvider);
-    final _StartupShell shell = _resolveShell(authService);
+    if (Firebase.apps.isEmpty) {
+      final StartupShell shell = resolveStartupShell(
+        firebaseInitialized: false,
+        startupGracePeriodElapsed: _firebaseStartupGracePeriodElapsed,
+        authConnectionState: ConnectionState.waiting,
+        hasFirebaseUser: false,
+        isSigningOut: authService.isSigningOut,
+        isCheckingAuth: authService.isCheckingAuth,
+        isOauthInProgress: authService.isOauthInProgress,
+      );
+      if (shell == StartupShell.firebaseWaiting && kDebugMode) {
+        debugPrint(
+          '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen',
+        );
+      }
+      if (shell == StartupShell.auth) {
+        return const KeyedSubtree(
+          key: ValueKey<String>('app_startup_auth'),
+          child: AuthModalView(),
+        );
+      }
+      return KeyedSubtree(
+        key: const ValueKey<String>('app_startup_loading'),
+        child: _buildLoadingScreen(),
+      );
+    }
 
-    if (shell == _StartupShell.firebaseWaiting && kDebugMode) {
+    return StreamBuilder<fa.User?>(
+      stream: fa.FirebaseAuth.instance.authStateChanges(),
+      initialData: fa.FirebaseAuth.instance.currentUser,
+      builder: (BuildContext context, AsyncSnapshot<fa.User?> snapshot) {
+        if (kDebugMode) {
+          debugPrint(
+            'AUTH STATE CHANGED: ${snapshot.data?.uid ?? 'SIGNED OUT'} '
+            'connection=${snapshot.connectionState.name}',
+          );
+        }
+        final StartupShell shell = resolveStartupShell(
+          firebaseInitialized: true,
+          startupGracePeriodElapsed: _firebaseStartupGracePeriodElapsed,
+          authConnectionState: snapshot.connectionState,
+          hasFirebaseUser: snapshot.data != null,
+          isSigningOut: authService.isSigningOut,
+          isCheckingAuth: authService.isCheckingAuth,
+          isOauthInProgress: authService.isOauthInProgress,
+        );
+        if (kDebugMode) {
+          final String routeDecision = switch (shell) {
+            StartupShell.home => 'HomeView/MainTabView',
+            StartupShell.auth => 'SignInView/AuthModalView',
+            StartupShell.loading => 'Loading',
+            StartupShell.firebaseWaiting => 'FirebaseWaiting',
+          };
+          debugPrint(
+            '🎯 AppStartupWrapper route=$routeDecision '
+            'firebaseUid=${snapshot.data?.uid ?? 'null'} '
+            'isSigningOut=${authService.isSigningOut} '
+            'oauthInProgress=${authService.isOauthInProgress}',
+          );
+        }
+        return _buildResolvedShell(shell, authService);
+      },
+    );
+  }
+
+  Widget _buildResolvedShell(
+    StartupShell shell,
+    RobustAuthenticationService authService,
+  ) {
+    if (shell == StartupShell.firebaseWaiting && kDebugMode) {
       debugPrint(
         '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen',
-      );
-    } else if (Firebase.apps.isEmpty && kDebugMode) {
-      debugPrint(
-        '⚠️ AppStartupWrapper: Firebase unavailable after startup grace period - continuing to auth UI',
       );
     }
 
     if (kDebugMode) {
       debugPrint(
-        '🎯 AppStartupWrapper: shell=$shell, isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, isCheckingAuth=${authService.isCheckingAuth}',
+        '🎯 AppStartupWrapper: shell=$shell, authTransition=${authService.authTransitionState}, isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}',
       );
     }
 
     switch (shell) {
-      case _StartupShell.firebaseWaiting:
-      case _StartupShell.loading:
+      case StartupShell.firebaseWaiting:
+      case StartupShell.loading:
         return KeyedSubtree(
           key: const ValueKey<String>('app_startup_loading'),
           child: _buildLoadingScreen(),
         );
-      case _StartupShell.home:
+      case StartupShell.home:
         if (kDebugMode) {
           debugPrint('🏠 AppStartupWrapper: Returning verified shell');
         }
@@ -186,7 +288,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
             initialTabIndex: widget.initialTabIndex,
           ),
         );
-      case _StartupShell.auth:
+      case StartupShell.auth:
         if (kDebugMode) {
           debugPrint('🔐 AppStartupWrapper: Showing auth modal');
         }
@@ -198,70 +300,82 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   }
 
   Widget _buildLoadingScreen() {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color onSurface = scheme.onSurface;
     return Scaffold(
-      backgroundColor: const Color(0xFF6137EB),
+      backgroundColor: scheme.surface,
       body: Container(
-        color: const Color(0xFF6137EB),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? <Color>[
+                    StThemeColors.darkBackground,
+                    scheme.surfaceContainerLow,
+                    scheme.surface,
+                  ]
+                : <Color>[
+                    scheme.primary.withValues(alpha: 0.45),
+                    scheme.surfaceContainerLow,
+                    scheme.surface,
+                  ],
+          ),
+        ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 192,
-                height: 192,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.transparent,
-                ),
-                child: Center(
-                  child: SizedBox(
-                    width: 140,
-                    height: 140,
-                    child: Image.asset(
+              SizedBox(
+                width: 140,
+                height: 140,
+                child: Image.asset(
+                  'assets/logo.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                    return Image.asset(
                       'assets/app_logo.PNG',
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Image.asset(
-                          'assets/091225_ST_logo_white.PNG',
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Image.asset(
-                              'assets/logo.png',
-                              fit: BoxFit.contain,
-                              color: Colors.white,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Icon(
-                                  Icons.gamepad,
-                                  color: Colors.white,
-                                  size: 140,
-                                );
-                              },
-                            );
-                          },
+                      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                        return Icon(
+                          Icons.play_circle_filled,
+                          color: scheme.primary,
+                          size: 120,
                         );
                       },
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 40),
-              const Text(
+              Text(
                 'StreamersTip',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: onSurface,
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.0,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Connect - Create - Share',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: onSurface.withValues(alpha: 0.72),
                   fontSize: 16,
                   fontWeight: FontWeight.w400,
                   letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
                 ),
               ),
             ],
@@ -292,7 +406,7 @@ class _EmailVerificationOrHomeState extends State<_EmailVerificationOrHome> {
   void initState() {
     super.initState();
     final fa.User? user = fa.FirebaseAuth.instance.currentUser;
-    _verified = user?.emailVerified ?? true;
+    _verified = !firebaseUserNeedsEmailVerification(user);
     _email = user?.email ?? '';
     unawaited(_syncVerification());
   }
@@ -324,7 +438,7 @@ class _EmailVerificationOrHomeState extends State<_EmailVerificationOrHome> {
     if (!mounted) {
       return;
     }
-    final bool nextVerified = fresh?.emailVerified ?? false;
+    final bool nextVerified = !firebaseUserNeedsEmailVerification(fresh);
     final String nextEmail = fresh?.email ?? '';
     if (_verified == nextVerified && _email == nextEmail) {
       return;

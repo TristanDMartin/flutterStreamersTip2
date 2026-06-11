@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/home_video.dart';
 import '../../qa/qa_keys.dart';
@@ -11,6 +14,9 @@ import '../../constants/playback_owners.dart';
 import '../../services/feed_telemetry_service.dart';
 import '../../services/global_playback_manager.dart';
 import '../android_media3_home_player.dart';
+import 'package:streamers_tip/utils/home_feed_interaction_diagnostics.dart';
+import 'package:streamers_tip/utils/interaction_diagnostics.dart';
+import 'package:streamers_tip/utils/like_interaction_boundary.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
 int clampHomeVideoIndex(int preferredIndex, int videoCount) {
@@ -39,6 +45,8 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
   final Function(HomeVideo) onRightSwipe;
   final void Function(HomeFeedPageControls)? onControllerReady;
   final Function()? onRefresh; // Callback for pull-to-refresh
+  final Future<void> Function(int index)? onNearEndReached;
+  final bool isLoadingMore;
   final bool showCommandCenterTrigger;
   final VoidCallback? onCommandCenterTap;
 
@@ -53,6 +61,8 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
     required this.onRightSwipe,
     this.onControllerReady,
     this.onRefresh,
+    this.onNearEndReached,
+    this.isLoadingMore = false,
     this.showCommandCenterTrigger = false,
     this.onCommandCenterTap,
   });
@@ -64,11 +74,14 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
 
 class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
   PageController? _pageController;
+  bool _isPageUserScrolling = false;
   bool _isHorizontalSwipe = false;
   int _consecutiveUnplayableCount = 0;
   int? _lastPrewarmedIndex;
   int _controllerGeneration = 0;
   String? _lastVisibleVideoId;
+  String? _lastNearEndRequestSignature;
+  DateTime? _lastNearEndRequestAt;
 
   // Telemetry tracking.
   final FeedTelemetryService _telemetry = FeedTelemetryService();
@@ -94,7 +107,27 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (!value.startsWith(prefix)) {
       return null;
     }
-    final String videoId = value.substring(prefix.length);
+    final String suffix = value.substring(prefix.length);
+    final int separatorIndex = suffix.indexOf('_');
+    if (separatorIndex > 0) {
+      final int? keyedIndex = int.tryParse(
+        suffix.substring(0, separatorIndex),
+      );
+      final String keyedVideoId = suffix.substring(separatorIndex + 1);
+      if (keyedIndex != null &&
+          keyedIndex >= 0 &&
+          keyedIndex < widget.videos.length &&
+          widget.videos[keyedIndex].id == keyedVideoId) {
+        return keyedIndex;
+      }
+      final int shiftedIndex = widget.videos.indexWhere(
+        (HomeVideo video) => video.id == keyedVideoId,
+      );
+      if (shiftedIndex >= 0) {
+        return shiftedIndex;
+      }
+    }
+    final String videoId = suffix;
     final int index = widget.videos.indexWhere(
       (HomeVideo video) => video.id == videoId,
     );
@@ -128,6 +161,91 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       return;
     }
     _lastVisibleVideoId = widget.videos[index].id;
+  }
+
+  void _preloadPlaybackWindow(
+    int index, {
+    required String reason,
+    int? direction,
+  }) {
+    if (index < 0 || index >= widget.videos.length) {
+      return;
+    }
+    final int effectiveDirection = direction ??
+        (index > widget.currentIndex
+            ? 1
+            : index < widget.currentIndex
+                ? -1
+                : 1);
+    try {
+      GlobalPlaybackManager.instance.preloadAround(
+        index,
+        widget.videos,
+        direction: effectiveDirection,
+        controllerOwner: PlaybackOwners.home,
+      );
+      final int nextIndex = index + 1;
+      if (nextIndex < widget.videos.length) {
+        final String nextVideoId = widget.videos[nextIndex].id;
+        unawaited(Future<void>.delayed(const Duration(milliseconds: 350), () {
+          if (!mounted) {
+            return;
+          }
+          final bool hasNext =
+              GlobalPlaybackManager.instance.hasController(nextVideoId);
+          if (!hasNext) {
+            secureLog(
+              'PRELOAD_WINDOW_BROKEN reason=$reason currentIndex=$index '
+              'missingNextIndex=$nextIndex videoId=$nextVideoId',
+            );
+          }
+        }));
+      }
+    } catch (e) {
+      secureLog(
+        '⚠️ VideoPageView: Error preloading playback window '
+        'index=$index reason=$reason: $e',
+      );
+    }
+  }
+
+  void _maybeContinueFeedAtEnd(int index, {required String reason}) {
+    if (widget.onNearEndReached == null || widget.videos.isEmpty) {
+      return;
+    }
+    final int triggerIndex =
+        (widget.videos.length - 3).clamp(0, widget.videos.length - 1);
+    if (index < triggerIndex) {
+      return;
+    }
+    final String signature = '${widget.tabId}:${widget.videos.length}:$index';
+    final DateTime now = DateTime.now();
+    final DateTime? lastAt = _lastNearEndRequestAt;
+    if (_lastNearEndRequestSignature == signature &&
+        lastAt != null &&
+        now.difference(lastAt) < const Duration(milliseconds: 900)) {
+      return;
+    }
+    _lastNearEndRequestSignature = signature;
+    _lastNearEndRequestAt = now;
+    secureLog(
+      'END_FEED_NEAR_THRESHOLD tab=${widget.tabId} index=$index '
+      'count=${widget.videos.length} reason=$reason',
+    );
+    unawaited(widget.onNearEndReached!(index));
+  }
+
+  int _indexForVisibleVideoAfterShrink() {
+    final String? visibleVideoId = _lastVisibleVideoId;
+    if (visibleVideoId != null && visibleVideoId.isNotEmpty) {
+      final int existingIndex = widget.videos.indexWhere(
+        (HomeVideo video) => video.id == visibleVideoId,
+      );
+      if (existingIndex >= 0) {
+        return existingIndex;
+      }
+    }
+    return clampHomeVideoIndex(widget.currentIndex, widget.videos.length);
   }
 
   int _preferredIndexAfterFeedUpdate(VideoPageViewWidget oldWidget) {
@@ -294,10 +412,26 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
         return;
       }
       if (animate && safeIndex == 0) {
-        _pageController!.animateToPage(
-          safeIndex,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
+        final Stopwatch animateWatch = Stopwatch()..start();
+        HomeFeedInteractionDiagnostics.logPageAnimate(
+          phase: 'START',
+          targetIndex: safeIndex,
+          ms: 0,
+        );
+        unawaited(
+          _pageController!
+              .animateToPage(
+            safeIndex,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          )
+              .whenComplete(() {
+            HomeFeedInteractionDiagnostics.logPageAnimate(
+              phase: 'END',
+              targetIndex: safeIndex,
+              ms: animateWatch.elapsedMilliseconds,
+            );
+          }),
         );
       } else {
         _pageController!.jumpToPage(safeIndex);
@@ -327,12 +461,13 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (_lastPrewarmedIndex == candidateIndex) return;
 
     _lastPrewarmedIndex = candidateIndex;
-    try {
-      GlobalPlaybackManager.instance.disposeFarControllers(candidateIndex);
-    } catch (e) {
-      secureLog(
-          '⚠️ VideoPageView: Error trimming candidate index $candidateIndex: $e');
-    }
+    final int direction = candidateIndex > _clampedCurrentIndex ? 1 : -1;
+    _preloadPlaybackWindow(
+      candidateIndex,
+      reason: 'scroll_candidate',
+      direction: direction,
+    );
+    _maybeContinueFeedAtEnd(candidateIndex, reason: 'scroll_candidate');
   }
 
   @override
@@ -373,17 +508,34 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     final bool identityChanged = _videoIdentityChanged(oldWidget);
     final bool indexChanged = oldWidget.currentIndex != widget.currentIndex;
     final bool tabChanged = oldWidget.tabId != widget.tabId;
-    final bool shouldJumpToNewest = _shouldJumpToNewestFirstVideo(oldWidget);
+    final bool feedShrunk = widget.videos.length < oldWidget.videos.length;
+    final bool shouldJumpToNewest =
+        !feedShrunk && _shouldJumpToNewestFirstVideo(oldWidget);
     if (!identityChanged &&
         !indexChanged &&
         !tabChanged &&
         !shouldJumpToNewest) {
+      HomeFeedInteractionDiagnostics.logPageControllerState(
+        hasClients: _pageController?.hasClients ?? false,
+        page:
+            _pageController?.hasClients == true ? _pageController!.page : null,
+      );
+      HomeFeedInteractionDiagnostics.logHomeScrollState(
+        physicsLabel: 'BouncingScrollPhysics+AlwaysScrollable',
+        canScroll: widget.videos.length > 1,
+      );
       return;
     }
 
     final int targetIndex = identityChanged || tabChanged || shouldJumpToNewest
-        ? _preferredIndexAfterFeedUpdate(oldWidget)
+        ? (feedShrunk
+            ? _indexForVisibleVideoAfterShrink()
+            : _preferredIndexAfterFeedUpdate(oldWidget))
         : clampHomeVideoIndex(widget.currentIndex, widget.videos.length);
+    HomeFeedInteractionDiagnostics.logPageViewItemCount(
+      count: widget.videos.length,
+      activeIndex: targetIndex,
+    );
     secureLog(
       '🔄 VideoPageView: Syncing controller to index $targetIndex '
       '(tabChanged: $tabChanged, identityChanged: $identityChanged)',
@@ -429,7 +581,29 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     }
 
     Future<void> refreshCallback() async {
-      if (widget.onRefresh != null) await widget.onRefresh!();
+      final bool isFeedScrolling = _pageController?.hasClients == true &&
+          _pageController!.position.isScrollingNotifier.value;
+      if (_isPageUserScrolling ||
+          isFeedScrolling ||
+          LikeInteractionBoundary.isActive ||
+          LikeInteractionBoundary.shouldDeferHeavyWork ||
+          _clampedCurrentIndex != 0) {
+        InteractionDiagnostics.logRefreshSkipped(
+          reason: _isPageUserScrolling || isFeedScrolling
+              ? 'scroll'
+              : (LikeInteractionBoundary.isActive
+                  ? 'interaction'
+                  : (_clampedCurrentIndex != 0 ? 'not_at_top' : 'defer')),
+        );
+        return;
+      }
+      InteractionDiagnostics.logRefreshExecuted(
+        source: 'video_page_view',
+        feedIndex: _clampedCurrentIndex,
+      );
+      if (widget.onRefresh != null) {
+        await widget.onRefresh!();
+      }
     }
 
     return GestureDetector(
@@ -463,144 +637,203 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
             onRefresh: refreshCallback,
             color: const Color(0xFF9248D2),
             backgroundColor: Colors.white24,
-            child: PageView.builder(
-              key: QaKeys.homeFeedPageView,
-              controller: _pageController!,
-              scrollDirection: Axis.vertical, // Enable vertical swiping
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ), // Allow overscroll at top for pull-to-refresh
-              allowImplicitScrolling: false,
-              findChildIndexCallback: _findVideoPageIndex,
-              onPageChanged: (index) {
-                try {
-                  secureLog('🎬 VideoPageView: Page changed to index $index');
-                  _lastPrewarmedIndex = index;
-                  if (index >= 0 && index < widget.videos.length) {
-                    // --- Telemetry: skip detection for the previous video ---
-                    final now = DateTime.now();
-                    final HomeVideo? previousVideo = _lastImpressionVideo;
-                    if (_pageEnteredAt != null && previousVideo != null) {
-                      final watched =
-                          now.difference(_pageEnteredAt!).inMilliseconds /
-                              1000.0;
-                      // video_watch_duration for every page-leave
-                      final totalSecs = previousVideo.duration ?? 0;
-                      final completion = totalSecs > 0
-                          ? (watched / totalSecs).clamp(0.0, 1.0)
-                          : 0.0;
-                      _telemetry.logVideoWatchDuration(
-                        videoId: previousVideo.id,
-                        watchedSeconds: watched,
-                        totalSeconds: totalSecs.toDouble(),
-                        completionRate: completion,
-                      );
-                      // video_skip when < 2s watched
-                      if (watched < 2.0) {
-                        _telemetry.logVideoSkip(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (ScrollNotification notification) {
+                if (notification is ScrollStartNotification) {
+                  if (!_isPageUserScrolling) {
+                    _isPageUserScrolling = true;
+                    LikeInteractionBoundary.beginPageScroll();
+                  }
+                } else if (notification is ScrollEndNotification) {
+                  if (_isPageUserScrolling) {
+                    _isPageUserScrolling = false;
+                    LikeInteractionBoundary.endPageScroll();
+                  }
+                } else if (notification is UserScrollNotification) {
+                  if (notification.direction != ScrollDirection.idle) {
+                    if (!_isPageUserScrolling) {
+                      _isPageUserScrolling = true;
+                      LikeInteractionBoundary.beginPageScroll();
+                    }
+                    InteractionDiagnostics.logPageViewDragAccepted();
+                  } else if (_isPageUserScrolling) {
+                    _isPageUserScrolling = false;
+                    LikeInteractionBoundary.endPageScroll();
+                  }
+                }
+                return false;
+              },
+              child: PageView.builder(
+                key: QaKeys.homeFeedPageView,
+                controller: _pageController!,
+                scrollDirection: Axis.vertical, // Enable vertical swiping
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ), // Allow overscroll at top for pull-to-refresh
+                allowImplicitScrolling: false,
+                findChildIndexCallback: _findVideoPageIndex,
+                onPageChanged: (index) {
+                  try {
+                    final Stopwatch pageWatch = Stopwatch()..start();
+                    secureLog('🎬 VideoPageView: Page changed to index $index');
+                    _lastPrewarmedIndex = index;
+                    if (index >= 0 && index < widget.videos.length) {
+                      // --- Telemetry: skip detection for the previous video ---
+                      final now = DateTime.now();
+                      final HomeVideo? previousVideo = _lastImpressionVideo;
+                      if (_pageEnteredAt != null && previousVideo != null) {
+                        final watched =
+                            now.difference(_pageEnteredAt!).inMilliseconds /
+                                1000.0;
+                        // video_watch_duration for every page-leave
+                        final totalSecs = previousVideo.duration ?? 0;
+                        final completion = totalSecs > 0
+                            ? (watched / totalSecs).clamp(0.0, 1.0)
+                            : 0.0;
+                        _telemetry.logVideoWatchDuration(
                           videoId: previousVideo.id,
                           watchedSeconds: watched,
+                          totalSeconds: totalSecs.toDouble(),
+                          completionRate: completion,
                         );
+                        // video_skip when < 2s watched
+                        if (watched < 2.0) {
+                          _telemetry.logVideoSkip(
+                            videoId: previousVideo.id,
+                            watchedSeconds: watched,
+                          );
+                        }
                       }
+                      // --- Telemetry: impression for the new video ---
+                      _pageEnteredAt = now;
+                      _lastImpressionVideo = widget.videos[index];
+                      _rememberVisibleIndex(index);
+                      _preloadPlaybackWindow(
+                        index,
+                        reason: 'page_changed',
+                        direction: index < widget.currentIndex ? -1 : 1,
+                      );
+                      _maybeContinueFeedAtEnd(index, reason: 'page_changed');
+                      _telemetry.logVideoImpression(
+                        videoId: widget.videos[index].id,
+                        feedPosition: index,
+                      );
+                      widget.onPageChanged(index);
+                      HomeFeedInteractionDiagnostics.logPageChanged(
+                        source: 'page_view',
+                        index: index,
+                        ms: pageWatch.elapsedMilliseconds,
+                      );
+                    } else {
+                      secureLog(
+                          '⚠️ VideoPageView: Invalid index $index (videos.length: ${widget.videos.length})');
                     }
-                    // --- Telemetry: impression for the new video ---
-                    _pageEnteredAt = now;
-                    _lastImpressionVideo = widget.videos[index];
-                    _rememberVisibleIndex(index);
-                    _telemetry.logVideoImpression(
-                      videoId: widget.videos[index].id,
-                      feedPosition: index,
-                    );
-                    widget.onPageChanged(index);
-                  } else {
-                    secureLog(
-                        '⚠️ VideoPageView: Invalid index $index (videos.length: ${widget.videos.length})');
+                  } catch (e) {
+                    secureLog('❌ VideoPageView: Error in onPageChanged: $e');
                   }
-                } catch (e) {
-                  secureLog('❌ VideoPageView: Error in onPageChanged: $e');
-                }
-              },
-              itemCount: widget.videos.length,
-              itemBuilder: (context, index) {
-                if (index < 0 || index >= widget.videos.length) {
-                  secureLog(
-                      '⚠️ VideoPageView: Invalid index $index in itemBuilder (videos.length: ${widget.videos.length})');
-                  return const SizedBox.shrink();
-                }
-                final video = widget.videos[index];
-                if (video.id.isEmpty) {
-                  secureLog('⚠️ VideoPageView: Invalid video at index $index');
-                  return const SizedBox.shrink();
-                }
-                final bool isPlayable = isHomeVideoPlayable(video);
-                final isCurrentVideo = index == _clampedCurrentIndex;
-                if (!isPlayable) {
+                },
+                itemCount: widget.videos.length,
+                itemBuilder: (context, index) {
+                  if (index < 0 || index >= widget.videos.length) {
+                    secureLog(
+                        '⚠️ VideoPageView: Invalid index $index in itemBuilder (videos.length: ${widget.videos.length})');
+                    return const SizedBox.shrink();
+                  }
+                  final video = widget.videos[index];
+                  if (video.id.isEmpty) {
+                    secureLog(
+                        '⚠️ VideoPageView: Invalid video at index $index');
+                    return const SizedBox.shrink();
+                  }
+                  final bool isPlayable = isHomeVideoPlayable(video);
+                  final isCurrentVideo = index == _clampedCurrentIndex;
+                  if (!isPlayable) {
+                    return KeyedSubtree(
+                      key: QaKeys.homeFeedVideoPage(
+                        tabId: widget.tabId,
+                        videoId: video.id,
+                        index: index,
+                      ),
+                      child: HomeFeedProcessingCell(
+                        video: video,
+                        optimistic: OptimisticVideoService()
+                            .getOptimisticVideo(video.id),
+                      ),
+                    );
+                  }
+                  final bool shouldDeferControllerInit = !isCurrentVideo;
                   return KeyedSubtree(
                     key: QaKeys.homeFeedVideoPage(
                       tabId: widget.tabId,
                       videoId: video.id,
+                      index: index,
                     ),
-                    child: HomeFeedProcessingCell(
+                    child: VideoPlayerViewOptimized(
                       video: video,
-                      optimistic:
-                          OptimisticVideoService().getOptimisticVideo(video.id),
+                      isCurrentVideo: isCurrentVideo,
+                      isFirstVideo: index == 0,
+                      deferOffscreenControllerInit: shouldDeferControllerInit,
+                      tabId: widget.tabId,
+                      ownerKey: PlaybackOwners.home,
+                      homeViewModel: ref.read(homeProvider.notifier),
+                      showSheet: false,
+                      sheetType: 'none',
+                      showCommandCenterTrigger: widget.showCommandCenterTrigger,
+                      onCommandCenterTap: widget.onCommandCenterTap,
+                      onVideoUnplayable: () {
+                        _consecutiveUnplayableCount++;
+                        if (_consecutiveUnplayableCount >= 3 && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Having trouble loading videos',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              backgroundColor: Color(0xFF6137EB),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          _consecutiveUnplayableCount = 0;
+                        }
+                        if (widget.videos.length > index + 1) {
+                          _pageController?.animateToPage(
+                            index + 1,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                          widget.onPageChanged(index + 1);
+                        }
+                      },
+                      onVideoPlaySuccess: () {
+                        _consecutiveUnplayableCount = 0;
+                        _telemetry.logVideoPlayStart(
+                          videoId: video.id,
+                          source: 'autoplay',
+                        );
+                      },
                     ),
                   );
-                }
-                final bool shouldDeferControllerInit = !isCurrentVideo;
-                return KeyedSubtree(
-                  key: QaKeys.homeFeedVideoPage(
-                    tabId: widget.tabId,
-                    videoId: video.id,
-                  ),
-                  child: VideoPlayerViewOptimized(
-                    video: video,
-                    isCurrentVideo: isCurrentVideo,
-                    isFirstVideo: index == 0,
-                    deferOffscreenControllerInit: shouldDeferControllerInit,
-                    tabId: widget.tabId,
-                    ownerKey: PlaybackOwners.home,
-                    homeViewModel: ref.read(homeProvider.notifier),
-                    showSheet: false,
-                    sheetType: 'none',
-                    showCommandCenterTrigger: widget.showCommandCenterTrigger,
-                    onCommandCenterTap: widget.onCommandCenterTap,
-                    onVideoUnplayable: () {
-                      _consecutiveUnplayableCount++;
-                      if (_consecutiveUnplayableCount >= 3 && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Having trouble loading videos',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            backgroundColor: Color(0xFF6137EB),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                        _consecutiveUnplayableCount = 0;
-                      }
-                      if (widget.videos.length > index + 1) {
-                        _pageController?.animateToPage(
-                          index + 1,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                        widget.onPageChanged(index + 1);
-                      }
-                    },
-                    onVideoPlaySuccess: () {
-                      _consecutiveUnplayableCount = 0;
-                      _telemetry.logVideoPlayStart(
-                        videoId: video.id,
-                        source: 'autoplay',
-                      );
-                    },
-                  ),
-                );
-              },
+                },
+              ),
             ),
           ),
+          if (widget.isLoadingMore &&
+              _clampedCurrentIndex >= widget.videos.length - 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 24,
+              child: const Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

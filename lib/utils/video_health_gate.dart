@@ -210,7 +210,7 @@ class VideoHealthGate {
           },
         );
       }
-      final bool isReadyForFeed = data['isReadyForFeed'] != false;
+      final bool isReadyForFeed = data['isReadyForFeed'] == true;
       if (!isReadyPlaybackStatus(status, isReadyForFeed: isReadyForFeed)) {
         return Unplayable(
           reason: status == 'processing' || status == 'uploading'
@@ -283,26 +283,6 @@ class VideoHealthGate {
         return _playableIfNotOriginal(normalizedHlsUrl, 'hls', 'hls', videoId,
             data: data);
       }
-      final startup480 = data['mp4_480_url'] as String?;
-      if (startup480 != null &&
-          startup480.trim().isNotEmpty &&
-          !containsOriginalMp4(startup480) &&
-          _isValidUrl(startup480.trim())) {
-        final normalized480 = normalizeMuxHlsUrl(startup480.trim());
-        _logSourceDiagnostics(
-          videoId,
-          data,
-          selectedQuality: '480p_startup',
-          selectedSourceType: '480p',
-        );
-        return _playableIfNotOriginal(
-          normalized480,
-          '480p_startup',
-          '480p',
-          videoId,
-          data: data,
-        );
-      }
       final startup720 = data['mp4_720_url'] as String?;
       if (startup720 != null &&
           startup720.trim().isNotEmpty &&
@@ -319,6 +299,26 @@ class VideoHealthGate {
           normalized720,
           '720p_startup',
           '720p',
+          videoId,
+          data: data,
+        );
+      }
+      final startup480 = data['mp4_480_url'] as String?;
+      if (startup480 != null &&
+          startup480.trim().isNotEmpty &&
+          !containsOriginalMp4(startup480) &&
+          _isValidUrl(startup480.trim())) {
+        final normalized480 = normalizeMuxHlsUrl(startup480.trim());
+        _logSourceDiagnostics(
+          videoId,
+          data,
+          selectedQuality: '480p_startup',
+          selectedSourceType: '480p',
+        );
+        return _playableIfNotOriginal(
+          normalized480,
+          '480p_startup',
+          '480p',
           videoId,
           data: data,
         );
@@ -429,21 +429,6 @@ class VideoHealthGate {
         );
       }
 
-      final url1080 = data['mp4_1080_url'] as String?;
-      if (url1080 != null &&
-          url1080.trim().isNotEmpty &&
-          !containsOriginalMp4(url1080) &&
-          _isValidUrl(url1080.trim())) {
-        final normalized1080 = normalizeMuxHlsUrl(url1080.trim());
-        _logSourceDiagnostics(
-          videoId,
-          data,
-          selectedQuality: '1080p',
-          selectedSourceType: '1080p',
-        );
-        return _playableIfNotOriginal(normalized1080, '1080p', '1080p', videoId,
-            data: data);
-      }
       final url720 = data['mp4_720_url'] as String?;
       if (url720 != null &&
           url720.trim().isNotEmpty &&
@@ -457,6 +442,21 @@ class VideoHealthGate {
           selectedSourceType: '720p',
         );
         return _playableIfNotOriginal(normalized720, '720p', '720p', videoId,
+            data: data);
+      }
+      final url1080 = data['mp4_1080_url'] as String?;
+      if (url1080 != null &&
+          url1080.trim().isNotEmpty &&
+          !containsOriginalMp4(url1080) &&
+          _isValidUrl(url1080.trim())) {
+        final normalized1080 = normalizeMuxHlsUrl(url1080.trim());
+        _logSourceDiagnostics(
+          videoId,
+          data,
+          selectedQuality: '1080p',
+          selectedSourceType: '1080p',
+        );
+        return _playableIfNotOriginal(normalized1080, '1080p', '1080p', videoId,
             data: data);
       }
       final url480 = data['mp4_480_url'] as String?;

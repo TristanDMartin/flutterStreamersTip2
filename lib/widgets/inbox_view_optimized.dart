@@ -18,7 +18,7 @@ import 'status_aware_avatar.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/responsive_layout.dart';
 import '../providers/unread_messages_provider.dart';
-import '../components/onboarding/product_tour_target_keys.dart';
+import '../providers/main_tab_provider.dart';
 import '../routing/app_navigator.dart';
 import 'new_message_view.dart';
 import 'draft_feedback_view.dart';
@@ -32,7 +32,9 @@ class InboxViewOptimized extends ConsumerStatefulWidget {
 }
 
 class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   late TabController _tabController;
   final InboxServiceOptimized _inboxService = InboxServiceOptimized();
   final OfflineInboxService _offlineService = OfflineInboxService();
@@ -68,8 +70,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   // State
   bool _isLoading = true;
   String? _error;
+  bool _isSyncingInbox = false;
   bool _isSelectionMode = false;
   final Set<String> _selectedItems = {};
+  ProviderSubscription<int>? _tabBackgroundRefreshSubscription;
 
   @override
   void initState() {
@@ -79,15 +83,29 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       vsync: this,
     );
 
-    _initializeRealTimeUpdates();
-    _blockingService.blockListRevision.addListener(_handleBlockListChanged);
-
-    // Mark all messages as read when InboxView is opened
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await UnreadMessagesService.markAllVisibleAsRead();
-      // Force refresh the unread messages provider
-      ref.invalidate(unreadMessagesProvider);
+      await _loadOfflineData();
+      if (!mounted) {
+        return;
+      }
+      if (_chats.isEmpty) {
+        setState(() => _isLoading = true);
+      }
+      _initializeRealTimeUpdates();
     });
+    _blockingService.blockListRevision.addListener(_handleBlockListChanged);
+    _tabBackgroundRefreshSubscription = ref.listenManual<int>(
+      inboxTabBackgroundRefreshProvider,
+      (int? previous, int next) {
+        if (!mounted) {
+          return;
+        }
+        if (!isMainTabInboxVisible(ref.read(mainTabActiveIndexProvider))) {
+          return;
+        }
+        unawaited(_refreshDataInBackground());
+      },
+    );
   }
 
   @override
@@ -105,17 +123,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       subscription.cancel();
     }
     _userProfileSubscriptions.clear();
+    _tabBackgroundRefreshSubscription?.close();
     super.dispose();
   }
 
   void _initializeRealTimeUpdates() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    // Load offline data first
-    await _loadOfflineData();
+    if (_chats.isEmpty && mounted) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     // Start real-time listeners
     _inboxService.startRealTimeListeners(
@@ -446,6 +464,61 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     await _loadData();
   }
 
+  /// Silent sync when returning to Inbox; keeps cached UI unless first load.
+  Future<void> _refreshDataInBackground() async {
+    if (_isSyncingInbox) {
+      return;
+    }
+    _isSyncingInbox = true;
+    final bool isFirstLoad = _chats.isEmpty && _sharedDrafts.isEmpty;
+    if (isFirstLoad && mounted) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
+    try {
+      final List<Object> results = await Future.wait(<Future<Object>>[
+        _inboxService.getChats(),
+        _inboxService.getSharedDrafts(),
+      ]);
+      final List<app_chat.Chat> allChats =
+          results[0] as List<app_chat.Chat>;
+      final List<SharedDraft> drafts = results[1] as List<SharedDraft>;
+      final List<app_chat.Chat> validChats =
+          await _filterVisibleChats(allChats);
+      _setupUnreadCountListeners(validChats);
+      _setupUserProfileListeners(validChats);
+      await _loadUserDataForChats(validChats);
+      await _offlineService.cacheChats(validChats);
+      await _offlineService.cacheDrafts(drafts);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _chats = validChats;
+        _sharedDrafts = drafts;
+        _filteredChats = validChats;
+        _filteredDrafts = drafts;
+        _isLoading = false;
+        _error = null;
+      });
+    } catch (e) {
+      LoggingService.instance.error('Error background inbox refresh: $e');
+      if (!mounted) {
+        return;
+      }
+      if (isFirstLoad) {
+        setState(() {
+          _error = 'Failed to load inbox data. Please try again.';
+          _isLoading = false;
+        });
+      }
+    } finally {
+      _isSyncingInbox = false;
+    }
+  }
+
   void _handleBlockListChanged() {
     unawaited(_refreshData());
   }
@@ -496,6 +569,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final bool dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: dark
@@ -519,7 +593,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           ),
         ),
         child: KeyedSubtree(
-          key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.inbox),
           child: SafeArea(
             child: Column(
               children: <Widget>[
@@ -1621,23 +1694,13 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             ),
             const SizedBox(height: 22),
             Text(
-              'Loading your inbox',
+              'Loading messages...',
               style: TextStyle(
                 color: _on,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.4,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'We’re gathering your latest conversations and shared drafts.',
-              style: TextStyle(
-                color: _on.withValues(alpha: 0.62),
-                fontSize: 14,
-                height: 1.45,
-              ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),

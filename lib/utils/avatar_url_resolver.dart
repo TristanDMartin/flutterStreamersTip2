@@ -98,3 +98,37 @@ String? _normalizeAvatarString(String input) {
   if (trimmed.startsWith('www.')) return 'https://$trimmed';
   return trimmed;
 }
+
+/// True when the user profile already stores a custom avatar URL.
+bool hasPersistedAvatarUrl(Map<String, dynamic>? data) {
+  if (data == null) {
+    return false;
+  }
+  const List<String> avatarKeys = <String>['avatarURL', 'avatarUrl'];
+  for (final String key in avatarKeys) {
+    final Object? value = data[key];
+    if (value is String && normalizeAvatarPhotoUrl(value) != null) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Avatar fields to merge from an OAuth provider on first profile creation.
+Map<String, String> buildProviderAvatarMergeFields({
+  required String? providerPhotoUrl,
+  required Map<String, dynamic>? existingData,
+}) {
+  if (hasPersistedAvatarUrl(existingData)) {
+    return const <String, String>{};
+  }
+  final String? normalized = normalizeAvatarPhotoUrl(providerPhotoUrl);
+  if (normalized == null) {
+    return const <String, String>{};
+  }
+  return <String, String>{
+    'avatarURL': normalized,
+    'avatarUrl': normalized,
+    'photoURL': normalized,
+  };
+}

@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/support_shell_style.dart';
-import '../../../components/onboarding/onboarding_service.dart';
-import '../../../components/onboarding/product_tour_target_keys.dart';
 import '../../../services/progression_service.dart';
 import '../gamification_providers.dart';
 import '../models/gamification_summary_model.dart';
@@ -50,8 +48,6 @@ class _CreatorProgressionPanelState
             uid: user.uid,
             onRefresh: () async {
               await ProgressionService.instance.refreshUserProgress(user.uid);
-              await OnboardingService()
-                  .syncLevelOneMissionsFromAccountEvidence(user.uid);
               await FirebaseFirestore.instance
                   .collection('users')
                   .doc(user.uid)
@@ -64,8 +60,6 @@ class _CreatorProgressionPanelState
               uid: user.uid,
               onRefresh: () async {
                 await ProgressionService.instance.refreshUserProgress(user.uid);
-                await OnboardingService()
-                    .syncLevelOneMissionsFromAccountEvidence(user.uid);
                 await FirebaseFirestore.instance
                     .collection('users')
                     .doc(user.uid)
@@ -451,9 +445,6 @@ class _ProgressionBody extends StatelessWidget {
           const _ProgressionTopBar(),
           const SizedBox(height: 16),
           KeyedSubtree(
-            key: ProductTourTargetKeys.maybe(
-              ProductTourTargetKeys.progressionPanel,
-            ),
             child: _HeroHeader(model: model),
           ),
           const SizedBox(height: 14),

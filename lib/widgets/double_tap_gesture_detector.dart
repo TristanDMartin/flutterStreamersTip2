@@ -23,67 +23,40 @@ class DoubleTapGestureDetector extends StatefulWidget {
 }
 
 class _DoubleTapGestureDetectorState extends State<DoubleTapGestureDetector> {
-  Timer? _singleTapTimer;
-  int _tapCount = 0;
-  Offset? _lastTapPosition;
+  Offset? _doubleTapPosition;
+  bool _ignoreNextDoubleTap = false;
 
-  void _handleTapDown(TapDownDetails details) {
-    // 🔥 FIX: Check if tap is in dropdown area (top 200px of screen)
-    final tapY = details.globalPosition.dy;
-    final tapX = details.globalPosition.dx;
+  void _handleDoubleTapDown(TapDownDetails details) {
+    final double tapY = details.globalPosition.dy;
+    final double tapX = details.globalPosition.dx;
 
-    // Log all tap coordinates for debugging
     debugPrint('🎯 DoubleTapGestureDetector: Tap at (x: $tapX, y: $tapY)');
 
-    // If tap is in the top 200px, ignore it completely (dropdown area)
-    if (tapY < 200) {
+    _ignoreNextDoubleTap = tapY < 200;
+    if (_ignoreNextDoubleTap) {
       debugPrint(
           '🎯 DoubleTapGestureDetector: Tap ignored - in dropdown area (y: $tapY)');
       return;
     }
-
-    _tapCount++;
-    _lastTapPosition = details.localPosition;
-
-    if (_tapCount == 1) {
-      // Start timer for single tap
-      _singleTapTimer = Timer(widget.doubleTapDelay, () {
-        if (_tapCount == 1 && widget.onSingleTap != null) {
-          // Single tap confirmed
-          widget.onSingleTap!();
-        }
-        _reset();
-      });
-    } else if (_tapCount == 2) {
-      // Double tap detected
-      _singleTapTimer?.cancel();
-
-      if (widget.onDoubleTap != null && _lastTapPosition != null) {
-        // Haptic feedback for double tap
-        HapticFeedback.mediumImpact();
-        widget.onDoubleTap!(_lastTapPosition!);
-      }
-
-      _reset();
-    }
-  }
-
-  void _reset() {
-    _tapCount = 0;
-    _lastTapPosition = null;
-    _singleTapTimer?.cancel();
-  }
-
-  @override
-  void dispose() {
-    _singleTapTimer?.cancel();
-    super.dispose();
+    _doubleTapPosition = details.localPosition;
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: _handleTapDown,
+      onTap: widget.onSingleTap,
+      onDoubleTapDown: _handleDoubleTapDown,
+      onDoubleTap: () {
+        if (_ignoreNextDoubleTap) {
+          _ignoreNextDoubleTap = false;
+          _doubleTapPosition = null;
+          return;
+        }
+        final Offset position = _doubleTapPosition ?? Offset.zero;
+        _doubleTapPosition = null;
+        HapticFeedback.mediumImpact();
+        widget.onDoubleTap?.call(position);
+      },
       behavior: HitTestBehavior
           .translucent, // Allow taps to pass through when ignored
       child: widget.child,

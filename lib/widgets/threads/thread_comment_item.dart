@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../../models/forum_author.dart';
 import '../../models/forum_comment.dart';
 import '../../services/forum_service.dart';
 import '../../services/report_service.dart';
 import '../../constants/app_colors.dart';
 import '../../core/theme/support_shell_style.dart';
+import '../../models/creator_profile_snapshot.dart';
 import '../../routing/app_navigator.dart';
 import 'discussion_author_row.dart';
 
@@ -142,7 +144,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                       avatarRadius: 16,
                       trailingText: _formatDate(widget.comment.createdAt),
                       onTap: () =>
-                          _navigateToProfile(widget.comment.author.uid),
+                          _navigateToProfile(widget.comment.author),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -398,7 +400,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                             userId: reply.author.uid,
                             avatarRadius: 12,
                             trailingText: _formatDate(reply.createdAt),
-                            onTap: () => _navigateToProfile(reply.author.uid),
+                            onTap: () => _navigateToProfile(reply.author),
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -499,10 +501,11 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
     }
   }
 
-  void _navigateToProfile(String userId) {
+  void _navigateToProfile(ForumAuthor author) {
     AppNavigator.openStreamerCard(
       context,
-      userId: userId,
+      userId: author.uid,
+      initialCreator: CreatorProfileSnapshot.fromForumAuthor(author),
       currentUserId: user?.uid,
     );
   }

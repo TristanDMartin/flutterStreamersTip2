@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../components/onboarding/product_tour_target_keys.dart';
 import '../../models/home_video.dart';
 import '../../providers/home_provider.dart' as hp;
 import '../../providers/feed_state_provider.dart';
 import '../../models/feed_tab.dart';
-import '../../services/global_playback_manager.dart';
 import '../../constants/app_colors.dart';
 import 'feed_selector_widget.dart';
 import 'video_page_view_widget.dart';
@@ -14,6 +12,8 @@ import 'loading_state_widget.dart';
 import '../../widgets/threads/threads_list_view.dart';
 import '../../features/gamification/widgets/creator_progression_panel.dart';
 import '../../qa/qa_keys.dart';
+import 'package:streamers_tip/utils/interaction_diagnostics.dart';
+import 'package:streamers_tip/utils/like_interaction_boundary.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
 /// Main content widget for HomeView (combines all components)
@@ -59,6 +59,21 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
 
   /// Handle pull-to-refresh at top of feed (index 0)
   Future<void> _handlePullToRefresh(FeedTab activeTab) async {
+    if (widget.currentIndex != 0) {
+      InteractionDiagnostics.logRefreshSkipped(reason: 'not_at_top');
+      return;
+    }
+    if (LikeInteractionBoundary.isActive ||
+        LikeInteractionBoundary.shouldDeferHeavyWork) {
+      InteractionDiagnostics.logRefreshSkipped(
+        reason: LikeInteractionBoundary.isActive ? 'interaction' : 'defer',
+      );
+      return;
+    }
+    InteractionDiagnostics.logRefreshExecuted(
+      source: 'home_content',
+      feedIndex: 0,
+    );
     secureLog(
       '🔄 HomeContent: Pull-to-refresh triggered for ${activeTab.displayName} feed at index 0',
     );
@@ -71,16 +86,12 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       // Refresh feed - this will get newest videos from Firestore (newest first)
       await homeProviderNotifier.refreshFeedByTab(activeTab);
 
-      // 🎬 TIKTOK-STYLE: Preserve index 0 after refresh
       if (mounted) {
-        // Notify GlobalPlaybackManager to update index 0 with new video
         final homeState = ref.read(hp.homeProvider);
         final videos = homeState.feedData(activeTab).videos;
         if (videos.isNotEmpty) {
-          final newTopVideo = videos[0];
-          GlobalPlaybackManager.instance.onVisibleIndexChanged(0, newTopVideo);
           secureLog(
-            '✅ HomeContent: Feed refreshed - newest video at index 0: ${newTopVideo.id}',
+            '✅ HomeContent: Feed refreshed - newest video at index 0: ${videos.first.id}',
           );
         }
       }
@@ -101,6 +112,10 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
 
     if (kDebugMode &&
         _shouldLogFeedBuild(activeFeed, videos, isLoading, hasError)) {
+      InteractionDiagnostics.logHomeRebuild(
+        videoCount: videos.length,
+        feed: activeFeed.name,
+      );
       debugPrint(
         '📊 HomeContent[$activeFeed]: videos=${videos.length}, isLoading=$isLoading, hasError=$hasError',
       );
@@ -112,11 +127,8 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     return Stack(
       key: activeFeed == FeedTab.forYou ? QaKeys.homeFeedSurface : null,
       children: <Widget>[
-        KeyedSubtree(
-          key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.homeFeed),
-          child: Positioned.fill(
-            child: _buildVideoContent(videos, isLoading, hasError),
-          ),
+        Positioned.fill(
+          child: _buildVideoContent(videos, isLoading, hasError),
         ),
 
         if (activeFeed == FeedTab.forYou && hasError && videos.isNotEmpty)
@@ -215,6 +227,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           onRightSwipe: widget.onRightSwipe,
           onControllerReady: widget.onScrollControllerReady,
           onRefresh: () => _handlePullToRefresh(activeFeed),
+          onNearEndReached: (int index) {
+            return ref.read(hp.homeProvider.notifier).loadMoreVideosIfNeeded(
+                  currentIndex: index,
+                  feed: activeFeed,
+                );
+          },
+          isLoadingMore: homeState.isLoadingMore,
         );
       }
       return ErrorStateWidget(
@@ -231,8 +250,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       );
     }
 
-    if (videos.isEmpty && (isLoading || !homeState.hasLoaded)) {
-      return const LoadingStateWidget(message: 'Loading videos...');
+    if (videos.isEmpty) {
+      if (isLoading || !homeState.hasLoaded) {
+        return const LoadingStateWidget(
+          message: 'Loading videos...',
+          showProgress: false,
+        );
+      }
     }
 
     if (videos.isEmpty) {
@@ -254,6 +278,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       onRightSwipe: widget.onRightSwipe,
       onControllerReady: widget.onScrollControllerReady,
       onRefresh: () => _handlePullToRefresh(activeFeed),
+      onNearEndReached: (int index) {
+        return ref.read(hp.homeProvider.notifier).loadMoreVideosIfNeeded(
+              currentIndex: index,
+              feed: activeFeed,
+            );
+      },
+      isLoadingMore: homeState.isLoadingMore,
     );
   }
 

@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import '../services/comments_service.dart';
-import '../utils/user_facing_error.dart';
 import '../services/discussion_author_service.dart';
 import '../services/global_playback_manager.dart';
 import '../services/comment_view_onboarding_service.dart';
@@ -50,6 +49,16 @@ enum CommentSortOption {
   mostLiked,
 }
 
+class _PendingCommentEntry {
+  const _PendingCommentEntry({
+    required this.comment,
+    this.parentId,
+  });
+
+  final Comment comment;
+  final String? parentId;
+}
+
 class _CommentsView2State extends ConsumerState<CommentsView2> {
   // Controllers and state
   final List<Comment> _comments = <Comment>[];
@@ -68,6 +77,8 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   final Map<String, String> _linkedThreadIds = <String, String>{};
   int _commentsStreamApplyToken = 0;
   bool _isSubmittingComment = false;
+  final Map<String, _PendingCommentEntry> _pendingComments =
+      <String, _PendingCommentEntry>{};
   bool _showThreadsTooltip = false;
   final CommentViewOnboardingService _commentOnboardingService =
       CommentViewOnboardingService();
@@ -127,6 +138,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
             _comments
               ..clear()
               ..addAll(enrichedComments);
+            _remergePendingOptimisticComments();
             _linkedThreadIds
               ..clear()
               ..addAll(snapshot.linkedThreadIds);
@@ -195,31 +207,61 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
   Future<void> _addComment() async {
     final String text = _textController.text.trim();
-    if (text.isEmpty || _isSubmittingComment) return;
+    if (text.isEmpty || _isSubmittingComment) {
+      return;
+    }
 
-    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    final firebase_auth.User? currentUser =
+        firebase_auth.FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       setState(() => _errorMessage = 'Please sign in to add comments');
       return;
     }
 
+    final Comment? replyTarget = _replyingTo;
+    final String? parentId = replyTarget?.id;
+    final String tempId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+    final app_user.User sessionAuthor = _sessionAuthor(currentUser);
+    final Comment optimistic = Comment(
+      id: tempId,
+      user: sessionAuthor,
+      text: text,
+      timestamp: DateTime.now(),
+      likeCount: 0,
+      isLiked: false,
+      replies: <Comment>[],
+    );
+
+    _textController.clear();
+    _inputFocusNode.unfocus();
+
     setState(() {
       _isSubmittingComment = true;
       _errorMessage = null;
+      _replyingTo = null;
+      _pendingComments[tempId] = _PendingCommentEntry(
+        comment: optimistic,
+        parentId: parentId,
+      );
+      if (parentId == null) {
+        _comments.insert(0, optimistic);
+      } else {
+        _insertOptimisticReply(parentId, optimistic);
+      }
+      _applySorting();
     });
 
     try {
-      final commentsService = CommentsService();
-      final author = await _getCurrentUserFromFirestore();
+      final CommentsService commentsService = CommentsService();
+      final app_user.User author = await _getCurrentUserFromFirestore();
 
-      if (_replyingTo != null) {
+      if (parentId != null) {
         await commentsService.addReply(
           videoId: widget.videoId,
-          parentId: _replyingTo!.id,
+          parentId: parentId,
           text: text,
           author: author,
         );
-        setState(() => _replyingTo = null);
       } else {
         await commentsService.addComment(
           videoId: widget.videoId,
@@ -227,27 +269,163 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
           author: author,
         );
       }
-      await ProgressionService.instance.markTaskCompleted(
-        currentUser.uid,
-        ProgressionTaskIds.firstCommentMade,
-        source: 'comments',
+
+      unawaited(
+        ProgressionService.instance.markTaskCompleted(
+          currentUser.uid,
+          ProgressionTaskIds.firstCommentMade,
+          source: 'comments',
+        ),
       );
       unawaited(
         ProgressionService.instance.refreshUserProgress(currentUser.uid),
       );
+
       if (mounted) {
-        _textController.clear();
-        _inputFocusNode.unfocus();
+        setState(() {
+          _pendingComments.remove(tempId);
+        });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _errorMessage = UserFacingError.message(e));
+        setState(() {
+          _pendingComments.remove(tempId);
+          _removeOptimisticComment(tempId, parentId: parentId);
+          _textController.text = text;
+          _replyingTo = replyTarget;
+          _errorMessage = 'Comment failed to send. Tap to retry.';
+        });
       }
     } finally {
       if (mounted) {
         setState(() => _isSubmittingComment = false);
       }
     }
+  }
+
+  app_user.User _sessionAuthor(firebase_auth.User currentUser) {
+    return app_user.User(
+      id: currentUser.uid,
+      username: currentUser.displayName ?? 'User',
+      displayName: currentUser.displayName ?? 'User',
+      avatarURL: _currentUserAvatarUrl ?? currentUser.photoURL,
+      bio: '',
+      followerCount: 0,
+      followingCount: 0,
+    );
+  }
+
+  void _insertOptimisticReply(String parentId, Comment reply) {
+    for (int i = 0; i < _comments.length; i++) {
+      final Comment? updated = _insertReplyIntoComment(
+        _comments[i],
+        parentId,
+        reply,
+      );
+      if (updated != null) {
+        _comments[i] = updated;
+        return;
+      }
+    }
+  }
+
+  Comment? _insertReplyIntoComment(
+    Comment node,
+    String parentId,
+    Comment reply,
+  ) {
+    if (node.id == parentId) {
+      final List<Comment> replies = List<Comment>.from(node.replies ?? []);
+      replies.insert(0, reply);
+      return node.copyWith(replies: replies);
+    }
+    final List<Comment>? children = node.replies;
+    if (children == null || children.isEmpty) {
+      return null;
+    }
+    for (int i = 0; i < children.length; i++) {
+      final Comment? updated = _insertReplyIntoComment(
+        children[i],
+        parentId,
+        reply,
+      );
+      if (updated != null) {
+        final List<Comment> newReplies = List<Comment>.from(children);
+        newReplies[i] = updated;
+        return node.copyWith(replies: newReplies);
+      }
+    }
+    return null;
+  }
+
+  void _removeOptimisticComment(String tempId, {String? parentId}) {
+    if (parentId == null) {
+      _comments.removeWhere((Comment c) => c.id == tempId);
+      return;
+    }
+    for (int i = 0; i < _comments.length; i++) {
+      final Comment? updated = _removeReplyFromComment(_comments[i], tempId);
+      if (updated != null) {
+        _comments[i] = updated;
+        return;
+      }
+    }
+  }
+
+  Comment? _removeReplyFromComment(Comment node, String tempId) {
+    if (node.replies == null || node.replies!.isEmpty) {
+      return null;
+    }
+    final List<Comment> replies = List<Comment>.from(node.replies!);
+    final int index = replies.indexWhere((Comment r) => r.id == tempId);
+    if (index >= 0) {
+      replies.removeAt(index);
+      return node.copyWith(replies: replies);
+    }
+    for (int i = 0; i < replies.length; i++) {
+      final Comment? updated = _removeReplyFromComment(replies[i], tempId);
+      if (updated != null) {
+        replies[i] = updated;
+        return node.copyWith(replies: replies);
+      }
+    }
+    return null;
+  }
+
+  void _remergePendingOptimisticComments() {
+    final List<_PendingCommentEntry> stillPending =
+        _pendingComments.values.toList(growable: false);
+    for (final _PendingCommentEntry entry in stillPending) {
+      if (_isCommentConfirmedInTree(_comments, entry.comment)) {
+        _pendingComments.remove(entry.comment.id);
+        continue;
+      }
+      if (entry.parentId == null) {
+        if (!_comments.any((Comment c) => c.id == entry.comment.id)) {
+          _comments.insert(0, entry.comment);
+        }
+      } else {
+        _insertOptimisticReply(entry.parentId!, entry.comment);
+      }
+    }
+  }
+
+  bool _isCommentConfirmedInTree(List<Comment> tree, Comment pending) {
+    for (final Comment comment in tree) {
+      if (comment.id != pending.id &&
+          !comment.id.startsWith('pending_') &&
+          comment.user.id == pending.user.id &&
+          comment.text == pending.text) {
+        return true;
+      }
+      final List<Comment>? replies = comment.replies;
+      if (replies != null &&
+          replies.isNotEmpty &&
+          _isCommentConfirmedInTree(replies, pending)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _startReply(Comment comment) {
@@ -964,58 +1142,56 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   Widget _buildTextField() {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Expanded(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 40, maxHeight: 120),
-        child: TextField(
-          controller: _textController,
-          focusNode: _inputFocusNode,
-          keyboardType: TextInputType.text,
-          textInputAction: TextInputAction.send,
-          minLines: 1,
-          maxLines: 4,
-          scrollPadding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom + 96,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 40, maxHeight: 120),
+      child: TextField(
+        controller: _textController,
+        focusNode: _inputFocusNode,
+        keyboardType: TextInputType.text,
+        textInputAction: TextInputAction.send,
+        minLines: 1,
+        maxLines: 4,
+        scrollPadding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 96,
+        ),
+        onSubmitted: (_) => _addComment(),
+        style: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 15,
+          height: 1.25,
+        ),
+        cursorColor: scheme.primary,
+        decoration: InputDecoration(
+          hintText: _replyingTo != null ? 'Reply...' : 'Add a comment...',
+          hintStyle: TextStyle(
+            color: scheme.onSurface.withValues(alpha: 0.50),
           ),
-          onSubmitted: (_) => _addComment(),
-          style: TextStyle(
-            color: scheme.onSurface,
-            fontSize: 15,
-            height: 1.25,
+          filled: true,
+          fillColor: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.78),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(
+              color: scheme.outline.withValues(alpha: 0.22),
+            ),
           ),
-          cursorColor: scheme.primary,
-          decoration: InputDecoration(
-            hintText: _replyingTo != null ? 'Reply...' : 'Add a comment...',
-            hintStyle: TextStyle(
-              color: scheme.onSurface.withValues(alpha: 0.50),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(
+              color: scheme.outline.withValues(alpha: 0.22),
             ),
-            filled: true,
-            fillColor: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : scheme.surfaceContainerHighest.withValues(alpha: 0.78),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(24),
-              borderSide: BorderSide(
-                color: scheme.outline.withValues(alpha: 0.22),
-              ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(
+              color: scheme.primary.withValues(alpha: 0.72),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(24),
-              borderSide: BorderSide(
-                color: scheme.outline.withValues(alpha: 0.22),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(24),
-              borderSide: BorderSide(
-                color: scheme.primary.withValues(alpha: 0.72),
-              ),
-            ),
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 10,
-            ),
+          ),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 10,
           ),
         ),
       ),

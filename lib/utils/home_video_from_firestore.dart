@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../models/user_count_fields.dart';
+import 'category_schema.dart';
 import 'avatar_url_resolver.dart';
 import 'firestore_map_readers.dart';
 import 'swallow_non_fatal.dart';
@@ -29,6 +30,10 @@ Future<HomeVideo?> loadHomeVideoForPlayback(String videoId) async {
   return _buildHomeVideoFromDoc(data, videoId);
 }
 
+// Keep private alias for in-file use.
+User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) =>
+    creatorFromVideoDoc(data, ownerId);
+
 Map<String, dynamic>? _nestedCreator(Map<String, dynamic> data) {
   final Object? raw = data['creator'];
   if (raw is Map<String, dynamic>) {
@@ -40,7 +45,8 @@ Map<String, dynamic>? _nestedCreator(Map<String, dynamic> data) {
   return null;
 }
 
-User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
+/// Builds a [User] from embedded creator fields on a video document.
+User creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) {
   final Map<String, dynamic>? nested = _nestedCreator(data);
   final String id = (ownerId ?? '').trim();
   final String displayName = firstNonEmptyStringFromValues(<Object?>[
@@ -194,9 +200,7 @@ Future<HomeVideo> _buildHomeVideoFromDoc(
         0,
     caption: resolveVideoCaptionFromFirestoreData(data),
     overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
-    categoryId: data['category'] as String? ??
-        data['categoryId'] as String? ??
-        'general',
+    categoryId: categoryIdFromVideoDocument(data),
     createdAt:
         data['timestamp'] as Timestamp? ?? data['createdAt'] as Timestamp?,
     status: data['status'] as String? ?? 'processing',

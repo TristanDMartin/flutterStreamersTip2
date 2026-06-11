@@ -10,6 +10,7 @@ import 'manage_posts_view.dart';
 import 'contact_support_view.dart';
 import '../constants/app_colors.dart';
 import 'upgrade_view.dart';
+import '../routing/app_navigator.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/responsive_layout.dart';
 
@@ -331,6 +332,22 @@ class _MenuViewState extends ConsumerState<MenuView> {
 
   Widget _buildMenuGrid(BuildContext context, _MenuMetrics metrics) {
     final cards = <Widget>[
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.bar_chart_rounded,
+        title: 'Creator Intelligence',
+        subtitle: 'Insights, trends & personalized next steps',
+        onTap: () => AppNavigator.openCreatorIntelligence(context),
+      ),
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.insights_rounded,
+        title: 'Creator Insights',
+        subtitle: 'Per-video performance & audience',
+        onTap: () => AppNavigator.openVideoInsights(context),
+      ),
       _buildMenuCard(
         context,
         metrics: metrics,

@@ -1,0 +1,68 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:streamers_tip/utils/video_document_rules.dart';
+import 'package:streamers_tip/utils/video_url_resolver.dart';
+
+void main() {
+  group('rejectFeedCandidateBeforeHydration', () {
+    test('rejects deleted and non-ready statuses with explicit reason', () {
+      expect(
+        rejectFeedCandidateBeforeHydration(
+          {'status': 'processing'},
+          readOwnerId: getOwnerId,
+        ),
+        'status:processing',
+      );
+      expect(
+        rejectFeedCandidateBeforeHydration(
+          {'status': 'ready', 'deletedAt': '2026-01-01'},
+          readOwnerId: getOwnerId,
+        ),
+        'deletedAt',
+      );
+    });
+
+    test('rejects orphaned videos without owner hints', () {
+      expect(
+        rejectFeedCandidateBeforeHydration(
+          {
+            'status': 'ready',
+            'isReadyForFeed': true,
+            'visibility': 'public',
+            'id': '1777510738834_1003',
+          },
+          readOwnerId: getOwnerId,
+        ),
+        'missing_owner',
+      );
+    });
+
+    test('allows ready public video with canonical owner', () {
+      expect(
+        rejectFeedCandidateBeforeHydration(
+          {
+            'status': 'ready',
+            'isReadyForFeed': true,
+            'visibility': 'public',
+            'ownerId': 'abc123owner0000000000000001',
+          },
+          readOwnerId: getOwnerId,
+        ),
+        isNull,
+      );
+    });
+
+    test('requires isReadyForFeed to be explicitly true', () {
+      expect(
+        rejectFeedCandidateBeforeHydration(
+          {
+            'status': 'ready',
+            'visibility': 'public',
+            'ownerId': 'abc123owner0000000000000001',
+          },
+          readOwnerId: getOwnerId,
+        ),
+        'isReadyForFeed:not_true',
+      );
+    });
+  });
+}

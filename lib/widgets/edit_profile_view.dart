@@ -1,11 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'edit_field_view.dart';
 import 'links_edit_view.dart';
-import 'image_picker_widget.dart';
 import 'status_button.dart';
 import '../services/auth_service.dart';
 import '../services/profile_update_service.dart';
@@ -21,10 +22,13 @@ import '../features/admin/widgets/admin_shield_button.dart';
 import '../features/admin/views/admin_control_center_view.dart';
 import '../constants/app_colors.dart';
 import '../core/theme/st_theme_tokens.dart';
-import '../components/onboarding/onboarding_mission_actions.dart';
 import '../utils/platform_rules.dart';
+import '../utils/user_profile_firestore.dart';
 import '../utils/playback_route_suppression.dart';
 import '../routing/app_routes.dart';
+import 'profile/editable_profile_field.dart';
+import 'profile/profile_avatar_picker_actions.dart';
+import 'profile/profile_username_utils.dart';
 
 class EditProfileView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -41,7 +45,6 @@ class EditProfileView extends ConsumerStatefulWidget {
   @override
   ConsumerState<EditProfileView> createState() => _EditProfileViewState();
 }
-
 class _EditProfileViewState extends ConsumerState<EditProfileView> {
   late Map<String, dynamic> _user;
   bool _isUploadingAvatar = false;
@@ -52,19 +55,36 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   ProfileUpdateService? _profileUpdateService;
   bool _isAdmin = false;
   bool _rulesAlignedAdmin = false;
+  bool _isResolvingAdminAccess = false;
 
   @override
   void initState() {
     super.initState();
     PlaybackRouteSuppression.suppress(reason: 'edit_profile');
     _user = Map.from(widget.user);
+    final User? authUser = FirebaseAuth.instance.currentUser;
+    if (authUser != null) {
+      _user.putIfAbsent('id', () => authUser.uid);
+      _user.putIfAbsent('uid', () => authUser.uid);
+      if (authUser.email != null) {
+        _user.putIfAbsent('email', () => authUser.email);
+      }
+    }
     _profileUpdateService = ProfileUpdateService();
     _profileUpdateService!.addProfileViewListener(
       _onProfileUpdateServiceChanged,
     );
+    unawaited(
+      _profileUpdateService!.initialize().then((_) {
+        if (mounted) {
+          _onProfileUpdateServiceChanged();
+        }
+      }),
+    );
     _checkNameChangeEligibility();
-    _isAdmin = AdminService.userMapIndicatesAdmin(_user);
-    _checkAdminStatus();
+    _isAdmin = AdminService.hasImmediateAdminAccess(cachedUserMap: _user);
+    _rulesAlignedAdmin = _isAdmin;
+    unawaited(_checkAdminStatus());
   }
 
   void _onProfileUpdateServiceChanged() {
@@ -77,6 +97,8 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       'isAdmin',
       'admin',
       'username',
+      UserProfileFirestore.platformsField,
+      UserProfileFirestore.calendarEventsField,
     ]) {
       if (d.containsKey(k)) {
         _user[k] = d[k];
@@ -86,45 +108,70 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Future<void> _checkAdminStatus() async {
-    final bool uiAdmin =
-        await AdminService.instance.hasAdminUiAccess(cachedUserMap: _user);
-    final bool rulesAdmin =
-        await AdminService.instance.hasFirestoreRulesAdminAccess();
+    final bool granted = await AdminService.instance.resolveAdminAccess(
+      cachedUserMap: _user,
+    );
     if (mounted) {
       setState(() {
-        _isAdmin = uiAdmin;
-        _rulesAlignedAdmin = rulesAdmin;
+        _isAdmin = granted;
+        _rulesAlignedAdmin = granted;
       });
     }
   }
 
-  Future<bool> _refreshAdminAccess() async {
-    try {
-      await AdminService.instance.refreshIdTokenForAdminSession();
-      final bool rulesAdmin =
-          await AdminService.instance.hasFirestoreRulesAdminAccess();
-      if (mounted) {
-        setState(() {
-          _rulesAlignedAdmin = rulesAdmin;
-        });
-      }
-      return rulesAdmin;
-    } catch (e) {
-      debugPrint('⚠️ EditProfileView: admin access refresh failed: $e');
-      return false;
-    }
-  }
-
-  void _showAdminAccessPendingMessage() {
+  void _showAdminAccessRequiredMessage() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-          'Admin access is still syncing. Try again in a moment.',
-        ),
+        content: Text('Admin access required'),
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _handleAdminButtonTap() async {
+    debugPrint('ADMIN_BUTTON_TAPPED');
+    AdminService.userDocGrantsAdminAccess(
+      _user,
+      authUser: FirebaseAuth.instance.currentUser,
+      logSource: 'button_tap',
+    );
+    if (AdminService.hasImmediateAdminAccess(cachedUserMap: _user)) {
+      await AdminService.instance.ensureOwnerAdminActivation(
+        cachedUserMap: _user,
+      );
+      _openAdminControlCenter();
+      return;
+    }
+    if (_isResolvingAdminAccess) {
+      return;
+    }
+    setState(() {
+      _isResolvingAdminAccess = true;
+    });
+    try {
+      final bool granted = await AdminService.instance.resolveAdminAccess(
+        cachedUserMap: _user,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (granted) {
+        setState(() {
+          _isAdmin = true;
+          _rulesAlignedAdmin = true;
+        });
+        _openAdminControlCenter();
+        return;
+      }
+      _showAdminAccessRequiredMessage();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isResolvingAdminAccess = false;
+        });
+      }
+    }
   }
 
   void _openAdminControlCenter() {
@@ -220,7 +267,9 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       // If display name is updated, also update the username to match
       if (key == 'displayName') {
         // Convert display name to username format (lowercase, no spaces, special chars)
-        final username = _generateUsernameFromDisplayName(value.toString());
+        final username = ProfileUsernameUtils.generateUsernameFromDisplayName(
+          value.toString(),
+        );
         _user['username'] = username;
 
         // Record the name change date
@@ -252,7 +301,6 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     // Update all profile views through ProfileUpdateService
     try {
       await _profileUpdateService?.updateUserData(updateData);
-      await OnboardingMissionActions.complete('complete_profile');
     } catch (e) {
       // Error updating profile views, using fallback
       if (kDebugMode) {
@@ -260,37 +308,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       }
       // Fallback to direct Firestore update
       _saveToFirestore(updateData);
-      await OnboardingMissionActions.complete('complete_profile');
     }
-  }
-
-  /// Generate a username from display name
-  String _generateUsernameFromDisplayName(String displayName) {
-    if (displayName.isEmpty) return '';
-
-    // Convert to lowercase and replace spaces with underscores
-    String username = displayName.toLowerCase();
-
-    // Remove special characters except underscores and keep only alphanumeric and underscores
-    username = username.replaceAll(RegExp(r'[^a-z0-9_]'), '');
-
-    // Remove multiple consecutive underscores
-    username = username.replaceAll(RegExp(r'_+'), '_');
-
-    // Remove leading/trailing underscores
-    username = username.replaceAll(RegExp(r'^_+|_+$'), '');
-
-    // Ensure it's not empty and add a number if needed to make it unique
-    if (username.isEmpty) {
-      username = 'user';
-    }
-
-    // Limit length to 20 characters (common username limit)
-    if (username.length > 20) {
-      username = username.substring(0, 20);
-    }
-
-    return username;
   }
 
   Future<void> _saveToFirestore(Map<String, dynamic> data) async {
@@ -308,36 +326,22 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
   void _showImagePicker() {
     if (kDebugMode) {
-      // ✅ FIX #2: Wrap in kDebugMode
       debugPrint('🖼️ EditProfileView: Opening image picker modal');
     }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => ImagePickerWidget(
-        onImageSelected: _handleImageSelected,
-        onCancel: () {
-          if (kDebugMode) {
-            // ✅ FIX #2: Wrap in kDebugMode
-            debugPrint('❌ EditProfileView: Image picker cancelled');
-          }
-          Navigator.pop(context);
-        },
-      ),
+    ProfileAvatarPickerActions.showImagePicker(
+      context,
+      onImageSelected: _handleImageSelected,
     );
   }
 
   void _handleImageSelected(File imageFile) {
     if (kDebugMode) {
-      // ✅ FIX #2: Wrap in kDebugMode
       debugPrint('📸 EditProfileView: Image selected: ${imageFile.path}');
     }
     setState(() {
       _selectedImage = imageFile;
       _uploadError = null;
     });
-    Navigator.pop(context); // Close the image picker
     _uploadAvatar(imageFile);
   }
 
@@ -562,9 +566,8 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     }
   }
 
-  void _showEditField(EditableField field) {
-    // Check if user can change their name
-    if (field == EditableField.name && !_canChangeName) {
+  void _showEditField(EditableProfileField field) {
+    if (field == EditableProfileField.name && !_canChangeName) {
       _showNameChangeCooldownDialog(); // cspell:ignore cooldown
       return;
     }
@@ -658,67 +661,98 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  String _getFieldValue(EditableField field) {
+  String _getFieldValue(EditableProfileField field) {
     switch (field) {
-      case EditableField.name:
+      case EditableProfileField.name:
         return _user['displayName'] ?? '';
-      case EditableField.bio:
+      case EditableProfileField.bio:
         return _user['bio'] ?? '';
-      case EditableField.hashtags:
+      case EditableProfileField.hashtags:
         final hashtags = _user['hashtags'] as List<dynamic>? ?? [];
         return hashtags.join(', ');
     }
   }
 
   void _showStatusPicker() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Consumer(
-        builder: (context, ref, child) {
-          final statusAsync = ref.watch(statusNotifierProvider);
-          final updateStatus = ref.read(updateStatusProvider);
+      builder: (BuildContext sheetContext) {
+        final double bottomInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: Consumer(
+            builder: (BuildContext context, WidgetRef ref, Widget? child) {
+              final statusAsync = ref.watch(statusNotifierProvider);
+              final updateStatus = ref.read(updateStatusProvider);
 
-          return statusAsync.when(
-            data: (presence) => StatusPickerModal(
-              currentStatus: presence.status,
-              onStatusSelected: (status) async {
-                final navigator = Navigator.of(context);
-                await updateStatus(status);
-
-                // Update ProfileUpdateService to notify all views
-                try {
-                  await _profileUpdateService
-                      ?.updateUserData({'status': status.name});
-                  // Status updated successfully
-                } catch (e) {
-                  // Error updating status, using fallback
-                  if (kDebugMode) {
-                    // appLog('Status update error: $e');
-                  }
-                }
-
-                if (mounted) {
-                  navigator.pop();
-                }
-              },
-            ),
-            loading: () => Center(
-              child: CircularProgressIndicator(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            error: (Object error, StackTrace stack) => Center(
-              child: Text(
-                'Error loading status',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
+              return statusAsync.when(
+                data: (presence) => StatusPickerModal(
+                  currentStatus: presence.status,
+                  onStatusSelected: (UserStatus status) async {
+                    final NavigatorState navigator =
+                        Navigator.of(sheetContext);
+                    StatusUpdateOutcome outcome;
+                    try {
+                      outcome = await updateStatus(status);
+                    } on PlatformException catch (e) {
+                      debugPrint(
+                        'STATUS_PLATFORM_EXCEPTION code=${e.code} '
+                        'message=${e.message}',
+                      );
+                      outcome = StatusUpdateOutcome.failed(
+                        userMessage: 'Status could not sync. Try again.',
+                        pendingRetry: true,
+                      );
+                    } catch (e) {
+                      debugPrint('STATUS_UPDATE_FAILED ui_error=$e');
+                      outcome = StatusUpdateOutcome.failed(
+                        userMessage: 'Status could not sync. Try again.',
+                        pendingRetry: true,
+                      );
+                    }
+                    if (!outcome.success && sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            outcome.userMessage ??
+                                'Status could not sync. Try again.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                    try {
+                      await _profileUpdateService?.updateUserData(
+                        <String, dynamic>{'status': status.value},
+                      );
+                    } catch (e) {
+                      debugPrint('STATUS_UPDATE_FAILED profile_cache=$e');
+                    }
+                    if (mounted) {
+                      navigator.pop();
+                    }
+                  },
                 ),
-              ),
-            ),
-          );
-        },
-      ),
+                loading: () => Center(
+                  child: CircularProgressIndicator(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                error: (Object error, StackTrace stack) => Center(
+                  child: Text(
+                    'Error loading status',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -753,7 +787,17 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             }
 
             final List<Map<String, dynamic>> normalizedPlatforms =
-                PlatformRules.normalizePlatformsForSave(updatedPlatforms);
+                UserProfileFirestore.normalizePlatformsForFirestore(
+              updatedPlatforms,
+            );
+            final String? uid = (_user['id'] ?? _user['uid'])?.toString();
+            if (uid != null && uid.isNotEmpty) {
+              UserProfileFirestore.logPlatformSave(
+                uid: uid,
+                view: 'EditProfileView',
+                count: normalizedPlatforms.length,
+              );
+            }
 
             // Content moderation validation for platforms
             final moderationResult = ContentModerationService.validatePlatforms(
@@ -818,29 +862,27 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
   @override
   Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
-      body: Container(
-        color: Theme.of(context).colorScheme.surface,
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Custom AppBar
-              _buildAppBar(),
-
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildAvatarSection(),
-                      _buildAboutYouSection(),
-                      _buildPreferencesSection(),
-                    ],
-                  ),
+      resizeToAvoidBottomInset: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildAppBar(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(bottom: bottomInset + 24),
+                child: Column(
+                  children: [
+                    _buildAvatarSection(),
+                    _buildAboutYouSection(),
+                    _buildPreferencesSection(),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -882,7 +924,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                 textAlign: TextAlign.center,
               ),
             ),
-            if (_isAdmin) ...[
+            if (_isAdmin || _isResolvingAdminAccess) ...[
               Consumer(
                 builder: (context, ref, child) {
                   final SupportTicketsState supportTickets = _rulesAlignedAdmin
@@ -892,21 +934,19 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                       supportTickets.pendingTickets > 0;
                   return Padding(
                     padding: const EdgeInsets.only(right: 4),
-                    child: AdminShieldButton(
-                      showTicketBadge: hasPendingTickets,
-                      onPressed: () async {
-                        if (!_rulesAlignedAdmin) {
-                          final bool refreshed = await _refreshAdminAccess();
-                          if (refreshed) {
-                            _openAdminControlCenter();
-                            return;
-                          }
-                          _showAdminAccessPendingMessage();
-                          return;
-                        }
-                        _openAdminControlCenter();
-                      },
-                    ),
+                    child: _isResolvingAdminAccess
+                        ? const SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: Padding(
+                              padding: EdgeInsets.all(4),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : AdminShieldButton(
+                            showTicketBadge: hasPendingTickets,
+                            onPressed: _handleAdminButtonTap,
+                          ),
                   );
                 },
               ),
@@ -1197,11 +1237,12 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             child: Column(
               children: [
                 _buildEditProfileRow(
-                    EditableField.name, _user['displayName'] ?? ''),
+                    EditableProfileField.name, _user['displayName'] ?? ''),
                 _buildDivider(),
                 _buildUsernameRow(),
                 _buildDivider(),
-                _buildEditProfileRow(EditableField.bio, _user['bio'] ?? ''),
+                _buildEditProfileRow(
+                    EditableProfileField.bio, _user['bio'] ?? ''),
                 _buildDivider(),
                 _buildPlatformsRow(),
                 _buildDivider(),
@@ -1216,11 +1257,11 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     );
   }
 
-  Widget _buildEditProfileRow(EditableField field, String value) {
+  Widget _buildEditProfileRow(EditableProfileField field, String value) {
     final ColorScheme cs = Theme.of(context).colorScheme;
     final Color on = cs.onSurface;
     final Color muted = on.withValues(alpha: 0.45);
-    final isNameField = field == EditableField.name;
+    final isNameField = field == EditableProfileField.name;
     final isLocked = isNameField && !_canChangeName;
 
     return GestureDetector(
@@ -1376,7 +1417,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     final Color on = cs.onSurface;
     final Color muted = on.withValues(alpha: 0.45);
     return GestureDetector(
-      onTap: () => _showEditField(EditableField.hashtags),
+      onTap: () => _showEditField(EditableProfileField.hashtags),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
@@ -1696,60 +1737,10 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple
-    }
-  }
-}
-
-enum EditableField {
-  name,
-  bio,
-  hashtags;
-
-  String get title {
-    switch (this) {
-      case EditableField.name:
-        return 'Name';
-      case EditableField.bio:
-        return 'Bio';
-      case EditableField.hashtags:
-        return 'Hashtags';
-    }
-  }
-
-  String get key {
-    switch (this) {
-      case EditableField.name:
-        return 'displayName';
-      case EditableField.bio:
-        return 'bio';
-      case EditableField.hashtags:
-        return 'hashtags';
-    }
-  }
-
-  int get maxLength {
-    switch (this) {
-      case EditableField.name:
-        return 30;
-      case EditableField.bio:
-        return 200;
-      case EditableField.hashtags:
-        return 100;
-    }
-  }
-
-  String? get helperText {
-    switch (this) {
-      case EditableField.name:
-        return 'Your nickname can only be changed once every 7 days.';
-      case EditableField.bio:
-        return 'You can include your pronouns here if you\'d like (e.g., \'He/him\', \'They/them\', \'She/her\').';
-      case EditableField.hashtags:
-        return null;
     }
   }
 }

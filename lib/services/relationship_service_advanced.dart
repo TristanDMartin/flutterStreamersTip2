@@ -143,6 +143,17 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
     }
   }
 
+  /// Public hook for logout — stops relationship Firestore listeners immediately.
+  void teardownForLogout() {
+    _currentUserId = null;
+    _cleanupListeners();
+    _following = <User>[];
+    _followers = <User>[];
+    _connections = <User>[];
+    _isLoading = false;
+    notifyListeners();
+  }
+
   /// Cleanup all listeners
   void _cleanupListeners() {
     for (final subscription in _cancellables) {

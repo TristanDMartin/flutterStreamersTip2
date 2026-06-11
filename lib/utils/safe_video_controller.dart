@@ -5,20 +5,38 @@ import '../services/production_logging_service.dart';
 
 final ProductionLoggingService _playbackLog = ProductionLoggingService();
 
+/// True when [controller] is alive and initialized for playback.
+bool isVideoControllerReady(VideoPlayerController? controller) {
+  return readVideoControllerOr(
+    controller,
+    (VideoPlayerValue value) => value.isInitialized && !value.hasError,
+    false,
+    context: 'isVideoControllerReady',
+  );
+}
+
 /// True when [controller] is non-null and its [VideoPlayerValue] can be read.
-bool isVideoControllerAlive(VideoPlayerController? controller) {
+bool isVideoControllerAlive(
+  VideoPlayerController? controller, {
+  bool logDisposed = true,
+}) {
   if (controller == null) {
     return false;
   }
   try {
+    void noop() {}
+    controller.addListener(noop);
+    controller.removeListener(noop);
     controller.value;
     return true;
   } catch (e) {
-    _playbackLog.debug(
-      'Disposed video controller',
-      error: e,
-      tag: 'VideoPlayback',
-    );
+    if (logDisposed) {
+      _playbackLog.debug(
+        'Disposed video controller',
+        error: e,
+        tag: 'VideoPlayback',
+      );
+    }
     return false;
   }
 }

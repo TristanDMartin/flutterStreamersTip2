@@ -241,11 +241,21 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
                         textController: _textController,
                         isRateLimited: _isRateLimited,
                         onTextChanged: (String value) {
+                          if (_currentText == value) {
+                            return;
+                          }
                           setState(() => _currentText = value);
-                          widget.onTextChanged(value);
                         },
                         onValidationChanged: (bool isValid) {
-                          setState(() => _isContentValid = isValid);
+                          if (_isContentValid == isValid) {
+                            return;
+                          }
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted || _isContentValid == isValid) {
+                              return;
+                            }
+                            setState(() => _isContentValid = isValid);
+                          });
                         },
                       ),
               ),

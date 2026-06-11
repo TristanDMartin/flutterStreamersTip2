@@ -45,9 +45,11 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
   @override
   void didUpdateWidget(ContentValidationField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialValue != oldWidget.initialValue) {
+    if (widget.initialValue != oldWidget.initialValue &&
+        widget.initialValue != _controller.text) {
+      _controller.removeListener(_onTextChanged);
       _controller.text = widget.initialValue;
-      // ContentValidationField: Updated controller text
+      _controller.addListener(_onTextChanged);
     }
   }
 
@@ -59,13 +61,14 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
   }
 
   void _onTextChanged() {
-    // ContentValidationField: Text changed
-    widget.onChanged(_controller.text);
-
-    // Cancel previous timer
+    final String text = _controller.text;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _controller.text != text) {
+        return;
+      }
+      widget.onChanged(text);
+    });
     _debounceTimer?.cancel();
-
-    // Start new timer for debounced validation
     _debounceTimer = Timer(const Duration(milliseconds: 250), () {
       _validateContent();
     });

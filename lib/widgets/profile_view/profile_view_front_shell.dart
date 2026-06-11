@@ -21,6 +21,7 @@ class ProfileViewFrontShell extends StatelessWidget {
     required this.onBack,
     required this.onFlip,
     required this.onStreamerCard,
+    required this.showStreamerCardButton,
   });
 
   final Map<String, dynamic> userData;
@@ -33,6 +34,7 @@ class ProfileViewFrontShell extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onFlip;
   final VoidCallback onStreamerCard;
+  final bool showStreamerCardButton;
 
   @override
   Widget build(BuildContext context) {
@@ -61,14 +63,15 @@ class ProfileViewFrontShell extends StatelessWidget {
                 ),
                 onPressed: onFlip,
               ),
-              IconButton(
-                icon: Icon(
-                  Icons.card_membership,
-                  color: onSurface,
-                  size: 24,
+              if (showStreamerCardButton)
+                IconButton(
+                  icon: Icon(
+                    Icons.card_membership,
+                    color: onSurface,
+                    size: 24,
+                  ),
+                  onPressed: onStreamerCard,
                 ),
-                onPressed: onStreamerCard,
-              ),
               IconButton(
                 icon: Icon(
                   Icons.more_horiz,

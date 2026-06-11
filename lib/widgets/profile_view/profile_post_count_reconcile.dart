@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../services/post_counter_service.dart';
+import '../../utils/like_interaction_boundary.dart';
 
 /// Throttles [PostCounterService.reconcilePostCount] for profile open / cold start.
 class ProfilePostCountReconcile {
@@ -24,6 +27,19 @@ class ProfilePostCountReconcile {
     Duration cooldown = defaultCooldown,
   }) async {
     if (!isCurrentUser) {
+      return;
+    }
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      LikeInteractionBoundary.runOrQueue(
+        () => unawaited(
+          reconcileIfStale(
+            userId: userId,
+            isCurrentUser: isCurrentUser,
+            cooldown: cooldown,
+          ),
+        ),
+        reason: 'post_count_reconcile',
+      );
       return;
     }
     try {

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../widgets/streamer_card_view.dart';
+import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart';
 import 'profile_link_service.dart';
 import 'unified_avatar_service.dart' as nav;
@@ -172,6 +173,7 @@ class URLHandlerService extends ChangeNotifier {
         MaterialPageRoute(
           builder: (context) => StreamerCardView(
             userId: user.id,
+            initialCreator: CreatorProfileSnapshot.fromUser(user),
             currentUserId: null,
             onDismiss: () => Navigator.of(context).pop(),
           ),

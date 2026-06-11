@@ -4,6 +4,7 @@ import '../../models/user.dart' as app_user;
 import '../../services/profile_update_service.dart';
 import '../../services/unified_avatar_service.dart';
 import '../../utils/avatar_url_resolver.dart';
+import '../../utils/user_profile_firestore.dart';
 
 /// Cached `Map` for profile header + back card, keyed off [app_user.User] and
 /// [ProfileUpdateService] for the signed-in viewer.
@@ -41,7 +42,10 @@ class ProfileUserDataCache {
       final bool isViewerProfile =
           currentUserId != null && currentUserId == profileUser.id;
       if (isViewerProfile && updateService?.isDataLoaded == true) {
-        _cached = updateService?.userData ?? profileUser.toMap();
+        _cached = _mergeProfileMaps(
+          profileUser.toMap(),
+          updateService?.userData,
+        );
         final String? avatarUrl =
             resolveAvatarUrl(_cached) ?? profileUser.avatarURL;
         if (avatarUrl != null &&
@@ -53,7 +57,10 @@ class ProfileUserDataCache {
         _dirty = false;
         return _cached!;
       }
-      _cached = profileUser.toMap();
+      _cached = _mergeProfileMaps(
+        profileUser.toMap(),
+        isViewerProfile ? updateService?.userData : null,
+      );
       if (isViewerProfile &&
           profileUser.avatarURL?.isNotEmpty == true &&
           profileUser.avatarURL != _lastSavedAvatarUrl) {
@@ -70,6 +77,19 @@ class ProfileUserDataCache {
       _dirty = false;
       return _fallback(profileUser);
     }
+  }
+
+  Map<String, dynamic> _mergeProfileMaps(
+    Map<String, dynamic> base,
+    Map<String, dynamic>? firestore,
+  ) {
+    if (firestore == null || firestore.isEmpty) {
+      return base;
+    }
+    return UserProfileFirestore.mergeDisplayUserData(
+      fresh: firestore,
+      seed: base,
+    );
   }
 
   Map<String, dynamic> _fallback(app_user.User profileUser) {

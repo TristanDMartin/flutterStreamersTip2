@@ -124,9 +124,7 @@ class _FeedStartupPreview extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  message == 'Loading videos...'
-                      ? 'Getting your feed ready'
-                      : message,
+                  message,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.72),
                     fontSize: 13,

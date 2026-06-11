@@ -25,12 +25,16 @@ import '../providers/home_provider.dart' as hp;
 import '../providers/video_service_provider.dart' as video_providers;
 import '../services/user_blocking_service.dart';
 import '../services/global_playback_manager.dart';
+import '../services/creator_cache_service.dart';
+import '../services/creator_intelligence_analytics_service.dart';
 import '../routing/app_navigator.dart';
 import '../constants/app_colors.dart';
 import '../core/theme/support_shell_style.dart';
 import '../features/creator_score/creator_score.dart';
 import '../features/creator_score/creator_score_service.dart';
 import '../features/creator_score/creator_score_widgets.dart';
+import '../models/creator_profile_snapshot.dart';
+import '../utils/user_profile_firestore.dart';
 import '../models/user.dart' as app_models;
 import 'streamer_card_profile_controller.dart';
 import 'streamer_card_relationship_controller.dart';
@@ -76,18 +80,19 @@ SnackBar _streamerSnackBar(
 }
 
 class StreamerCardView extends ConsumerStatefulWidget {
-  final String userId; // Changed from StreamerCard to userId for live data
+  final String userId;
+  final CreatorProfileSnapshot? initialCreator;
   final String? currentUserId;
   final VoidCallback? onDismiss;
   final Function(String userId)? onFollow;
   final Function(String userId)? onMessage;
   final Function(String userId)? onShare;
-  final Function(String tabName)?
-      onNavigateToTab; // New callback for tab navigation
+  final Function(String tabName)? onNavigateToTab;
 
   const StreamerCardView({
     super.key,
     required this.userId,
+    this.initialCreator,
     this.currentUserId,
     this.onDismiss,
     this.onFollow,
@@ -128,6 +133,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _isLoading = true;
   String? _error;
   String? _resolvedUserDocId;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _contentPlansSubscription;
+  String? _contentPlansListenerUid;
+  List<CalendarEvent> _contentPlanCalendarEvents = <CalendarEvent>[];
   late final StreamerCardProfileController _profileController;
 
   late final StreamerCardRelationshipController _relationshipController;
@@ -157,6 +166,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _profileController = StreamerCardProfileController()
       ..addListener(_handleProfileStateChanged);
     _blockingService.blockListRevision.addListener(_handleBlockListChanged);
+    final CreatorProfileSnapshot? seed = widget.initialCreator ??
+        CreatorCacheService.instance.get(widget.userId);
+    if (seed != null && seed.hasDisplayIdentity) {
+      _userData = seed.toUserDataMap();
+      _resolvedUserDocId = seed.creatorId;
+      _isLoading = false;
+    }
     _initializeBookmarks();
     _flipController = AnimationController(
       duration: const Duration(milliseconds: 600),
@@ -170,23 +186,86 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       curve: Curves.easeInOut,
     ));
 
-    // ✅ FIX #4: Schedule async load to avoid blocking initState
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      debugPrint(
-          '🔍 StreamerCardView: User ID from NetworkView: ${widget.userId}');
-      debugPrint(
-          '🔍 StreamerCardView: User ID length: ${widget.userId.length}');
-
-      // Check if this looks like a Firebase UID (long string)
-      if (widget.userId.length > 20) {
-        debugPrint(
-            '🔍 StreamerCardView: Detected Firebase UID, trying to find user by ID first');
-        _loadUserProfile();
-      } else {
-        debugPrint('🔍 StreamerCardView: Short user ID, trying direct load');
-        _loadUserProfile();
+      if (!mounted) {
+        return;
+      }
+      unawaited(
+        CreatorIntelligenceAnalyticsService().trackCreatorCardOpened(
+          creatorId: widget.userId,
+        ),
+      );
+      unawaited(_loadUserProfile());
+      if (_userData != null) {
+        unawaited(
+          _relationshipController.bind(
+            currentUserId: widget.currentUserId,
+            targetUserId: widget.userId,
+          ),
+        );
+        setState(_syncDerivedProfileFields);
       }
     });
+  }
+
+  void _syncDerivedProfileFields() {
+    final List<Map<String, dynamic>> platforms =
+        UserProfileFirestore.parsePlatformsFromUserData(_userData);
+    final List<CalendarEvent> docEvents =
+        UserProfileFirestore.parseCalendarEventsFromUserData(_userData);
+    final List<CalendarEvent> events =
+        UserProfileFirestore.mergeCalendarEventLists(
+      docEvents,
+      _contentPlanCalendarEvents,
+    );
+    final String uid =
+        (_userData?['id'] ?? _userData?['uid'] ?? _resolvedUserDocId ?? widget.userId)
+            .toString();
+    if (uid.isNotEmpty) {
+      UserProfileFirestore.logPlatformRead(
+        uid: uid,
+        view: 'StreamerCardBackView',
+        count: platforms.length,
+      );
+      UserProfileFirestore.logCalendarRead(
+        uid: uid,
+        source: 'StreamerCardBackView',
+        count: events.length,
+      );
+    }
+    _platforms = platforms;
+    _calendarEvents = events;
+  }
+
+  void _attachContentPlansListener(String userId) {
+    final String uid = userId.trim();
+    if (uid.isEmpty || _contentPlansListenerUid == uid) {
+      return;
+    }
+    _contentPlansSubscription?.cancel();
+    _contentPlansListenerUid = uid;
+    _contentPlansSubscription = FirebaseFirestore.instance
+        .collection(UserProfileFirestore.usersCollection)
+        .doc(uid)
+        .collection(UserProfileFirestore.contentPlansSubcollection)
+        .snapshots()
+        .listen(
+      (QuerySnapshot<Map<String, dynamic>> snapshot) {
+        if (!mounted) {
+          return;
+        }
+        final List<Map<String, dynamic>> docs = snapshot.docs
+            .map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
+          return <String, dynamic>{...d.data(), 'id': d.id};
+        }).toList(growable: false);
+        setState(() {
+          _contentPlanCalendarEvents =
+              UserProfileFirestore.calendarEventsFromContentPlanDocs(docs);
+          _syncDerivedProfileFields();
+        });
+      },
+      onError: (_) {},
+    );
   }
 
   void _handleProfileStateChanged() {
@@ -201,19 +280,25 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       _resolvedUserDocId = profileState.resolvedUserDocId;
       _isLoading = profileState.isLoading;
       _error = profileState.error;
+      _syncDerivedProfileFields();
     });
+
+    final String? resolvedUid = _resolvedUserDocId;
+    if (resolvedUid != null && resolvedUid.isNotEmpty) {
+      _attachContentPlansListener(resolvedUid);
+    }
 
     final profileChanged = previousResolvedUserDocId != _resolvedUserDocId ||
         !identical(previousUserData, _userData);
     if (profileChanged && _userData != null) {
+      final String cacheId = _resolvedUserDocId ?? widget.userId;
+      CreatorCacheService.instance.setFromUserData(cacheId, _userData!);
       unawaited(
         _relationshipController.bind(
           currentUserId: widget.currentUserId,
           targetUserId: widget.userId,
         ),
       );
-      _loadPlatforms();
-      _loadCalendarEvents();
     }
   }
 
@@ -278,15 +363,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Future<void> _loadUserProfile() async {
-    debugPrint(
-        '🔍 StreamerCardView: Loading user data for userId: ${widget.userId}');
-    await _profileController.load(widget.userId);
+    await _profileController.load(
+      widget.userId,
+      initialCreator: widget.initialCreator,
+    );
   }
 
   @override
   void didUpdateWidget(covariant StreamerCardView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userId != widget.userId) {
+      _contentPlansSubscription?.cancel();
+      _contentPlansListenerUid = null;
+      _contentPlanCalendarEvents = <CalendarEvent>[];
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           unawaited(_loadUserProfile());
@@ -349,6 +438,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _flipController.dispose();
     _blockingService.blockListRevision.removeListener(_handleBlockListChanged);
 
+    _contentPlansSubscription?.cancel();
     _profileController
       ..removeListener(_handleProfileStateChanged)
       ..dispose();
@@ -536,13 +626,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _isFront = !_isFront;
   }
 
+  bool get _hasDisplayData {
+    final Map<String, dynamic>? data = _userData;
+    if (data == null || data.isEmpty) {
+      return false;
+    }
+    final String name = data['displayName'] as String? ?? '';
+    final String handle = data['username'] as String? ?? '';
+    return name.isNotEmpty || handle.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (!_hasDisplayData && _isLoading) {
       return _buildLoadingState(context);
     }
 
-    if (_error != null) {
+    if (_error != null && !_hasDisplayData) {
       return _buildErrorState(context);
     }
 
@@ -2533,172 +2633,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple
     }
-  }
-
-  /// ✅ FIX #2: Optimized to only setState when platforms actually change
-  void _loadPlatforms() {
-    if (_userData == null || _userData!['platforms'] == null) {
-      // Only setState if platforms were previously non-empty
-      if (_platforms.isNotEmpty) {
-        _platforms = [];
-      }
-      return;
-    }
-
-    try {
-      final platformsData = _userData!['platforms'];
-      if (platformsData is! List) {
-        if (_platforms.isNotEmpty) {
-          _platforms = [];
-        }
-        return;
-      }
-
-      final newPlatforms = platformsData
-          .whereType<Map<String, dynamic>>()
-          .map((platform) => {
-                'id': platform['id']?.toString() ?? '',
-                'type': platform['type']?.toString() ?? '',
-                'username': platform['username']?.toString() ?? '',
-                'followers': (platform['followers'] as num?)?.toInt() ?? 0,
-                'url': platform['url']?.toString(),
-              })
-          .toList();
-
-      // ✅ Only update if platforms actually changed (no unnecessary setState)
-      if (!_platformsEqual(newPlatforms, _platforms)) {
-        _platforms = newPlatforms;
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ StreamerCardView: Error loading platforms: $e');
-      }
-      if (_platforms.isNotEmpty) {
-        _platforms = [];
-      }
-    }
-  }
-
-  /// Helper to compare platform lists
-  bool _platformsEqual(
-      List<Map<String, dynamic>> a, List<Map<String, dynamic>> b) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (a[i]['id'] != b[i]['id'] || a[i]['url'] != b[i]['url']) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// ✅ FIX #3: Optimized to only update when calendar events actually change
-  void _loadCalendarEvents() {
-    if (_userData == null || _userData!['calendarEvents'] == null) {
-      // Only update if events were previously non-empty
-      if (_calendarEvents.isNotEmpty) {
-        _calendarEvents = [];
-      }
-      return;
-    }
-
-    try {
-      final eventsData = _userData!['calendarEvents'];
-      if (eventsData is! List) {
-        if (_calendarEvents.isNotEmpty) {
-          _calendarEvents = [];
-        }
-        return;
-      }
-
-      final newEvents = eventsData
-          .where((e) =>
-              e is Map<String, dynamic> &&
-              e['id'] != null &&
-              e['title'] != null &&
-              e['description'] != null &&
-              e['date'] != null)
-          .map((eventData) {
-            try {
-              return CalendarEvent(
-                id: eventData['id'] as String,
-                title: eventData['title'] as String,
-                description: eventData['description'] as String,
-                date: _parseDate(
-                    eventData['date']), // ✅ FIX #3: Safe date parsing
-              );
-            } catch (e) {
-              if (kDebugMode) {
-                debugPrint(
-                    '❌ StreamerCardView: Error creating CalendarEvent: $e');
-              }
-              return null;
-            }
-          })
-          .where((event) => event != null)
-          .cast<CalendarEvent>()
-          .toList();
-
-      // ✅ Only update if events actually changed (no unnecessary setState)
-      if (!_eventsEqual(newEvents, _calendarEvents)) {
-        _calendarEvents = newEvents;
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ StreamerCardView: Error loading calendar events: $e');
-      }
-      if (_calendarEvents.isNotEmpty) {
-        _calendarEvents = [];
-      }
-    }
-  }
-
-  /// Helper to compare calendar event lists
-  bool _eventsEqual(List<CalendarEvent> a, List<CalendarEvent> b) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id || a[i].date != b[i].date) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// ✅ FIX #3: Safely parse date from various formats (copied from ProfileBackView)
-  DateTime _parseDate(dynamic dateValue) {
-    if (dateValue == null) {
-      return DateTime.now();
-    }
-
-    if (dateValue is Timestamp) {
-      return dateValue.toDate();
-    }
-
-    if (dateValue is DateTime) {
-      return dateValue;
-    }
-
-    if (dateValue is String) {
-      try {
-        return DateTime.parse(dateValue);
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint(
-              '❌ StreamerCardView: Error parsing date string: $dateValue');
-        }
-        return DateTime.now();
-      }
-    }
-
-    if (kDebugMode) {
-      debugPrint(
-          '❌ StreamerCardView: Unknown date type: ${dateValue.runtimeType}');
-    }
-    return DateTime.now();
   }
 
   /// ✅ FIX #4: Added timeout protection to prevent UI freeze

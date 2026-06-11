@@ -1,4 +1,5 @@
 import '../billing/get_user_tier.dart';
+import '../billing/models/subscription_snapshot.dart';
 import '../gamification/models/subscription_plan.dart';
 import '../gamification/models/user_progress_bundle.dart';
 import '../gamification/models/user_subscription_model.dart';
@@ -19,10 +20,18 @@ bool _statusAllowsTippy(String status) {
   );
 }
 
+/// Prefer [resolveTippyEnabledFromSnapshot] for gated UI.
+bool resolveTippyEnabledFromSnapshot(SubscriptionSnapshot? snapshot) {
+  if (snapshot == null) {
+    return false;
+  }
+  if (snapshot.hasFullAccess) {
+    return true;
+  }
+  return snapshot.entitlements.canUseAICaptionRewrite;
+}
+
 /// Whether caption/hashtag Tippy assist is available for the signed-in user.
-///
-/// Uses entitlements first, then canonical `subscriptionTier` + `subscriptionStatus`,
-/// then the gamification subscription snapshot (IAP / Firestore merge).
 bool resolveTippyEnabled(UserProgressBundle bundle) {
   if (bundle.entitlements.tippyAi) {
     return true;
@@ -34,11 +43,15 @@ bool resolveTippyEnabled(UserProgressBundle bundle) {
   return false;
 }
 
-/// New Post and other screens can pass live billing + bundle (bundle may lag IAP).
+/// New Post and other screens: API snapshot first, then legacy bundle/Firestore.
 bool resolveTippyEnabledForPublish({
   UserProgressBundle? bundle,
+  SubscriptionSnapshot? entitlements,
   BillingTierAccess? billing,
 }) {
+  if (entitlements != null && resolveTippyEnabledFromSnapshot(entitlements)) {
+    return true;
+  }
   if (bundle != null && bundle.entitlements.tippyAi) {
     return true;
   }

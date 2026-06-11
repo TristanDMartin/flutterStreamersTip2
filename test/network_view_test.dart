@@ -47,18 +47,18 @@ void main() {
       );
 
       // Should show empty state when no data
-      expect(find.text('No connections yet'), findsOneWidget);
+      expect(find.text('Build Your Creator Circle'), findsOneWidget);
       expect(
         find.text(
-          'Follow back people who follow you to turn one-way relationships '
-          'into connections.',
+          'Connect with creators, discover collaborators, and grow together.',
         ),
         findsOneWidget,
       );
-      expect(find.text('Refresh network'), findsOneWidget);
+      expect(find.text('Discover Creators'), findsOneWidget);
+      expect(find.text('Share Profile'), findsOneWidget);
     });
 
-    testWidgets('Empty state refresh action is present',
+    testWidgets('Empty state CTAs are tappable',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         const ProviderScope(
@@ -68,10 +68,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Refresh network'));
-      await tester.pump();
-
-      expect(find.text('Refresh network'), findsOneWidget);
+      expect(find.text('Discover Creators'), findsOneWidget);
+      expect(find.text('Share Profile'), findsOneWidget);
+      expect(find.byType(GestureDetector), findsWidgets);
     });
   });
 }

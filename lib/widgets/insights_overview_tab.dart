@@ -4,12 +4,14 @@ import 'insights_chart_widgets.dart';
 
 /// Overview tab showing general performance metrics
 class InsightsOverviewTab extends StatelessWidget {
-  final InsightsData insights;
-
   const InsightsOverviewTab({
     super.key,
     required this.insights,
+    this.analyticsWindowDays = 7,
   });
+
+  final InsightsData insights;
+  final int analyticsWindowDays;
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +69,9 @@ class InsightsOverviewTab extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Text(
-            'Last 7 days',
+            analyticsWindowDays >= 365
+                ? 'Last 12 months'
+                : 'Last $analyticsWindowDays days',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.8),
               fontSize: 14,

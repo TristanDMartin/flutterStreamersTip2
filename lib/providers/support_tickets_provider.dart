@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class SupportTicketsState {
@@ -46,7 +47,8 @@ class SupportTicketsNotifier extends StateNotifier<SupportTicketsState> {
         .orderBy(FieldPath.documentId)
         .limit(500)
         .snapshots()
-        .listen((snapshot) {
+        .listen(
+      (snapshot) {
       final tickets = snapshot.docs;
 
       int pending = 0;
@@ -76,7 +78,11 @@ class SupportTicketsNotifier extends StateNotifier<SupportTicketsState> {
         inProgressTickets: inProgress,
         resolvedTickets: resolved,
       );
-    });
+    },
+      onError: (Object error) {
+        debugPrint('support_tickets listen error: $error');
+      },
+    );
   }
 
   bool hasPendingTickets() {

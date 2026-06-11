@@ -9,7 +9,7 @@ class AdminShieldButton extends StatefulWidget {
     this.showTicketBadge = false,
   });
 
-  final VoidCallback onPressed;
+  final Future<void> Function() onPressed;
   final bool showTicketBadge;
 
   @override
@@ -47,7 +47,7 @@ class _AdminShieldButtonState extends State<AdminShieldButton>
     await _c.forward();
     await _c.reverse();
     HapticFeedback.lightImpact();
-    widget.onPressed();
+    await widget.onPressed();
   }
 
   @override

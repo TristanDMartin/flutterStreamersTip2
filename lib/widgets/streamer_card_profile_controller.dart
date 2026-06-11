@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/creator_profile_snapshot.dart';
+import '../services/creator_cache_service.dart';
+import '../utils/user_profile_firestore.dart';
+
 @immutable
 class StreamerCardProfileState {
   const StreamerCardProfileState({
@@ -22,6 +26,16 @@ class StreamerCardProfileState {
   final Map<String, dynamic>? userData;
   final String? error;
   final String? resolvedUserDocId;
+
+  bool get hasDisplayData {
+    final Map<String, dynamic>? data = userData;
+    if (data == null || data.isEmpty) {
+      return false;
+    }
+    final String displayName = data['displayName'] as String? ?? '';
+    final String username = data['username'] as String? ?? '';
+    return displayName.isNotEmpty || username.isNotEmpty;
+  }
 
   StreamerCardProfileState copyWith({
     bool? isLoading,
@@ -54,47 +68,114 @@ class StreamerCardProfileController extends ChangeNotifier {
 
   StreamerCardProfileState get state => _state;
 
-  Future<void> load(String identifier) async {
+  Future<void> load(
+    String identifier, {
+    CreatorProfileSnapshot? initialCreator,
+  }) async {
     await _subscription?.cancel();
     _subscription = null;
-    _setState(const StreamerCardProfileState.loading());
 
+    final CreatorProfileSnapshot? cached =
+        CreatorCacheService.instance.get(identifier.trim());
+    final CreatorProfileSnapshot? seed = initialCreator ?? cached;
+
+    if (seed != null && seed.hasDisplayIdentity) {
+      CreatorCacheService.instance.set(seed.creatorId, seed);
+      final String resolvedGuess = seed.creatorId.trim().isNotEmpty
+          ? seed.creatorId.trim()
+          : identifier.trim();
+      _setState(
+        StreamerCardProfileState(
+          isLoading: false,
+          userData: seed.toUserDataMap(),
+          error: null,
+          resolvedUserDocId: resolvedGuess,
+        ),
+      );
+    } else {
+      _setState(const StreamerCardProfileState.loading());
+    }
+
+    unawaited(_attachLiveProfile(identifier.trim()));
+  }
+
+  Future<void> _attachLiveProfile(String identifier) async {
     try {
-      final resolvedDocId = await _resolveUserDocumentId(identifier)
+      final String? resolvedDocId = await _resolveUserDocumentId(identifier)
           .timeout(const Duration(seconds: 3));
 
       if (resolvedDocId == null || resolvedDocId.isEmpty) {
-        _setMissingUserState();
+        if (!_state.hasDisplayData) {
+          _setMissingUserState();
+        }
         return;
       }
 
-      _subscription =
-          _firestore.collection('users').doc(resolvedDocId).snapshots().listen(
-        (snapshot) {
+      _subscription?.cancel();
+      _subscription = _firestore
+          .collection('users')
+          .doc(resolvedDocId)
+          .snapshots()
+          .listen(
+        (DocumentSnapshot<Map<String, dynamic>> snapshot) {
           if (!snapshot.exists) {
-            _setMissingUserState();
+            if (!_state.hasDisplayData) {
+              _setMissingUserState();
+            }
             return;
           }
+
+          final Map<String, dynamic> fresh =
+              Map<String, dynamic>.from(snapshot.data() ?? <String, dynamic>{});
+          final CreatorProfileSnapshot? priorCache =
+              CreatorCacheService.instance.get(resolvedDocId);
+          final Map<String, dynamic> merged =
+              UserProfileFirestore.mergeDisplayUserData(
+            fresh: fresh,
+            seed: priorCache?.toUserDataMap(),
+          );
+          final int platformCount = UserProfileFirestore.parsePlatformsFromUserData(
+            merged,
+          ).length;
+          UserProfileFirestore.logPlatformRead(
+            uid: resolvedDocId,
+            view: 'StreamerCardBackView',
+            count: platformCount,
+          );
+          UserProfileFirestore.logCalendarRead(
+            uid: resolvedDocId,
+            source: 'StreamerCardBackView',
+            count: UserProfileFirestore.parseCalendarEventsFromUserData(merged)
+                .length,
+          );
+
+          CreatorCacheService.instance.setFromUserData(resolvedDocId, merged);
 
           _setState(
             StreamerCardProfileState(
               isLoading: false,
-              userData: snapshot.data(),
+              userData: merged,
               error: null,
               resolvedUserDocId: resolvedDocId,
             ),
           );
         },
         onError: (_) {
-          _setMissingUserState();
+          if (!_state.hasDisplayData) {
+            _setMissingUserState();
+          }
         },
       );
     } on TimeoutException {
-      _setMissingUserState(
-        message: 'Profile loading timed out. Please try again.',
-      );
+      if (!_state.hasDisplayData) {
+        _setMissingUserState(
+          message: 'Profile loading timed out. Please try again.',
+        );
+      }
     } catch (_) {
-      _setMissingUserState();
+      if (!_state.hasDisplayData) {
+        _setMissingUserState();
+      }
     }
   }
 
@@ -113,27 +194,31 @@ class StreamerCardProfileController extends ChangeNotifier {
   }
 
   Future<String?> _resolveUserDocumentId(String rawIdentifier) async {
-    final identifier = rawIdentifier.trim();
-    if (identifier.isEmpty) return null;
+    final String identifier = rawIdentifier.trim();
+    if (identifier.isEmpty) {
+      return null;
+    }
 
-    final directDoc =
+    final DocumentSnapshot<Map<String, dynamic>> directDoc =
         await _firestore.collection('users').doc(identifier).get();
     if (directDoc.exists) {
       return directDoc.id;
     }
 
-    final usernameDoc =
+    final DocumentSnapshot<Map<String, dynamic>> usernameDoc =
         await _firestore.collection('usernames').doc(identifier).get();
-    final mappedUid = usernameDoc.data()?['uid'] as String?;
+    final String? mappedUid = usernameDoc.data()?['uid'] as String?;
     if (mappedUid != null && mappedUid.trim().isNotEmpty) {
-      final mappedDoc =
-          await _firestore.collection('users').doc(mappedUid.trim()).get();
+      final DocumentSnapshot<Map<String, dynamic>> mappedDoc = await _firestore
+          .collection('users')
+          .doc(mappedUid.trim())
+          .get();
       if (mappedDoc.exists) {
         return mappedDoc.id;
       }
     }
 
-    final usernameQuery = await _firestore
+    final QuerySnapshot<Map<String, dynamic>> usernameQuery = await _firestore
         .collection('users')
         .where('username', isEqualTo: identifier)
         .limit(1)
@@ -142,7 +227,7 @@ class StreamerCardProfileController extends ChangeNotifier {
       return usernameQuery.docs.first.id;
     }
 
-    final displayNameQuery = await _firestore
+    final QuerySnapshot<Map<String, dynamic>> displayNameQuery = await _firestore
         .collection('users')
         .where('displayName', isEqualTo: identifier)
         .limit(1)

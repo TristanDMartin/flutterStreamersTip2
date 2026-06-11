@@ -4,11 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 
-import '../components/onboarding/product_tour_target_keys.dart';
 import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart' as app_user;
 import '../providers/follow_refresh_provider.dart';
+import '../providers/main_tab_provider.dart';
+import '../utils/interaction_diagnostics.dart';
+import '../utils/like_interaction_boundary.dart';
 import '../routing/app_navigator.dart';
+import '../services/creator_intelligence_analytics_service.dart';
 import '../services/profile_update_service.dart';
 import '../services/user_blocking_service.dart';
 import '../utils/avatar_url_resolver.dart';
@@ -17,6 +20,7 @@ import '../utils/playback_route_suppression.dart';
 import 'profile_back_view.dart';
 import 'profile_view/profile_post_count_reconcile.dart';
 import 'profile_view/profile_user_data_cache.dart';
+import 'profile/profile_streamer_card_visibility.dart';
 import 'profile_view/profile_view_front_shell.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
@@ -102,6 +106,15 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       userId: widget.user.id,
       isCurrentUser: widget.isCurrentUser,
     );
+    if (!widget.isCurrentUser) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(
+          CreatorIntelligenceAnalyticsService().trackProfileViewed(
+            profileUserId: widget.user.id,
+          ),
+        );
+      });
+    }
   }
 
   @override
@@ -126,6 +139,12 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   void _onProfileUpdated() {
+    LikeInteractionBoundary.reportProfileRebuild(
+      source: 'ProfileViewOptimized_listener',
+    );
+    if (LikeInteractionBoundary.shouldDeferHeavyWork) {
+      return;
+    }
     _rebuildDebounceTimer?.cancel();
     _rebuildDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted || _isDisposed) {
@@ -135,7 +154,12 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       _userDataCache.onProfileServiceAvatarHint(
         resolveAvatarUrl(_profileUpdateService?.userData),
       );
+      const int profileTabIndex = 4;
+      if (ref.read(mainTabActiveIndexProvider) != profileTabIndex) {
+        return;
+      }
       setState(() {});
+      InteractionDiagnostics.logProfileRebuild(source: 'ProfileViewOptimized');
       if (kDebugMode) {
         debugPrint('🔄 ProfileView: profile data updated');
       }
@@ -197,6 +221,17 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
+  Map<String, dynamic> _viewerDataForStreamerCardGate() {
+    if (widget.isCurrentUser) {
+      return _getCurrentUserData();
+    }
+    final Map<String, dynamic>? sessionUser = _profileUpdateService?.userData;
+    if (sessionUser != null) {
+      return sessionUser;
+    }
+    return <String, dynamic>{};
+  }
+
   void _onTabSelected(int index) {
     if (_selectedTabIndex == index) {
       return;
@@ -214,12 +249,15 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic> userData = _getCurrentUserData();
+    final bool showStreamerCardButton =
+        ProfileStreamerCardVisibility.canShowStreamerCardButton(
+      _viewerDataForStreamerCardGate(),
+    );
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody: true,
       extendBodyBehindAppBar: true,
       body: KeyedSubtree(
-        key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.profile),
         child: AnimatedBuilder(
           animation: _flipAnimation,
           builder: (BuildContext context, Widget? child) {
@@ -241,6 +279,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                       onBack: () => Navigator.of(context).pop(),
                       onFlip: _flipCard,
                       onStreamerCard: _openStreamerCard,
+                      showStreamerCardButton: showStreamerCardButton,
                     )
                   : Transform(
                       alignment: Alignment.center,

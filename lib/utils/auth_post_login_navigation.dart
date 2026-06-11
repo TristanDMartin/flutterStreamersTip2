@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
@@ -5,47 +7,69 @@ import '../routing/app_routes.dart';
 import '../services/pending_auth_redirect_service.dart';
 import '../widgets/email_verification_view.dart';
 
-bool _postLoginNavigationInFlight = false;
+bool _consumeOrGoHomeInFlight = false;
 
 /// Routes after Firebase sign-in: verification gate then home / pending deep link.
 Future<void> navigateAfterAuthenticated(BuildContext context) async {
-  if (_postLoginNavigationInFlight) {
+  final firebase_auth.User? user =
+      firebase_auth.FirebaseAuth.instance.currentUser;
+  if (user == null || !context.mounted) {
     return;
   }
-  _postLoginNavigationInFlight = true;
   try {
-    final firebase_auth.User? user =
-        firebase_auth.FirebaseAuth.instance.currentUser;
-    if (user == null || !context.mounted) {
+    await user.reload().timeout(const Duration(seconds: 3));
+  } catch (error) {
+    debugPrint('AUTH_TRANSITION post_login_reload_deferred: $error');
+  }
+  final firebase_auth.User fresh =
+      firebase_auth.FirebaseAuth.instance.currentUser ?? user;
+  if (!context.mounted) {
+    return;
+  }
+  if (firebaseUserNeedsEmailVerification(fresh)) {
+    final String? routeName = ModalRoute.of(context)?.settings.name;
+    if (routeName == AppRoutes.root || routeName == AppRoutes.home) {
       return;
     }
-    await user.reload();
-    final firebase_auth.User? fresh =
-        firebase_auth.FirebaseAuth.instance.currentUser;
-    if (fresh == null || !context.mounted) {
-      return;
-    }
-    if (!fresh.emailVerified) {
-      final String? routeName = ModalRoute.of(context)?.settings.name;
-      if (routeName == AppRoutes.root || routeName == AppRoutes.home) {
-        return;
-      }
-      await Navigator.of(context).pushReplacement<void, void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext ctx) => EmailVerificationView(
-            email: fresh.email ?? '',
-            onVerified: () {},
-          ),
+    await Navigator.of(context).pushReplacement<void, void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext ctx) => EmailVerificationView(
+          email: fresh.email ?? '',
+          onVerified: () {},
         ),
-      );
+      ),
+    );
+    return;
+  }
+  if (_consumeOrGoHomeInFlight) {
+    return;
+  }
+  _consumeOrGoHomeInFlight = true;
+  try {
+    if (!context.mounted) {
       return;
     }
     await PendingAuthRedirectService.instance.consumeOrGoHome(context);
   } finally {
-    _postLoginNavigationInFlight = false;
+    _consumeOrGoHomeInFlight = false;
   }
 }
 
 bool firebaseUserNeedsEmailVerification(firebase_auth.User? user) {
-  return user != null && !user.emailVerified;
+  if (user == null) {
+    return false;
+  }
+  return authProvidersNeedEmailVerification(
+    emailVerified: user.emailVerified,
+    providerIds: user.providerData.map(
+      (firebase_auth.UserInfo info) => info.providerId,
+    ),
+  );
+}
+
+bool authProvidersNeedEmailVerification({
+  required bool emailVerified,
+  required Iterable<String> providerIds,
+}) {
+  return !emailVerified && providerIds.contains('password');
 }

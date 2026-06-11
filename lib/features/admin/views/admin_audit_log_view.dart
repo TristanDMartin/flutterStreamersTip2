@@ -1,9 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-/// Reads `admin_logs` (admin JWT claim required by rules).
+/// Reads `admin_logs` (Firestore `isUserAdmin()` rules).
 class AdminAuditLogView extends StatelessWidget {
   const AdminAuditLogView({super.key});
+
+  static String _errorMessage(Object err) {
+    final String haystack = err.toString().toLowerCase();
+    if (haystack.contains('permission-denied')) {
+      return 'Audit log access denied by Firestore rules. '
+          'Tap the key icon in the app bar to refresh your admin session, '
+          'then reopen this tab.\n\n$err';
+    }
+    return 'Audit log error: $err';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +28,7 @@ class AdminAuditLogView extends StatelessWidget {
           return Center(
             child: SelectableText.rich(
               TextSpan(
-                text: 'Audit log error: ${snap.error}',
+                text: _errorMessage(snap.error!),
                 style: const TextStyle(color: Colors.red),
               ),
             ),

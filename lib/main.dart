@@ -27,7 +27,7 @@ import 'routing/app_routes.dart';
 import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
 import 'services/robust_auth_service.dart';
-import 'components/onboarding/streamers_tip_onboarding.dart';
+import 'components/onboarding/onboarding_gate.dart';
 import 'features/gamification/widgets/gamification_celebration_overlay.dart';
 import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
@@ -35,6 +35,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_theme_mode.dart';
 import 'core/design/streamers_tip_design.dart';
+import 'features/home/application/home_first_frame_gate.dart';
 import 'features/billing/iap_billing_coordinator.dart';
 import 'core/firebase_app_check_startup.dart';
 import 'qa/qa_runtime.dart';
@@ -68,12 +69,14 @@ void main() async {
   // blocked by network/auth/feed work.
   scheduleMicrotask(() async {
     try {
+      await HomeFirstFrameGate.instance.waitForFirstFrameOrTimeout(
+        timeout: const Duration(seconds: 4),
+      );
       debugPrint(
-        '⏰ All Services: Starting initialization after runApp at ${DateTime.now()}',
+        '⏰ All Services: Starting initialization after first frame at ${DateTime.now()}',
       );
       await _initializeAllServices();
-      debugPrint(
-          '✅ All Services: Initialization completed at ${DateTime.now()}');
+      debugPrint('✅ Startup Phase 1 completed at ${DateTime.now()}');
 
       final appReadyTime = DateTime.now();
       final totalStartupTime = appReadyTime.difference(appStartTime);
@@ -100,7 +103,13 @@ Future<void> _preloadHomeFeedForInstantStart() async {
       debugPrint(
         '⚡ STARTUP: Pre-warming ${warm.videos.length} cached videos before runApp',
       );
-      GlobalPlaybackManager.instance.preloadStartupWindow(warm.videos);
+      await GlobalPlaybackManager.instance.warmFirstFeedController(
+        warm.videos,
+      );
+      GlobalPlaybackManager.instance.preloadStartupWindow(
+        warm.videos,
+        requestFocusOnStart: false,
+      );
     }
   } catch (e) {
     debugPrint('⚠️ STARTUP: Feed preload failed (non-fatal): $e');
@@ -162,23 +171,16 @@ void _initializeGlobalErrorHandler() {
 
 /// 🚀 CONSOLIDATED: Initialize all services from single point
 Future<void> _initializeAllServices() async {
-  debugPrint(
-      '🚀 ServiceManager: Starting consolidated service initialization...');
+  debugPrint('🚀 ServiceManager: Starting phased service initialization...');
   debugPrint('⏰ ServiceManager: Start time: ${DateTime.now()}');
 
   try {
-    // CRITICAL SERVICES (blocking)
-    debugPrint('📡 Initializing critical services...');
+    // PHASE 1: only cheap, local startup guards. Firebase, auth/feed cache,
+    // and playback warmup already ran before/inside runApp.
+    debugPrint('📡 Initializing Phase 1 startup services...');
     debugPrint('⏰ NetworkConfigService: Start time: ${DateTime.now()}');
     NetworkConfigService.initialize();
     debugPrint('✅ NetworkConfigService: Completed at ${DateTime.now()}');
-
-    // 🌐 CONNECTIVITY: Check network connectivity
-    debugPrint('⏰ NetworkConnectivityService: Start time: ${DateTime.now()}');
-    await _initializeServiceSafely('NetworkConnectivityService', () async {
-      await NetworkConnectivityService().checkConnectivity();
-    });
-    debugPrint('✅ NetworkConnectivityService: Completed at ${DateTime.now()}');
 
     debugPrint('⏰ IOSMemoryService: Start time: ${DateTime.now()}');
     IOSMemoryService.initialize();
@@ -197,59 +199,85 @@ Future<void> _initializeAllServices() async {
       debugPrint('✅ FIREBASE: Already initialized');
     }
 
-    // 🔥 ANALYTICS: Initialize analytics immediately after Firebase
-    debugPrint('⏰ AnalyticsService: Start time: ${DateTime.now()}');
-    await _initializeServiceSafely('AnalyticsService', () async {
-      await AnalyticsService.instance.initialize();
-    });
-    debugPrint('✅ AnalyticsService: Completed at ${DateTime.now()}');
-
-    // 🔥 ERROR HANDLER: Initialize error handler after Firebase and Analytics
+    // Keep error handling cheap and local during the first interactive window.
     debugPrint('⏰ ErrorHandlerService: Start time: ${DateTime.now()}');
     await _initializeServiceSafely('ErrorHandlerService', () async {
       ErrorHandlerService.instance.initialize();
     });
     debugPrint('✅ ErrorHandlerService: Completed at ${DateTime.now()}');
 
-    await _initializeServiceSafely('IapBillingCoordinator', () async {
-      if (kIsWeb) {
-        return;
-      }
-      await IapBillingCoordinator.instance.warmStart();
-    });
-
-    // PERFORMANCE OPTIMIZATIONS
     _initializePerformanceOptimizations();
 
-    await _initializeServiceSafely('AudioEnhancementService', () async {
-      await AudioEnhancementService().initialize();
-    });
-
-    // StreamersTip SERVICES (needed for UI)
-    // Note: Full initialization with userId happens after login in HomeView
-    StreamersTipLikeService().initialize().catchError((e) {
-      debugPrint('⚠️ StreamersTipLikeService init failed: $e');
-    });
-
-    // Initialize FavoritesServiceOptimized
-    await _initializeServiceSafely('FavoritesServiceOptimized', () async {
-      await FavoritesServiceOptimized().initialize();
-    });
-
-    debugPrint('✅ Critical services initialized');
-
-    // BACKGROUND SERVICES (non-blocking)
-    _initializeBackgroundServices();
+    debugPrint('✅ Phase 1 startup services initialized');
+    _scheduleDeferredServicePhases();
   } catch (e) {
-    debugPrint('❌ ServiceManager: Critical services initialization failed: $e');
+    debugPrint('❌ ServiceManager: Phase 1 initialization failed: $e');
     // Continue anyway - app should still work
   }
 }
 
+void _scheduleDeferredServicePhases() {
+  unawaited(Future<void>.delayed(const Duration(seconds: 5), () async {
+    await _initializePhase2Services();
+  }));
+  unawaited(Future<void>.delayed(const Duration(seconds: 20), () async {
+    await _initializeBackgroundServices();
+  }));
+}
+
+Future<void> _initializePhase2Services() async {
+  debugPrint('🚀 ServiceManager: Starting Phase 2 service initialization...');
+  final Duration serviceTimeout = QaRuntime.isMobileFeedE2e
+      ? const Duration(seconds: 15)
+      : const Duration(seconds: 30);
+
+  await _initializeServiceSafely('NetworkConnectivityService', () async {
+    await NetworkConnectivityService().checkConnectivity();
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  await _initializeServiceSafely('AnalyticsService', () async {
+    await AnalyticsService.instance.initialize();
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  await _initializeServiceSafely('IapBillingCoordinator', () async {
+    if (kIsWeb) {
+      return;
+    }
+    await IapBillingCoordinator.instance.warmStart();
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  await _initializeServiceSafely('AudioEnhancementService', () async {
+    await AudioEnhancementService().initialize();
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  await _initializeServiceSafely('StreamersTipLikeService', () async {
+    final String? userId =
+        firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    await StreamersTipLikeService().initialize(userId: userId);
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  await _initializeServiceSafely('FavoritesServiceOptimized', () async {
+    await FavoritesServiceOptimized().initialize();
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  await _initializeProductionServices(timeout: serviceTimeout);
+  debugPrint('✅ ServiceManager: Phase 2 services initialized');
+}
+
+Future<void> _yieldBetweenDeferredServices() {
+  return Future<void>.delayed(const Duration(milliseconds: 300));
+}
+
 /// Initialize remaining services in background to avoid blocking startup
-void _initializeBackgroundServices() async {
+Future<void> _initializeBackgroundServices() async {
   debugPrint(
-      '🚀 ServiceManager: Starting background service initialization...');
+      '🚀 ServiceManager: Starting Phase 3 background service initialization...');
 
   final Duration serviceTimeout = QaRuntime.isMobileFeedE2e
       ? const Duration(seconds: 25)
@@ -296,7 +324,6 @@ void _initializeBackgroundServices() async {
     _initializeServiceSafelyAsync('UnifiedAvatarService', () async {
       await nav.UnifiedAvatarService().initialize();
     });
-    await _initializeProductionServices(timeout: serviceTimeout);
     debugPrint(
       '✅ ServiceManager: E2E background services scheduled (non-blocking)',
     );
@@ -308,16 +335,19 @@ void _initializeBackgroundServices() async {
     initFirestoreOptimization,
     timeout: serviceTimeout,
   );
+  await _yieldBetweenDeferredServices();
 
   await _initializeServiceSafely(
     'FirestoreCacheService',
     initFirestoreCache,
     timeout: serviceTimeout,
   );
+  await _yieldBetweenDeferredServices();
 
   _initializeServiceSafelyAsync('PushNotificationService', () async {
     await PushNotificationService().initialize();
   });
+  await _yieldBetweenDeferredServices();
 
   await _initializeServiceSafely(
     'GoogleServicesFix',
@@ -329,9 +359,7 @@ void _initializeBackgroundServices() async {
     await nav.UnifiedAvatarService().initialize();
   });
 
-  await _initializeProductionServices(timeout: serviceTimeout);
-
-  debugPrint('✅ ServiceManager: Background services initialization completed');
+  debugPrint('✅ ServiceManager: Phase 3 background services initialized');
 }
 
 /// 🔒 SAFETY: Initialize a single service with individual error handling
@@ -385,15 +413,15 @@ Future<void> _initializeProductionServices({
   await _initializeServiceSafely(
     'UnifiedBookmarkService',
     () async {
-    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (currentUser != null) {
-      await UnifiedBookmarkService.instance.initialize(currentUser.uid);
-      debugPrint(
-          '📚 UnifiedBookmarkService: Initialized for user ${currentUser.uid}');
-    } else {
-      debugPrint(
-          '⚠️ UnifiedBookmarkService: No user logged in, skipping initialization');
-    }
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        await UnifiedBookmarkService.instance.initialize(currentUser.uid);
+        debugPrint(
+            '📚 UnifiedBookmarkService: Initialized for user ${currentUser.uid}');
+      } else {
+        debugPrint(
+            '⚠️ UnifiedBookmarkService: No user logged in, skipping initialization');
+      }
     },
     timeout: timeout,
   );
@@ -472,11 +500,19 @@ class MyApp extends ConsumerWidget {
           data: mq.copyWith(textScaler: TextScaler.linear(1.0)),
           child: Consumer(
             builder: (BuildContext context, WidgetRef ref, Widget? _) {
-              final (String userId, String? username) = ref.watch(
+              final (
+                String userId,
+                String? username,
+                String? displayName,
+              ) = ref.watch(
                 robustAuthServiceProvider.select(
                   (RobustAuthenticationService auth) {
                     final u = auth.currentUser;
-                    return (u?.id ?? '', u?.username);
+                    return (
+                      u?.id ?? '',
+                      u?.username,
+                      u?.displayName,
+                    );
                   },
                 ),
               );
@@ -484,10 +520,11 @@ class MyApp extends ConsumerWidget {
                 return navigatorChild;
               }
               return GamificationCelebrationOverlay(
-                child: StreamersTipOnboarding(
+                child: OnboardingGate(
                   userId: userId,
                   email: firebase_auth.FirebaseAuth.instance.currentUser?.email,
                   username: username,
+                  displayName: displayName,
                   child: navigatorChild,
                 ),
               );

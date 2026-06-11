@@ -14,13 +14,18 @@ import '../models/video_clip.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart';
 import '../models/user_count_fields.dart';
+import '../services/creator_cache_service.dart';
 import '../services/creator_follower_count_service.dart';
 import '../services/follows_service.dart';
 import '../services/logging_service.dart';
 import '../utils/swallow_non_fatal.dart';
+import '../utils/discover_category_rules.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/video_url_resolver.dart';
+import '../utils/video_caption_resolver.dart';
 import '../services/real_user_data_service.dart';
+import '../services/image_preload_service.dart';
+import '../utils/like_interaction_boundary.dart';
 
 part 'discover_provider.freezed.dart';
 
@@ -69,27 +74,65 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       'streamerstip.discover.trending_creators.v1';
   static Future<void>? _trendingLoadInFlight;
 
-  DiscoverNotifier() : super(const DiscoverState()) {
-    _loadInitialData();
+  DiscoverNotifier()
+      : super(
+          DiscoverState(
+            trendingCreators: List<TrendingCreator>.from(
+              _cachedTrendingCreators,
+            ),
+            isLoadingTrendingCreators: _cachedTrendingCreators.isEmpty,
+            trendingCreatorsLoadFailed: false,
+            categories: Category.samples,
+            recommendedContent: RecommendedContentExtension.samples,
+            clips: ClipExtension.samples,
+          ),
+        ) {
+    unawaited(_bootstrapDiscover());
   }
 
-  void _loadInitialData() {
-    final bool hasTrendingCache = _cachedTrendingCreators.isNotEmpty;
-    state = state.copyWith(
-      trendingCreators: hasTrendingCache
-          ? _cachedTrendingCreators
-          : const <TrendingCreator>[],
-      trendingCreatorsLoadFailed: false,
-      categories: Category.samples,
-      recommendedContent: RecommendedContentExtension.samples,
-      clips: ClipExtension.samples,
+  Future<void> _bootstrapDiscover() async {
+    await _restorePersistedTrendingCreators();
+    final List<TrendingCreator> seeded = _cachedTrendingCreators.isNotEmpty
+        ? _cachedTrendingCreators
+        : state.trendingCreators;
+    if (seeded.isNotEmpty) {
+      state = state.copyWith(
+        trendingCreators: seeded,
+        trendingCreatorsLoadFailed: false,
+        isLoadingTrendingCreators: false,
+      );
+      _preloadTrendingCreatorAvatars(seeded);
+    }
+    LikeInteractionBoundary.runAfterFirstInteraction(
+      () => unawaited(loadTrendingCreators()),
+      fallbackTimeout: const Duration(seconds: 20),
     );
+    unawaited(loadRecommendedForYou());
+  }
 
-    unawaited(_restorePersistedTrendingCreators());
+  bool _trendingListsEqual(
+    List<TrendingCreator> a,
+    List<TrendingCreator> b,
+  ) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-    // Load real trending creators from Firebase in the background.
-    loadTrendingCreators();
-    loadRecommendedForYou();
+  void _preloadTrendingCreatorAvatars(List<TrendingCreator> creators) {
+    for (final TrendingCreator creator in creators.take(10)) {
+      final String? url = creator.avatarURL;
+      if (url == null || url.isEmpty) {
+        continue;
+      }
+      unawaited(ImagePreloadService.preloadImage(url));
+    }
   }
 
   Future<void> _restorePersistedTrendingCreators() async {
@@ -131,7 +174,10 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       state = state.copyWith(
         trendingCreators: cached,
         trendingCreatorsLoadFailed: false,
+        isLoadingTrendingCreators: false,
       );
+      _preloadTrendingCreatorAvatars(cached);
+      CreatorCacheService.instance.preloadTrending(cached);
     } catch (e) {
       LoggingService.instance.debug(
         'Unable to restore cached trending creators: $e',
@@ -174,13 +220,27 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
 
   Future<List<HomeVideo>> fetchVideosForCategory(String categoryId) async {
     try {
-      // 🔥 GLOBAL DELETION FIX: Filter out deleted videos by only getting published videos
-      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-          .collection('videos')
-          .where('category_id', isEqualTo: categoryId)
-          .where('status', whereIn: ['published', 'ready', 'active'])
-          .orderBy('score', descending: true)
-          .limit(10);
+      final CollectionReference<Map<String, dynamic>> col =
+          FirebaseFirestore.instance.collection('videos');
+      Query<Map<String, dynamic>> query;
+      if (isAllCategorySlug(categoryId)) {
+        query = col
+            .where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            )
+            .orderBy('createdAt', descending: true)
+            .limit(10);
+      } else {
+        query = col
+            .where('category_id', isEqualTo: categoryId)
+            .where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            )
+            .orderBy('score', descending: true)
+            .limit(10);
+      }
 
       final lastDoc = _categoryVideoCursors[categoryId];
       if (lastDoc != null) {
@@ -189,8 +249,11 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
 
       final QuerySnapshot<Map<String, dynamic>> snapshot = await query.get();
       final List<HomeVideo> videos = snapshot.docs.where((doc) {
-        final data = doc.data();
-        return isVideoVisibleInFeed(data) && hasReadyPlaybackSource(data);
+        final Map<String, dynamic> data = doc.data();
+        if (!isDiscoverEligibleFromFirestore(data, videoId: doc.id)) {
+          return false;
+        }
+        return matchesDiscoverCategory(data, categoryId);
       }).map((doc) {
         final Map<String, dynamic> data = doc.data();
         final String playbackUrl = resolveReadyPlaybackUrl(data) ?? '';
@@ -239,7 +302,8 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
           likes: (data['likes'] ?? 0) as int,
           comments: (data['comments'] ?? 0) as int,
           views: (data['views'] ?? 0) as int,
-          caption: (data['caption'] ?? '').toString(),
+          caption: resolveVideoCaptionFromFirestoreData(data),
+          overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
           isLiked: (data['isLiked'] ?? false) as bool,
           isFavorited: (data['isFavorited'] ?? false) as bool,
           mlScore:
@@ -329,7 +393,11 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       );
       return;
     }
-    if (state.isLoadingTrendingCreators) return;
+    final bool hasVisibleCreators =
+        state.trendingCreators.isNotEmpty || _cachedTrendingCreators.isNotEmpty;
+    if (state.isLoadingTrendingCreators && hasVisibleCreators) {
+      return;
+    }
     if (_trendingLoadInFlight != null) {
       await _trendingLoadInFlight;
       if (_cachedTrendingCreators.isNotEmpty) {
@@ -341,10 +409,14 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       }
       return;
     }
-    state = state.copyWith(
-      isLoadingTrendingCreators: true,
-      trendingCreatorsLoadFailed: false,
-    );
+    if (!hasVisibleCreators) {
+      state = state.copyWith(
+        isLoadingTrendingCreators: true,
+        trendingCreatorsLoadFailed: false,
+      );
+    } else {
+      state = state.copyWith(trendingCreatorsLoadFailed: false);
+    }
 
     _trendingLoadInFlight = () async {
       LoggingService.instance.debug(
@@ -358,14 +430,26 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       final List<TrendingCreator> enriched =
           await _enrichTrendingWithFollowState(trending, authUser?.uid);
 
-      state = state.copyWith(
-        trendingCreators: enriched,
-        isLoadingTrendingCreators: false,
-        trendingCreatorsLoadFailed: false,
-      );
+      if (!_trendingListsEqual(state.trendingCreators, enriched)) {
+        state = state.copyWith(
+          trendingCreators: enriched,
+          isLoadingTrendingCreators: false,
+          trendingCreatorsLoadFailed: false,
+        );
+      } else {
+        state = state.copyWith(
+          isLoadingTrendingCreators: false,
+          trendingCreatorsLoadFailed: false,
+        );
+      }
       _cachedTrendingCreators = enriched;
       _cachedTrendingCreatorsAt = DateTime.now();
+      CreatorCacheService.instance.preloadTrending(enriched);
+      CreatorCacheService.instance.warmProfilesInBackground(
+        enriched.map((TrendingCreator c) => c.id),
+      );
       unawaited(_persistTrendingCreators(enriched));
+      _preloadTrendingCreatorAvatars(enriched);
       LoggingService.instance.info(
           'Successfully loaded ${enriched.length} trending creators',
           tag: 'DiscoverProvider');
@@ -805,6 +889,39 @@ final discoverProvider =
     StateNotifierProvider<DiscoverNotifier, DiscoverState>((ref) {
   return DiscoverNotifier();
 });
+
+class DiscoverCategoryVideosNotifier
+    extends Notifier<Map<String, List<Map<String, dynamic>>>> {
+  @override
+  Map<String, List<Map<String, dynamic>>> build() =>
+      <String, List<Map<String, dynamic>>>{};
+
+  List<Map<String, dynamic>>? peek(String categoryId) {
+    final List<Map<String, dynamic>>? cached = state[categoryId];
+    if (cached == null || cached.isEmpty) {
+      return null;
+    }
+    return cached;
+  }
+
+  void cacheVideos(String categoryId, List<Map<String, dynamic>> videos) {
+    if (videos.isEmpty) {
+      return;
+    }
+    state = <String, List<Map<String, dynamic>>>{
+      ...state,
+      categoryId: List<Map<String, dynamic>>.from(videos),
+    };
+  }
+}
+
+final NotifierProvider<DiscoverCategoryVideosNotifier,
+        Map<String, List<Map<String, dynamic>>>>
+    discoverCategoryVideosProvider = NotifierProvider<
+        DiscoverCategoryVideosNotifier,
+        Map<String, List<Map<String, dynamic>>>>(
+  DiscoverCategoryVideosNotifier.new,
+);
 
 // Extension for sample search results
 extension SearchResultExtension on SearchResult {

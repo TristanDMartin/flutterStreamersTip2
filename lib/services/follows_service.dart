@@ -10,6 +10,30 @@ import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
 import 'progression_service.dart';
 
+import '../models/user_count_fields.dart';
+
+class FollowCounts {
+  const FollowCounts({
+    required this.followersCount,
+    required this.followingCount,
+    required this.connectionsCount,
+  });
+
+  final int followersCount;
+  final int followingCount;
+  final int connectionsCount;
+}
+
+class _FollowIdSets {
+  const _FollowIdSets({
+    required this.followerIds,
+    required this.followingIds,
+  });
+
+  final Set<String> followerIds;
+  final Set<String> followingIds;
+}
+
 class FollowsService {
   static final FollowsService _instance = FollowsService._internal();
   factory FollowsService() => _instance;
@@ -433,86 +457,17 @@ class FollowsService {
       return [];
     }
     try {
-      final currentUserId = currentUser.uid;
-      final followersPrimary = await _firestore
-          .collection('follows')
-          .where('targetUserId', isEqualTo: currentUserId)
-          .get();
-      final followersLegacy1 = await _firestore
-          .collection('follows')
-          .where('followingId', isEqualTo: currentUserId)
-          .get();
-      final followersLegacy2 = await _firestore
-          .collection('follows')
-          .where('followedId', isEqualTo: currentUserId)
-          .get();
-      final followingPrimary = await _firestore
-          .collection('follows')
-          .where('followerUserId', isEqualTo: currentUserId)
-          .get();
-      final followingLegacy = await _firestore
-          .collection('follows')
-          .where('followerId', isEqualTo: currentUserId)
-          .get();
-      String? readFollowerId(Map<String, dynamic> data) {
-        final val = data['followerUserId'] ??
-            data['followerId'] ??
-            data['follower'] ??
-            data['follower_id'];
-        return val is String ? val : null;
-      }
-
-      String? readFollowingId(Map<String, dynamic> data) {
-        final val = data['targetUserId'] ??
-            data['followingId'] ??
-            data['followedId'] ??
-            data['target_user_id'];
-        return val is String ? val : null;
-      }
-
-      bool isActiveFollowDoc(Map<String, dynamic> data) {
-        if (!data.containsKey('isActive')) return true;
-        final val = data['isActive'];
-        if (val is bool) return val;
-        return true;
-      }
-
-      final followerIds = <String>{};
-      for (final doc in followersPrimary.docs) {
-        final data = doc.data();
-        if (!isActiveFollowDoc(data)) continue;
-        final id = readFollowerId(data);
-        if (id != null && id.isNotEmpty) followerIds.add(id);
-      }
-      for (final doc in [...followersLegacy1.docs, ...followersLegacy2.docs]) {
-        final data = doc.data();
-        if (!isActiveFollowDoc(data)) continue;
-        final id = readFollowerId(data);
-        if (id != null && id.isNotEmpty) followerIds.add(id);
-      }
-      final followingIds = <String>{};
-      for (final doc in followingPrimary.docs) {
-        final data = doc.data();
-        if (!isActiveFollowDoc(data)) continue;
-        final id = readFollowingId(data);
-        if (id != null && id.isNotEmpty) followingIds.add(id);
-      }
-      for (final doc in followingLegacy.docs) {
-        final data = doc.data();
-        if (!isActiveFollowDoc(data)) continue;
-        final id = readFollowingId(data);
-        if (id != null && id.isNotEmpty) followingIds.add(id);
-      }
+      final idSets = await _loadFollowIdSets(currentUser.uid);
       Set<String> targetUserIds;
       switch (tab) {
         case 'connections':
-          targetUserIds = followingIds.intersection(followerIds);
+          targetUserIds = idSets.followingIds.intersection(idSets.followerIds);
           break;
         case 'followers':
-          targetUserIds = followerIds.difference(followingIds);
+          targetUserIds = idSets.followerIds.difference(idSets.followingIds);
           break;
         case 'following':
-          targetUserIds = followingIds.difference(followerIds);
+          targetUserIds = idSets.followingIds.difference(idSets.followerIds);
           break;
         default:
           return [];
@@ -534,6 +489,146 @@ class FollowsService {
       debugPrint('❌ FollowsService: Error getting users for tab $tab: $e');
       return [];
     }
+  }
+
+  Future<FollowCounts> getFollowCountsForCurrentUser() async {
+    final User? currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      return const FollowCounts(
+        followersCount: 0,
+        followingCount: 0,
+        connectionsCount: 0,
+      );
+    }
+    return getFollowCountsForUser(currentUser.uid);
+  }
+
+  Future<FollowCounts> getFollowCountsForUser(String userId) async {
+    try {
+      final _FollowIdSets idSets = await _loadFollowIdSets(userId);
+      return FollowCounts(
+        followersCount: idSets.followerIds.length,
+        followingCount: idSets.followingIds.length,
+        connectionsCount:
+            idSets.followerIds.intersection(idSets.followingIds).length,
+      );
+    } catch (e) {
+      debugPrint('❌ FollowsService: Error counting follows for $userId: $e');
+      return const FollowCounts(
+        followersCount: 0,
+        followingCount: 0,
+        connectionsCount: 0,
+      );
+    }
+  }
+
+  Future<void> repairFollowCountersForUser(String userId) async {
+    try {
+      final FollowCounts counts = await getFollowCountsForUser(userId);
+      final DocumentReference<Map<String, dynamic>> userRef =
+          _firestore.collection('users').doc(userId);
+      final DocumentSnapshot<Map<String, dynamic>> snap = await userRef.get();
+      if (!snap.exists || snap.data() == null) {
+        return;
+      }
+      final Map<String, dynamic> data = snap.data()!;
+      final int storedFollowers = UserCountFields.readFollowersCount(data);
+      final int storedFollowing = UserCountFields.readFollowingCount(data);
+      if (storedFollowers == counts.followersCount &&
+          storedFollowing == counts.followingCount) {
+        return;
+      }
+      await userRef.update(<String, dynamic>{
+        ...UserCountFields.writeCanonicalCounts(
+          followersCount: counts.followersCount,
+          followingCount: counts.followingCount,
+          connectionsCount: counts.connectionsCount,
+        ),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint(
+        '✅ FollowsService: Repaired counters for $userId '
+        '(followers ${counts.followersCount}, following ${counts.followingCount})',
+      );
+    } catch (e) {
+      debugPrint('❌ FollowsService: Error repairing counters for $userId: $e');
+    }
+  }
+
+  Future<_FollowIdSets> _loadFollowIdSets(String currentUserId) async {
+    final followersPrimary = await _firestore
+        .collection('follows')
+        .where('targetUserId', isEqualTo: currentUserId)
+        .get();
+    final followersLegacy1 = await _firestore
+        .collection('follows')
+        .where('followingId', isEqualTo: currentUserId)
+        .get();
+    final followersLegacy2 = await _firestore
+        .collection('follows')
+        .where('followedId', isEqualTo: currentUserId)
+        .get();
+    final followingPrimary = await _firestore
+        .collection('follows')
+        .where('followerUserId', isEqualTo: currentUserId)
+        .get();
+    final followingLegacy = await _firestore
+        .collection('follows')
+        .where('followerId', isEqualTo: currentUserId)
+        .get();
+    String? readFollowerId(Map<String, dynamic> data) {
+      final val = data['followerUserId'] ??
+          data['followerId'] ??
+          data['follower'] ??
+          data['follower_id'];
+      return val is String ? val : null;
+    }
+
+    String? readFollowingId(Map<String, dynamic> data) {
+      final val = data['targetUserId'] ??
+          data['followingId'] ??
+          data['followedId'] ??
+          data['target_user_id'];
+      return val is String ? val : null;
+    }
+
+    bool isActiveFollowDoc(Map<String, dynamic> data) {
+      if (!data.containsKey('isActive')) return true;
+      final val = data['isActive'];
+      if (val is bool) return val;
+      return true;
+    }
+
+    final followerIds = <String>{};
+    for (final doc in followersPrimary.docs) {
+      final data = doc.data();
+      if (!isActiveFollowDoc(data)) continue;
+      final id = readFollowerId(data);
+      if (id != null && id.isNotEmpty) followerIds.add(id);
+    }
+    for (final doc in [...followersLegacy1.docs, ...followersLegacy2.docs]) {
+      final data = doc.data();
+      if (!isActiveFollowDoc(data)) continue;
+      final id = readFollowerId(data);
+      if (id != null && id.isNotEmpty) followerIds.add(id);
+    }
+    final followingIds = <String>{};
+    for (final doc in followingPrimary.docs) {
+      final data = doc.data();
+      if (!isActiveFollowDoc(data)) continue;
+      final id = readFollowingId(data);
+      if (id != null && id.isNotEmpty) followingIds.add(id);
+    }
+    for (final doc in followingLegacy.docs) {
+      final data = doc.data();
+      if (!isActiveFollowDoc(data)) continue;
+      final id = readFollowingId(data);
+      if (id != null && id.isNotEmpty) followingIds.add(id);
+    }
+    return _FollowIdSets(
+      followerIds: followerIds,
+      followingIds: followingIds,
+    );
   }
 
   Future<bool> isFollowing(String targetUserId) async {

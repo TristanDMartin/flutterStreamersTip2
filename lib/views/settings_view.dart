@@ -15,7 +15,7 @@ import 'safety_center_view.dart';
 import 'terms_and_privacy_view.dart';
 import '../core/theme/support_shell_style.dart';
 import '../core/feature_flags.dart';
-import '../components/onboarding/onboarding_service.dart';
+import '../components/onboarding/contextual_tips_service.dart';
 import '../routing/app_navigator.dart';
 import '../widgets/two_factor_settings_view.dart';
 import '../widgets/video_categorization_screen.dart';
@@ -108,6 +108,30 @@ class _SettingsViewState extends State<SettingsView> {
                               onTap: () =>
                                   _navigateToPage(context, 'Linked Platforms'),
                             ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      _buildSection(
+                        context,
+                        title: 'Creator Analytics',
+                        items: <Widget?>[
+                          _buildSettingsItem(
+                            context,
+                            icon: Icons.bar_chart_rounded,
+                            title: 'Creator Intelligence',
+                            subtitle:
+                                'Personalized insights, trends, and next steps',
+                            onTap: () =>
+                                _navigateToPage(context, 'Creator Intelligence'),
+                          ),
+                          _buildSettingsItem(
+                            context,
+                            icon: Icons.insights_rounded,
+                            title: 'Creator Insights',
+                            subtitle: 'Views, engagement, audience, and retention',
+                            onTap: () =>
+                                _navigateToPage(context, 'Video Insights'),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -503,6 +527,12 @@ class _SettingsViewState extends State<SettingsView> {
           AppNavigator.openLinkedPlatforms(context);
         }
         return;
+      case 'Creator Intelligence':
+        AppNavigator.openCreatorIntelligence(context);
+        return;
+      case 'Video Insights':
+        AppNavigator.openVideoInsights(context);
+        return;
       case 'Blocked Accounts':
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -595,7 +625,7 @@ class _SettingsViewState extends State<SettingsView> {
       await prefs.remove(key);
     }
     if (userId != 'local') {
-      await OnboardingService().resetContextualTips(userId);
+      await ContextualTipsService().resetAllTips(userId);
     }
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

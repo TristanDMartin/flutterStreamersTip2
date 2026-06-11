@@ -125,7 +125,7 @@ class StatusAwareAvatar extends ConsumerWidget {
         return const Color(0xFF10B981); // Green
       case UserStatus.busy:
         return const Color(0xFFF59E0B); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFEF4444); // Red
       case UserStatus.streaming:
         return const Color(0xFF8B5CF6); // Purple

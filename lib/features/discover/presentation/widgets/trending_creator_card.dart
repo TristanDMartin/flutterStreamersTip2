@@ -1,9 +1,11 @@
 import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../services/creator_intelligence_analytics_service.dart';
 import '../../../../core/theme/st_theme_tokens.dart';
 import '../../../../models/trending_creator.dart';
 import '../../../../providers/discover_provider.dart';
@@ -63,22 +65,27 @@ class _TrendingCreatorCardState extends ConsumerState<TrendingCreatorCard> {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       child: Column(
-        mainAxisSize: MainAxisSize.max,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Expanded(
+          Flexible(
             child: Material(
               color: Colors.transparent,
               child: InkWell(
                 onTap: () {
                   HapticFeedback.lightImpact();
+                  unawaited(
+                    CreatorIntelligenceAnalyticsService()
+                        .trackCreatorCardOpened(creatorId: widget.creator.id),
+                  );
                   widget.onOpenProfile();
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: <Widget>[
                       CreatorAvatarRing(
@@ -86,7 +93,7 @@ class _TrendingCreatorCardState extends ConsumerState<TrendingCreatorCard> {
                         username: c.username,
                         isLive: c.isActive,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
                         handle,
                         textAlign: TextAlign.center,
@@ -94,12 +101,12 @@ class _TrendingCreatorCardState extends ConsumerState<TrendingCreatorCard> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: onCard,
-                          fontSize: 13.5,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w800,
-                          height: 1.1,
+                          height: 1.05,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         c.trendingStatusLine,
                         textAlign: TextAlign.center,
@@ -107,12 +114,12 @@ class _TrendingCreatorCardState extends ConsumerState<TrendingCreatorCard> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: muted,
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          height: 1.1,
+                          height: 1.05,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       FollowerCountText(
                         count: math.max(0, c.followerCount),
                         color: StThemeColors.brandBlue,

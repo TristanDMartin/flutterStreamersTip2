@@ -14,6 +14,7 @@ import '../utils/avatar_url_resolver.dart';
 import 'brand_icons.dart';
 import 'adult_external_link_dialog.dart';
 import '../utils/platform_rules.dart';
+import '../utils/user_profile_firestore.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -30,7 +31,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   bool isCalendarExpanded = true;
   String? _selectedHashtag;
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _contentPlansSubscription;
   Map<String, dynamic>? _liveUserData;
+  List<CalendarEvent> _contentPlanCalendarEvents = <CalendarEvent>[];
 
   @override
   void initState() {
@@ -53,6 +57,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   @override
   void dispose() {
     _userDataSubscription?.cancel();
+    _contentPlansSubscription?.cancel();
     super.dispose();
   }
 
@@ -70,10 +75,52 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         .listen(
       (snapshot) {
         if (snapshot.exists && mounted) {
+          final Map<String, dynamic> data =
+              snapshot.data() ?? <String, dynamic>{};
+          final List<Map<String, dynamic>> platforms =
+              UserProfileFirestore.parsePlatformsFromUserData(data);
+          UserProfileFirestore.logPlatformRead(
+            uid: userId,
+            view: 'ProfileBackView',
+            count: platforms.length,
+          );
+          UserProfileFirestore.logCalendarRead(
+            uid: userId,
+            source: 'ProfileBackView',
+            count: UserProfileFirestore.parseCalendarEventsFromUserData(data)
+                .length,
+          );
           setState(() {
-            _liveUserData = snapshot.data();
+            _liveUserData = data;
           });
         }
+      },
+      onError: (_) {},
+    );
+    _contentPlansSubscription = FirebaseFirestore.instance
+        .collection(UserProfileFirestore.usersCollection)
+        .doc(userId)
+        .collection(UserProfileFirestore.contentPlansSubcollection)
+        .snapshots()
+        .listen(
+      (QuerySnapshot<Map<String, dynamic>> snapshot) {
+        if (!mounted) {
+          return;
+        }
+        final List<Map<String, dynamic>> docs =
+            snapshot.docs.map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
+          return <String, dynamic>{...d.data(), 'id': d.id};
+        }).toList(growable: false);
+        setState(() {
+          _contentPlanCalendarEvents =
+              UserProfileFirestore.calendarEventsFromContentPlanDocs(docs);
+        });
+        UserProfileFirestore.logCalendarRead(
+          uid: userId,
+          source: 'ProfileBackView',
+          count: _contentPlanCalendarEvents.length,
+          readPath: UserProfileFirestore.contentPlansReadPath(userId),
+        );
       },
       onError: (_) {},
     );
@@ -92,90 +139,34 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   List<Color> get _accentGradientColors =>
       <Color>[_scheme.primary, _scheme.secondary];
 
-  /// Safely parse date from various formats
-  DateTime _parseDate(dynamic dateValue) {
-    if (dateValue == null) {
-      return DateTime.now();
-    }
-
-    if (dateValue is Timestamp) {
-      return dateValue.toDate();
-    }
-
-    if (dateValue is DateTime) {
-      return dateValue;
-    }
-
-    if (dateValue is String) {
-      try {
-        return DateTime.parse(dateValue);
-      } catch (e) {
-        return DateTime.now();
-      }
-    }
-
-    return DateTime.now();
-  }
-
   @override
   Widget build(BuildContext context) {
     try {
       // ProfileBackView displays the user data passed to it directly
       // No need to fetch from Firestore again
       // Extract platforms and events from the user data
-      List<CalendarEvent> events = [];
-      List<Map<String, dynamic>> platforms = [];
-
-      // Load calendar events from user data
-      if (_currentUserData['calendarEvents'] != null) {
-        final eventsData = _currentUserData['calendarEvents'];
-        if (eventsData is List<dynamic>) {
-          events = eventsData
-              .map((eventData) {
-                final eventMap = eventData as Map<String, dynamic>?;
-                if (eventMap != null &&
-                    eventMap['id'] != null &&
-                    eventMap['title'] != null &&
-                    eventMap['description'] != null &&
-                    eventMap['date'] != null) {
-                  return CalendarEvent(
-                    id: eventMap['id'] as String,
-                    title: eventMap['title'] as String,
-                    description: eventMap['description'] as String,
-                    date: _parseDate(eventMap['date']),
-                  );
-                }
-                return null;
-              })
-              .where((event) => event != null)
-              .cast<CalendarEvent>()
-              .toList();
-        }
+      final String uid =
+          (_currentUserData['id'] ?? _currentUserData['uid'] ?? '').toString();
+      final List<Map<String, dynamic>> platforms =
+          UserProfileFirestore.parsePlatformsFromUserData(_currentUserData);
+      if (uid.isNotEmpty) {
+        UserProfileFirestore.logPlatformRead(
+          uid: uid,
+          view: 'ProfileBackView',
+          count: platforms.length,
+        );
       }
-
-      // Load platforms from user data
-      if (_currentUserData['platforms'] != null) {
-        final platformsData = _currentUserData['platforms'];
-        if (platformsData is List<dynamic>) {
-          platforms = platformsData
-              .map((platformData) {
-                final platformMap = platformData as Map<String, dynamic>?;
-                if (platformMap != null) {
-                  return {
-                    'id': platformMap['id']?.toString() ?? '',
-                    'type': platformMap['type']?.toString() ?? '',
-                    'username': platformMap['username']?.toString() ?? '',
-                    'followers':
-                        (platformMap['followers'] as num?)?.toInt() ?? 0,
-                    'url': platformMap['url']?.toString(),
-                  };
-                }
-                return null;
-              })
-              .where((platform) => platform != null)
-              .cast<Map<String, dynamic>>()
-              .toList();
-        }
+      final List<CalendarEvent> events =
+          UserProfileFirestore.mergeCalendarEventLists(
+        UserProfileFirestore.parseCalendarEventsFromUserData(_currentUserData),
+        _contentPlanCalendarEvents,
+      );
+      if (uid.isNotEmpty) {
+        UserProfileFirestore.logCalendarRead(
+          uid: uid,
+          source: 'ProfileBackView',
+          count: events.length,
+        );
       }
 
       return _buildContent(events, platforms);
@@ -1009,12 +1000,22 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                 // Get current events and add new one
                                 final authService =
                                     ref.read(robustAuthServiceProvider);
-                                final currentUser = authService.currentUser;
-                                if (currentUser != null) {
+                                final String? uid = (_currentUserData['id'] ??
+                                        _currentUserData['uid'])
+                                    ?.toString();
+                                if (uid != null && uid.isNotEmpty) {
                                   final List<CalendarEvent> next = [
-                                    ...currentUser.calendarEvents,
-                                    ev
+                                    ...UserProfileFirestore
+                                        .parseCalendarEventsFromUserData(
+                                      _currentUserData,
+                                    ),
+                                    ev,
                                   ];
+                                  UserProfileFirestore.logCalendarSave(
+                                    uid: uid,
+                                    source: 'ProfileBackView',
+                                    count: next.length,
+                                  );
 
                                   // Dismiss sheet immediately for instant feel
                                   navigator.pop();
@@ -1035,7 +1036,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                   authService
                                       .updateUserCalendarEvents(next)
                                       .then((_) async {
-                                    // NOW refresh ProfileUpdateService after save completes
                                     await ProfileUpdateService().initialize();
                                   }).catchError((e) {
                                     // Show error feedback

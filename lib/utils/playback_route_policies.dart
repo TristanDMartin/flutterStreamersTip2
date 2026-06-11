@@ -6,6 +6,11 @@ abstract final class PlaybackRoutePolicies {
     return routeName == '/' || routeName.isEmpty;
   }
 
+  static bool isOnboardingRoute(String routeName) {
+    return routeName == AppRoutes.onboarding ||
+        routeName.contains('onboarding');
+  }
+
   static bool isVideoPlaybackRoute(String routeName) {
     return routeName == AppRoutes.home ||
         routeName.contains('homeview') ||

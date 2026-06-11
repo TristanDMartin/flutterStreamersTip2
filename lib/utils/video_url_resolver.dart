@@ -31,7 +31,7 @@ bool isReadyPlaybackStatus(String? rawStatus, {bool isReadyForFeed = false}) {
 }
 
 String? resolveReadyPlaybackUrl(Map<String, dynamic> video) {
-  final bool isReadyForFeed = video['isReadyForFeed'] != false;
+  final bool isReadyForFeed = video['isReadyForFeed'] == true;
   final String? rawStatus = video['status'] as String?;
   if (!isReadyPlaybackStatus(rawStatus, isReadyForFeed: isReadyForFeed)) {
     return null;
@@ -212,32 +212,48 @@ String? firstNonEmpty(List<dynamic> values) {
 
 /// Resolve video URL with standard priority (backward compatible).
 String? resolvePlaybackUrl(Map<String, dynamic> video) {
-  String firstString(List<String> keys) {
+  String firstValidString(List<String> keys) {
     for (final key in keys) {
       final value = video[key];
       if (value == null) continue;
       final text = value.toString().trim();
-      if (text.isNotEmpty) return text;
+      if (text.isEmpty ||
+          looksLikeImageUrl(text) ||
+          looksLikeLocalOrPlaceholderVideoUrl(text) ||
+          containsOriginalMp4(text)) {
+        continue;
+      }
+      return text;
     }
     return '';
   }
 
-  final muxPlaybackId = firstString(
+  final canonical = firstValidString(
+    const ['canonicalPlaybackUrl'],
+  );
+  if (canonical.isNotEmpty) {
+    return normalizeMuxHlsUrl(canonical);
+  }
+
+  final muxPlaybackId = firstValidString(
     const ['muxPlaybackId', 'playbackId', 'mux_playback_id'],
   );
   if (muxPlaybackId.isNotEmpty) {
     return normalizeMuxHlsUrl('https://stream.mux.com/$muxPlaybackId.m3u8');
   }
 
-  final hlsUrl = firstString(
+  final hlsUrl = firstValidString(
     const ['hlsUrl', 'playbackUrl', 'streamUrl', 'hls_url', 'playbackURL'],
   );
   if (hlsUrl.isNotEmpty) {
-    return looksLikeImageUrl(hlsUrl) ? null : normalizeMuxHlsUrl(hlsUrl);
+    return normalizeMuxHlsUrl(hlsUrl);
   }
 
-  final videoUrl = firstString(
+  final videoUrl = firstValidString(
     const [
+      'mp4_720_url',
+      'mp4_480_url',
+      'mp4_1080_url',
       'videoUrl',
       'downloadUrl',
       'url',
@@ -247,7 +263,7 @@ String? resolvePlaybackUrl(Map<String, dynamic> video) {
     ],
   );
   if (videoUrl.isNotEmpty) {
-    return looksLikeImageUrl(videoUrl) ? null : normalizeMuxHlsUrl(videoUrl);
+    return normalizeMuxHlsUrl(videoUrl);
   }
 
   return null;

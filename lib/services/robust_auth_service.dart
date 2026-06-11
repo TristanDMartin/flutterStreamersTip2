@@ -3,14 +3,20 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
+import '../utils/apple_sign_in_nonce.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/user_profile_firestore.dart';
 import '../utils/password_validation.dart';
 import 'auth_rate_limiting_service.dart';
+import 'auth_session_teardown.dart';
+import 'auth_transition_state.dart';
+import '../features/home/application/home_first_frame_gate.dart';
 import 'tiktok_account_switcher.dart';
 import 'google_services_fix.dart';
 import 'username_lock_service.dart';
@@ -30,6 +36,18 @@ class AuthRequestResult {
     this.error,
     this.user,
     this.requires2FA = false,
+  });
+}
+
+class PasswordResetRequestResult {
+  final bool success;
+  final String? message;
+  final String? error;
+
+  const PasswordResetRequestResult({
+    required this.success,
+    this.message,
+    this.error,
   });
 }
 
@@ -101,10 +119,18 @@ class RobustAuthenticationService extends ChangeNotifier {
   User? _currentUser;
   bool _isLoggedIn = false;
   bool _isCheckingAuth = false;
+  AuthTransitionState _authTransitionState = AuthTransitionState.checkingAuth;
+  String? _signingOutUid;
+  int _signOutGeneration = 0;
   StreamSubscription<firebase_auth.User?>? _authStateSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _userFirestoreSubscription;
+  Future<void>? _userSignInInFlight;
+  String? _userSignInInFlightUid;
 
   // Request management
   String? _currentRequestId;
+  bool _oauthInProgress = false;
   Timer? _debounceTimer;
   Timer? _minimumSpinnerTimer;
   bool _isMinimumSpinnerActive = false;
@@ -115,13 +141,38 @@ class RobustAuthenticationService extends ChangeNotifier {
   static const Duration _googleSignOutTimeout = Duration(seconds: 8);
   static const Duration _googleAccountPickerTimeout = Duration(seconds: 90);
   static const Duration _googleTokenTimeout = Duration(seconds: 20);
+  static const Duration _appleCredentialTimeout = Duration(seconds: 90);
   static const Duration _firebaseCredentialTimeout = Duration(seconds: 30);
   static const Duration _userHydrationTimeout = Duration(seconds: 30);
 
   User? get currentUser => _currentUser;
-  bool get isLoggedIn => _isLoggedIn;
+  AuthTransitionState get authTransitionState => _authTransitionState;
+  bool get isSigningOut =>
+      _authTransitionState == AuthTransitionState.signingOut;
+  bool get isLoggedIn => resolveAuthShellLoggedIn(
+        loggedInFlag: _isLoggedIn,
+        transitionState: _authTransitionState,
+      );
   bool get isCheckingAuth => _isCheckingAuth;
   bool get isRequestInFlight => _currentRequestId != null;
+  bool get isOauthInProgress => _oauthInProgress;
+  bool get isAuthSubmitting => _oauthInProgress || shouldShowLoading;
+
+  bool _shouldIgnoreAuthUserEvent(firebase_auth.User user) {
+    if (_authTransitionState == AuthTransitionState.signingIn ||
+        _currentRequestId != null) {
+      return false;
+    }
+    if (_authTransitionState == AuthTransitionState.signingOut) {
+      debugPrint('AUTH_EVENT_IGNORED_DURING_SIGN_OUT uid=${user.uid}');
+      return true;
+    }
+    if (_signingOutUid != null && user.uid == _signingOutUid) {
+      debugPrint('AUTH_EVENT_IGNORED_DURING_SIGN_OUT uid=${user.uid}');
+      return true;
+    }
+    return false;
+  }
 
   // Get current user profile data from Firestore
   Map<String, dynamic>? _currentUserProfile;
@@ -144,11 +195,13 @@ class RobustAuthenticationService extends ChangeNotifier {
           if (Firebase.apps.isEmpty) {
             debugPrint('⚠️ Firebase still not ready - will retry auth check');
             _isCheckingAuth = false;
+            _authTransitionState = AuthTransitionState.unauthenticated;
             notifyListeners();
             return;
           }
         }
 
+        _authTransitionState = AuthTransitionState.checkingAuth;
         // Check initial authentication state asynchronously
         _checkInitialAuthState();
 
@@ -157,12 +210,20 @@ class RobustAuthenticationService extends ChangeNotifier {
             _authInstance.authStateChanges().listen((firebase_auth.User? user) {
           try {
             debugPrint(
-                "🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
+              'AUTH STATE CHANGED: ${user?.uid ?? 'SIGNED OUT'}',
+            );
             if (user != null) {
-              debugPrint("👤 User: ${user.email} (${user.uid})");
-              _handleUserSignIn(user);
+              if (_shouldIgnoreAuthUserEvent(user)) {
+                return;
+              }
+              debugPrint('AUTH_TRANSITION firebase_session_available');
+              _promoteFirebaseSession(user);
+              unawaited(_handleUserSignIn(user));
             } else {
-              debugPrint("👤 User logged out - clearing auth state");
+              debugPrint('AUTH_TRANSITION signed_out');
+              _signingOutUid = null;
+              _authTransitionState = AuthTransitionState.unauthenticated;
+              _cancelUserFirestoreSubscription();
               _currentUser = null;
               _isLoggedIn = false;
               _isCheckingAuth = false;
@@ -175,6 +236,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       } catch (e) {
         debugPrint('❌ Error initializing RobustAuthenticationService: $e');
         _isCheckingAuth = false;
+        _authTransitionState = AuthTransitionState.unauthenticated;
         notifyListeners();
       }
     });
@@ -183,26 +245,31 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Check the initial authentication state when the service is created
   void _checkInitialAuthState() async {
     try {
+      if (_authTransitionState == AuthTransitionState.signingOut) {
+        return;
+      }
       // CRITICAL: Check if Firebase is ready before accessing
       if (Firebase.apps.isEmpty) {
         debugPrint('⚠️ Firebase not ready - will retry auth check');
         _isCheckingAuth = false;
+        _authTransitionState = AuthTransitionState.unauthenticated;
         notifyListeners();
         return;
       }
 
       // OPTIMIZED: Fast auth check with shorter timeout
-      final currentUser = _authInstance.currentUser;
+      final firebase_auth.User? currentUser = _authInstance.currentUser;
 
       if (currentUser != null) {
+        if (_shouldIgnoreAuthUserEvent(currentUser)) {
+          return;
+        }
         // User is logged in - show UI immediately, load data in background
         debugPrint('✅ User logged in - showing UI immediately');
-        _isLoggedIn = true;
-        _isCheckingAuth = false;
-        notifyListeners();
+        _promoteFirebaseSession(currentUser);
 
         // Load user data in background (non-blocking)
-        _handleUserSignIn(currentUser).catchError((e) {
+        _handleUserSignIn(currentUser).catchError((Object e) {
           debugPrint('❌ Background user data load failed: $e');
           // Don't change login state - user is still logged in
         });
@@ -211,6 +278,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         _currentUser = null;
         _isLoggedIn = false;
         _isCheckingAuth = false;
+        _authTransitionState = AuthTransitionState.unauthenticated;
         notifyListeners();
       }
     } catch (e) {
@@ -218,6 +286,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       _currentUser = null;
       _isLoggedIn = false;
       _isCheckingAuth = false;
+      _authTransitionState = AuthTransitionState.unauthenticated;
       notifyListeners();
     }
   }
@@ -227,6 +296,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     _debounceTimer?.cancel();
     _minimumSpinnerTimer?.cancel();
     _authStateSubscription?.cancel();
+    _cancelUserFirestoreSubscription();
     super.dispose();
   }
 
@@ -250,7 +320,30 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Check if we should show loading state
   bool get shouldShowLoading =>
-      isRequestInFlight || _isMinimumSpinnerActive || _isCheckingAuth;
+      isRequestInFlight ||
+      _isMinimumSpinnerActive ||
+      _isCheckingAuth ||
+      _authTransitionState == AuthTransitionState.signingOut ||
+      _authTransitionState == AuthTransitionState.signingIn;
+
+  void _beginOauthHandoff() {
+    if (_oauthInProgress) {
+      return;
+    }
+    _oauthInProgress = true;
+    _authTransitionState = AuthTransitionState.signingIn;
+    debugPrint('AUTH_TRANSITION oauth_handoff_started');
+    notifyListeners();
+  }
+
+  void _endOauthHandoff() {
+    if (!_oauthInProgress) {
+      return;
+    }
+    _oauthInProgress = false;
+    debugPrint('AUTH_TRANSITION oauth_handoff_ended');
+    notifyListeners();
+  }
 
   /// Debounced authentication with single-flight protection
   Future<AuthRequestResult> _debouncedAuth(
@@ -277,6 +370,9 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
 
     _currentRequestId = requestId;
+    _signingOutUid = null;
+    _authTransitionState = AuthTransitionState.signingIn;
+    debugPrint('AUTH_TRANSITION debounced_sign_in_started request=$requestId');
     _startMinimumSpinner();
     notifyListeners();
 
@@ -287,10 +383,13 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Only process if this is still the current request
       if (_currentRequestId == requestId) {
         _currentRequestId = null;
-        if (result.success) {
-          // appLog("✅ $requestType authentication successful (request: $requestId)");
+        if (result.success || _isLoggedIn) {
+          _authTransitionState = resolveDebouncedAuthTransition(
+            resultSuccess: result.success,
+            isLoggedInFlag: _isLoggedIn,
+          );
         } else {
-          // appLog("❌ $requestType authentication failed: ${result.error} (request: $requestId)");
+          _authTransitionState = AuthTransitionState.unauthenticated;
         }
         notifyListeners();
       } else {
@@ -302,7 +401,14 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Only process if this is still the current request
       if (_currentRequestId == requestId) {
         _currentRequestId = null;
-        // appLog("❌ $requestType authentication error: $e (request: $requestId)");
+        if (_isLoggedIn) {
+          _authTransitionState = resolveDebouncedAuthTransition(
+            resultSuccess: false,
+            isLoggedInFlag: _isLoggedIn,
+          );
+        } else {
+          _authTransitionState = AuthTransitionState.unauthenticated;
+        }
         notifyListeners();
       }
 
@@ -324,17 +430,93 @@ class RobustAuthenticationService extends ChangeNotifier {
         case 'too-many-requests':
           return 'Too many failed attempts. Please try again later.';
         case 'user-not-found':
+          return 'No account found with this email.';
         case 'wrong-password':
         case 'invalid-credential':
         case 'invalid-login-credentials':
-          return 'Incorrect email/username or password.';
+          return 'Incorrect password.';
+        case 'account-exists-with-different-credential':
+          return 'An account already exists with this email. Sign in with '
+              'your original method, then link Apple in settings.';
+        case 'app-check-token-invalid':
+        case 'app-check-failed':
+          return 'App security check failed. Register the App Check debug '
+              'token in Firebase Console, or disable App Check enforcement '
+              'for Authentication while testing.';
         case 'weak-password':
           return 'Password is too weak. Use a stronger password.';
         default:
+          if (_isNetworkAuthError(e)) {
+            return 'Network error. Please check your connection.';
+          }
           return e.message ?? 'Authentication failed.';
       }
     }
+    if (_isNetworkAuthError(e)) {
+      return 'Network error. Please check your connection.';
+    }
     return e.toString();
+  }
+
+  Future<firebase_auth.User?> _awaitVerifiedFirebaseSession(
+    firebase_auth.User firebaseUser,
+  ) async {
+    for (int attempt = 0; attempt < 5; attempt++) {
+      final firebase_auth.User? currentUser = _authInstance.currentUser;
+      if (currentUser != null && currentUser.uid == firebaseUser.uid) {
+        return currentUser;
+      }
+      if (attempt < 4) {
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+      }
+    }
+    return _authInstance.currentUser?.uid == firebaseUser.uid
+        ? _authInstance.currentUser
+        : null;
+  }
+
+  Future<AuthRequestResult> _completeSuccessfulAuth({
+    required String requestId,
+    required firebase_auth.User firebaseUser,
+    required String provider,
+    bool requires2FA = false,
+  }) async {
+    final firebase_auth.User? verifiedUser =
+        await _awaitVerifiedFirebaseSession(firebaseUser);
+    if (verifiedUser == null) {
+      debugPrint(
+        'AUTH_TRANSITION $provider session_validation_failed '
+        'expectedUid=${firebaseUser.uid} '
+        'currentUid=${_authInstance.currentUser?.uid ?? 'null'}',
+      );
+      return AuthRequestResult(
+        requestId: requestId,
+        success: false,
+        error: 'Authentication session could not be verified.',
+      );
+    }
+
+    debugPrint(
+      'AUTH_TRANSITION $provider firebase_session_verified uid=${verifiedUser.uid}',
+    );
+    _promoteFirebaseSession(verifiedUser);
+    debugPrint('AUTH_TRANSITION $provider hydrating_profile');
+    try {
+      await _handleUserSignIn(firebaseUser).timeout(_userHydrationTimeout);
+    } on TimeoutException {
+      debugPrint('AUTH_TRANSITION $provider profile_hydration_deferred');
+    } catch (error, stackTrace) {
+      debugPrint('AUTH_TRANSITION $provider profile_hydration_failed: $error');
+      debugPrint('$stackTrace');
+    }
+    debugPrint('AUTH_TRANSITION $provider authenticated');
+
+    return AuthRequestResult(
+      requestId: requestId,
+      success: true,
+      user: _currentUser,
+      requires2FA: requires2FA,
+    );
   }
 
   /// Sign in with email (debounced, single-flight)
@@ -367,11 +549,10 @@ class RobustAuthenticationService extends ChangeNotifier {
           userCredential.user!.uid,
         );
 
-        // User will be handled by auth state listener
-        return AuthRequestResult(
+        return _completeSuccessfulAuth(
           requestId: requestId,
-          success: true,
-          user: _currentUser,
+          firebaseUser: userCredential.user!,
+          provider: 'email',
           requires2FA: requires2FA,
         );
       } else {
@@ -422,31 +603,15 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
       final String normalizedUsername = trimmed.toLowerCase();
-      final QuerySnapshot<Map<String, dynamic>> usersQuery =
-          await _firestoreInstance
-              .collection('users')
-              .where('username', isEqualTo: normalizedUsername)
-              .limit(1)
-              .get();
-
-      if (usersQuery.docs.isEmpty) {
-        await _rateLimiter.recordAttempt();
-        return AuthRequestResult(
-          requestId: requestId,
-          success: false,
-          error: 'No account found with this email or username.',
-        );
-      }
-
-      final Map<String, dynamic> userData = usersQuery.docs.first.data();
-      final String? resolvedEmail = userData['email'] as String?;
+      final String? resolvedEmail =
+          await resolveEmailForUsername(normalizedUsername);
 
       if (resolvedEmail == null || resolvedEmail.trim().isEmpty) {
         await _rateLimiter.recordAttempt();
         return AuthRequestResult(
           requestId: requestId,
           success: false,
-          error: 'No account found with this email or username.',
+          error: 'No account found with that username.',
         );
       }
 
@@ -486,8 +651,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
 
-      debugPrint(
-          "✅ Google auth[$requestId]: account selected ${googleUser.email}");
+      debugPrint("AUTH_TRANSITION google account_selected");
 
       try {
         debugPrint("🔐 Google auth[$requestId]: requesting auth tokens");
@@ -514,23 +678,16 @@ class RobustAuthenticationService extends ChangeNotifier {
             .timeout(_firebaseCredentialTimeout);
 
         if (userCredential.user != null) {
-          debugPrint(
-              "✅ Firebase authentication successful for: ${userCredential.user!.email}");
-
-          // Update local auth state immediately instead of waiting only on the
-          // auth state stream, which can lag on some Android Google Sign-In flows.
-          debugPrint("🔐 Google auth[$requestId]: hydrating user profile");
-          await _handleUserSignIn(userCredential.user!)
-              .timeout(_userHydrationTimeout);
-          _isLoggedIn = true;
-          _isCheckingAuth = false;
-          notifyListeners();
-
-          return AuthRequestResult(
+          final firebase_auth.User hydratedUser =
+              await _reloadFirebaseUser(userCredential.user!);
+          await _ensureMinimalUserDocument(
+            firebaseUser: hydratedUser,
+            authProvider: 'google',
+          );
+          return _completeSuccessfulAuth(
             requestId: requestId,
-            success: true,
-            user: _currentUser ??
-                _mapFirebaseUserToFallback(userCredential.user!),
+            firebaseUser: hydratedUser,
+            provider: 'google',
           );
         } else {
           return AuthRequestResult(
@@ -561,6 +718,249 @@ class RobustAuthenticationService extends ChangeNotifier {
         requestId: requestId,
         success: false,
         error: errorMessage,
+      );
+    }
+  }
+
+  /// Sign in with Apple (iOS/macOS; debounced, single-flight).
+  Future<AuthRequestResult> signInWithApple(String requestId) async {
+    try {
+      debugPrint("🔐 Apple auth[$requestId]: starting");
+      final bool isAvailable = await SignInWithApple.isAvailable();
+      if (!isAvailable) {
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: 'Sign in with Apple is not available on this device',
+        );
+      }
+      final String rawNonce = generateAppleSignInRawNonce();
+      final String hashedNonce = sha256HashForAppleSignIn(rawNonce);
+      debugPrint("🔐 Apple auth[$requestId]: requesting Apple ID credential");
+      final AuthorizationCredentialAppleID appleCredential =
+          await SignInWithApple.getAppleIDCredential(
+        scopes: <AppleIDAuthorizationScopes>[
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: hashedNonce,
+      ).timeout(_appleCredentialTimeout);
+      debugPrint(
+        'APPLE CREDENTIAL RECEIVED user=${appleCredential.userIdentifier ?? 'unknown'} '
+        'hasIdentityToken=${appleCredential.identityToken?.isNotEmpty == true}',
+      );
+      final String? identityToken = appleCredential.identityToken;
+      if (identityToken == null || identityToken.isEmpty) {
+        debugPrint("❌ Apple auth[$requestId]: missing identity token");
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: 'Failed to get Apple authentication token',
+        );
+      }
+      final String authorizationCode = appleCredential.authorizationCode;
+      final firebase_auth.OAuthCredential credential =
+          firebase_auth.OAuthProvider('apple.com').credential(
+        idToken: identityToken,
+        rawNonce: rawNonce,
+        accessToken: authorizationCode,
+      );
+      debugPrint(
+        'APPLE FIREBASE CREDENTIAL CREATED provider=apple.com '
+        'hasAuthCode=${authorizationCode.isNotEmpty}',
+      );
+      debugPrint("🔐 Apple auth[$requestId]: signing into Firebase");
+      final firebase_auth.UserCredential userCredential =
+          await _signInWithAppleFirebaseCredential(
+        requestId: requestId,
+        credential: credential,
+      );
+      final firebase_auth.User? firebaseUser = userCredential.user;
+      debugPrint(
+        'APPLE FIREBASE UID: ${firebaseUser?.uid ?? 'null'} '
+        'currentUser=${_authInstance.currentUser?.uid ?? 'null'}',
+      );
+      if (firebaseUser == null) {
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: 'Apple authentication failed',
+        );
+      }
+      await _applyAppleDisplayNameIfNeeded(
+        firebaseUser: firebaseUser,
+        appleCredential: appleCredential,
+      );
+      final firebase_auth.User hydratedUser =
+          await _reloadFirebaseUser(firebaseUser);
+      await _ensureMinimalUserDocument(
+        firebaseUser: hydratedUser,
+        authProvider: 'apple',
+      );
+      return _completeSuccessfulAuth(
+        requestId: requestId,
+        firebaseUser: hydratedUser,
+        provider: 'apple',
+      );
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) {
+        debugPrint("ℹ️ Apple auth[$requestId]: cancelled");
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: 'Apple sign-in cancelled',
+        );
+      }
+      debugPrint("❌ Apple auth[$requestId]: authorization failed: ${e.code}");
+      return AuthRequestResult(
+        requestId: requestId,
+        success: false,
+        error: _appleSignInUserMessage(e),
+      );
+    } on TimeoutException {
+      debugPrint("❌ Apple auth[$requestId]: timed out");
+      return AuthRequestResult(
+        requestId: requestId,
+        success: false,
+        error: 'Apple sign-in timed out. Please try again.',
+      );
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      debugPrint(
+        "❌ Apple auth[$requestId]: Firebase error code=${e.code} "
+        'message=${e.message ?? 'null'} email=${e.email ?? 'null'}',
+      );
+      return AuthRequestResult(
+        requestId: requestId,
+        success: false,
+        error: _firebaseAuthUserMessage(e),
+      );
+    } catch (e) {
+      debugPrint("❌ Apple auth[$requestId]: failed: $e");
+      return AuthRequestResult(
+        requestId: requestId,
+        success: false,
+        error: 'Apple sign-in failed. Please try again.',
+      );
+    }
+  }
+
+  Future<firebase_auth.UserCredential> _signInWithAppleFirebaseCredential({
+    required String requestId,
+    required firebase_auth.OAuthCredential credential,
+  }) async {
+    try {
+      return await _authInstance
+          .signInWithCredential(credential)
+          .timeout(_firebaseCredentialTimeout);
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      if (e.code != 'invalid-credential') {
+        rethrow;
+      }
+      debugPrint(
+        'AUTH_TRANSITION apple invalid_credential_retry request=$requestId',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      return _authInstance
+          .signInWithCredential(credential)
+          .timeout(_firebaseCredentialTimeout);
+    }
+  }
+
+  Future<void> _applyAppleDisplayNameIfNeeded({
+    required firebase_auth.User firebaseUser,
+    required AuthorizationCredentialAppleID appleCredential,
+  }) async {
+    if (firebaseUser.displayName != null &&
+        firebaseUser.displayName!.trim().isNotEmpty) {
+      return;
+    }
+    final String givenName = appleCredential.givenName?.trim() ?? '';
+    final String familyName = appleCredential.familyName?.trim() ?? '';
+    final String displayName = '$givenName $familyName'.trim();
+    if (displayName.isEmpty) {
+      return;
+    }
+    try {
+      await firebaseUser.updateDisplayName(displayName);
+      await firebaseUser.reload();
+    } catch (e) {
+      debugPrint('⚠️ Apple auth: could not set display name: $e');
+    }
+  }
+
+  String _appleSignInUserMessage(SignInWithAppleAuthorizationException error) {
+    switch (error.code) {
+      case AuthorizationErrorCode.failed:
+        return 'Apple sign-in failed. Please try again.';
+      case AuthorizationErrorCode.invalidResponse:
+        return 'Apple sign-in returned an invalid response.';
+      case AuthorizationErrorCode.notHandled:
+        return 'Apple sign-in could not be completed.';
+      case AuthorizationErrorCode.notInteractive:
+        return 'Apple sign-in requires user interaction.';
+      case AuthorizationErrorCode.unknown:
+      default:
+        return 'Apple sign-in failed. Please try again.';
+    }
+  }
+
+  void _promoteFirebaseSession(firebase_auth.User firebaseUser) {
+    _signingOutUid = null;
+    _currentUser ??= _mapFirebaseUserToFallback(firebaseUser);
+    _isLoggedIn = true;
+    _isCheckingAuth = false;
+    _authTransitionState = AuthTransitionState.authenticated;
+    notifyListeners();
+  }
+
+  Future<firebase_auth.User> _reloadFirebaseUser(
+    firebase_auth.User firebaseUser,
+  ) async {
+    try {
+      await firebaseUser.reload();
+      return _authInstance.currentUser ?? firebaseUser;
+    } catch (e) {
+      debugPrint('AUTH_TRANSITION profile_reload_failed: $e');
+      return firebaseUser;
+    }
+  }
+
+  /// Merge a minimal profile so social sign-in never fails on missing docs.
+  Future<void> _ensureMinimalUserDocument({
+    required firebase_auth.User firebaseUser,
+    required String authProvider,
+  }) async {
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> existingSnapshot =
+          await _firestoreInstance
+              .collection('users')
+              .doc(firebaseUser.uid)
+              .get();
+      final Map<String, dynamic>? existingData = existingSnapshot.data();
+      final Map<String, String> avatarFields = buildProviderAvatarMergeFields(
+        providerPhotoUrl: firebaseUser.photoURL,
+        existingData: existingData,
+      );
+      await _firestoreInstance.collection('users').doc(firebaseUser.uid).set(
+        <String, dynamic>{
+          'uid': firebaseUser.uid,
+          'id': firebaseUser.uid,
+          'email': firebaseUser.email,
+          'displayName': firebaseUser.displayName,
+          'authProvider': authProvider,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'isDeleted': false,
+          ...avatarFields,
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint(
+        'AUTH_TRANSITION $authProvider minimal_profile_merged uid=${firebaseUser.uid}',
+      );
+    } catch (e) {
+      debugPrint(
+        'AUTH_TRANSITION $authProvider minimal_profile_merge_failed: $e',
       );
     }
   }
@@ -598,7 +998,46 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   Future<AuthRequestResult> debouncedSignInWithGoogle() {
-    return _debouncedAuth('google', (requestId) => signInWithGoogle(requestId));
+    _beginOauthHandoff();
+    return _debouncedAuth(
+      'google',
+      (requestId) => signInWithGoogle(requestId),
+    ).whenComplete(_endOauthHandoff);
+  }
+
+  Future<AuthRequestResult> debouncedSignInWithApple() {
+    _beginOauthHandoff();
+    return _debouncedAuth(
+      'apple',
+      (requestId) => signInWithApple(requestId),
+    ).whenComplete(_endOauthHandoff);
+  }
+
+  /// Resolve a normalized username to the account email stored in Firestore.
+  Future<String?> resolveEmailForUsername(String normalizedUsername) async {
+    final String normalized = normalizedUsername.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return null;
+    }
+    final QuerySnapshot<Map<String, dynamic>> lowercaseQuery =
+        await _firestoreInstance
+            .collection('users')
+            .where('usernameLowercase', isEqualTo: normalized)
+            .limit(1)
+            .get();
+    if (lowercaseQuery.docs.isNotEmpty) {
+      return lowercaseQuery.docs.first.data()['email'] as String?;
+    }
+    final QuerySnapshot<Map<String, dynamic>> usernameQuery =
+        await _firestoreInstance
+            .collection('users')
+            .where('username', isEqualTo: normalized)
+            .limit(1)
+            .get();
+    if (usernameQuery.docs.isEmpty) {
+      return null;
+    }
+    return usernameQuery.docs.first.data()['email'] as String?;
   }
 
   Future<AuthRequestResult> debouncedSignUpWithEmail({
@@ -609,7 +1048,13 @@ class RobustAuthenticationService extends ChangeNotifier {
   }) {
     return _debouncedAuth('signup', (requestId) async {
       try {
-        await signUpWithEmail(email, password, displayName, username);
+        await signUpWithEmail(
+          email,
+          password,
+          displayName,
+          username,
+          requestId: requestId,
+        );
         return AuthRequestResult(
           requestId: requestId,
           success: true,
@@ -626,9 +1071,10 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   /// Sign up with email and password
-  Future<void> signUpWithEmail(String email, String password,
-      String displayName, String username) async {
-    debugPrint("📝 Signing up with email: $email");
+  Future<void> signUpWithEmail(
+      String email, String password, String displayName, String username,
+      {String? requestId}) async {
+    debugPrint('AUTH_TRANSITION email_signup starting');
 
     try {
       final String trimmedEmail = email.trim();
@@ -668,9 +1114,14 @@ class RobustAuthenticationService extends ChangeNotifier {
           username: normalizedUsername,
         );
 
-        await _handleUserSignIn(userCredential.user!);
-        _isLoggedIn = true;
-        notifyListeners();
+        final AuthRequestResult completion = await _completeSuccessfulAuth(
+          requestId: requestId ?? _generateRequestId(),
+          firebaseUser: userCredential.user!,
+          provider: 'email_signup',
+        );
+        if (!completion.success) {
+          throw Exception(completion.error ?? 'Authentication failed');
+        }
 
         debugPrint("✅ Sign up completed successfully");
       } else {
@@ -697,10 +1148,9 @@ class RobustAuthenticationService extends ChangeNotifier {
           .get();
 
       if (userQuery.docs.isNotEmpty) {
-        debugPrint("⚠️ User with email $email still exists in Firestore");
-        // Optionally delete the Firestore document if it exists
-        await userQuery.docs.first.reference.delete();
-        debugPrint("🧹 Deleted existing Firestore document for $email");
+        debugPrint(
+          'AUTH_TRANSITION email_signup existing_profile_preserved',
+        );
       }
     } catch (e) {
       debugPrint("⚠️ Error checking existing user: $e");
@@ -714,20 +1164,33 @@ class RobustAuthenticationService extends ChangeNotifier {
     try {
       final userRef =
           _firestoreInstance.collection("users").doc(firebaseUser.uid);
-
-      await userRef.set({
-        'uid': firebaseUser.uid,
-        'id': firebaseUser.uid,
-        'email': firebaseUser.email,
-        'displayName': displayName,
-        'username': username,
-        'avatarURL': null,
-        'bio': '',
-        'hashtags': [],
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'isDeleted': false,
-      });
+      final existingSnapshot = await userRef.get();
+      if (existingSnapshot.exists) {
+        await userRef.set(
+          {
+            'uid': firebaseUser.uid,
+            'id': firebaseUser.uid,
+            'email': firebaseUser.email,
+            'updatedAt': FieldValue.serverTimestamp(),
+            'isDeleted': false,
+          },
+          SetOptions(merge: true),
+        );
+      } else {
+        await userRef.set({
+          'uid': firebaseUser.uid,
+          'id': firebaseUser.uid,
+          'email': firebaseUser.email,
+          'displayName': displayName,
+          'username': username,
+          'avatarURL': null,
+          'bio': '',
+          'hashtags': [],
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'isDeleted': false,
+        });
+      }
 
       // appLog("✅ User document created in Firestore");
     } catch (e) {
@@ -738,9 +1201,31 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Handle user sign in and load user data from Firestore
   Future<void> _handleUserSignIn(firebase_auth.User firebaseUser) async {
-    debugPrint("🔐 _handleUserSignIn called for user: ${firebaseUser.uid}");
-    debugPrint("👤 User email: ${firebaseUser.email ?? 'nil'}");
-    debugPrint("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
+    if (_shouldIgnoreAuthUserEvent(firebaseUser)) {
+      return;
+    }
+    final Future<void>? inFlight = _userSignInInFlight;
+    if (inFlight != null && _userSignInInFlightUid == firebaseUser.uid) {
+      debugPrint('AUTH_TRANSITION profile_hydration_joined');
+      return inFlight;
+    }
+
+    final Future<void> hydration = _handleUserSignInOnce(firebaseUser);
+    _userSignInInFlight = hydration;
+    _userSignInInFlightUid = firebaseUser.uid;
+    return hydration.whenComplete(() {
+      if (identical(_userSignInInFlight, hydration)) {
+        _userSignInInFlight = null;
+        _userSignInInFlightUid = null;
+      }
+    });
+  }
+
+  Future<void> _handleUserSignInOnce(firebase_auth.User firebaseUser) async {
+    if (_shouldIgnoreAuthUserEvent(firebaseUser)) {
+      return;
+    }
+    debugPrint('AUTH_TRANSITION profile_hydration_started');
 
     try {
       final userRef =
@@ -768,21 +1253,8 @@ class RobustAuthenticationService extends ChangeNotifier {
           aiSelf = data['aiSelf'] as String;
         }
 
-        // Decode calendarEvents
-        var calendarEvents = <CalendarEvent>[];
-        if (data['calendarEvents'] != null) {
-          final eventsArray = data['calendarEvents'] as List<dynamic>;
-          calendarEvents = eventsArray
-              .map((eventData) {
-                if (eventData is Map<String, dynamic>) {
-                  return CalendarEvent.fromMap(eventData);
-                }
-                return null;
-              })
-              .where((event) => event != null)
-              .cast<CalendarEvent>()
-              .toList();
-        }
+        final List<CalendarEvent> calendarEvents =
+            UserProfileFirestore.parseCalendarEventsFromUserData(data);
 
         final user = User(
           id: firebaseUser.uid,
@@ -799,6 +1271,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         _currentUser = user;
         _isLoggedIn = true;
         _isCheckingAuth = false;
+        _authTransitionState = AuthTransitionState.authenticated;
         notifyListeners();
 
         debugPrint("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
@@ -806,17 +1279,22 @@ class RobustAuthenticationService extends ChangeNotifier {
         // Add account to TikTok account switcher for instant switching
         await _accountSwitcher.addCurrentAccount();
 
-        // Trigger comprehensive data refresh for the signed-in user
-        await _accountSwitcher.triggerDataRefreshWithRef(null);
-
-        // Set up real-time listener for user data changes
         _setupUserDataListener(firebaseUser.uid);
-
-        // Ensure user document exists (handles any edge cases)
         await _ensureUserDocumentExists();
 
-        // Register FCM token for push notifications
-        await _registerFCMToken(firebaseUser.uid);
+        HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+          if (_authTransitionState == AuthTransitionState.signingOut) {
+            return;
+          }
+          unawaited(
+            _accountSwitcher.triggerDataRefreshWithRef(
+              null,
+              clearCaches: false,
+              invalidateHomeFeed: false,
+            ),
+          );
+          unawaited(_registerFCMToken(firebaseUser.uid));
+        });
       } else {
         debugPrint(
             "🔐 User document NOT found in Firestore - creating new user");
@@ -846,6 +1324,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         _currentUser = user;
         _isLoggedIn = true;
         _isCheckingAuth = false;
+        _authTransitionState = AuthTransitionState.authenticated;
         notifyListeners();
 
         debugPrint(
@@ -854,14 +1333,15 @@ class RobustAuthenticationService extends ChangeNotifier {
         // Add account to TikTok account switcher for instant switching
         await _accountSwitcher.addCurrentAccount();
 
-        // Trigger comprehensive data refresh for the signed-in user
-        await _accountSwitcher.triggerDataRefreshWithRef(null);
-
-        // Set up real-time listener for the new user
         _setupUserDataListener(firebaseUser.uid);
 
-        // Register FCM token for push notifications
-        await _registerFCMToken(firebaseUser.uid);
+        HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+          if (_authTransitionState == AuthTransitionState.signingOut) {
+            return;
+          }
+          unawaited(_accountSwitcher.triggerDataRefreshWithRef(null));
+          unawaited(_registerFCMToken(firebaseUser.uid));
+        });
       }
     } catch (e) {
       debugPrint("❌ Error in handleUserSignIn: $e");
@@ -872,9 +1352,11 @@ class RobustAuthenticationService extends ChangeNotifier {
       notifyListeners();
       // Retry loading user data after a delay
       Future.delayed(const Duration(seconds: 2), () {
-        if (_isLoggedIn && _currentUser == null) {
+        if (_isLoggedIn &&
+            _currentUser == null &&
+            _authTransitionState != AuthTransitionState.signingOut) {
           debugPrint('🔄 Retrying user data load...');
-          _handleUserSignIn(firebaseUser).catchError((retryError) {
+          _handleUserSignIn(firebaseUser).catchError((Object retryError) {
             debugPrint('❌ Retry failed: $retryError');
           });
         }
@@ -882,15 +1364,22 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
   }
 
+  void _cancelUserFirestoreSubscription() {
+    _userFirestoreSubscription?.cancel();
+    _userFirestoreSubscription = null;
+  }
+
   /// Set up real-time listener for user data changes
   void _setupUserDataListener(String userId) {
-    // appLog("👂 Setting up real-time listener for user: $userId");
-
-    _firestoreInstance
+    _cancelUserFirestoreSubscription();
+    _userFirestoreSubscription = _firestoreInstance
         .collection("users")
         .doc(userId)
         .snapshots()
-        .listen((snapshot) {
+        .listen((DocumentSnapshot<Map<String, dynamic>> snapshot) {
+      if (_authTransitionState == AuthTransitionState.signingOut) {
+        return;
+      }
       if (snapshot.exists && _currentUser != null) {
         final data = snapshot.data()!;
 
@@ -983,26 +1472,35 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Save user to Firestore
   Future<void> _saveUserToFirestore(User user, {String? email}) async {
     try {
-      final userData = {
+      final String? avatarUrl = normalizeAvatarPhotoUrl(user.avatarURL);
+      final userData = <String, dynamic>{
+        'uid': user.id,
+        'id': user.id,
         'username': user.username.toLowerCase(),
+        'usernameLowercase': user.username.toLowerCase(),
         'displayName': user.displayName,
         'bio': user.bio,
-        'avatarURL': user.avatarURL,
+        'avatarURL': avatarUrl,
+        'avatarUrl': avatarUrl,
+        'photoURL': avatarUrl,
         'onlineStatus': user.onlineStatus,
         'hashtags': user.hashtags,
         'aiSelf': user.aiSelf,
         'postCount': user.postCount,
         'followerCount': user.followerCount,
         'followingCount': user.followingCount,
-        'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        'isDeleted': false,
       };
 
       if (email != null) {
         userData['email'] = email;
       }
 
-      await _firestoreInstance.collection('users').doc(user.id).set(userData);
+      await _firestoreInstance.collection('users').doc(user.id).set(
+            userData,
+            SetOptions(merge: true),
+          );
     } catch (e) {
       rethrow;
     }
@@ -1010,24 +1508,88 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Ensure user document exists
   Future<void> _ensureUserDocumentExists() async {
-    // Implementation for ensuring user document exists
-    // This can be expanded based on your specific needs
+    final firebase_auth.User? firebaseUser = _authInstance.currentUser;
+    if (firebaseUser == null) {
+      return;
+    }
+    final String? providerId = firebaseUser.providerData.isNotEmpty
+        ? firebaseUser.providerData.first.providerId
+        : null;
+    final String authProvider = providerId == 'apple.com'
+        ? 'apple'
+        : providerId == 'google.com'
+            ? 'google'
+            : providerId ?? 'password';
+    await _ensureMinimalUserDocument(
+      firebaseUser: firebaseUser,
+      authProvider: authProvider,
+    );
   }
 
   /// Sign out
   Future<void> signOut() async {
+    if (_authTransitionState == AuthTransitionState.signingOut) {
+      debugPrint('🔐 Sign out already in progress');
+      return;
+    }
+    if (_oauthInProgress ||
+        _currentRequestId != null ||
+        _authTransitionState == AuthTransitionState.signingIn) {
+      debugPrint('AUTH_TRANSITION sign_out_deferred_sign_in_in_progress');
+      return;
+    }
+    final int signOutGeneration = ++_signOutGeneration;
     try {
       debugPrint("🔐 Starting sign out process...");
 
-      // Check if user is already signed out
+      final String? signingOutUid =
+          _authInstance.currentUser?.uid ?? _currentUser?.id;
+      _signingOutUid = signingOutUid;
+
+      _authTransitionState = AuthTransitionState.signingOut;
+      _userSignInInFlight = null;
+      _userSignInInFlightUid = null;
+      _currentUser = null;
+      _isLoggedIn = false;
+      _isCheckingAuth = false;
+      notifyListeners();
+
+      _cancelUserFirestoreSubscription();
+      await AuthSessionTeardown.executeBeforeSignOut();
+
+      if (_signOutGeneration != signOutGeneration ||
+          _currentRequestId != null ||
+          _authTransitionState == AuthTransitionState.signingIn) {
+        debugPrint('AUTH_TRANSITION sign_out_aborted_for_sign_in');
+        final firebase_auth.User? activeUser = _authInstance.currentUser;
+        if (activeUser != null) {
+          _promoteFirebaseSession(activeUser);
+        } else {
+          _cleanupAuthState();
+        }
+        return;
+      }
+
       if (_authInstance.currentUser == null) {
         debugPrint("⚠️ User already signed out, cleaning up state...");
         _cleanupAuthState();
         return;
       }
 
-      // Remove FCM token before signing out
       await _removeCurrentDeviceToken();
+
+      if (_signOutGeneration != signOutGeneration ||
+          _currentRequestId != null ||
+          _authTransitionState == AuthTransitionState.signingIn) {
+        debugPrint('AUTH_TRANSITION sign_out_aborted_for_sign_in');
+        final firebase_auth.User? activeUser = _authInstance.currentUser;
+        if (activeUser != null) {
+          _promoteFirebaseSession(activeUser);
+        } else {
+          _cleanupAuthState();
+        }
+        return;
+      }
 
       await _authInstance.signOut();
       await GoogleServicesFix.signOutFromGoogle();
@@ -1035,9 +1597,8 @@ class RobustAuthenticationService extends ChangeNotifier {
       debugPrint("✅ User signed out successfully");
     } catch (e) {
       debugPrint("❌ Error signing out: $e");
-      // Still cleanup state even if there was an error
       _cleanupAuthState();
-      rethrow; // Re-throw the error so the UI can handle it
+      rethrow;
     }
   }
 
@@ -1083,7 +1644,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Get FCM token (works even if permission was already granted)
       final fcmToken = await messaging.getToken();
       if (fcmToken != null) {
-        debugPrint("📱 FCM Token obtained: ${fcmToken.substring(0, 20)}...");
+        debugPrint("✅ FCM token obtained");
 
         await _firestoreInstance
             .collection('users')
@@ -1153,7 +1714,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           .doc(fcmToken)
           .delete();
 
-      debugPrint("🧹 Removed FCM token for user $userId on logout");
+      debugPrint("🧹 Removed FCM token on logout");
     } catch (e) {
       debugPrint("⚠️ Error removing FCM token on logout: $e");
       // Don't fail logout if token removal fails
@@ -1162,9 +1723,14 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Clean up authentication state
   void _cleanupAuthState() {
+    _signingOutUid = null;
+    _userSignInInFlight = null;
+    _userSignInInFlightUid = null;
+    _cancelUserFirestoreSubscription();
     _currentUser = null;
     _isLoggedIn = false;
     _isCheckingAuth = false;
+    _authTransitionState = AuthTransitionState.unauthenticated;
     _currentRequestId = null;
     _debounceTimer?.cancel();
     _minimumSpinnerTimer?.cancel();
@@ -1180,20 +1746,21 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
 
     try {
-      final eventsData = events
-          .map((event) => {
-                'id': event.id,
-                'title': event.title,
-                'description': event.description,
-                'date': Timestamp.fromDate(event.date),
-              })
-          .toList();
+      final List<Map<String, dynamic>> eventsData =
+          UserProfileFirestore.calendarEventsToFirestore(
+        events.cast<CalendarEvent>(),
+      );
+      UserProfileFirestore.logCalendarSave(
+        uid: _currentUser!.id,
+        source: 'CalendarCreate',
+        count: eventsData.length,
+      );
 
       await _firestoreInstance
           .collection('users')
           .doc(_currentUser!.id)
           .update({
-        'calendarEvents': eventsData,
+        UserProfileFirestore.calendarEventsField: eventsData,
       });
 
       // appLog('✅ Calendar events successfully updated in Firestore');
@@ -1206,12 +1773,78 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Send password reset email
   Future<void> sendPasswordResetEmail(String email) async {
     try {
-      await _authInstance.sendPasswordResetEmail(email: email);
-      debugPrint("✅ Password reset email sent to: $email");
+      await _authInstance.sendPasswordResetEmail(email: email.trim());
+      debugPrint("✅ Password reset email sent");
     } catch (e) {
       debugPrint("❌ Password reset error: $e");
       rethrow;
     }
+  }
+
+  /// Sends a reset email when possible; always returns a neutral success copy.
+  Future<PasswordResetRequestResult> sendPasswordResetForIdentifier(
+    String emailOrUsername,
+  ) async {
+    final String trimmed = emailOrUsername.trim();
+    if (trimmed.isEmpty) {
+      return const PasswordResetRequestResult(
+        success: false,
+        error: 'Enter your email or username.',
+      );
+    }
+    String? targetEmail;
+    if (trimmed.contains('@')) {
+      if (!trimmed.contains('.') || trimmed.length < 5) {
+        return const PasswordResetRequestResult(
+          success: false,
+          error: 'Enter a valid email address.',
+        );
+      }
+      targetEmail = trimmed;
+    } else {
+      targetEmail = await resolveEmailForUsername(trimmed.toLowerCase());
+    }
+    if (targetEmail != null && targetEmail.trim().isNotEmpty) {
+      try {
+        await _authInstance.sendPasswordResetEmail(email: targetEmail.trim());
+      } on firebase_auth.FirebaseAuthException catch (e) {
+        if (e.code == 'invalid-email') {
+          return const PasswordResetRequestResult(
+            success: false,
+            error: 'Enter a valid email address.',
+          );
+        }
+        if (e.code == 'too-many-requests') {
+          return const PasswordResetRequestResult(
+            success: false,
+            error: 'Too many requests. Please try again later.',
+          );
+        }
+        if (_isNetworkAuthError(e)) {
+          return const PasswordResetRequestResult(
+            success: false,
+            error: 'Network error. Please check your connection.',
+          );
+        }
+      } catch (e) {
+        if (_isNetworkAuthError(e)) {
+          return const PasswordResetRequestResult(
+            success: false,
+            error: 'Network error. Please check your connection.',
+          );
+        }
+      }
+    }
+    return const PasswordResetRequestResult(
+      success: true,
+      message:
+          'Password reset email sent if an account exists for that address.',
+    );
+  }
+
+  bool _isNetworkAuthError(Object error) {
+    final String message = error.toString().toLowerCase();
+    return message.contains('network') || message.contains('socket');
   }
 
   String _fcmPlatformName() {
@@ -1229,6 +1862,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 // Provider for the robust authentication service
 final robustAuthServiceProvider =
     ChangeNotifierProvider<RobustAuthenticationService>((ref) {
+  ref.keepAlive();
   try {
     return RobustAuthenticationService();
   } catch (e) {

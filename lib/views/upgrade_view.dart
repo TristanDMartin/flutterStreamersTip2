@@ -1,20 +1,25 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../constants/app_colors.dart';
 import '../features/billing/debug_studio_bypass.dart';
-import '../features/billing/get_user_tier.dart';
+import '../features/billing/models/subscription_billing_source.dart';
+import '../features/billing/models/subscription_snapshot.dart';
+import '../features/billing/subscription_manage_service.dart';
+import '../features/billing/subscription_provider.dart';
+import '../features/billing/tier_display_names.dart';
+import '../features/billing/upgrade_tier_marketing.dart';
 import '../features/billing/iap_billing_coordinator.dart';
 import '../features/billing/mobile_billing_setup_status_banner.dart';
 import '../features/billing/iap_billing_facade.dart';
 import '../features/billing/store_product_catalog.dart';
 import '../features/billing/store_product_ids.dart';
-import '../features/billing/subscription_tier_provider.dart';
-import '../features/gamification/models/subscription_plan.dart';
+import '../services/creator_intelligence_analytics_service.dart';
 import 'contact_support_view.dart';
 
 class UpgradeView extends ConsumerStatefulWidget {
@@ -30,6 +35,8 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
   String? _localProductHint;
 
   IapBillingFacade get _iap => IapBillingCoordinator.instance.facade;
+  final SubscriptionManageService _manageService =
+      const SubscriptionManageService();
 
   void _onIapUi() {
     if (mounted) {
@@ -39,6 +46,17 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
 
   void _onPurchaseVerified() {
     if (mounted) {
+      invalidateSubscriptionEntitlements(ref);
+      final String tier = ref
+              .read(subscriptionSnapshotProvider)
+              .valueOrNull
+              ?.tierApi ??
+          'starter';
+      unawaited(
+        CreatorIntelligenceAnalyticsService().trackSubscriptionStarted(
+          tier: tier,
+        ),
+      );
       setState(() {});
     }
   }
@@ -50,6 +68,17 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
     coordinator.addListener(_onIapUi);
     coordinator.addVerifiedHandler(_onPurchaseVerified);
     unawaited(coordinator.refreshStoreCatalog());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || kIsWeb) {
+        return;
+      }
+      unawaited(refreshSubscriptionEntitlements(ref));
+      unawaited(
+        CreatorIntelligenceAnalyticsService().trackSubscriptionGateSeen(
+          feature: 'upgrade_view',
+        ),
+      );
+    });
   }
 
   @override
@@ -143,61 +172,46 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
     }
   }
 
+  SubscriptionSnapshot? _readEntitlementsSnapshot() {
+    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
+    if (user != null && DebugStudioBypass.grantsStudio(user.uid)) {
+      return null;
+    }
+    return ref.watch(subscriptionSnapshotProvider).valueOrNull ??
+        readCachedSubscriptionSnapshot(ref);
+  }
+
   ({String tier, String? status, bool isLoading}) _readTierSnapshot() {
     final fa.User? user = fa.FirebaseAuth.instance.currentUser;
     if (user != null && DebugStudioBypass.grantsStudio(user.uid)) {
       return (tier: 'studio', status: 'active', isLoading: false);
     }
-    final AsyncValue<BillingTierAccess> tierAsync =
-        ref.watch(billingTierAccessProvider);
+    final AsyncValue<SubscriptionSnapshot> tierAsync =
+        ref.watch(subscriptionSnapshotProvider);
     return tierAsync.when(
-      data: (BillingTierAccess access) {
-        final String tier = access.usedCanonicalFields
-            ? subscriptionPlanToApiValue(access.effectivePlan)
-            : 'starter';
-        return (
-          tier: tier,
-          status: access.subscriptionStatusForDisplay,
-          isLoading: false,
-        );
-      },
+      data: (SubscriptionSnapshot snap) => (
+        tier: snap.tierApi,
+        status: snap.subscriptionStatus,
+        isLoading: false,
+      ),
       loading: () => (tier: 'starter', status: null, isLoading: true),
       error: (_, __) => (tier: 'starter', status: null, isLoading: false),
     );
   }
 
-  String _tierLabel(String tier) {
-    switch (tier) {
-      case 'pro':
-        return 'Pro';
-      case 'studio':
-        return 'Studio';
-      default:
-        return 'Starter';
-    }
-  }
+  String _tierLabel(String tier) => tierDisplayNameForApi(tier);
 
-  String _statusLabel(String? status) {
-    switch (status) {
-      case 'trialing':
-        return 'Trialing';
-      case 'active':
-        return 'Active';
-      case 'past_due':
-        return 'Past Due';
-      case 'canceled':
-        return 'Canceled';
-      default:
-        return 'Starter';
-    }
-  }
+  String _statusLabel(String? status) => subscriptionStatusDisplayLabel(status);
 
   @override
   Widget build(BuildContext context) {
     final ({String tier, String? status, bool isLoading}) tierSnapshot =
         _readTierSnapshot();
+    final SubscriptionSnapshot? entitlements = _readEntitlementsSnapshot();
     final String resolvedTier = tierSnapshot.tier;
     final bool isLoadingTier = tierSnapshot.isLoading;
+    final bool blockStorePurchase =
+        entitlements?.shouldBlockInAppStorePurchase ?? false;
     final ProductDetails? proMonthly =
         _iap.productsById[kStreamersTipProMonthlyId];
     final ProductDetails? proYearly =
@@ -219,53 +233,43 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
               _buildHero(),
               const SizedBox(height: 16),
               _buildCurrentPlanCard(),
+              if (entitlements != null) ...<Widget>[
+                const SizedBox(height: 12),
+                _buildBillingChannelCard(entitlements),
+              ],
               const SizedBox(height: 16),
               _buildMobileStoreSection(),
               const SizedBox(height: 24),
               _buildTierCard(
                 context,
                 tierKey: 'starter',
-                name: 'Starter',
+                name: 'Creator',
                 price: '\$0',
                 cadence: '/month',
                 description:
                     'A solid free plan for creators getting started with cross-posting and lightweight planning.',
-                features: const [
-                  '1 connected platform',
-                  '1 active content plan',
-                  '1 cross-post per week',
-                  '7-day analytics window',
-                  '10 AI credits per month',
-                  'Scheduling included',
-                ],
+                features: UpgradeTierMarketing.starterBullets,
               ),
               const SizedBox(height: 16),
               _buildTierCard(
                 context,
                 tierKey: 'pro',
-                name: 'Pro',
+                name: 'Creator Pro',
                 price: formatStorePrice(
                   proMonthly,
-                  '\$29',
+                  '\$12.99',
                 ),
                 cadence: storeCadenceLabel(proMonthly) ?? '/month',
                 secondaryPrice: proYearly != null
-                    ? '${formatStorePrice(proYearly, '\$288')}/year'
-                    : '\$288/year',
+                    ? '${formatStorePrice(proYearly, '\$120')}/year'
+                    : '\$120/year',
                 description:
                     'For active creators who need more platforms, stronger publishing tools, and deeper growth support.',
-                features: const [
-                  'Up to 5 platforms',
-                  'Unlimited content plans',
-                  'Scheduled and bulk publishing',
-                  '90-day analytics window',
-                  '250 AI credits per month',
-                  'Caption rewrite and hashtags',
-                  'Growth reports',
-                  'Unlimited weekly cross-posting',
-                ],
+                features: UpgradeTierMarketing.proBullets,
                 isFeatured: true,
-                storePrimaryAction: !isLoadingTier && resolvedTier == 'starter'
+                storePrimaryAction: !isLoadingTier &&
+                        !blockStorePurchase &&
+                        resolvedTier == 'starter'
                     ? _pickProProductThenBuy
                     : null,
                 storePrimaryLabel: 'Subscribe with App Store / Google Play',
@@ -274,28 +278,20 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
               _buildTierCard(
                 context,
                 tierKey: 'studio',
-                name: 'Studio',
+                name: 'Creator Studio',
                 price: formatStorePrice(
                   studioMonthly,
-                  '\$89',
+                  '\$29.99',
                 ),
                 cadence: storeCadenceLabel(studioMonthly) ?? '/month',
                 secondaryPrice: studioYearly != null
-                    ? '${formatStorePrice(studioYearly, '\$888')}/year'
-                    : '\$888/year',
+                    ? '${formatStorePrice(studioYearly, '\$300')}/year'
+                    : '\$300/year',
                 description:
                     'For serious teams and power creators who need advanced analytics, automation, and team access.',
-                features: const [
-                  'Unlimited platforms',
-                  'Unlimited content plans',
-                  'Bulk publishing and automation',
-                  '365-day analytics window',
-                  'Advanced analytics',
-                  '1,000 AI credits per month',
-                  'Up to 5 team members',
-                  'Exportable reports and priority support',
-                ],
+                features: UpgradeTierMarketing.studioBullets,
                 storePrimaryAction: !isLoadingTier &&
+                        !blockStorePurchase &&
                         (resolvedTier == 'starter' || resolvedTier == 'pro')
                     ? _pickStudioProductThenBuy
                     : null,
@@ -303,12 +299,14 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
               ),
               const SizedBox(height: 20),
               Text(
-                'In-app subscriptions use Apple App Store or Google Play '
-                'billing. Entitlements unlock only after your receipt is '
-                'verified on StreamersTip servers — the app never grants '
-                'Pro or Studio from the client alone. Do not add Stripe '
-                'checkout links here unless you use an approved external '
-                'purchase flow for your region.',
+                blockStorePurchase
+                    ? 'You already have an active plan from the website. '
+                        'Manage billing at streamerstip.com — Apple and '
+                        'Google checkout are not used for that subscription.'
+                    : 'Subscriptions on iOS and Android use the App Store or '
+                        'Google Play only (not Stripe). After purchase, '
+                        'StreamersTip verifies your receipt and updates your '
+                        'account; features unlock via /api/user/entitlements.',
                 style: TextStyle(
                   color: _on.withValues(alpha: 0.62),
                   fontSize: 13,
@@ -318,6 +316,77 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBillingChannelCard(SubscriptionSnapshot snap) {
+    final bool canOpenManage = !snap.shouldBlockInAppStorePurchase &&
+        (snap.isPaidViaMobileStore || snap.isPaid);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _on.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _on.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Billing',
+            style: TextStyle(
+              color: _on.withValues(alpha: 0.72),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            snap.billingSourceDisplayLabel,
+            style: TextStyle(
+              color: _on,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _manageService.manageDestinationHint(snap),
+            style: TextStyle(
+              color: _on.withValues(alpha: 0.65),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (canOpenManage) ...<Widget>[
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () async {
+                final bool opened =
+                    await _manageService.openManageSubscription(snap);
+                if (!mounted) {
+                  return;
+                }
+                if (!opened) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        _manageService.manageDestinationHint(snap),
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                snap.isPaidViaApple
+                    ? 'Open App Store subscriptions'
+                    : 'Open Google Play subscriptions',
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -422,9 +491,12 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
   Widget _buildCurrentPlanCard() {
     final ({String tier, String? status, bool isLoading}) tierSnapshot =
         _readTierSnapshot();
+    final SubscriptionSnapshot? snap = _readEntitlementsSnapshot();
     final bool isLoadingTier = tierSnapshot.isLoading;
     final String resolvedTier = tierSnapshot.tier;
     final String? subscriptionStatus = tierSnapshot.status;
+    final int creditsRemaining = snap?.creditsRemaining ?? 0;
+    final int creditsLimit = snap?.creditsLimit ?? 0;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -482,6 +554,17 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (!isLoadingTier && creditsLimit > 0) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    '$creditsRemaining of $creditsLimit AI credits this month',
+                    style: TextStyle(
+                      color: _on.withValues(alpha: 0.62),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -591,7 +674,7 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
           ),
           const SizedBox(height: 18),
           Text(
-            'Starter keeps things lightweight, Pro unlocks serious '
+            'Creator keeps things lightweight, Creator Pro unlocks serious '
             'publishing power, and Studio adds advanced analytics, '
             'automation, and team features.',
             style: TextStyle(
@@ -840,8 +923,8 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
                 isCurrentTier
                     ? 'Current Plan'
                     : (storePrimaryLabel ??
-                        (name == 'Starter'
-                            ? 'Stay on Starter'
+                        (name == 'Creator'
+                            ? 'Stay on Creator'
                             : 'Subscribe to $name')),
                 style: const TextStyle(
                   fontSize: 15,

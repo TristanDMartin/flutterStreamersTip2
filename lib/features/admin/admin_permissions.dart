@@ -1,3 +1,5 @@
+import '../../services/admin_service.dart';
+
 /// Parsed from Firestore `users/{uid}.admin.permissions` (list or map).
 class AdminPermissions {
   const AdminPermissions({
@@ -54,54 +56,52 @@ class AdminPermissions {
       );
 
   factory AdminPermissions.fromUserDoc(Map<String, dynamic>? data) {
-    if (data == null) {
+    if (!AdminService.userDocGrantsAdminAccess(
+      data,
+      logSource: 'permissions',
+    )) {
       return AdminPermissions.none();
     }
-    final role = data['role'] as String?;
-    final legacy = data['isAdmin'] as bool? ?? false;
-    final adminMap = data['admin'];
-    bool nested = false;
-    if (adminMap is Map<String, dynamic>) {
-      nested = adminMap['isAdmin'] == true;
-    }
-    if (role == 'admin' || legacy || nested) {
-      if (adminMap is! Map<String, dynamic>) {
-        return AdminPermissions.full();
-      }
-      final raw = adminMap['permissions'];
-      if (raw is List && raw.map((e) => e.toString()).contains('*')) {
-        return AdminPermissions.full();
-      }
-      if (raw is Map<String, dynamic>) {
-        bool g(String k, bool d) => raw[k] is bool ? raw[k] as bool : d;
-        return AdminPermissions(
-          viewReports: g('viewReports', true),
-          manageReports: g('manageReports', true),
-          viewUploads: g('viewUploads', true),
-          removeVideos: g('removeVideos', false),
-          banUsers: g('banUsers', false),
-          manageUsers: g('manageUsers', false),
-          viewAdminStats: g('viewAdminStats', false),
-          manageTiers: g('manageTiers', false),
-        );
-      }
-      if (raw is List) {
-        final list = raw.map((e) => e.toString()).toList();
-        return AdminPermissions(
-          viewReports: list.contains('view_reports'),
-          manageReports:
-              list.contains('manage_flags') || list.contains('view_reports'),
-          viewUploads: list.contains('view_uploads'),
-          removeVideos: list.contains('remove_videos'),
-          banUsers: list.contains('ban_users'),
-          manageUsers:
-              list.contains('view_user_profiles') || list.contains('ban_users'),
-          viewAdminStats: list.contains('view_reports'),
-          manageTiers: list.contains('manage_tiers'),
-        );
-      }
+    if (data == null) {
       return AdminPermissions.full();
     }
-    return AdminPermissions.none();
+    final Object? adminMap = data['admin'];
+    if (adminMap is! Map<String, dynamic>) {
+      return AdminPermissions.full();
+    }
+    final Object? raw = adminMap['permissions'];
+    if (raw is List && raw.map((dynamic e) => e.toString()).contains('*')) {
+      return AdminPermissions.full();
+    }
+    if (raw is Map<String, dynamic>) {
+      bool g(String k, bool d) => raw[k] is bool ? raw[k] as bool : d;
+      return AdminPermissions(
+        viewReports: g('viewReports', true),
+        manageReports: g('manageReports', true),
+        viewUploads: g('viewUploads', true),
+        removeVideos: g('removeVideos', false),
+        banUsers: g('banUsers', false),
+        manageUsers: g('manageUsers', false),
+        viewAdminStats: g('viewAdminStats', false),
+        manageTiers: g('manageTiers', false),
+      );
+    }
+    if (raw is List) {
+      final List<String> list =
+          raw.map((dynamic e) => e.toString()).toList();
+      return AdminPermissions(
+        viewReports: list.contains('view_reports'),
+        manageReports:
+            list.contains('manage_flags') || list.contains('view_reports'),
+        viewUploads: list.contains('view_uploads'),
+        removeVideos: list.contains('remove_videos'),
+        banUsers: list.contains('ban_users'),
+        manageUsers:
+            list.contains('view_user_profiles') || list.contains('ban_users'),
+        viewAdminStats: list.contains('view_reports'),
+        manageTiers: list.contains('manage_tiers'),
+      );
+    }
+    return AdminPermissions.full();
   }
 }

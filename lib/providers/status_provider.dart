@@ -1,10 +1,14 @@
 import 'dart:async';
-import 'package:streamers_tip/utils/secure_log.dart';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 
+import '../core/firebase_app_check_startup.dart';
 import '../models/user_status.dart';
 
 // Provider for current user's status (read-only stream)
@@ -155,6 +159,19 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _presenceSub;
+  Timer? _retryTimer;
+  UserStatus? _pendingSyncStatus;
+  int _retryAttempt = 0;
+  static const int _maxRetryAttempts = 5;
+
+  void _applyPresenceState(UserPresence presence, {required String source}) {
+    final UserPresence? current = state.valueOrNull;
+    if (current != null && current.status == presence.status) {
+      return;
+    }
+    secureLog('$source: Status updated to ${presence.status.value}');
+    state = AsyncValue.data(presence);
+  }
 
   void _initializeStatus() {
     final user = _auth.currentUser;
@@ -190,8 +207,10 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
                 lastSeen: lastSeen?.toDate(),
                 lastActive: lastSeen?.toDate(),
               );
-              secureLog('🌐 Website → App: Status updated to ${status.value}');
-              state = AsyncValue.data(presence);
+              _applyPresenceState(
+                presence,
+                source: '🌐 Website → App',
+              );
             } catch (e) {
               // appLog('❌ Error parsing status from main document: $e');
             }
@@ -224,18 +243,167 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
 
         try {
           final presence = UserPresence.fromMap(snapshot.data()!);
-          secureLog('📱 App: Status updated to ${presence.status.value}');
-          state = AsyncValue.data(presence);
+          _applyPresenceState(presence, source: '📱 App');
         } catch (e) {
-          // appLog('❌ StatusNotifier: Error parsing status data: $e');
-          state = AsyncValue.error(e, StackTrace.current);
+          secureLog('STATUS_UPDATE_FAILED parse_presence error=$e');
         }
       },
-      onError: (error) {
-        // appLog('❌ StatusNotifier: Stream error: $error');
-        state = AsyncValue.error(error, StackTrace.current);
+      onError: (Object error) {
+        _logStatusFailure('presence_stream', error);
       },
     );
+  }
+
+  void _logStatusFailure(String phase, Object error) {
+    final String message = error.toString();
+    if (_isAppCheckRelated(message)) {
+      debugPrint('STATUS_APP_CHECK_ERROR phase=$phase error=$message');
+    }
+    debugPrint('STATUS_UPDATE_FAILED phase=$phase error=$message');
+  }
+
+  bool _isAppCheckRelated(String message) {
+    final String lower = message.toLowerCase();
+    return lower.contains('app check') ||
+        lower.contains('appcheck') ||
+        lower.contains('placeholder token') ||
+        lower.contains('too many attempts');
+  }
+
+  void _applyOptimisticStatus(UserStatus newStatus) {
+    final UserPresence? currentPresence = state.valueOrNull;
+    if (currentPresence == null) {
+      state = AsyncValue.data(
+        UserPresence(
+          status: newStatus,
+          lastSeen: DateTime.now(),
+          lastActive: DateTime.now(),
+        ),
+      );
+      return;
+    }
+    state = AsyncValue.data(
+      currentPresence.copyWith(
+        status: newStatus,
+        lastSeen: DateTime.now(),
+        lastActive: DateTime.now(),
+      ),
+    );
+  }
+
+  void _scheduleRetry(UserStatus status) {
+    if (_retryAttempt >= _maxRetryAttempts) {
+      debugPrint(
+        'STATUS_UPDATE_FAILED phase=retry_exhausted status=${status.value}',
+      );
+      return;
+    }
+    _pendingSyncStatus = status;
+    _retryTimer?.cancel();
+    final int seconds = math.min(30, math.pow(2, _retryAttempt).toInt());
+    _retryTimer = Timer(Duration(seconds: seconds), () {
+      final UserStatus? pending = _pendingSyncStatus;
+      if (pending == null) {
+        return;
+      }
+      unawaited(_syncStatusToFirestore(pending, isRetry: true));
+    });
+  }
+
+  Future<void> _preflightAppCheck() async {
+    final AppCheckReadiness readiness =
+        await ensureAppCheckReadyForFirestore();
+    if (!readiness.isReady) {
+      debugPrint('STATUS_APP_CHECK_ERROR detail=${readiness.detail}');
+    }
+  }
+
+  Future<StatusUpdateOutcome> _syncStatusToFirestore(
+    UserStatus newStatus, {
+    bool isRetry = false,
+  }) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      return StatusUpdateOutcome.failed(
+        userMessage: 'Status could not sync. Try again.',
+      );
+    }
+    if (!UserStatus.isValidFirestoreValue(newStatus.value)) {
+      debugPrint(
+        'STATUS_UPDATE_FAILED phase=invalid_value value=${newStatus.value}',
+      );
+      return StatusUpdateOutcome.failed(
+        userMessage: 'Status could not sync. Try again.',
+      );
+    }
+    debugPrint(
+      'STATUS_UPDATE_START status=${newStatus.value} '
+      'retry=$isRetry attempt=$_retryAttempt',
+    );
+    await _preflightAppCheck();
+    try {
+      final String statusValue = newStatus.value;
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('presence')
+          .doc('status')
+          .set(
+        <String, dynamic>{
+          'status': statusValue,
+          'lastSeen': FieldValue.serverTimestamp(),
+          'lastActive': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      await _firestore.collection('users').doc(user.uid).update(
+        <String, dynamic>{
+          'status': statusValue,
+          'userStatus': statusValue,
+          'isOnline': newStatus == UserStatus.online,
+          'onlineStatus': statusValue,
+          'lastSeen': FieldValue.serverTimestamp(),
+        },
+      );
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('status')
+          .doc('current')
+          .set(
+        <String, dynamic>{
+          'value': statusValue,
+          'source': 'app',
+          'updated_at': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      _pendingSyncStatus = null;
+      _retryAttempt = 0;
+      _retryTimer?.cancel();
+      debugPrint('STATUS_UPDATE_SUCCESS status=$statusValue');
+      return StatusUpdateOutcome.ok;
+    } on PlatformException catch (e) {
+      debugPrint(
+        'STATUS_PLATFORM_EXCEPTION code=${e.code} message=${e.message}',
+      );
+      _logStatusFailure('platform_exception', e);
+      _retryAttempt++;
+      _scheduleRetry(newStatus);
+      return StatusUpdateOutcome.failed(
+        userMessage: 'Status could not sync. Try again.',
+        pendingRetry: _retryAttempt < _maxRetryAttempts,
+      );
+    } catch (e, stack) {
+      _logStatusFailure('sync', e);
+      debugPrint('STATUS_UPDATE_FAILED stack=$stack');
+      _retryAttempt++;
+      _scheduleRetry(newStatus);
+      return StatusUpdateOutcome.failed(
+        userMessage: 'Status could not sync. Try again.',
+        pendingRetry: _retryAttempt < _maxRetryAttempts,
+      );
+    }
   }
 
   // Initialize user status if it doesn't exist
@@ -286,72 +454,27 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
   // 1. users/{uid}/presence/status (mobile app)
   // 2. users/{uid}.status (website + comments)
   // 3. users/{uid}/status/current (alternative location)
-  Future<void> updateStatus(UserStatus newStatus) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    // Optimistic update
-    final currentPresence = state.valueOrNull;
-    if (currentPresence != null) {
-      final optimisticPresence = currentPresence.copyWith(
-        status: newStatus,
-        lastSeen: DateTime.now(),
-        lastActive: DateTime.now(),
+  Future<StatusUpdateOutcome> updateStatus(UserStatus newStatus) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      return StatusUpdateOutcome.failed(
+        userMessage: 'Status could not sync. Try again.',
       );
-      state = AsyncValue.data(optimisticPresence);
     }
-
-    try {
-      // ✅ LOCATION 1: Update in presence subcollection (mobile app)
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('presence')
-          .doc('status')
-          .set({
-        'status': newStatus.value,
-        'lastSeen': FieldValue.serverTimestamp(),
-        'lastActive': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // ✅ LOCATION 2: Update in main user document (website + comments compatibility)
-      await _firestore.collection('users').doc(user.uid).update({
-        'status': newStatus.value,
-        'userStatus': newStatus.value,
-        'isOnline': newStatus == UserStatus.online,
-        'onlineStatus': newStatus.value,
-        'lastSeen': FieldValue.serverTimestamp(),
-      });
-
-      // ✅ LOCATION 3: Update in status subcollection (alternative location for website)
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('status')
-          .doc('current')
-          .set({
-        'value': newStatus.value,
-        'source': 'app',
-        'updated_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // appLog('✅ Status updated to ${newStatus.value} in all locations');
-    } catch (error) {
-      // Revert optimistic update on error
-      _initializeStatus();
-      // appLog('❌ Error updating status: $error');
-      rethrow;
+    final UserPresence? currentPresence = state.valueOrNull;
+    if (currentPresence?.status == newStatus && _pendingSyncStatus == null) {
+      return StatusUpdateOutcome.ok;
     }
+    _applyOptimisticStatus(newStatus);
+    return _syncStatusToFirestore(newStatus);
   }
 
-  // Set user as online (called on app start/login)
-  Future<void> setOnline() async {
-    await updateStatus(UserStatus.online);
+  Future<StatusUpdateOutcome> setOnline() async {
+    return updateStatus(UserStatus.online);
   }
 
-  // Set user as offline (called on app close/logout)
-  Future<void> setOffline() async {
-    await updateStatus(UserStatus.offline);
+  Future<StatusUpdateOutcome> setOffline() async {
+    return updateStatus(UserStatus.offline);
   }
 
   // Emergency offline update (called on app termination)
@@ -405,6 +528,11 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
     final user = _auth.currentUser;
     if (user == null) return;
 
+    final UserPresence? currentPresence = state.valueOrNull;
+    if (currentPresence?.status != UserStatus.online) {
+      return;
+    }
+
     try {
       await _firestore
           .collection('users')
@@ -421,6 +549,7 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     _userDocSub?.cancel();
     _presenceSub?.cancel();
     super.dispose();
@@ -440,7 +569,8 @@ final currentUserStatusNotifierProvider = Provider<UserPresence?>((ref) {
 });
 
 // Provider for status update function
-final updateStatusProvider = Provider<Future<void> Function(UserStatus)>((ref) {
-  final notifier = ref.read(statusNotifierProvider.notifier);
+final updateStatusProvider =
+    Provider<Future<StatusUpdateOutcome> Function(UserStatus)>((ref) {
+  final StatusNotifier notifier = ref.read(statusNotifierProvider.notifier);
   return notifier.updateStatus;
 });

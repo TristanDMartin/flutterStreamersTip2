@@ -21,6 +21,7 @@ String platformTypeToJson(PlatformType type) => type.name;
 sealed class Platform with _$Platform {
   const factory Platform({
     required String id,
+    // ignore: invalid_annotation_target
     @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
     required PlatformType type,
     required String username,

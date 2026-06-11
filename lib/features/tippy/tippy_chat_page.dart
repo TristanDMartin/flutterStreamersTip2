@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../billing/tier_display_names.dart';
 import '../entitlements/me_entitlements_models.dart';
 import '../entitlements/me_entitlements_provider.dart';
 import '../gamification/gamification_providers.dart';
-import '../gamification/models/subscription_plan.dart';
+import '../gamification/models/subscription_plan.dart'
+    show SubscriptionPlan, subscriptionPlanToApiValue;
 import '../gamification/models/user_progress_bundle.dart';
 import '../../routing/app_navigator.dart';
 import '../../routing/app_routes.dart';
@@ -20,6 +24,9 @@ import 'tippy_chat_service.dart';
 import 'tippy_message_content.dart';
 import 'tippy_personality.dart';
 import 'tippy_tier.dart';
+import '../../components/onboarding/contextual_tip_overlay.dart';
+import '../../services/creator_intelligence_analytics_service.dart';
+import '../analytics/models/analytics_profile.dart';
 
 class TippyChatPage extends ConsumerStatefulWidget {
   const TippyChatPage({
@@ -56,7 +63,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref.invalidate(meEntitlementsProvider);
+        invalidateSubscriptionEntitlements(ref);
+        ContextualTipCatalog.scheduleFeatureTipOnMount(
+          context: context,
+          tip: ContextualTipCatalog.tippyTip,
+        );
       }
       _loadPersonalization();
     });
@@ -73,7 +84,14 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   Future<void> _loadPersonalization() async {
     try {
       final TippyCreditsInfo credits = await _service.fetchCreditsInfo();
-      final String? nudge = await _service.fetchNudge();
+      String? nudge = await _service.fetchNudge();
+      final AnalyticsProfile profile = await ref
+          .read(creatorIntelligenceAnalyticsProvider)
+          .loadProfile();
+      if ((nudge == null || nudge.trim().isEmpty) &&
+          profile.recommendedNextActions.isNotEmpty) {
+        nudge = profile.recommendedNextActions.first;
+      }
       if (!mounted) {
         return;
       }
@@ -142,6 +160,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       ref.invalidate(contentPlansProvider);
       await _persistConversation();
       await _refreshCreditsSnapshot();
+      unawaited(
+        ref.read(creatorIntelligenceAnalyticsProvider).trackContentPlanCreated(
+              planId: planId,
+            ),
+      );
     } on TippyChatException catch (e) {
       await _handleTippyError(
         error: e,
@@ -328,12 +351,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     if (t.isEmpty || t == 'unknown') {
       return null;
     }
-    return switch (t) {
-      'studio' => 'Studio',
-      'pro' => 'Pro',
-      'starter' => 'Starter',
-      _ => 'Creator',
-    };
+    return tierDisplayNameForApi(t == 'unknown' ? 'starter' : t);
   }
 
   String _planSubtitle(
@@ -348,7 +366,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       }
       return fromCredits;
     }
-    final String? fromApi = _labelForResolvedTierString(me.tier);
+    final String? fromApi = _labelForResolvedTierString(me.tierApi);
     if (fromApi != null) {
       if (dc != null) {
         return '$fromApi · $dc credits';
@@ -356,13 +374,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       return '$fromApi plan active';
     }
     final SubscriptionPlan? subscriptionPlan = bundle.subscription?.plan;
-    final String label = switch (subscriptionPlan) {
-      SubscriptionPlan.studio => 'Studio',
-      SubscriptionPlan.pro => 'Pro',
-      SubscriptionPlan.starter => 'Starter',
-      SubscriptionPlan.unknown => 'Creator',
-      null => 'Creator',
-    };
+    final String label = subscriptionPlan == null
+        ? tierDisplayNameForApi('starter')
+        : tierDisplayNameForApi(
+            subscriptionPlanToApiValue(subscriptionPlan),
+          );
     if (dc != null) {
       return '$label · $dc credits';
     }
@@ -420,6 +436,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       });
       await _persistConversation();
       await _refreshCreditsSnapshot();
+      unawaited(
+        ref.read(creatorIntelligenceAnalyticsProvider).trackTippyQuestionAsked(
+              conversationId: _conversationId,
+            ),
+      );
     } on TippyChatException catch (e) {
       await _handleTippyError(
         error: e,
@@ -688,7 +709,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
               title: 'Could not verify your plan.',
               details: e.toString(),
               onRetry: () {
-                ref.invalidate(meEntitlementsProvider);
+                invalidateSubscriptionEntitlements(ref);
               },
             );
           },

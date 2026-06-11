@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
+import '../models/creator_profile_snapshot.dart';
 import '../models/trending_creator.dart';
 import '../utils/user_facing_error.dart';
 import '../models/category.dart' as discover_models;
@@ -30,10 +31,14 @@ import '../providers/follow_refresh_provider.dart';
 import 'comments_view2.dart';
 import 'enhanced_share_sheet.dart';
 import '../routing/app_navigator.dart';
-import '../components/onboarding/product_tour_target_keys.dart';
 import '../features/discover/presentation/widgets/trending_creators_section.dart';
+import '../utils/video_caption_resolver.dart';
 import '../features/discover/domain/discover_field_mapper.dart';
-import '../providers/product_tour_ui_provider.dart';
+import '../features/feed/domain/discover_category_card_map.dart';
+import '../features/feed/domain/discover_eligible_videos.dart';
+import '../features/feed/domain/discover_source_audit.dart';
+import '../utils/category_schema.dart';
+import '../utils/discover_category_rules.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/video_url_resolver.dart';
 // import 'video_thumbnail_view.dart'; // Removed - unused
@@ -43,7 +48,7 @@ class STDiscoverTokens {
   static const double sectionGap = 24.0;
   static const double cardRadius = 24.0;
   static const double compactCardRadius = 18.0;
-  static const double creatorCardHeight = 163.0;
+  static const double creatorCardHeight = 178.0;
   static const double categoryCardHeight = 82.0;
   static const double heroHeight = 164.0;
   static const double searchHeight = 56.0;
@@ -169,14 +174,12 @@ class DiscoverView extends ConsumerStatefulWidget {
   ConsumerState<DiscoverView> createState() => _DiscoverViewState();
 }
 
-class _DiscoverViewState extends ConsumerState<DiscoverView> {
+class _DiscoverViewState extends ConsumerState<DiscoverView>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   static const int _videosPerPage = 20;
-  static const List<String> _allowedVideoStatuses = <String>[
-    'published',
-    'ready',
-    'active',
-    'processing',
-  ];
   String? _selectedCategory;
   int _categoryPageIndex = 0;
   final ScrollController _discoverScrollController = ScrollController();
@@ -199,11 +202,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     'roleplay': ['roleplay', 'role-play', 'rp'],
   };
 
-  String _normalizeCategoryKey(String value) {
-    final trimmed = value.trim().toLowerCase();
-    final normalizedWhitespace = trimmed.replaceAll(RegExp(r'[\s_]+'), '-');
-    return normalizedWhitespace.replaceAll(RegExp(r'[^a-z0-9-]'), '');
-  }
+  String _normalizeCategoryKey(String value) => normalizeCategorySlug(value);
 
   Iterable<String> _expandCategoryForms(String value) sync* {
     final trimmed = value.trim();
@@ -247,32 +246,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     return values.take(10).toList();
   }
 
-  bool _matchesCategory(String? stored, String categoryId) {
-    if (stored == null || stored.isEmpty) return false;
-    final storedNormalized = _normalizeCategoryKey(stored);
-    final values = _getCategoryQueryValues(categoryId);
-    return values.any((v) => storedNormalized == _normalizeCategoryKey(v));
-  }
-
-  bool _matchesCategoryValue(dynamic stored, String categoryId) {
-    if (stored == null) return false;
-    if (stored is Iterable) {
-      for (final value in stored) {
-        if (_matchesCategory(value?.toString(), categoryId)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    return _matchesCategory(stored.toString(), categoryId);
-  }
-
   bool _videoMatchesCategory(Map<String, dynamic> data, String categoryId) {
-    return _matchesCategoryValue(data['categories'], categoryId) ||
-        _matchesCategoryValue(
-          data['category'] ?? data['categoryId'] ?? data['category_id'],
-          categoryId,
-        );
+    return matchesDiscoverCategory(data, categoryId);
   }
 
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _fetchCategoryDocs({
@@ -381,16 +356,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     final videos = <Map<String, dynamic>>[];
 
     for (final doc in docs) {
-      final data = doc.data();
-      if (!isVideoVisibleInFeed(data)) {
+      final Map<String, dynamic> data = doc.data();
+      if (!isDiscoverEligibleFromFirestore(data, videoId: doc.id)) {
         continue;
       }
-      final status = data['status'] as String?;
-      if (status == 'failed') {
-        continue;
-      }
-
-      if (!_videoMatchesCategory(data, categoryId)) {
+      if (!matchesDiscoverCategory(
+        data,
+        categoryId,
+        enableDiagnostics: kDebugMode,
+        videoId: doc.id,
+      )) {
         continue;
       }
 
@@ -578,7 +553,14 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         'Loading initial data',
         tag: 'DiscoverView',
       );
-      ref.read(discoverProvider.notifier).loadTrendingCreators();
+      final List<Map<String, dynamic>>? cachedAll =
+          ref.read(discoverCategoryVideosProvider.notifier).peek('All');
+      if (cachedAll != null) {
+        _categoryFeedFutures['All'] = Future<List<Map<String, dynamic>>>.value(
+          cachedAll,
+        );
+      }
+      ref.read(discoverProvider);
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Error loading initial data',
@@ -734,6 +716,25 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     _categoryFeedFutures[categoryId] = _getCategoryVideosForFeed(categoryId);
   }
 
+  Future<void> _refreshCategoryVideosInBackground(String categoryId) async {
+    final List<Map<String, dynamic>> fresh =
+        await _getCategoryVideosForFeed(categoryId);
+    if (!mounted) {
+      return;
+    }
+    ref.read(discoverCategoryVideosProvider.notifier).cacheVideos(
+          categoryId,
+          fresh,
+        );
+    if (_selectedCategory != categoryId) {
+      return;
+    }
+    setState(() {
+      _categoryFeedFutures[categoryId] =
+          Future<List<Map<String, dynamic>>>.value(fresh);
+    });
+  }
+
   void _onCreatorTapped(TrendingCreator creator) {
     HapticFeedback.lightImpact();
     LoggingService.instance.debug(
@@ -750,6 +751,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     AppNavigator.openStreamerCard(
       context,
       userId: creator.id,
+      initialCreator: CreatorProfileSnapshot.fromTrendingCreator(creator),
       currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
       onDismiss: () => Navigator.of(context).pop(),
       onMessage: (String userId) {
@@ -873,10 +875,18 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           'didForceRefresh=true',
         );
       }
+      final List<Map<String, dynamic>>? cached =
+          ref.read(discoverCategoryVideosProvider.notifier).peek(categoryId);
       setState(() {
         _selectedCategory = categoryId;
-        _categoryFeedFutures[categoryId] =
-            _getCategoryVideosForFeed(categoryId);
+        if (cached != null) {
+          _categoryFeedFutures[categoryId] =
+              Future<List<Map<String, dynamic>>>.value(cached);
+          unawaited(_refreshCategoryVideosInBackground(categoryId));
+        } else {
+          _categoryFeedFutures[categoryId] =
+              _getCategoryVideosForFeed(categoryId);
+        }
       });
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -945,6 +955,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   /// Convert video data from DiscoverView format to HomeVideo model
+  // ignore: unused_element
   HomeVideo _convertToHomeVideo(Map<String, dynamic> video) {
     final raw = _normalizedVideoData(video);
     final docId = DiscoverFieldMapper.safeString(video['docId']);
@@ -987,11 +998,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       'creator',
       'username',
     ]);
-    final caption = _firstString(raw, const [
-      'caption',
-      'description',
-      'title',
-    ]);
+    final caption = resolveVideoCaptionFromFirestoreData(raw);
+    final overlayCaption = resolveVideoOverlayCaptionFromFirestoreData(raw);
     final id = _firstString(raw, const [
       'id',
       'videoId',
@@ -1006,7 +1014,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               : 'discover_${DateTime.now().millisecondsSinceEpoch}'),
       videoURL: playbackUrl,
       thumbnailURL: thumbnailUrl.isNotEmpty ? thumbnailUrl : fallbackThumbnail,
-      caption: caption.isNotEmpty ? caption : 'Discover Video',
+      caption: caption,
+      overlayCaption: overlayCaption,
       creator: User(
         id: creatorId.isNotEmpty ? creatorId : 'unknown_creator',
         username: creatorName.isNotEmpty ? creatorName : 'Unknown Creator',
@@ -1020,7 +1029,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           'profileImageUrl',
           'photoUrl',
         ]),
-        bio: DiscoverFieldMapper.safeString(creatorMap['creatorBio'] ?? raw['bio']),
+        bio: DiscoverFieldMapper.safeString(
+            creatorMap['creatorBio'] ?? raw['bio']),
         hashtags: _safeCastToStringList(
           creatorMap['creatorHashtags'] ?? raw['hashtags'] ?? raw['tags'],
         ),
@@ -1064,14 +1074,68 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Map<String, dynamic> _normalizedVideoData(Map<String, dynamic> video) {
-    final raw = video['data'];
-    if (raw is Map) {
-      return <String, dynamic>{
-        ...Map<String, dynamic>.from(raw),
-        if (video['docId'] != null) 'docId': video['docId'],
-      };
+    final Map<String, dynamic> merged = Map<String, dynamic>.from(video);
+    final dynamic nested = video['data'];
+    if (nested is Map) {
+      final Map<String, dynamic> dataMap = Map<String, dynamic>.from(nested);
+      merged
+        ..addAll(dataMap)
+        ..['data'] = dataMap;
     }
-    return video;
+    const List<String> displayKeys = <String>[
+      'docId',
+      'id',
+      'thumbnailUrl',
+      'thumbnailURL',
+      'thumbnail',
+      'muxPlaybackId',
+      'videoUrl',
+      'videoURL',
+      'hlsUrl',
+      'creatorUsername',
+      'creatorDisplayName',
+      'creatorAvatar',
+      'creator',
+      'likes',
+      'likeCount',
+      'views',
+      'viewCount',
+      'comments',
+    ];
+    for (final String key in displayKeys) {
+      final dynamic value = video[key];
+      if (value == null) {
+        continue;
+      }
+      if (value is String && value.trim().isEmpty) {
+        continue;
+      }
+      merged[key] = value;
+    }
+    return merged;
+  }
+
+  String _discoverCardCreatorLabel(Map<String, dynamic> raw) {
+    final String username = DiscoverFieldMapper.safeString(
+      raw['creatorUsername'] ?? raw['creator_username'] ?? raw['username'],
+    );
+    if (username.isNotEmpty &&
+        username.toLowerCase() != 'creator' &&
+        username.toLowerCase() != 'unknown') {
+      return username.startsWith('@') ? username : '@$username';
+    }
+    final String displayName = DiscoverFieldMapper.safeString(
+      raw['creatorDisplayName'] ??
+          raw['creator_display_name'] ??
+          raw['displayName'] ??
+          raw['creator'],
+    );
+    if (displayName.isNotEmpty &&
+        displayName.toLowerCase() != 'creator' &&
+        displayName.toLowerCase() != 'unknown') {
+      return displayName.startsWith('@') ? displayName : '@$displayName';
+    }
+    return '';
   }
 
   String _firstString(Map<String, dynamic> data, List<String> keys) {
@@ -1088,6 +1152,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     return resolveReadyPlaybackUrl(data) ?? '';
   }
 
+  // ignore: unused_element
   String _playbackSourceFor(Map<String, dynamic> data) {
     if (_firstString(
             data, const ['muxPlaybackId', 'playbackId', 'mux_playback_id'])
@@ -1163,9 +1228,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         _navigateToActivity(context);
       },
       child: Container(
-        key: ProductTourTargetKeys.maybe(
-          ProductTourTargetKeys.discoverActivity,
-        ),
         width: 44,
         height: 44,
         decoration: BoxDecoration(
@@ -1215,25 +1277,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<int>(
-      productTourDiscoverCreatorsPrepProvider,
-      (int? previous, int next) {
-        if (previous == null || next <= previous) {
-          return;
-        }
-        if (!mounted) {
-          return;
-        }
-        setState(() => _selectedCategory = null);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !_discoverScrollController.hasClients) {
-            return;
-          }
-          _discoverScrollController.jumpTo(0);
-        });
-      },
-    );
-
+    super.build(context);
     ref.listen<int>(followRefreshProvider, (previous, next) {
       if (previous == next) return;
       ref.read(discoverProvider.notifier).loadTrendingCreators();
@@ -1325,35 +1369,45 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                               const SizedBox(width: 8),
                             ],
                             Expanded(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Discover',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: s.onAppBar,
-                                      fontSize: 34,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: -0.8,
-                                      height: 1,
-                                    ),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        'Discover',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: s.onAppBar,
+                                          fontSize: 30,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -0.6,
+                                          height: 1.05,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Find creators, clips, and growth tools',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: s.onAppBar.withValues(
+                                            alpha: 0.72,
+                                          ),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          height: 1.05,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    'Find creators, clips, and growth tools',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: s.onAppBar.withValues(alpha: 0.72),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -1405,134 +1459,125 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     ),
 
                     SliverToBoxAdapter(
-                      child: KeyedSubtree(
-                        key: ProductTourTargetKeys.maybe(
-                          ProductTourTargetKeys.discoverCategories,
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          left: STDiscoverTokens.pagePadding,
+                          right: STDiscoverTokens.pagePadding,
+                          top: 0,
+                          bottom: STDiscoverTokens.sectionGap,
                         ),
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            left: STDiscoverTokens.pagePadding,
-                            right: STDiscoverTokens.pagePadding,
-                            top: 0,
-                            bottom: STDiscoverTokens.sectionGap,
-                          ),
-                          child: Container(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                            decoration: BoxDecoration(
-                              color: s.cardFill,
-                              borderRadius: BorderRadius.circular(
-                                  STDiscoverTokens.cardRadius),
-                              border: Border.all(
-                                color: s.cardBorder,
-                              ),
-                              boxShadow:
-                                  _discoverShadow(context, s, heavy: true),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                          decoration: BoxDecoration(
+                            color: s.cardFill,
+                            borderRadius: BorderRadius.circular(
+                                STDiscoverTokens.cardRadius),
+                            border: Border.all(
+                              color: s.cardBorder,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildSectionHeading(
-                                  context,
-                                  'Categories',
-                                  'Swipe into creator lanes',
-                                ),
-                                const SizedBox(height: 14),
-                                SizedBox(
-                                  height: 196,
-                                  width: double.infinity,
-                                  child: LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      final pages =
-                                          <List<discover_models.Category>>[];
-                                      for (int i = 0;
-                                          i < discoverState.categories.length;
-                                          i += 6) {
-                                        pages.add(
-                                          discoverState.categories
-                                              .skip(i)
-                                              .take(6)
-                                              .toList(growable: false),
-                                        );
-                                      }
-                                      return PageView.builder(
-                                        clipBehavior: Clip.none,
-                                        physics: const PageScrollPhysics(
-                                          parent: BouncingScrollPhysics(),
-                                        ),
-                                        itemCount: pages.length,
-                                        onPageChanged: (index) {
-                                          if (!mounted) return;
-                                          setState(
-                                              () => _categoryPageIndex = index);
-                                        },
-                                        itemBuilder: (context, pageIndex) {
-                                          final page = pages[pageIndex];
-                                          return Padding(
-                                            padding: EdgeInsets.only(
-                                              right:
-                                                  pageIndex == pages.length - 1
-                                                      ? 0
-                                                      : 10,
+                            boxShadow: _discoverShadow(context, s, heavy: true),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSectionHeading(
+                                context,
+                                'Categories',
+                                'Swipe into creator lanes',
+                              ),
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                height: 196,
+                                width: double.infinity,
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final pages =
+                                        <List<discover_models.Category>>[];
+                                    for (int i = 0;
+                                        i < discoverState.categories.length;
+                                        i += 6) {
+                                      pages.add(
+                                        discoverState.categories
+                                            .skip(i)
+                                            .take(6)
+                                            .toList(growable: false),
+                                      );
+                                    }
+                                    return PageView.builder(
+                                      clipBehavior: Clip.none,
+                                      physics: const PageScrollPhysics(
+                                        parent: BouncingScrollPhysics(),
+                                      ),
+                                      itemCount: pages.length,
+                                      onPageChanged: (index) {
+                                        if (!mounted) return;
+                                        setState(
+                                            () => _categoryPageIndex = index);
+                                      },
+                                      itemBuilder: (context, pageIndex) {
+                                        final page = pages[pageIndex];
+                                        return Padding(
+                                          padding: EdgeInsets.only(
+                                            right: pageIndex == pages.length - 1
+                                                ? 0
+                                                : 10,
+                                          ),
+                                          child: GridView.builder(
+                                            physics:
+                                                const NeverScrollableScrollPhysics(),
+                                            padding: const EdgeInsets.only(
+                                                bottom: 4),
+                                            gridDelegate:
+                                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                              crossAxisCount: 3,
+                                              crossAxisSpacing: 10,
+                                              mainAxisSpacing: 10,
+                                              childAspectRatio: 1.22,
                                             ),
-                                            child: GridView.builder(
-                                              physics:
-                                                  const NeverScrollableScrollPhysics(),
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 4),
-                                              gridDelegate:
-                                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                                crossAxisCount: 3,
-                                                crossAxisSpacing: 10,
-                                                mainAxisSpacing: 10,
-                                                childAspectRatio: 1.22,
-                                              ),
-                                              itemCount: page.length,
-                                              itemBuilder: (context, index) {
-                                                final category = page[index];
-                                                return _accessibilityService
-                                                    .createAccessibleButton(
-                                                  semanticLabel:
-                                                      'Category ${category.name}',
-                                                  semanticHint: _selectedCategory ==
-                                                          category.id
-                                                      ? 'Currently selected category. '
-                                                          'Tap to deselect.'
-                                                      : 'Tap to select this category',
-                                                  onPressed: () =>
+                                            itemCount: page.length,
+                                            itemBuilder: (context, index) {
+                                              final category = page[index];
+                                              return _accessibilityService
+                                                  .createAccessibleButton(
+                                                semanticLabel:
+                                                    'Category ${category.name}',
+                                                semanticHint: _selectedCategory ==
+                                                        category.id
+                                                    ? 'Currently selected category. '
+                                                        'Tap to deselect.'
+                                                    : 'Tap to select this category',
+                                                onPressed: () =>
+                                                    _onCategorySelected(
+                                                  category,
+                                                ),
+                                                hapticFeedbackType:
+                                                    AccessibilityHapticFeedbackType
+                                                        .light,
+                                                child: CategoryCard(
+                                                  key: ValueKey(category.id),
+                                                  category: category,
+                                                  isSelected:
+                                                      _selectedCategory ==
+                                                          category.id,
+                                                  hasCategorySelected:
+                                                      _selectedCategory != null,
+                                                  onTap: () =>
                                                       _onCategorySelected(
                                                     category,
                                                   ),
-                                                  hapticFeedbackType:
-                                                      AccessibilityHapticFeedbackType
-                                                          .light,
-                                                  child: CategoryCard(
-                                                    key: ValueKey(category.id),
-                                                    category: category,
-                                                    isSelected:
-                                                        _selectedCategory ==
-                                                            category.id,
-                                                    hasCategorySelected:
-                                                        _selectedCategory !=
-                                                            null,
-                                                    onTap: () =>
-                                                        _onCategorySelected(
-                                                      category,
-                                                    ),
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
                                 ),
-                                const SizedBox(height: 8),
-                                _buildCategoryPageDots(
-                                    discoverState.categories),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: 8),
+                              _buildCategoryPageDots(discoverState.categories),
+                            ],
                           ),
                         ),
                       ),
@@ -2064,19 +2109,17 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         final ColorScheme cs = Theme.of(context).colorScheme;
         final Color tileBg = cs.surfaceContainerHighest;
         final Color iconMuted = cs.onSurfaceVariant;
-        final creatorName = DiscoverFieldMapper.safeString(
-          raw['creatorUsername'] ??
-              raw['username'] ??
-              raw['displayName'] ??
-              'creator',
-        );
-        final viewCount = math.max(
+        final String creatorName = _discoverCardCreatorLabel(raw);
+        final int engagementCount = math.max(
           0,
-          DiscoverFieldMapper.safeInt(raw['viewCount'] ?? raw['views']),
+          DiscoverFieldMapper.safeCount(
+            raw,
+            const <String>['likes', 'likeCount', 'viewCount', 'views'],
+          ),
         );
         return Semantics(
           button: true,
-          label: 'Clip by $creatorName, $viewCount views',
+          label: 'Clip by $creatorName, $engagementCount engagements',
           child: GestureDetector(
             onTap: () {
               HapticFeedback.selectionClick();
@@ -2208,9 +2251,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                       children: [
                         Expanded(
                           child: Text(
-                            creatorName.startsWith('@')
-                                ? creatorName
-                                : '@$creatorName',
+                            creatorName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -2228,7 +2269,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         ),
                         const SizedBox(width: 2),
                         Text(
-                          _formatCompactCount(viewCount),
+                          _formatCompactCount(engagementCount),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11,
@@ -2320,68 +2361,27 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     List<Map<String, dynamic>> videos,
     int startIndex,
   ) {
-    final normalizedEntries = <({HomeVideo video, int originalIndex})>[];
-
-    for (var i = 0; i < videos.length; i++) {
-      final raw = _normalizedVideoData(videos[i]);
-      final feedVideo = _convertToHomeVideo(videos[i]);
-      if (feedVideo.videoURL.trim().isEmpty) {
-        if (kDebugMode) {
-          debugPrint(
-            '⚠️ Discover category video skipped: id=${feedVideo.id} source=${_playbackSourceFor(raw)}',
-          );
-        }
-        continue;
-      }
-      normalizedEntries.add((video: feedVideo, originalIndex: i));
-    }
-
-    final tappedRaw = startIndex >= 0 && startIndex < videos.length
-        ? _normalizedVideoData(videos[startIndex])
-        : <String, dynamic>{};
-    if (kDebugMode) {
-      final tappedPlaybackUrl = resolveReadyPlaybackUrl(tappedRaw);
-      debugPrint(
-        '🎬 Discover category tap debug: '
-        'id=${tappedRaw['id'] ?? tappedRaw['videoId'] ?? tappedRaw['docId']} '
-        'muxPlaybackId=${_firstString(tappedRaw, const [
-              'muxPlaybackId',
-              'playbackId',
-              'mux_playback_id'
-            ])} '
-        'hlsUrl=${_firstString(tappedRaw, const [
-              'hlsUrl',
-              'playbackUrl',
-              'streamUrl',
-              'hls_url'
-            ])} '
-        'videoUrl=${_firstString(tappedRaw, const [
-              'videoUrl',
-              'downloadUrl',
-              'url',
-              'fileUrl',
-              'videoURL'
-            ])} '
-        'thumbnailUrl=${_firstString(tappedRaw, const [
-              'thumbnailUrl',
-              'thumbnail',
-              'muxThumbnailUrl',
-              'thumbnailURL'
-            ])} '
-        'selectedPlaybackUrl=$tappedPlaybackUrl '
-        'status=${tappedRaw['status']}',
+    final String categoryId = _selectedCategory ?? 'all';
+    final List<HomeVideo> eligible =
+        DiscoverEligibleVideosResolver.resolveEligible(ref);
+    final List<HomeVideo> matching =
+        DiscoverEligibleVideosResolver.filterByCategory(eligible, categoryId);
+    String tappedId = '';
+    if (startIndex >= 0 && startIndex < videos.length) {
+      tappedId = DiscoverFieldMapper.safeString(
+        videos[startIndex]['id'] ?? videos[startIndex]['docId'],
       );
     }
-    final normalizedStartIndex = normalizedEntries.indexWhere(
-      (entry) => entry.originalIndex == startIndex,
-    );
-
-    if (normalizedEntries.isEmpty || normalizedStartIndex < 0) {
-      if (kDebugMode) {
-        debugPrint(
-          '⚠️ Discover category video missing playback source: tapped=${tappedRaw['id'] ?? tappedRaw['videoId'] ?? tappedRaw['docId']} source=${_playbackSourceFor(tappedRaw)} count=${videos.length}',
-        );
+    int normalizedStartIndex = 0;
+    if (tappedId.isNotEmpty) {
+      final int idx = matching.indexWhere((HomeVideo v) => v.id == tappedId);
+      if (idx >= 0) {
+        normalizedStartIndex = idx;
       }
+    } else if (matching.isNotEmpty) {
+      normalizedStartIndex = startIndex.clamp(0, matching.length - 1);
+    }
+    if (matching.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('This video is still processing.'),
@@ -2390,218 +2390,67 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       );
       return;
     }
-
-    final homeVideos =
-        normalizedEntries.map((entry) => entry.video).toList(growable: false);
-
-    final HomeVideo tappedVideoForWarm = homeVideos[normalizedStartIndex];
-    final String warmUrl = tappedVideoForWarm.videoURL.trim();
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    manager.setVisibleOwner(PlaybackOwners.discoverPlayer);
+    manager.bindDiscoverCategoryFeed(matching);
+    final HomeVideo tappedVideo = matching[normalizedStartIndex];
+    final String warmUrl = tappedVideo.videoURL.trim();
     if (warmUrl.isNotEmpty) {
       unawaited(
-        GlobalPlaybackManager.instance.getOrCreateController(
-          tappedVideoForWarm.id,
+        manager.getOrCreateController(
+          tappedVideo.id,
           warmUrl,
-          owner: PlaybackOwners.player,
+          owner: PlaybackOwners.discoverPlayer,
         ),
       );
     }
-
     if (kDebugMode) {
-      final tappedVideo = normalizedEntries[normalizedStartIndex].video;
       debugPrint(
-        '🎬 Discover category feed opening: categoryId=${_selectedCategory ?? 'unknown'} '
-        'tappedVideoId=${tappedVideo.id} normalizedCount=${homeVideos.length} '
-        'initialIndex=$normalizedStartIndex '
-        'playbackUrl=${tappedVideo.videoURL}',
+        '🎬 Discover category feed opening: categoryId=$categoryId '
+        'tappedVideoId=${tappedVideo.id} normalizedCount=${matching.length} '
+        'initialIndex=$normalizedStartIndex',
       );
     }
-
     unawaited(
       DiscoverView.openCategoryVideoSwipeFeed<void>(
         context,
-        videos: homeVideos,
+        videos: matching,
         startIndex: normalizedStartIndex,
-        categoryId: _selectedCategory ?? 'unknown',
+        categoryId: categoryId,
       ),
     );
   }
 
-  /// Get videos for the category feed with proper ordering (new videos first, then shuffle)
+  /// Category grids use the same eligible For You list as Home (no extra query).
   Future<List<Map<String, dynamic>>> _getCategoryVideosForFeed(
     String categoryId,
   ) async {
     try {
       LoggingService.instance.debug(
-        'Loading category feed videos for: $categoryId',
+        'Loading category feed from Home source: $categoryId',
         tag: 'DiscoverView',
       );
-
-      List<Map<String, dynamic>> mixedVideos =
-          await _fetchCategoryVideoCandidatesFromFirestore(categoryId);
-      if (mixedVideos.isEmpty) {
-        mixedVideos = await _loadMixedCategoryVideos(categoryId, null);
-      }
-
+      final List<HomeVideo> eligible =
+          DiscoverEligibleVideosResolver.resolveEligible(ref);
+      final List<HomeVideo> matching =
+          DiscoverEligibleVideosResolver.filterByCategory(eligible, categoryId);
+      DiscoverEligibleVideosResolver.logCategoryLoadAudit(
+        ref: ref,
+        selectedCategoryId: categoryId,
+        eligible: eligible,
+        matching: matching,
+      );
+      final List<Map<String, dynamic>> videos =
+          await DiscoverCategoryCardMap.buildFromHomeVideos(matching);
       if (kDebugMode) {
         debugPrint(
-          'Discover category fetch merged: id=$categoryId '
-          'rawCount=${mixedVideos.length}',
+          'Discover category feed built: id=$categoryId playableCount=${videos.length}',
         );
       }
-
-      if (mixedVideos.isEmpty) {
-        LoggingService.instance.debug(
-          'No videos found for $categoryId',
-          tag: 'DiscoverView',
-        );
-        return <Map<String, dynamic>>[];
-      }
-
-      mixedVideos.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
-        final bool aIsNew = a['isNew'] as bool;
-        final bool bIsNew = b['isNew'] as bool;
-        final double aScore = a['trendingScore'] as double;
-        final double bScore = b['trendingScore'] as double;
-        if (aIsNew && !bIsNew) {
-          return -1;
-        }
-        if (!aIsNew && bIsNew) {
-          return 1;
-        }
-        return bScore.compareTo(aScore);
-      });
-
-      final List<Map<String, dynamic>> videos = <Map<String, dynamic>>[];
-      final Set<String> userIds = <String>{};
-
-      for (final Map<String, dynamic> videoData in mixedVideos) {
-        final Map<String, dynamic>? data =
-            videoData['data'] as Map<String, dynamic>?;
-        if (data == null) {
-          LoggingService.instance.debug(
-            'Skipping video with null data: ${videoData['docId']}',
-            tag: 'DiscoverView',
+      ref.read(discoverCategoryVideosProvider.notifier).cacheVideos(
+            categoryId,
+            videos,
           );
-          continue;
-        }
-
-        if (!isVideoVisibleInFeed(data)) {
-          continue;
-        }
-        final String status = (data['status'] as String?)?.trim() ?? '';
-        if (status == 'failed') {
-          continue;
-        }
-
-        final String? playback = resolveReadyPlaybackUrl(data);
-        if (playback == null || playback.isEmpty) {
-          continue;
-        }
-
-        final String userId = _firstString(data, const <String>[
-          'userId',
-          'creatorId',
-          'creator_id',
-          'uid',
-          'ownerId',
-        ]);
-        if (userId.isNotEmpty) {
-          userIds.add(userId);
-        }
-      }
-
-      LoggingService.instance.debug(
-        'Found ${userIds.length} unique user IDs for $categoryId',
-        tag: 'DiscoverView',
-      );
-
-      final Map<String, Map<String, dynamic>> userMap =
-          await _fetchUsersByIds(userIds);
-
-      LoggingService.instance.debug(
-        'Fetched ${userMap.length} user documents for $categoryId',
-        tag: 'DiscoverView',
-      );
-
-      for (final Map<String, dynamic> videoData in mixedVideos) {
-        final Map<String, dynamic> data =
-            videoData['data'] as Map<String, dynamic>;
-        if (!isVideoVisibleInFeed(data)) {
-          continue;
-        }
-        final String status = (data['status'] as String?)?.trim() ?? '';
-        if (status == 'failed') {
-          continue;
-        }
-        final String? playback = resolveReadyPlaybackUrl(data);
-        if (playback == null || playback.isEmpty) {
-          continue;
-        }
-
-        final String userId = _firstString(data, const <String>[
-          'userId',
-          'creatorId',
-          'creator_id',
-          'uid',
-          'ownerId',
-        ]);
-
-        if (userId.isEmpty) {
-          LoggingService.instance.debug(
-            'Skipping video with null userId: ${videoData['docId']}',
-            tag: 'DiscoverView',
-          );
-          continue;
-        }
-
-        final Map<String, dynamic>? userData = userMap[userId];
-        if (userData == null && kDebugMode) {
-          debugPrint(
-            'Using video fallback creator data for ${videoData['docId']}, '
-            'userId: $userId',
-          );
-        }
-
-        videos.add(
-          _fullCategoryVideoMap(
-            docId: DiscoverFieldMapper.safeString(videoData['docId']),
-            data: data,
-            userData: userData,
-            categoryId: categoryId,
-            isNew: videoData['isNew'] == true,
-            trendingScore: DiscoverFieldMapper.safeDouble(videoData['trendingScore']),
-          ),
-        );
-      }
-
-      if (kDebugMode) {
-        final int n = videos.length;
-        final List<String> ids = videos
-            .map(
-              (Map<String, dynamic> v) =>
-                  DiscoverFieldMapper.safeString(v['docId'] ?? v['id']),
-            )
-            .where((String id) => id.isNotEmpty)
-            .take(3)
-            .toList();
-        final List<String?> urls = videos
-            .take(3)
-            .map(
-              (Map<String, dynamic> v) =>
-                  resolveReadyPlaybackUrl(_normalizedVideoData(v)),
-            )
-            .toList();
-        debugPrint(
-          'Discover category feed built: id=$categoryId playableCount=$n '
-          'firstIds=$ids firstPlaybackUrls=$urls',
-        );
-      }
-
-      LoggingService.instance.debug(
-        'Category feed prepared ${videos.length} videos for $categoryId',
-        tag: 'DiscoverView',
-      );
-
       return videos;
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -2656,10 +2505,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   /// Direct Firestore reads by canonical / legacy category fields (no orderBy
   /// to reduce composite index requirements). Results are de-duplicated by doc id.
+  // ignore: unused_element
   Future<List<Map<String, dynamic>>> _fetchCategoryVideoCandidatesFromFirestore(
     String categoryId,
   ) async {
-    if (_normalizeCategoryKey(categoryId) == 'all') {
+    if (isAllCategorySlug(categoryId)) {
       return <Map<String, dynamic>>[];
     }
     final Map<String, Map<String, dynamic>> merged =
@@ -2672,15 +2522,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       required bool markNew,
     }) {
       final Map<String, dynamic> data = doc.data();
-      if (data['deleted'] == true) {
+      if (!isDiscoverEligibleFromFirestore(data, videoId: doc.id)) {
         return;
       }
-      final String st = (data['status'] as String?)?.trim() ?? '';
-      if (st == 'deleted' || st == 'failed') {
-        return;
-      }
-      final String? playback = resolveReadyPlaybackUrl(data);
-      if (playback == null || playback.isEmpty) {
+      if (!matchesDiscoverCategory(data, categoryId)) {
         return;
       }
       final DateTime? created = data['createdAt'] is Timestamp
@@ -2688,7 +2533,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           : null;
       final bool isNew =
           markNew || (created != null && created.isAfter(sevenDaysAgo));
-      final double score = DiscoverFieldMapper.safeDouble(data['trendingScore']);
+      final double score =
+          DiscoverFieldMapper.safeDouble(data['trendingScore']);
       merged[doc.id] = <String, dynamic>{
         'docId': doc.id,
         'data': data,
@@ -2716,40 +2562,59 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     final CollectionReference<Map<String, dynamic>> col =
         FirebaseFirestore.instance.collection('videos');
+    final String canonicalId = normalizeCategorySlug(categoryId);
     final List<String> arrayValues = _getCategoryQueryValues(categoryId);
     final List<Future<void>> tasks = <Future<void>>[
       runQuery(
-        col
-            .where('categoryId', isEqualTo: categoryId)
-            .where('status', whereIn: _allowedVideoStatuses),
+        col.where('categoryId', isEqualTo: canonicalId).where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            ),
       ),
       runQuery(
-        col
-            .where('category', isEqualTo: categoryId)
-            .where('status', whereIn: _allowedVideoStatuses),
+        col.where('category_id', isEqualTo: canonicalId).where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            ),
       ),
       runQuery(
-        col
-            .where('contentCategory', isEqualTo: categoryId)
-            .where('status', whereIn: _allowedVideoStatuses),
+        col.where('categoryId', isEqualTo: categoryId).where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            ),
       ),
       runQuery(
-        col
-            .where('game', isEqualTo: categoryId)
-            .where('status', whereIn: _allowedVideoStatuses),
+        col.where('category', isEqualTo: categoryId).where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            ),
       ),
       runQuery(
-        col
-            .where('gameTitle', isEqualTo: categoryId)
-            .where('status', whereIn: _allowedVideoStatuses),
+        col.where('contentCategory', isEqualTo: categoryId).where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            ),
+      ),
+      runQuery(
+        col.where('game', isEqualTo: categoryId).where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            ),
+      ),
+      runQuery(
+        col.where('gameTitle', isEqualTo: categoryId).where(
+              'status',
+              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+            ),
       ),
     ];
     if (arrayValues.isNotEmpty) {
       tasks.add(
         runQuery(
-          col
-              .where('categories', arrayContainsAny: arrayValues)
-              .where('status', whereIn: _allowedVideoStatuses),
+          col.where('categories', arrayContainsAny: arrayValues).where(
+                'status',
+                whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+              ),
         ),
       );
     }
@@ -2764,6 +2629,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   /// Load mixed category videos (recent + trending)
+  // ignore: unused_element
   Future<List<Map<String, dynamic>>> _loadMixedCategoryVideos(
     String categoryId,
     DocumentSnapshot? startAfter,
@@ -2773,7 +2639,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         'Loading mixed category videos for: $categoryId',
         tag: 'DiscoverView',
       );
-      if (_normalizeCategoryKey(categoryId) == 'all') {
+      if (isAllCategorySlug(categoryId)) {
         return _loadAllVideosNoCategory(startAfter);
       }
       // Load recent videos (last 7 days)
@@ -2962,46 +2828,41 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
   }
 
-  /// Load all videos without category filter (All category)
+  /// Load all eligible videos from Home For You (All category — no Firestore query).
   Future<List<Map<String, dynamic>>> _loadAllVideosNoCategory(
     DocumentSnapshot? startAfter,
   ) async {
     try {
-      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-          .collection('videos')
-          .orderBy('createdAt', descending: true)
-          .limit(_videosPerPage * 2);
-      if (startAfter != null) {
-        query = query.startAfterDocument(startAfter);
-      }
+      final List<HomeVideo> eligible =
+          DiscoverEligibleVideosResolver.resolveEligible(ref);
+      final List<Map<String, dynamic>> videos =
+          await DiscoverCategoryCardMap.buildFromHomeVideos(eligible);
+      final int homeFeedCount = ref.read(hp.homeProvider).forYouVideos.length;
+      logDiscoverSourceAudit(
+        buildDiscoverSourceAuditReport(
+          selectedCategory: 'All',
+          homeFeedCount: homeFeedCount,
+          rawDocs: eligible.map(homeVideoToFirestoreShape).toList(),
+          eligibleDocs: eligible.map(homeVideoToFirestoreShape).toList(),
+          matchingDocs: eligible.map(homeVideoToFirestoreShape).toList(),
+        ),
+      );
 
-      final snapshot = await query.get();
-      final videos = <Map<String, dynamic>>[];
+      logDiscoverCategoryDiagnostic(
+        selectedCategory: 'All',
+        total: homeFeedCount,
+        eligible: eligible.length,
+        matching: videos.length,
+      );
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        videos.add({
-          'docId': doc.id,
-          'data': data,
-          'isNew': false,
-          'trendingScore': 0.0,
-        });
-      }
-
-      videos.sort((a, b) {
-        final aTs = a['data']['createdAt'] as Timestamp?;
-        final bTs = b['data']['createdAt'] as Timestamp?;
-        if (aTs == null || bTs == null) return 0;
-        return bTs.compareTo(aTs);
-      });
-      return videos.take(_videosPerPage).toList();
+      return _applyPagination(videos, startAfter);
     } catch (e) {
       LoggingService.instance.error(
         'Error loading all videos (no category)',
         tag: 'DiscoverView',
         error: e,
       );
-      return [];
+      return <Map<String, dynamic>>[];
     }
   }
 
@@ -3083,6 +2944,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   /// ✅ FIX #3: Fetch users by IDs with chunking (Firestore whereIn limit is 10)
+  // ignore: unused_element
   Future<Map<String, Map<String, dynamic>>> _fetchUsersByIds(
     Set<String> userIds,
   ) async {
@@ -3164,6 +3026,10 @@ class _DiscoverCategoryVideoFeedPageState
     _videos = List.from(widget.videos);
     _setupRealtimeDeletionListeners();
 
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    manager.setVisibleOwner(PlaybackOwners.discoverPlayer);
+    manager.bindDiscoverCategoryFeed(_videos);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -3175,18 +3041,13 @@ class _DiscoverCategoryVideoFeedPageState
       setState(() {
         _currentIndex = idx;
       });
-      GlobalPlaybackManager.instance.preloadAround(
+      GlobalPlaybackManager.instance.preloadDiscoverCategoryAround(
         idx,
         _videos,
-        controllerOwner: PlaybackOwners.player,
       );
     });
 
-    // 🔊 CRITICAL FIX: Unblock playback when category feed opens
-    // DiscoverView blocks playback, but category feed needs videos to play
-    // This allows VideoPlayerViewOptimized to initialize and play videos
-    final manager = GlobalPlaybackManager.instance;
-    manager.unblock(); // Unblock to allow video initialization
+    manager.unblock();
     if (kDebugMode) {
       debugPrint(
           '🔊 CategoryVideoFeed: Unblocked playback to allow video loading');
@@ -3202,15 +3063,9 @@ class _DiscoverCategoryVideoFeedPageState
     _videoListeners.clear();
     _pageController.dispose();
 
-    // 🔥 CRITICAL MEMORY FIX: Dispose all controllers for this category feed
-    // This prevents MediaCodec NO_MEMORY errors by freeing resources immediately
-    // Unnamed full-screen route: [AppNavigationObserver] sets activeOwner
-    // player; pool owner must match for canPlay / cleanup.
-    GlobalPlaybackManager.instance.disposeControllersForOwner(
-      PlaybackOwners.player,
-    );
-
-    // 🔊 AUDIO FIX: Pause all videos when category feed closes
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    manager.disposeControllersForOwner(PlaybackOwners.discoverPlayer);
+    manager.setVisibleOwner(PlaybackOwners.discover);
     GlobalPlaybackManager.instance.pauseAll();
 
     super.dispose();
@@ -3317,11 +3172,8 @@ class _DiscoverCategoryVideoFeedPageState
                     setState(() {
                       _currentIndex = index;
                     });
-                    GlobalPlaybackManager.instance.preloadAround(
-                      index,
-                      _videos,
-                      controllerOwner: PlaybackOwners.player,
-                    );
+                    GlobalPlaybackManager.instance
+                        .preloadDiscoverCategoryAround(index, _videos);
                   }
                 },
                 itemCount: _videos.length,
@@ -3342,7 +3194,7 @@ class _DiscoverCategoryVideoFeedPageState
                     isFirstVideo: index == 0,
                     deferOffscreenControllerInit: true,
                     tabId: 'discoverView_${widget.categoryId}',
-                    ownerKey: PlaybackOwners.player,
+                    ownerKey: PlaybackOwners.discoverPlayer,
                     homeViewModel: ref.read(hp.homeProvider.notifier),
                     showSheet: false,
                     sheetType: '',
@@ -3351,6 +3203,7 @@ class _DiscoverCategoryVideoFeedPageState
                       AppNavigator.openStreamerCard(
                         context,
                         userId: video.creator.id,
+                        initialCreator: video.creatorSnapshot,
                         currentUserId:
                             fa.FirebaseAuth.instance.currentUser?.uid,
                         onDismiss: () => Navigator.of(context).pop(),
@@ -3396,6 +3249,7 @@ class _DiscoverCategoryVideoFeedPageState
                       AppNavigator.openStreamerCard(
                         context,
                         userId: video.creator.id,
+                        initialCreator: video.creatorSnapshot,
                         currentUserId:
                             fa.FirebaseAuth.instance.currentUser?.uid,
                         onDismiss: () => Navigator.of(context).pop(),

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../components/onboarding/product_tour_target_keys.dart';
 import '../providers/unread_messages_provider.dart';
 import '../qa/qa_keys.dart';
 import '../utils/performance_utils.dart';
@@ -470,7 +469,6 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
         : on.withValues(alpha: LiquidGlassDockTokens.inactiveIconOpacity);
     final Color iconColor = isSelected ? activeColor : inactiveColor;
     return KeyedSubtree(
-      key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.uploadButton),
       child: Semantics(
         label: 'Create content',
         hint: 'Tap to open camera and create new content',

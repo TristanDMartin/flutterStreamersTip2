@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../models/forum_post.dart';
 import '../../models/forum_comment.dart';
 import '../../models/source_comment.dart';
+import '../../models/creator_profile_snapshot.dart';
 import '../../models/forum_author.dart';
 import '../../services/forum_service.dart';
 import '../../services/discussion_author_service.dart';
@@ -873,7 +874,11 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
             userId: _post!.author.uid,
             avatarRadius: 22,
             trailingText: _formatDate(_post!.createdAt),
-            onTap: () => _openStreamerCard(_post!.author.uid),
+            onTap: () => _openStreamerCard(
+              userId: _post!.author.uid,
+              initialCreator:
+                  CreatorProfileSnapshot.fromForumAuthor(_post!.author),
+            ),
           ),
           const SizedBox(height: 6),
           Padding(
@@ -1199,7 +1204,14 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
           ),
           const SizedBox(height: 10),
           InkWell(
-            onTap: () => _openStreamerCard(sourceComment.authorId),
+            onTap: () => _openStreamerCard(
+              userId: sourceComment.authorId,
+              initialCreator: CreatorProfileSnapshot(
+                creatorId: sourceComment.authorId,
+                displayName: sourceComment.authorName,
+                username: sourceComment.authorUsername,
+              ),
+            ),
             borderRadius: BorderRadius.circular(8),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1218,12 +1230,16 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
     );
   }
 
-  void _openStreamerCard(String userId) {
+  void _openStreamerCard({
+    required String userId,
+    CreatorProfileSnapshot? initialCreator,
+  }) {
     if (userId.isEmpty) return;
 
     AppNavigator.openStreamerCard(
       context,
       userId: userId,
+      initialCreator: initialCreator,
       currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
     );
   }

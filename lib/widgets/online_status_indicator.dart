@@ -87,7 +87,7 @@ class OnlineStatusIndicator extends ConsumerWidget {
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple
@@ -178,7 +178,7 @@ class OnlineStatusDot extends ConsumerWidget {
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple

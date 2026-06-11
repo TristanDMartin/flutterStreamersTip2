@@ -1,12 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../services/creator_intelligence_analytics_service.dart';
 import '../models/chat.dart';
+import '../models/creator_profile_snapshot.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
+import '../services/creator_cache_service.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/player_screen.dart';
 import 'app_routes.dart';
 
 class AppNavigator {
+  static void _trackToolOpened(String toolId) {
+    unawaited(
+      CreatorIntelligenceAnalyticsService().trackToolOpened(toolId: toolId),
+    );
+  }
+
   static Future<T?> openPlayer<T>(
     BuildContext context, {
     required PlayerMode mode,
@@ -114,10 +125,12 @@ class AppNavigator {
   }
 
   static Future<T?> openContentPlanner<T>(BuildContext context) {
+    _trackToolOpened('content-planner');
     return Navigator.of(context).pushNamed<T>(AppRoutes.contentPlanner);
   }
 
   static Future<T?> openTippyChat<T>(BuildContext context) {
+    _trackToolOpened('ask-tippy');
     return Navigator.of(context).pushNamed<T>(AppRoutes.tippyChat);
   }
 
@@ -140,6 +153,7 @@ class AppNavigator {
     List<String> initialPlatforms = const [],
     bool fullscreenDialog = false,
   }) {
+    _trackToolOpened('linked-platforms');
     return Navigator.of(context).pushNamed<T>(
       AppRoutes.linkedPlatforms,
       arguments: LinkedPlatformsRouteArgs(
@@ -149,9 +163,25 @@ class AppNavigator {
     );
   }
 
+  static Future<T?> openGrowthAnalytics<T>(BuildContext context) {
+    _trackToolOpened('growth-analytics');
+    return Navigator.of(context).pushNamed<T>(AppRoutes.growthAnalytics);
+  }
+
+  static Future<T?> openVideoInsights<T>(BuildContext context) {
+    _trackToolOpened('video-insights');
+    return Navigator.of(context).pushNamed<T>(AppRoutes.videoInsights);
+  }
+
+  static Future<T?> openCreatorIntelligence<T>(BuildContext context) {
+    _trackToolOpened('creator-intelligence');
+    return Navigator.of(context).pushNamed<T>(AppRoutes.creatorIntelligence);
+  }
+
   static Future<T?> openStreamerCard<T>(
     BuildContext context, {
     required String userId,
+    CreatorProfileSnapshot? initialCreator,
     String? currentUserId,
     VoidCallback? onDismiss,
     Function(String userId)? onFollow,
@@ -161,8 +191,14 @@ class AppNavigator {
     bool fullscreenDialog = true,
     GlobalKey? tourAnchorKey,
   }) {
+    final CreatorProfileSnapshot? seed =
+        CreatorCacheService.instance.resolveForNavigation(
+      userId: userId,
+      initialCreator: initialCreator,
+    );
     final StreamerCardView card = StreamerCardView(
       userId: userId,
+      initialCreator: seed,
       currentUserId: currentUserId,
       onDismiss: onDismiss,
       onFollow: onFollow,

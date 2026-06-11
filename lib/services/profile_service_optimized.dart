@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/video_caption_resolver.dart';
 import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user.dart' as app_user;
@@ -265,7 +266,8 @@ class ProfileServiceOptimized {
       id: id,
       videoURL: resolveVideoUrl(data),
       thumbnailURL: data['thumbnailURL'] ?? '',
-      caption: data['caption'] ?? '',
+      caption: resolveVideoCaptionFromFirestoreData(data),
+      overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
       creator: app_user.User(
         id: data['creatorId'] ?? '',
         displayName: data['creatorName'] ?? 'User',

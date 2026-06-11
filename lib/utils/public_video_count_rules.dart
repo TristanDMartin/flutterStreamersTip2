@@ -15,7 +15,7 @@ bool videoCountsAsPublicPostForStats(Map<String, dynamic> data) {
   if (data['isDraft'] == true) {
     return false;
   }
-  if (data['isReadyForFeed'] == false) {
+  if (data['isReadyForFeed'] != true) {
     return false;
   }
   final String? visibility = data['visibility'] as String?;

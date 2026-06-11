@@ -11,6 +11,7 @@ import '../models/user.dart';
 import '../models/user_count_fields.dart';
 import '../models/user_status.dart';
 import 'username_lock_service.dart';
+import '../core/firebase_app_check_startup.dart';
 import 'r2_media_service.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/password_validation.dart';
@@ -189,14 +190,16 @@ class AuthenticationService extends ChangeNotifier {
   Future<void> _saveUserToFirestore(User user, String? email) async {
     try {
       // Save user document with UID as document ID (for compatibility)
+      final String? avatarUrl = normalizeAvatarPhotoUrl(user.avatarURL);
       await _firestore.collection('users').doc(user.id).set({
         'id': user.id,
         'uid': user.id, // Explicit UID field for clarity
         'username': user.username,
         'displayName': user.displayName,
         'bio': user.bio,
-        'avatarURL': user.avatarURL,
-        'avatarUrl': user.avatarURL,
+        'avatarURL': avatarUrl,
+        'avatarUrl': avatarUrl,
+        'photoURL': avatarUrl,
         'email': email,
         'onlineStatus': user.onlineStatus,
         'hashtags': user.hashtags,
@@ -510,18 +513,23 @@ class AuthenticationService extends ChangeNotifier {
   Future<void> _createOrUpdateUserDocument(firebase_auth.User user,
       {String? displayName, String? username}) async {
     try {
+      final DocumentSnapshot<Map<String, dynamic>> existingSnapshot =
+          await _firestore.collection('users').doc(user.uid).get();
+      final Map<String, String> avatarFields = buildProviderAvatarMergeFields(
+        providerPhotoUrl: user.photoURL,
+        existingData: existingSnapshot.data(),
+      );
       final userData = <String, dynamic>{
         'id': user.uid,
         'uid': user.uid,
         'email': user.email,
         'displayName': displayName ?? user.displayName ?? 'Unknown User',
         'username': username ?? _generateUsernameFromEmail(user.email ?? ''),
-        'photoURL': user.photoURL,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'lastSignIn': FieldValue.serverTimestamp(),
+        ...avatarFields,
       };
-
       await _firestore.collection('users').doc(user.uid).set(
             userData,
             SetOptions(merge: true),
@@ -636,6 +644,17 @@ class AuthenticationService extends ChangeNotifier {
         debugPrint('❌ Avatar upload failed: No network connection');
         throw Exception(
             'No internet connection. Please check your network and try again.');
+      }
+
+      final AppCheckReadiness appCheck =
+          await ensureAppCheckReadyForFirestore();
+      if (!appCheck.isReady) {
+        debugPrint(
+          '❌ Avatar upload blocked: App Check not ready (${appCheck.detail})',
+        );
+        throw Exception(
+          'Upload blocked by security check. Restart the app and try again.',
+        );
       }
 
       debugPrint('⬆️ Uploading avatar to R2...');

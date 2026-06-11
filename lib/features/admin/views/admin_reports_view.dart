@@ -9,6 +9,16 @@ import 'admin_video_detail_view.dart';
 class AdminReportsView extends StatelessWidget {
   const AdminReportsView({super.key});
 
+  static String _errorMessage(Object err) {
+    final String haystack = err.toString().toLowerCase();
+    if (haystack.contains('permission-denied')) {
+      return 'Reports access denied by Firestore rules. '
+          'Tap the key icon in the app bar to refresh your admin session, '
+          'then reopen this tab.\n\n$err';
+    }
+    return 'Reports error: $err';
+  }
+
   static String _reporterId(Map<String, dynamic> d) =>
       (d['reporterUserId'] ?? d['reporterId'] ?? '').toString();
 
@@ -34,7 +44,7 @@ class AdminReportsView extends StatelessWidget {
           return Center(
             child: SelectableText.rich(
               TextSpan(
-                text: 'Reports error: ${snap.error}',
+                text: _errorMessage(snap.error!),
                 style: const TextStyle(color: Colors.red),
               ),
             ),

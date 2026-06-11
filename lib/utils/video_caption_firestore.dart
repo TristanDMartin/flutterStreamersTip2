@@ -36,6 +36,8 @@ Future<bool> persistVideoCaptionIfMissing({
     }
     await docRef.update(<String, dynamic>{
       'caption': trimmedCaption,
+      'description': trimmedCaption,
+      'title': trimmedCaption,
       'updatedAt': FieldValue.serverTimestamp(),
     });
     debugPrint(

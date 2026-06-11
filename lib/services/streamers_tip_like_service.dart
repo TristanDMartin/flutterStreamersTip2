@@ -2,11 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'network_connectivity_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
+import '../features/gamification/gamification_like_events_policy.dart';
+import '../utils/interaction_diagnostics.dart';
+import '../utils/like_interaction_boundary.dart';
+import 'creator_intelligence_analytics_service.dart';
 import 'progression_service.dart';
 
 /// Like state for a video
@@ -90,6 +95,7 @@ class StreamersTipLikeService extends ChangeNotifier {
   // State management
   bool _isInitialized = false;
   String? _syncedUserId;
+  StreamSubscription<User?>? _authSubscription;
 
   /// Initialize the service
   ///
@@ -111,11 +117,11 @@ class StreamersTipLikeService extends ChangeNotifier {
       // 1. Load cached states from SharedPreferences (survives app restarts)
       await _loadCachedStates();
 
-      // 2. TikTok-Style: Load user's liked videos from Firestore (survives device changes)
-      if (userId != null) {
-        await loadUserLikedVideos(userId);
-      } else {
-        debugPrint('⚠️ No userId provided, skipping liked_videos sync');
+      // 2. TikTok-Style: Load user's liked videos once auth is available.
+      final String? resolvedUserId =
+          userId ?? FirebaseAuth.instance.currentUser?.uid;
+      if (resolvedUserId != null) {
+        await loadUserLikedVideos(resolvedUserId);
       }
 
       // 3. Start offline sync timer
@@ -125,6 +131,17 @@ class StreamersTipLikeService extends ChangeNotifier {
       _connectivity.onConnectivityChanged.listen((_) {
         _processOfflineQueue();
       });
+
+      // 5. Sync liked_videos when auth becomes available (never with null userId).
+      _authSubscription ??= FirebaseAuth.instance.authStateChanges().listen(
+        (User? user) async {
+          if (user == null) {
+            _syncedUserId = null;
+            return;
+          }
+          await loadUserLikedVideos(user.uid);
+        },
+      );
 
       _isInitialized = true;
       debugPrint(
@@ -145,6 +162,55 @@ class StreamersTipLikeService extends ChangeNotifier {
     //     '🔍 StreamersTipLikeService: getLikeState($videoId) - cached: ${cachedState != null}, isLiked: ${result.isLiked}, likeCount: ${result.likeCount}');
 
     return result;
+  }
+
+  Future<LikeState?> loadCachedStateForVideo(String videoId) async {
+    final LikeState? inMemory = _localCache[videoId];
+    if (inMemory != null) {
+      return inMemory;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final value = prefs.getString('like_state_$videoId');
+      if (value == null) {
+        return null;
+      }
+      final data = jsonDecode(value) as Map<String, dynamic>;
+      final isLiked = data['isLiked'] as bool? ?? false;
+      final likeCount = data['likeCount'] as int? ?? 0;
+      final tsMs = data['timestamp'] as int? ?? 0;
+      final timestamp =
+          tsMs > 0 ? DateTime.fromMillisecondsSinceEpoch(tsMs) : DateTime.now();
+      final LikeState cachedState = LikeState(
+        isLiked: isLiked,
+        likeCount: likeCount,
+        timestamp: timestamp,
+      );
+      _localCache[videoId] = cachedState;
+      return cachedState;
+    } catch (e) {
+      debugPrint(
+        '⚠️ StreamersTipLikeService: Failed to load cached state for $videoId: $e',
+      );
+      return null;
+    }
+  }
+
+  /// Pre-sync cache before [likeVideo]/[unlikeVideo] after UI optimistic toggle.
+  void primeLikeStateForBackgroundSync({
+    required String videoId,
+    required bool isLiked,
+    required int likeCount,
+  }) {
+    final int safeCount = likeCount < 0 ? 0 : likeCount;
+    _setLocalCacheOnly(
+      videoId,
+      LikeState(
+        isLiked: isLiked,
+        likeCount: safeCount,
+        timestamp: DateTime.now(),
+      ),
+    );
   }
 
   /// Load like count from Firebase for a specific video
@@ -182,7 +248,9 @@ class StreamersTipLikeService extends ChangeNotifier {
               );
 
         _localCache[videoId] = updatedState;
-        notifyListeners();
+        if (!LikeInteractionBoundary.isActive) {
+          notifyListeners();
+        }
 
         debugPrint(
             '📊 StreamersTipLikeService: Loaded like count for $videoId: $likeCount');
@@ -206,7 +274,27 @@ class StreamersTipLikeService extends ChangeNotifier {
   /// - Survives app closes (persisted in Firestore)
   /// - Works across devices (same user profile)
   /// - Fast lookup (single array check vs. querying each video)
-  Future<void> loadUserLikedVideos(String userId) async {
+  Future<void> loadUserLikedVideos(
+    String userId, {
+    bool force = false,
+  }) async {
+    if (LikeInteractionBoundary.isActive) {
+      InteractionDiagnostics.logLikedVideosReloadDuringLike(
+        source: 'loadUserLikedVideos',
+      );
+    }
+    if (!force && LikeInteractionBoundary.isActive) {
+      debugPrint(
+        '⏭️ StreamersTipLikeService: deferring liked_videos sync during like tap',
+      );
+      return;
+    }
+    if (!force && _syncedUserId == userId) {
+      debugPrint(
+        '⏭️ StreamersTipLikeService: liked_videos already synced for $userId',
+      );
+      return;
+    }
     try {
       debugPrint('🔄 Loading liked videos for user: $userId');
 
@@ -285,7 +373,9 @@ class StreamersTipLikeService extends ChangeNotifier {
       }
 
       _syncedUserId = userId;
-      notifyListeners();
+      if (!LikeInteractionBoundary.isActive) {
+        notifyListeners();
+      }
       debugPrint(
           '💾 Cached ${likedVideos.length} liked video states (survives app restarts)');
     } catch (e) {
@@ -374,77 +464,58 @@ class StreamersTipLikeService extends ChangeNotifier {
   }
 
   /// Like a video (idempotent)
-  Future<bool> likeVideo(String videoId, String userId,
-      {String source = 'tap'}) async {
-    // Check if already liked
-    final currentState = getLikeState(videoId);
-    if (currentState.isLiked) {
+  Future<bool> likeVideo(
+    String videoId,
+    String userId, {
+    String source = 'tap',
+    bool backgroundSync = false,
+  }) async {
+    final LikeState currentState = getLikeState(videoId);
+    if (currentState.isLiked && !backgroundSync) {
       debugPrint(
           '💖 StreamersTipLikeService: Already liked, ignoring double-tap');
-      return false; // Already liked, return false to prevent animation
+      return false;
     }
-
-    // Rate limiting
     if (_isRateLimited(videoId)) {
       debugPrint('🚫 StreamersTipLikeService: Rate limited');
       return false;
     }
-
-    // Optimistic update
-    final newState = currentState.copyWith(
-      isLiked: true,
-      likeCount: currentState.likeCount + 1,
-      timestamp: DateTime.now(),
-    );
-    _updateLocalState(videoId, newState);
-
+    if (!backgroundSync) {
+      final LikeState newState = currentState.copyWith(
+        isLiked: true,
+        likeCount: currentState.likeCount + 1,
+        timestamp: DateTime.now(),
+      );
+      _updateLocalState(videoId, newState);
+    }
+    InteractionDiagnostics.logLikeFirestoreStart(videoId: videoId);
     try {
       await _performLikeOperation(videoId, userId, true);
       _lastLikeTimes[videoId] = DateTime.now();
       _trackLikeEngagement(videoId, source);
-      scheduleEngagementGamificationEvent(
-        type: GamificationEventTypes.engagementLikeGiven,
-        entityType: 'video',
-        entityId: videoId,
-        source: 'likes',
-      );
-      unawaited(ProgressionService.instance.markTaskCompleted(
-        userId,
-        ProgressionTaskIds.firstLikeGiven,
-        source: 'likes',
-      ));
+      if (!backgroundSync) {
+        _scheduleLikeGamificationIfEnabled(videoId, userId);
+      }
+      InteractionDiagnostics.logLikeFirestoreDone(videoId: videoId);
+      if (backgroundSync) {
+        _setLocalCacheOnly(
+          videoId,
+          currentState.copyWith(
+            isLiked: true,
+            timestamp: DateTime.now(),
+          ),
+        );
+      }
       debugPrint('💖 StreamersTipLikeService: Video liked successfully');
+      unawaited(
+        CreatorIntelligenceAnalyticsService().trackPostLiked(videoId: videoId),
+      );
       return true;
     } catch (e) {
       debugPrint('⚠️ StreamersTipLikeService: Like sync deferred: $e');
       _enqueueOfflineOperation(videoId, userId, true);
-      return true; // keep optimistic state for persistence
+      return true;
     }
-  }
-
-  /// Double-tap like (returns true if animation should show)
-  Future<bool> doubleTapLike(String videoId, String userId) async {
-    final currentState = getLikeState(videoId);
-
-    // Always show animation for double-tap, even if already liked
-    // This provides better user feedback and feels more responsive
-    if (currentState.isLiked) {
-      debugPrint(
-          '💖 StreamersTipLikeService: Already liked, but showing animation for feedback');
-      // Trigger a brief animation even if already liked
-      _triggerLikeAnimation(videoId);
-      return true; // Show animation for better UX
-    }
-
-    return await likeVideo(videoId, userId, source: 'double_tap');
-  }
-
-  /// Trigger a brief like animation for visual feedback
-  void _triggerLikeAnimation(String videoId) {
-    // This could be used to trigger a subtle animation
-    // even when the video is already liked
-    debugPrint(
-        '✨ StreamersTipLikeService: Triggering like animation for $videoId');
   }
 
   /// Toggle like state (like if not liked, unlike if liked)
@@ -459,20 +530,20 @@ class StreamersTipLikeService extends ChangeNotifier {
   }
 
   /// Unlike a video (idempotent)
-  Future<bool> unlikeVideo(String videoId, String userId) async {
-    // Check if already not liked
-    final currentState = getLikeState(videoId);
-    if (!currentState.isLiked) {
+  Future<bool> unlikeVideo(
+    String videoId,
+    String userId, {
+    bool backgroundSync = false,
+  }) async {
+    final LikeState currentState = getLikeState(videoId);
+    if (!currentState.isLiked && !backgroundSync) {
       debugPrint('💔 StreamersTipLikeService: Not liked, ignoring unlike');
-      return true; // Already not liked, consider it successful
+      return true;
     }
-
-    // TikTok-style: Prevent negative counts - don't unlike if count is already 0
-    if (currentState.likeCount <= 0) {
+    if (currentState.likeCount <= 0 && !backgroundSync) {
       debugPrint(
           '⚠️ StreamersTipLikeService: Cannot unlike - count already at 0 (TikTok-style protection)');
-      // Still mark as not liked locally, but don't decrement count
-      final newState = currentState.copyWith(
+      final LikeState newState = currentState.copyWith(
         isLiked: false,
         likeCount: 0,
         timestamp: DateTime.now(),
@@ -480,26 +551,34 @@ class StreamersTipLikeService extends ChangeNotifier {
       _updateLocalState(videoId, newState);
       return true;
     }
-
-    // Rate limiting
     if (_isRateLimited(videoId)) {
       debugPrint('🚫 StreamersTipLikeService: Rate limited');
       return false;
     }
-
-    // Optimistic update with TikTok-style protection
-    final newLikeCount =
-        (currentState.likeCount - 1).clamp(0, double.infinity).toInt();
-    final newState = currentState.copyWith(
-      isLiked: false,
-      likeCount: newLikeCount,
-      timestamp: DateTime.now(),
-    );
-    _updateLocalState(videoId, newState);
-
+    if (!backgroundSync) {
+      final int newLikeCount =
+          (currentState.likeCount - 1).clamp(0, double.infinity).toInt();
+      final LikeState newState = currentState.copyWith(
+        isLiked: false,
+        likeCount: newLikeCount,
+        timestamp: DateTime.now(),
+      );
+      _updateLocalState(videoId, newState);
+    }
+    InteractionDiagnostics.logLikeFirestoreStart(videoId: videoId);
     try {
       await _performLikeOperation(videoId, userId, false);
       _lastLikeTimes[videoId] = DateTime.now();
+      InteractionDiagnostics.logLikeFirestoreDone(videoId: videoId);
+      if (backgroundSync) {
+        _setLocalCacheOnly(
+          videoId,
+          currentState.copyWith(
+            isLiked: false,
+            timestamp: DateTime.now(),
+          ),
+        );
+      }
       debugPrint('💔 StreamersTipLikeService: Video unliked successfully');
       return true;
     } catch (e) {
@@ -531,8 +610,11 @@ class StreamersTipLikeService extends ChangeNotifier {
         .doc(videoId)
         .collection('byUser')
         .doc(userId);
-    final userRef = _firestore.collection('users').doc(userId);
-    final legacyLikedRef = userRef.collection('likedVideos').doc(videoId);
+    final likedRef = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('likedVideos')
+        .doc(videoId);
     final videoRef = _firestore.collection('videos').doc(videoId);
     final videoLikeRef = videoRef.collection('likes').doc(userId);
 
@@ -566,17 +648,11 @@ class StreamersTipLikeService extends ChangeNotifier {
           SetOptions(merge: true),
         );
         transaction.set(
-          legacyLikedRef,
+          likedRef,
           {
             'videoId': videoId,
+            'userId': userId,
             'likedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-        transaction.set(
-          userRef,
-          {
-            'liked_videos': FieldValue.arrayUnion([videoId]),
             'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -593,15 +669,7 @@ class StreamersTipLikeService extends ChangeNotifier {
       } else {
         transaction.delete(videoLikeRef);
         transaction.delete(legacyLikeRef);
-        transaction.delete(legacyLikedRef);
-        transaction.set(
-          userRef,
-          {
-            'liked_videos': FieldValue.arrayRemove([videoId]),
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        transaction.delete(likedRef);
 
         if (alreadyLiked && videoSnapshot.exists) {
           final nextCount = (currentCount - 1).clamp(0, 1 << 31).toInt();
@@ -682,12 +750,22 @@ class StreamersTipLikeService extends ChangeNotifier {
     });
   }
 
-  /// Update local state and notify listeners
-  void _updateLocalState(String videoId, LikeState newState) {
+  void _setLocalCacheOnly(String videoId, LikeState newState) {
     _localCache[videoId] = newState;
-    _saveCachedState(videoId, newState);
-    notifyListeners();
+    unawaited(_saveCachedState(videoId, newState));
+  }
 
+  /// Update local state and notify listeners
+  void _updateLocalState(
+    String videoId,
+    LikeState newState, {
+    bool notify = true,
+  }) {
+    _localCache[videoId] = newState;
+    unawaited(_saveCachedState(videoId, newState));
+    if (notify && !LikeInteractionBoundary.isActive) {
+      notifyListeners();
+    }
     debugPrint(
         '🔄 StreamersTipLikeService: State updated for $videoId - isLiked: ${newState.isLiked}, likeCount: ${newState.likeCount}');
   }
@@ -798,11 +876,44 @@ class StreamersTipLikeService extends ChangeNotifier {
       }
 
       await Future.wait(futures);
-      notifyListeners();
+      if (!LikeInteractionBoundary.isActive) {
+        notifyListeners();
+      }
       debugPrint('✅ StreamersTipLikeService: Like count sync completed');
     } catch (e) {
       debugPrint('❌ StreamersTipLikeService: Failed to sync like counts: $e');
     }
+  }
+
+  void _scheduleLikeGamificationIfEnabled(String videoId, String userId) {
+    if (!GamificationLikeEventsPolicy.emitOnLike) {
+      return;
+    }
+    if (LikeInteractionBoundary.isActive) {
+      debugPrint('GAMIFICATION_DURING_DOUBLE_TAP video=$videoId');
+    }
+    InteractionDiagnostics.logGamificationEventStart(
+      type: GamificationEventTypes.engagementLikeGiven,
+    );
+    scheduleEngagementGamificationEvent(
+      type: GamificationEventTypes.engagementLikeGiven,
+      entityType: 'video',
+      entityId: videoId,
+      source: 'likes',
+    );
+    unawaited(
+      ProgressionService.instance
+          .markTaskCompleted(
+            userId,
+            ProgressionTaskIds.firstLikeGiven,
+            source: 'likes',
+          )
+          .whenComplete(
+            () => InteractionDiagnostics.logGamificationEventEnd(
+              type: GamificationEventTypes.engagementLikeGiven,
+            ),
+          ),
+    );
   }
 
   /// Track like engagement for analytics
@@ -844,6 +955,8 @@ class StreamersTipLikeService extends ChangeNotifier {
   @override
   void dispose() {
     _offlineTimer?.cancel();
+    _authSubscription?.cancel();
+    _authSubscription = null;
     for (final subscription in _subscriptions.values) {
       subscription.cancel();
     }

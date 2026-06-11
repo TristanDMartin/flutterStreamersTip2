@@ -15,6 +15,7 @@ abstract final class QaKeys {
 
   static const Key authEmailUsernameOption =
       Key('qa_auth_email_username_option');
+  static const Key authAppleOption = Key('qa_auth_apple_option');
   static const Key authLoginEmailOrUsername =
       Key('qa_auth_login_email_or_username');
   static const Key authLoginPassword = Key('qa_auth_login_password');
@@ -30,6 +31,11 @@ abstract final class QaKeys {
   static Key homeFeedVideoPage({
     required String tabId,
     required String videoId,
+    int? index,
   }) =>
-      ValueKey<String>('qa_home_feed_video_page_${tabId}_$videoId');
+      ValueKey<String>(
+        index == null
+            ? 'qa_home_feed_video_page_${tabId}_$videoId'
+            : 'qa_home_feed_video_page_${tabId}_${index}_$videoId',
+      );
 }

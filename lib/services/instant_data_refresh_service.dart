@@ -27,7 +27,11 @@ class InstantDataRefreshService extends ChangeNotifier {
   DateTime? get lastRefreshTime => _lastRefreshTime;
 
   /// Trigger comprehensive data refresh for new account
-  Future<void> refreshAllUserData(WidgetRef? ref) async {
+  Future<void> refreshAllUserData(
+    WidgetRef? ref, {
+    bool clearCaches = true,
+    bool invalidateHomeFeed = true,
+  }) async {
     if (QaRuntime.isMobileFeedE2e) {
       debugPrint(
         '⏭️ E2E: skipping comprehensive data refresh to keep home feed stable',
@@ -46,25 +50,34 @@ class InstantDataRefreshService extends ChangeNotifier {
     debugPrint('🔄 Starting comprehensive data refresh for new account...');
 
     try {
-      // 1. Refresh authentication data
       await _refreshAuthData(ref);
 
-      // 2. Clear all user-specific caches
-      await _clearAllCaches();
+      final bool isWarmStartupPath = !clearCaches && !invalidateHomeFeed;
+      if (isWarmStartupPath) {
+        debugPrint(
+          '⏭️ Warm startup refresh: skipping cache clears and provider '
+          'invalidations (profile listener handles targeted updates)',
+        );
+        debugPrint('✅ Warm startup data refresh completed');
+        return;
+      }
 
-      // 3. Refresh user profile data
+      if (clearCaches) {
+        await _clearAllCaches();
+      } else {
+        debugPrint('⏭️ Skipping cache clear');
+      }
+
       await _refreshUserProfile(ref);
 
-      // 4. Refresh home feed data
-      await _refreshHomeFeed(ref);
+      if (invalidateHomeFeed) {
+        await _refreshHomeFeed(ref);
+      } else {
+        debugPrint('⏭️ Skipping home feed invalidation');
+      }
 
-      // 5. Refresh favorites data
       await _refreshFavorites(ref);
-
-      // 6. Refresh following data
       await _refreshFollowing(ref);
-
-      // 7. Refresh avatar data
       await _refreshAvatarData(ref);
 
       debugPrint('✅ Comprehensive data refresh completed successfully');
@@ -203,20 +216,25 @@ class InstantDataRefreshService extends ChangeNotifier {
     }
   }
 
-  /// Refresh avatar data
+  /// Refresh avatar data only when the stored URL changed.
   Future<void> _refreshAvatarData(WidgetRef? ref) async {
     try {
-      debugPrint('🔄 Refreshing avatar data...');
-
       final currentUser = _auth.currentUser;
-      if (currentUser == null) return;
-
-      // Clear and reload avatar cache for current user
+      if (currentUser == null) {
+        return;
+      }
+      final userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+      if (!userDoc.exists || userDoc.data() == null) {
+        return;
+      }
       final avatarService = UnifiedAvatarService();
-      await avatarService.clearCache(); // Clear all avatar cache
-      // Note: Add user-specific avatar reload methods if needed
-
-      debugPrint('✅ Avatar data refreshed');
+      final bool didRefresh = await avatarService.refreshAvatarIfUrlChanged(
+        userDoc.data()!,
+      );
+      if (didRefresh) {
+        debugPrint('✅ Avatar cache refreshed for URL change');
+      }
     } catch (e) {
       debugPrint('❌ Error refreshing avatar data: $e');
     }

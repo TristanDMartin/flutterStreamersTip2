@@ -37,6 +37,8 @@ abstract final class PlatformRules {
     switch (type.toLowerCase()) {
       case 'twitter':
         return 'x';
+      case 'facebook_gaming':
+        return 'facebook';
       default:
         return type.toLowerCase();
     }

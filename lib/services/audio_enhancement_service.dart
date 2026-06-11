@@ -27,6 +27,7 @@ class AudioEnhancementService {
   bool _hasAudioFocus = false;
   bool _isInitialized = false;
   Future<void>? _initializeFuture;
+  final Set<int> _enhancedControllerIds = <int>{};
 
   /// Initialize the audio enhancement service
   Future<void> initialize() async {
@@ -84,6 +85,11 @@ class AudioEnhancementService {
   /// 🔥 FIX: Added safety checks to prevent "Bad state: No active player" errors
   Future<void> enhanceVideoPlayer(VideoPlayerController player) async {
     try {
+      final int controllerId = player.hashCode;
+      if (_enhancedControllerIds.contains(controllerId)) {
+        return;
+      }
+
       // 🔥 FIX: Validate controller is safe before accessing
       if (!_isControllerSafe(player)) {
         secureLog(
@@ -101,6 +107,7 @@ class AudioEnhancementService {
 
       // Configure player for optimal audio quality
       await _configurePlayerForEnhancement(player);
+      _enhancedControllerIds.add(controllerId);
 
       secureLog(
           '🔊 AudioEnhancementService: Video player enhanced with TikTok-style audio');
@@ -227,6 +234,7 @@ class AudioEnhancementService {
       await releaseAudioFocus();
       _hasAudioFocus = false;
       _isInitialized = false;
+      _enhancedControllerIds.clear();
       secureLog('🔊 AudioEnhancementService: Reset completed');
     } catch (e) {
       secureLog('❌ AudioEnhancementService: Error during reset: $e');

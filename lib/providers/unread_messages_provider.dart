@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Provider that tracks unread message count for the current user
-/// Uses chat-level unreadCount field managed by Cloud Functions
+/// Provider that tracks unread message count for the current user.
+/// Uses chat-level unreadCount field managed by Cloud Functions.
+/// Kept alive so the inbox badge updates on startup without opening Inbox.
 final unreadMessagesProvider = StreamProvider<int>((ref) {
+  ref.keepAlive();
   final currentUser = FirebaseAuth.instance.currentUser;
 
   if (currentUser == null) {

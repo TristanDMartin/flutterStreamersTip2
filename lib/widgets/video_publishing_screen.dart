@@ -44,14 +44,12 @@ import '../features/publish/publish_flow_tokens.dart';
 import '../features/publish/publish_validation_limits.dart';
 import '../features/publish/publish_firestore_fields.dart';
 import '../features/billing/iap_billing_coordinator.dart';
-import '../features/billing/subscription_tier_provider.dart';
-import '../features/billing/get_user_tier.dart';
-import '../features/gamification/models/subscription_plan.dart';
+import '../features/billing/models/subscription_snapshot.dart';
+import '../features/billing/subscription_provider.dart';
 import '../features/tippy/tippy_access.dart';
 import '../features/tippy/tippy_chat_service.dart';
 import '../features/tippy/widgets/tippy_publish_assist_row.dart';
 import '../utils/category_schema.dart';
-import '../components/onboarding/onboarding_mission_actions.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
@@ -114,6 +112,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   // Available categories
   static const List<VideoCategory> _categories = [
+    VideoCategory(
+      id: kDefaultCategoryId,
+      name: kDefaultCategoryName,
+      emoji: '✨',
+      icon: Icons.category_outlined,
+      color: Color(0xFF607D8B),
+    ),
     VideoCategory(
       id: 'gaming',
       name: 'Gaming',
@@ -225,6 +230,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   final Set<String> _selectedPlatforms = <String>{};
   PostSchedule? _schedule;
   String _subscriptionTier = VideoWatermarkService.starterTier;
+  SubscriptionSnapshot? _subscriptionSnapshot;
   bool _isLoadingSubscriptionTier = true;
 
   // Cross-posting state
@@ -327,8 +333,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   int get _selectedPlatformCount => _effectiveSelectedPlatforms.length;
 
-  int get _maxCrossPostPlatforms =>
-      _watermarkService.maxPlatformsForTier(_subscriptionTier);
+  int get _maxCrossPostPlatforms => _watermarkService.maxPlatformsForLimit(
+        _subscriptionSnapshot?.entitlements.maxPlatforms ?? 1,
+      );
 
   bool get _requiresCrossPostWatermark =>
       _watermarkService.shouldApplyWatermarkForTier(
@@ -366,33 +373,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         return;
       }
 
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      final data = doc.data() ?? const <String, dynamic>{};
-      final BillingTierAccess billing =
-          BillingTierAccess.fromUserDocument(data);
-      String resolvedTier = VideoWatermarkService.starterTier;
-      if (billing.usedCanonicalFields) {
-        resolvedTier = subscriptionPlanToApiValue(billing.effectivePlan);
-      } else {
-        final rawTier = (data['subscriptionTier'] as String?)?.toLowerCase();
-        final status = (data['subscriptionStatus'] as String?)?.toLowerCase();
-        const validTiers = {
-          VideoWatermarkService.starterTier,
-          VideoWatermarkService.proTier,
-          VideoWatermarkService.studioTier,
-        };
-        const activeStatuses = {'active', 'trialing', 'past_due'};
-        if (validTiers.contains(rawTier) && activeStatuses.contains(status)) {
-          resolvedTier = rawTier!;
-        }
+      final SubscriptionSnapshot snapshot =
+          await ref.read(subscriptionRepositoryProvider).fetchEntitlements();
+      if (!mounted) {
+        return;
       }
-
-      if (!mounted) return;
       setState(() {
-        _subscriptionTier = resolvedTier;
+        _subscriptionSnapshot = snapshot;
+        _subscriptionTier = snapshot.tierApi;
         _isLoadingSubscriptionTier = false;
       });
     } catch (_) {
@@ -1812,11 +1800,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             : Colors.white38;
     final UserProgressBundle? bundle =
         ref.watch(userProgressBundleProvider).valueOrNull;
-    final BillingTierAccess? billing =
-        ref.watch(billingTierAccessProvider).valueOrNull;
+    final SubscriptionSnapshot? entitlements =
+        ref.watch(subscriptionSnapshotProvider).valueOrNull;
     final bool tippyEnabled = resolveTippyEnabledForPublish(
       bundle: bundle,
-      billing: billing,
+      entitlements: entitlements,
     );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2764,10 +2752,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       return;
     }
 
-    // Validate category
     if (_selectedCategory.isEmpty) {
-      _showUploadErrorDialog(PublishValidationLimits.errorCategory);
-      return;
+      _selectedCategory = kDefaultCategoryId;
     }
 
     // Check network connectivity
@@ -2927,7 +2913,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             name: 'VideoPublishingScreen');
 
         final fileSize = await videoFileToUpload.length();
-        final canonicalCategory = normalizeCategoryId(_selectedCategory);
+        final canonicalCategory =
+            resolveCategoryIdForPublish(_selectedCategory);
 
         // Build cross-post requests for selected platforms.
         final crossPostRequests = _connectedPlatforms
@@ -2958,7 +2945,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                 _subscriptionTier,
                 selectedPlatforms,
               ),
-              PublishFirestoreFields.crossPostSubscriptionTier: _subscriptionTier,
+              PublishFirestoreFields.crossPostSubscriptionTier:
+                  _subscriptionTier,
               'moderation_confidence': moderationResult.confidence,
               'moderation_checked_at': DateTime.now().toIso8601String(),
               'duration': _pendingPost?.effectiveDuration.inSeconds ?? 0,
@@ -2992,9 +2980,6 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             );
           }
           UploadStatusManager().enterProcessing(uploadedVideoId);
-          unawaited(
-            OnboardingMissionActions.complete('upload_first_post'),
-          );
           await _returnToHomeAfterPublish(
             uploadedVideoId: uploadedVideoId,
             privacy: _selectedPrivacy,
@@ -3443,7 +3428,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   thumbnailUrl: thumbnailUrl,
                   caption: _caption,
                   hashtags: _hashtags,
-                  category: normalizeCategoryId(_selectedCategory),
+                  category: resolveCategoryIdForPublish(_selectedCategory),
                   privacy: _selectedPrivacy,
                   allowComments: _allowComments,
                   schedule: _schedule!,
@@ -3458,7 +3443,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                       _subscriptionTier,
                       selectedPlatforms,
                     ),
-                    PublishFirestoreFields.crossPostSubscriptionTier: _subscriptionTier,
+                    PublishFirestoreFields.crossPostSubscriptionTier:
+                        _subscriptionTier,
                   },
                   crossPostRequests: _connectedPlatforms
                       .where((_) => FeatureFlags.crossPostingEnabled)
@@ -3581,6 +3567,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         'videoUrl': videoUrl,
         'thumbnailUrl': thumbnailUrl,
         'caption': _caption,
+        if (_caption.trim().isNotEmpty) 'description': _caption,
         'hashtags': _hashtags,
         'privacy': _selectedPrivacy,
         'visibility': _selectedPrivacy,

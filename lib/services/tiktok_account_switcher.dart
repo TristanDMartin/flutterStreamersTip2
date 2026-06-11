@@ -50,9 +50,29 @@ class TikTokAccountSwitcher extends ChangeNotifier {
   bool get isAnimating => _isAnimating;
   double get switchProgress => _switchProgress;
   bool get hasMultipleAccounts => _savedAccounts.length > 1;
+  Future<void>? _initializationInFlight;
+  Future<void>? _addCurrentAccountInFlight;
+  bool _isInitialized = false;
 
   /// Initialize the account switcher
   Future<void> initialize() async {
+    if (_isInitialized) {
+      return;
+    }
+    final Future<void>? inFlight = _initializationInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final Future<void> initialization = _initializeOnce();
+    _initializationInFlight = initialization;
+    return initialization.whenComplete(() {
+      if (identical(_initializationInFlight, initialization)) {
+        _initializationInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _initializeOnce() async {
     await _loadSavedAccounts();
     _setCurrentAccount();
 
@@ -62,6 +82,7 @@ class TikTokAccountSwitcher extends ChangeNotifier {
           '🔄 Auth state changed in TikTokAccountSwitcher: ${user != null ? 'Logged in' : 'Logged out'}');
       _setCurrentAccount();
     });
+    _isInitialized = true;
   }
 
   /// Load saved accounts from secure storage
@@ -133,6 +154,20 @@ class TikTokAccountSwitcher extends ChangeNotifier {
 
   /// Add current account to saved accounts
   Future<void> addCurrentAccount() async {
+    final Future<void>? inFlight = _addCurrentAccountInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final Future<void> addAccount = _addCurrentAccountOnce();
+    _addCurrentAccountInFlight = addAccount;
+    return addAccount.whenComplete(() {
+      if (identical(_addCurrentAccountInFlight, addAccount)) {
+        _addCurrentAccountInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _addCurrentAccountOnce() async {
     final firebaseUser = _auth.currentUser;
     if (firebaseUser == null) {
       debugPrint('❌ No Firebase user to add to saved accounts');
@@ -254,12 +289,19 @@ class TikTokAccountSwitcher extends ChangeNotifier {
   }
 
   /// Trigger data refresh with WidgetRef for provider invalidation
-  Future<void> triggerDataRefreshWithRef(WidgetRef? ref) async {
+  Future<void> triggerDataRefreshWithRef(
+    WidgetRef? ref, {
+    bool clearCaches = true,
+    bool invalidateHomeFeed = true,
+  }) async {
     debugPrint('🔄 Triggering data refresh with WidgetRef...');
 
     try {
-      // Use the comprehensive data refresh service with WidgetRef
-      await _dataRefreshService.refreshAllUserData(ref);
+      await _dataRefreshService.refreshAllUserData(
+        ref,
+        clearCaches: clearCaches,
+        invalidateHomeFeed: invalidateHomeFeed,
+      );
 
       // Notify all listeners that data has changed
       notifyListeners();

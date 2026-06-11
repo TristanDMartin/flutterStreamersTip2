@@ -9,6 +9,7 @@ import '../../routing/app_navigator.dart';
 import 'content_plan_detail_view.dart';
 import 'content_planning_models.dart';
 import 'content_planning_provider.dart';
+import '../../components/onboarding/contextual_tip_overlay.dart';
 
 EdgeInsets _plannerScrollPadding(BuildContext context) {
   final double bottomInset = MediaQuery.viewPaddingOf(context).bottom;
@@ -42,7 +43,7 @@ class ContentPlannerView extends ConsumerWidget {
   }
 }
 
-class _PlannerScaffold extends StatelessWidget {
+class _PlannerScaffold extends StatefulWidget {
   const _PlannerScaffold({
     required this.snapshot,
     required this.plansAsync,
@@ -54,6 +55,20 @@ class _PlannerScaffold extends StatelessWidget {
   final VoidCallback onRefreshPlans;
 
   @override
+  State<_PlannerScaffold> createState() => _PlannerScaffoldState();
+}
+
+class _PlannerScaffoldState extends State<_PlannerScaffold> {
+  @override
+  void initState() {
+    super.initState();
+    ContextualTipCatalog.scheduleFeatureTipOnMount(
+      context: context,
+      tip: ContextualTipCatalog.contentPlannerTip,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final Color background = shell.scaffold;
@@ -61,10 +76,10 @@ class _PlannerScaffold extends StatelessWidget {
     final Color text = shell.onChrome;
     final Color muted = shell.muted;
 
-    final int queue = snapshot?.scheduledQueueCount ?? 0;
-    final int consistency = snapshot?.consistencyScorePercent ?? 0;
+    final int queue = widget.snapshot?.scheduledQueueCount ?? 0;
+    final int consistency = widget.snapshot?.consistencyScorePercent ?? 0;
     final List<ContentPlan> plans =
-        plansAsync.valueOrNull ?? const <ContentPlan>[];
+        widget.plansAsync.valueOrNull ?? const <ContentPlan>[];
     final DateTime now = DateTime.now();
     final List<ContentPlan> scheduledPlans = plans
         .where((ContentPlan plan) =>
@@ -135,11 +150,11 @@ class _PlannerScaffold extends StatelessWidget {
               _SchedulerEntryCard(card: card, text: text, muted: muted),
               const SizedBox(height: 12),
               _PlansSection(
-                plansAsync: plansAsync,
+                plansAsync: widget.plansAsync,
                 card: card,
                 text: text,
                 muted: muted,
-                onRefresh: onRefreshPlans,
+                onRefresh: widget.onRefreshPlans,
               ),
               if (unscheduledIdeas.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 12),

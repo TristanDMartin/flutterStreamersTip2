@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
+import '../models/creator_profile_snapshot.dart';
 import '../models/home_video.dart';
 import '../models/user_model.dart' as user_model;
 import '../models/network_models.dart' as network_models;
@@ -19,15 +20,15 @@ import '../services/user_blocking_service.dart';
 import '../widgets/status_aware_avatar.dart';
 import '../providers/status_provider.dart';
 import '../routing/app_navigator.dart';
-import '../components/onboarding/product_tour_target_keys.dart';
+import '../routing/app_routes.dart';
+import '../widgets/share_profile_view.dart';
 import '../providers/follow_refresh_provider.dart';
+import '../providers/main_tab_provider.dart';
 import '../providers/video_service_provider.dart' as video_providers;
 import '../constants/app_colors.dart';
 import '../models/creator_activity.dart';
 import '../services/creator_activity_service.dart';
 import '../widgets/creator_activity_badge.dart';
-import '../constants/playback_owners.dart';
-import '../services/global_playback_manager.dart';
 
 class NetworkView extends ConsumerStatefulWidget {
   final String? initialTab;
@@ -106,6 +107,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   StreamSubscription<QuerySnapshot>? _followingSubscription;
   StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription1;
   StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription2;
+  bool _listenersInitialized = false;
+  bool _isRefreshingNetworkData = false;
+  bool _hasInitialNetworkLoad = false;
+  ProviderSubscription<int>? _tabBackgroundRefreshSubscription;
 
   // Error state
   bool _hasShownPermissionError = false;
@@ -116,7 +121,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   bool get _isFirebaseReady => Firebase.apps.isNotEmpty;
 
   @override
-  bool get wantKeepAlive => false; // Don't keep alive when not visible
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -156,32 +161,60 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     // Initialize network connectivity monitoring
     _initializeConnectivityMonitoring();
 
-    // Load users from clean relationship service
-    if (_isFirebaseReady) {
-      _loadUsersFromFollowsService();
-    }
-
-    // Start monitoring when view initializes
     PerformanceMonitoringService().startMonitoring();
-    GlobalPlaybackManager.instance.setVisibleOwner(PlaybackOwners.network);
 
-    // Initialize real-time relationship listeners
     if (_isFirebaseReady) {
-      _initializeRelationshipListeners();
+      unawaited(_bootstrapNetworkData());
     }
+
+    _tabBackgroundRefreshSubscription = ref.listenManual<int>(
+      networkTabBackgroundRefreshProvider,
+      (int? previous, int next) {
+        if (!mounted) {
+          return;
+        }
+        if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+          return;
+        }
+        unawaited(_refreshDataInstantly());
+      },
+    );
   }
 
-  void _logDriftIfAny({int? followersCountDoc, int? followingCountDoc}) {
+  Future<void> _bootstrapNetworkData() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingUsers = true;
+      });
+    }
+    await _runMigrationIfNeeded();
+    _initializeRelationshipListeners();
+    await _loadUsersFromFollowsService();
+  }
+
+  bool get _isNetworkCompletelyEmpty =>
+      _connectionsUsers.isEmpty &&
+      _followersUsers.isEmpty &&
+      _followingUsers.isEmpty;
+
+  void _logDriftIfAny({
+    required int actualFollowersCount,
+    required int actualFollowingCount,
+    int? followersCountDoc,
+    int? followingCountDoc,
+  }) {
     if (followersCountDoc != null &&
-        followersCountDoc != _followersUsers.length) {
+        followersCountDoc != actualFollowersCount) {
       debugPrint(
-        '⚠️ NetworkView: Drift detected - followers doc $followersCountDoc vs list ${_followersUsers.length}',
+        '⚠️ NetworkView: Drift detected - followers doc $followersCountDoc '
+        'vs follows collection $actualFollowersCount',
       );
     }
     if (followingCountDoc != null &&
-        followingCountDoc != _followingUsers.length) {
+        followingCountDoc != actualFollowingCount) {
       debugPrint(
-        '⚠️ NetworkView: Drift detected - following doc $followingCountDoc vs list ${_followingUsers.length}',
+        '⚠️ NetworkView: Drift detected - following doc $followingCountDoc '
+        'vs follows collection $actualFollowingCount',
       );
     }
   }
@@ -204,6 +237,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     _contentTransitionController.dispose();
     // Dispose timers
     _searchTimer?.cancel();
+    _tabBackgroundRefreshSubscription?.close();
 
     super.dispose();
   }
@@ -227,11 +261,20 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   /// Initialize real-time relationship listeners for instant updates (OPTIMIZED)
   void _initializeRelationshipListeners() {
+    if (_listenersInitialized) {
+      return;
+    }
+    _listenersInitialized = true;
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId == null) {
       debugPrint(
         '❌ NetworkView: No current user ID, cannot initialize listeners',
       );
+      if (mounted) {
+        setState(() {
+          _isLoadingUsers = false;
+        });
+      }
       return;
     }
 
@@ -242,6 +285,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     Timer? debounceTimer;
 
     void onFollowsUpdate(QuerySnapshot _) {
+      if (!_hasInitialNetworkLoad) {
+        _hasInitialNetworkLoad = true;
+        unawaited(_refreshDataInstantly());
+        return;
+      }
       debounceTimer?.cancel();
       debounceTimer = Timer(const Duration(milliseconds: 500), () {
         _refreshDataInstantly();
@@ -335,9 +383,17 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     final hasConnection = await _checkNetworkConnectivity();
     if (!hasConnection) {
       _showNetworkError();
+      if (mounted) {
+        setState(() {
+          _isLoadingUsers = false;
+        });
+      }
       return;
     }
 
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _isLoadingUsers = true;
     });
@@ -351,18 +407,25 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
       // Check if migration is needed and run it
       await _runMigrationIfNeeded();
+      if (!mounted) {
+        return;
+      }
 
       final followsSvc = FollowsService();
+      final FollowCounts followCounts =
+          await followsSvc.getFollowCountsForCurrentUser();
+      if (!mounted) {
+        return;
+      }
 
-      // Load all three lists in parallel using the correct tab logic
-      debugPrint(
-        '🔄 NetworkView: Loading connections, followers, and following...',
-      );
       final results = await Future.wait([
         followsSvc.getUsersForTab('connections'),
         followsSvc.getUsersForTab('followers'),
         followsSvc.getUsersForTab('following'),
       ]);
+      if (!mounted) {
+        return;
+      }
 
       debugPrint(
         '📊 NetworkView: Raw results - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}',
@@ -385,6 +448,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           debugPrint('⚠️ NetworkView: Unable to read doc counters: $e');
         }
       }
+      if (!mounted) {
+        return;
+      }
 
       _resetPagination();
 
@@ -397,17 +463,21 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       });
 
       _logDriftIfAny(
+        actualFollowersCount: followCounts.followersCount,
+        actualFollowingCount: followCounts.followingCount,
         followersCountDoc: followersCountDoc,
         followingCountDoc: followingCountDoc,
       );
+      if (currentUserId != null &&
+          ((followersCountDoc != null &&
+                  followersCountDoc != followCounts.followersCount) ||
+              (followingCountDoc != null &&
+                  followingCountDoc != followCounts.followingCount))) {
+        unawaited(followsSvc.repairFollowCountersForUser(currentUserId));
+      }
 
       debugPrint(
         '🎯 NetworkView: Final state - Connections: ${_connectionsUsers.length}, Followers: ${_followersUsers.length}, Following: ${_followingUsers.length}',
-      );
-
-      _logDriftIfAny(
-        followersCountDoc: followersCountDoc,
-        followingCountDoc: followingCountDoc,
       );
 
       // Debug: Print user details with clear section headers
@@ -433,9 +503,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       }
     } catch (e) {
       debugPrint('❌ Error loading users from follows service: $e');
-      setState(() {
-        _isLoadingUsers = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingUsers = false;
+        });
+      }
 
       // Show user-friendly error message
       if (mounted) {
@@ -652,13 +724,12 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      GlobalPlaybackManager.instance.setVisibleOwner(PlaybackOwners.network);
-    });
 
     ref.listen<int>(followRefreshProvider, (previous, next) {
       if (previous == next || !mounted) return;
+      if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+        return;
+      }
       _refreshDataInstantly();
     });
 
@@ -672,7 +743,6 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         }
       },
       child: KeyedSubtree(
-        key: ProductTourTargetKeys.maybe(ProductTourTargetKeys.network),
         child: ColoredBox(
           color: Theme.of(context).scaffoldBackgroundColor,
           child: SafeArea(
@@ -1227,84 +1297,38 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   void _navigateToStreamerCard(user_model.User user) {
-    Future.microtask(() async {
+    HapticFeedback.lightImpact();
+    final String userId =
+        user.id.isNotEmpty ? user.id : user.username;
+    if (userId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to load profile. User record missing.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+    AppNavigator.openStreamerCard(
+      context,
+      userId: userId,
+      initialCreator: CreatorProfileSnapshot.fromNetworkUser(user),
+      currentUserId: FirebaseAuth.instance.currentUser?.uid,
+      onDismiss: () => Navigator.of(context).pop(),
+      onNavigateToTab: (String tabName) {
+        HapticFeedback.lightImpact();
+        _navigateToTab(tabName);
+        Navigator.of(context).pop();
+      },
+    ).then((_) {
       if (mounted) {
-        final userId = await _resolveUserDocumentId(user);
-        if (userId == null) {
-          debugPrint(
-            '❌ NetworkView: Unable to resolve user document for ${user.displayName} (${user.username})',
-          );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Unable to load profile. User record missing.'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
-
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-        if (!mounted) return;
-        AppNavigator.openStreamerCard(
-          context,
-          userId: userId,
-          currentUserId: FirebaseAuth.instance.currentUser?.uid,
-          onDismiss: () => Navigator.of(context).pop(),
-          onNavigateToTab: (tabName) {
-            HapticFeedback.lightImpact();
-            _navigateToTab(tabName);
-            Navigator.of(context).pop();
-          },
-        ).then((_) {
-          if (mounted) {
-            _refreshDataInstantly();
-          }
-        });
+        _refreshDataInstantly();
       }
     });
-  }
-
-  Future<String?> _resolveUserDocumentId(user_model.User user) async {
-    // If the provided ID already looks like a Firestore UID, use it directly
-    if (user.id.isNotEmpty && user.id.length >= 20) {
-      return user.id;
-    }
-
-    try {
-      // Try looking up by username first
-      if (user.username.isNotEmpty) {
-        final usernameQuery = await FirebaseFirestore.instance
-            .collection('users')
-            .where('username', isEqualTo: user.username)
-            .limit(1)
-            .get();
-
-        if (usernameQuery.docs.isNotEmpty) {
-          return usernameQuery.docs.first.id;
-        }
-      }
-
-      // Fallback to display name (exact match)
-      if (user.displayName.isNotEmpty) {
-        final displayNameQuery = await FirebaseFirestore.instance
-            .collection('users')
-            .where('displayName', isEqualTo: user.displayName)
-            .limit(1)
-            .get();
-
-        if (displayNameQuery.docs.isNotEmpty) {
-          return displayNameQuery.docs.first.id;
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ NetworkView: Error resolving user document: $e');
-    }
-
-    return null;
   }
 
   Widget _buildUserCard(user_model.User user) {
@@ -1433,16 +1457,21 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   Widget _buildEmptyState() {
     final Color on = _th.onSurface;
-    final title = _selectedTab == network_models.NetworkTab.followers
-        ? 'No followers yet'
-        : _selectedTab == network_models.NetworkTab.following
-            ? 'You are not following anyone yet'
-            : 'No connections yet';
-    final subtitle = _selectedTab == network_models.NetworkTab.followers
-        ? 'Share your profile and keep posting to grow your audience.'
-        : _selectedTab == network_models.NetworkTab.following
-            ? 'Find creators and friends from Home or Search, then follow them here.'
-            : 'Follow back people who follow you to turn one-way relationships into connections.';
+    final bool isCompletelyEmpty = _isNetworkCompletelyEmpty;
+    final String title = isCompletelyEmpty
+        ? 'Build Your Creator Circle'
+        : _selectedTab == network_models.NetworkTab.followers
+            ? 'No followers yet'
+            : _selectedTab == network_models.NetworkTab.following
+                ? 'You are not following anyone yet'
+                : 'No connections yet';
+    final String subtitle = isCompletelyEmpty
+        ? 'Connect with creators, discover collaborators, and grow together.'
+        : _selectedTab == network_models.NetworkTab.followers
+            ? 'Share your profile and keep posting to grow your audience.'
+            : _selectedTab == network_models.NetworkTab.following
+                ? 'Find creators and friends from Home or Search, then follow them here.'
+                : 'Follow back people who follow you to turn one-way relationships into connections.';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1500,47 +1529,127 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 14),
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _refreshDataInstantly();
-                },
-                child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: AppColors.supportAccentGradient,
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.all(
-                      Radius.circular(18),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.refresh_rounded,
-                        color: _th.onPrimary,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Refresh network',
-                        style: TextStyle(
-                          color: _th.onPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
+              if (isCompletelyEmpty) ...[
+                _buildEmptyStateCta(
+                  label: 'Discover Creators',
+                  icon: Icons.explore_rounded,
+                  isPrimary: true,
+                  onTap: _openDiscoverCreators,
                 ),
-              ),
+                const SizedBox(height: 10),
+                _buildEmptyStateCta(
+                  label: 'Share Profile',
+                  icon: Icons.ios_share_rounded,
+                  isPrimary: false,
+                  onTap: _openShareProfile,
+                ),
+              ] else
+                _buildEmptyStateCta(
+                  label: 'Refresh network',
+                  icon: Icons.refresh_rounded,
+                  isPrimary: true,
+                  onTap: _refreshDataInstantly,
+                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyStateCta({
+    required String label,
+    required IconData icon,
+    required bool isPrimary,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          gradient: isPrimary
+              ? const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+              : null,
+          color: isPrimary ? null : _th.onSurface.withValues(alpha: 0.08),
+          borderRadius: const BorderRadius.all(Radius.circular(18)),
+          border: isPrimary
+              ? null
+              : Border.all(color: _th.onSurface.withValues(alpha: 0.14)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isPrimary ? _th.onPrimary : _th.onSurface,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isPrimary ? _th.onPrimary : _th.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDiscoverCreators() async {
+    await AppNavigator.openDiscover(context);
+    if (mounted) {
+      await _refreshDataInstantly();
+    }
+  }
+
+  Future<void> _openShareProfile() async {
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    Map<String, dynamic> userData = <String, dynamic>{
+      'id': userId,
+      'uid': userId,
+    };
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+      final Map<String, dynamic>? data = doc.data();
+      if (data != null) {
+        userData = <String, dynamic>{
+          ...data,
+          'id': userId,
+          'uid': userId,
+        };
+      }
+    } catch (e) {
+      debugPrint('⚠️ NetworkView: Unable to load profile for share: $e');
+    }
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: AppRoutes.shareProfile),
+        builder: (BuildContext routeContext) => ShareProfileView(
+          user: userData,
+          dismiss: () => Navigator.of(routeContext).pop(),
         ),
       ),
     );
@@ -1850,6 +1959,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   /// Refresh data instantly without showing loading indicator
   Future<void> _refreshDataInstantly() async {
+    if (_isRefreshingNetworkData) {
+      return;
+    }
+    _isRefreshingNetworkData = true;
     if (!_isFirebaseReady) {
       if (mounted) {
         setState(() {
@@ -1859,17 +1972,16 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           _isLoadingUsers = false;
         });
       }
+      _isRefreshingNetworkData = false;
       return;
     }
 
     try {
       debugPrint('🔄 NetworkView: Starting instant data refresh...');
       final followsSvc = FollowsService();
+      final FollowCounts followCounts =
+          await followsSvc.getFollowCountsForCurrentUser();
 
-      // Load all three lists in parallel using the correct tab logic
-      debugPrint(
-        '🔄 NetworkView: Loading connections, followers, and following...',
-      );
       final results = await Future.wait([
         followsSvc.getUsersForTab('connections'),
         followsSvc.getUsersForTab('followers'),
@@ -1877,36 +1989,99 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       ]);
 
       debugPrint(
-        '📊 NetworkView: Data loaded - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}',
+        '📊 NetworkView: Data loaded - Connections: ${results[0].length}, '
+        'Followers: ${results[1].length}, Following: ${results[2].length}',
       );
 
-      // Debug: Print user details
-      debugPrint('🔗 CONNECTIONS (Mutual Follows):');
-      for (int i = 0; i < results[0].length; i++) {
-        debugPrint('  $i: ${results[0][i].displayName} (${results[0][i].id})');
+      final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      int? followersCountDoc;
+      int? followingCountDoc;
+      if (currentUserId != null) {
+        try {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUserId)
+              .get();
+          final data = userDoc.data();
+          if (data != null) {
+            followersCountDoc = UserCountFields.readFollowersCount(data);
+            followingCountDoc = UserCountFields.readFollowingCount(data);
+          }
+        } catch (e) {
+          debugPrint('⚠️ NetworkView: Unable to read doc counters: $e');
+        }
       }
 
-      debugPrint('👥 FOLLOWERS (They follow you):');
-      for (int i = 0; i < results[1].length; i++) {
-        debugPrint('  $i: ${results[1][i].displayName} (${results[1][i].id})');
-      }
-
-      debugPrint('➡️ FOLLOWING (You follow them):');
-      for (int i = 0; i < results[2].length; i++) {
-        debugPrint('  $i: ${results[2][i].displayName} (${results[2][i].id})');
+      _logDriftIfAny(
+        actualFollowersCount: followCounts.followersCount,
+        actualFollowingCount: followCounts.followingCount,
+        followersCountDoc: followersCountDoc,
+        followingCountDoc: followingCountDoc,
+      );
+      if (currentUserId != null &&
+          ((followersCountDoc != null &&
+                  followersCountDoc != followCounts.followersCount) ||
+              (followingCountDoc != null &&
+                  followingCountDoc != followCounts.followingCount))) {
+        unawaited(followsSvc.repairFollowCountersForUser(currentUserId));
       }
 
       if (mounted) {
+        final bool listsChanged = !_networkListsEqual(
+          _connectionsUsers,
+          results[0],
+          _followersUsers,
+          results[1],
+          _followingUsers,
+          results[2],
+        );
         setState(() {
-          _connectionsUsers = results[0];
-          _followersUsers = results[1];
-          _followingUsers = results[2];
+          if (listsChanged) {
+            _connectionsUsers = results[0];
+            _followersUsers = results[1];
+            _followingUsers = results[2];
+          }
+          _isLoadingUsers = false;
         });
-        debugPrint('✅ NetworkView: UI updated with new data');
+        if (listsChanged) {
+          debugPrint('✅ NetworkView: UI updated with new data');
+        }
       }
     } catch (e) {
       debugPrint('❌ NetworkView: Error refreshing data instantly: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingUsers = false;
+        });
+      }
+    } finally {
+      _isRefreshingNetworkData = false;
     }
+  }
+
+  bool _networkListsEqual(
+    List<user_model.User> connectionsA,
+    List<user_model.User> connectionsB,
+    List<user_model.User> followersA,
+    List<user_model.User> followersB,
+    List<user_model.User> followingA,
+    List<user_model.User> followingB,
+  ) {
+    bool idsEqual(List<user_model.User> a, List<user_model.User> b) {
+      if (a.length != b.length) {
+        return false;
+      }
+      for (int i = 0; i < a.length; i++) {
+        if (a[i].id != b[i].id) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    return idsEqual(connectionsA, connectionsB) &&
+        idsEqual(followersA, followersB) &&
+        idsEqual(followingA, followingB);
   }
 
   /// Handle pull-to-refresh action
@@ -1924,7 +2099,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple
@@ -1940,7 +2115,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         return Icons.circle_outlined;
       case UserStatus.busy:
         return Icons.pause_circle;
-      case UserStatus.dnd:
+      case UserStatus.away:
         return Icons.block;
       case UserStatus.streaming:
         return Icons.play_circle;

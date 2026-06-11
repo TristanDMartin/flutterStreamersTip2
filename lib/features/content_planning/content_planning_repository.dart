@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/backend/http_api_base_url.dart';
 import 'content_planning_models.dart';
+import '../../utils/user_profile_firestore.dart';
 
 class ContentPlanningException implements Exception {
   const ContentPlanningException(this.message, {this.statusCode});
@@ -258,6 +259,12 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
       ingest(topSnap);
       final List<ContentPlan> plans = byId.values.toList(growable: false);
       plans.sort(_comparePlans);
+      UserProfileFirestore.logCalendarRead(
+        uid: userId,
+        source: 'ContentPlannerView',
+        count: plans.length,
+        readPath: UserProfileFirestore.contentPlansReadPath(userId),
+      );
       debugPrint(
         'ContentPlannerView loaded ${plans.length} plans; '
         '${plans.where((p) => p.source == 'tippy_ai').length} tippy_ai; '

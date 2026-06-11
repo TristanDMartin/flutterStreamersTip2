@@ -82,19 +82,26 @@ class FakeTippyChatService extends TippyChatService {
 }
 
 void main() {
-  const MeEntitlementsData kMe = MeEntitlementsData(
-    uid: 'test-uid',
-    email: 't@test.com',
-    tier: 'pro',
-    tierSource: 'test',
-    subscriptionStatus: 'active',
-    tippyAi: TippyAiEntitlementPayload(
-      enabled: true,
-      monthlyCredits: 250,
-      remainingCredits: 10,
-      usedCredits: 240,
-      plan: 'pro',
-    ),
+  final MeEntitlementsData kMe = SubscriptionSnapshot.fromResponseJson(
+    <String, dynamic>{
+      'uid': 'test-uid',
+      'email': 't@test.com',
+      'tier': 'pro',
+      'source': 'test',
+      'subscriptionStatus': 'active',
+      'isPaid': true,
+      'creditsLimit': 250,
+      'creditsRemaining': 10,
+      'creditsUsed': 240,
+      'usage': <String, dynamic>{
+        'monthlyCreditsUsed': 240,
+        'monthlyCreditsRemaining': 10,
+      },
+      'entitlements': <String, dynamic>{
+        'monthlyAiCredits': 250,
+        'canUseAICaptionRewrite': true,
+      },
+    },
   );
 
   final UserProgressBundle bundle = UserProgressBundle(

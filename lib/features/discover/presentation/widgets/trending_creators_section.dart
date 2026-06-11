@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../components/onboarding/product_tour_target_keys.dart';
 import '../../../../core/feature_flags.dart';
 import '../../../../core/theme/st_theme_tokens.dart';
 import '../../../../models/trending_creator.dart';
@@ -23,7 +22,7 @@ class TrendingCreatorsSection extends ConsumerWidget {
 
   static const double _gridHPadding = 20;
   static const double _headerBottom = 12;
-  static const double _cardMainExtent = 163;
+  static const double _cardMainExtent = 178;
   static const int _skeletonCount = 6;
 
   @override
@@ -32,9 +31,6 @@ class TrendingCreatorsSection extends ConsumerWidget {
     final ThemeData theme = Theme.of(context);
     final Color onSurface = theme.colorScheme.onSurface;
     return KeyedSubtree(
-      key: ProductTourTargetKeys.maybe(
-        ProductTourTargetKeys.discoverTrending,
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

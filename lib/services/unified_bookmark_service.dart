@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../features/bookmarks/data/calendar_event_bookmark_coordinator.dart';
 import '../features/bookmarks/models/video_bookmark_stream_event.dart';
 import '../models/bookmark_event.dart' as calendar;
+import 'creator_intelligence_analytics_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
 import 'progression_service.dart';
@@ -33,6 +34,8 @@ class UnifiedBookmarkService extends ChangeNotifier {
       StreamController<VideoBookmarkStreamEvent>.broadcast();
   String? _initializedUserId;
   bool _hasLoadedInitialState = false;
+  Future<void>? _initializationInFlight;
+  String? _initializationInFlightUserId;
 
   // Getters
   Stream<VideoBookmarkStreamEvent> get eventStream => _eventController.stream;
@@ -87,6 +90,23 @@ class UnifiedBookmarkService extends ChangeNotifier {
     if (_initializedUserId == userId && _hasLoadedInitialState) {
       return;
     }
+    final Future<void>? inFlight = _initializationInFlight;
+    if (inFlight != null && _initializationInFlightUserId == userId) {
+      return inFlight;
+    }
+
+    final Future<void> initialization = _initializeForUser(userId);
+    _initializationInFlight = initialization;
+    _initializationInFlightUserId = userId;
+    return initialization.whenComplete(() {
+      if (identical(_initializationInFlight, initialization)) {
+        _initializationInFlight = null;
+        _initializationInFlightUserId = null;
+      }
+    });
+  }
+
+  Future<void> _initializeForUser(String userId) async {
     try {
       debugPrint('🔄 UnifiedBookmarkService: Initializing for user $userId');
       if (_initializedUserId != null && _initializedUserId != userId) {
@@ -212,6 +232,10 @@ class UnifiedBookmarkService extends ChangeNotifier {
             entityType: 'video',
             entityId: videoId,
             source: 'bookmarks',
+          );
+          unawaited(
+            CreatorIntelligenceAnalyticsService()
+                .trackPostSaved(videoId: videoId),
           );
           unawaited(ProgressionService.instance.markTaskCompleted(
             currentUser.uid,

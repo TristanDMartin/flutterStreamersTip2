@@ -102,7 +102,7 @@ class ProfileViewWithStatus extends ConsumerWidget {
         return 'Last seen ${_formatLastSeen(presence.lastSeen)}';
       case UserStatus.busy:
         return 'Busy';
-      case UserStatus.dnd:
+      case UserStatus.away:
         return 'Do not disturb';
       case UserStatus.streaming:
         return 'Live streaming';
@@ -224,7 +224,7 @@ class StreamerCardWithStatus extends ConsumerWidget {
         return const Color(0xFF9E9E9E); // Grey
       case UserStatus.busy:
         return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
+      case UserStatus.away:
         return const Color(0xFFF44336); // Red
       case UserStatus.streaming:
         return const Color(0xFF9C27B0); // Purple
@@ -239,7 +239,7 @@ class StreamerCardWithStatus extends ConsumerWidget {
         return 'Offline';
       case UserStatus.busy:
         return 'Busy';
-      case UserStatus.dnd:
+      case UserStatus.away:
         return 'Do not disturb';
       case UserStatus.streaming:
         return 'Live streaming';

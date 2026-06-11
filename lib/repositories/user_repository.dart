@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../models/calendar_event.dart';
+import '../utils/user_profile_firestore.dart';
 
 class UserRepository {
   UserRepository({FirebaseFirestore? firestore})
@@ -27,16 +28,32 @@ class UserRepository {
     List<CalendarEvent> events,
   ) async {
     final List<Map<String, dynamic>> payload =
-        events.map((e) => e.toMap()).toList(growable: false);
-    await _users.doc(uid).update(<String, dynamic>{'calendarEvents': payload});
+        UserProfileFirestore.calendarEventsToFirestore(events);
+    UserProfileFirestore.logCalendarSave(
+      uid: uid,
+      source: 'CalendarCreate',
+      count: payload.length,
+    );
+    await _users.doc(uid).update(<String, dynamic>{
+      UserProfileFirestore.calendarEventsField: payload,
+    });
   }
 
-  List<CalendarEvent> parseCalendarEvents(Map<String, dynamic> userData) {
-    final List<dynamic>? raw = userData['calendarEvents'] as List<dynamic>?;
-    if (raw == null) return <CalendarEvent>[];
-    return raw
-        .whereType<Map<String, dynamic>>()
-        .map(CalendarEvent.fromMap)
-        .toList();
+  List<CalendarEvent> parseCalendarEvents(
+    Map<String, dynamic> userData, {
+    String? uid,
+  }) {
+    final List<CalendarEvent> events =
+        UserProfileFirestore.parseCalendarEventsFromUserData(userData);
+    final String resolvedUid =
+        uid ?? userData['id']?.toString() ?? userData['uid']?.toString() ?? '';
+    if (resolvedUid.isNotEmpty) {
+      UserProfileFirestore.logCalendarRead(
+        uid: resolvedUid,
+        source: 'CalendarView',
+        count: events.length,
+      );
+    }
+    return events;
   }
 }

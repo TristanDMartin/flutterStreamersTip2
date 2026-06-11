@@ -20,11 +20,14 @@ import '../providers/video_service_provider.dart' as providers;
 import 'profile_view/profile_post_count_reconcile.dart';
 import '../routing/app_navigator.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/video_caption_resolver.dart';
 import '../utils/video_document_rules.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
 import 'drafts_sheet_view.dart';
+
+const bool _profileGridBuildDiagnosticsEnabled = false;
 
 // Grid item configuration class
 class GridItem {
@@ -65,6 +68,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   List<Map<String, dynamic>> _lastResolvedDrafts =
       const <Map<String, dynamic>>[];
   bool _bootstrapLoadScheduled = false;
+  bool _profileGridHydrationComplete = false;
   String? _mergedProfileVideosForUserId;
   Set<String> _lastSyncedListenerVideoIds = const <String>{};
   bool _isSelectionMode = false;
@@ -92,7 +96,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       _resetCachedFutures();
       _mergedProfileVideosForUserId = null;
       ref.invalidate(userVideosProvider(widget.userId ?? ''));
-      ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+      ref
+          .read(providers.videoServiceStateProvider.notifier)
+          .loadAllVideos(source: 'profile_optimistic_refresh');
       final String? uid = widget.userId;
       if (uid != null && uid.isNotEmpty) {
         ref
@@ -115,6 +121,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         oldWidget.feedType != widget.feedType) {
       _resetCachedFutures();
       _bootstrapLoadScheduled = false;
+      _profileGridHydrationComplete = false;
       _mergedProfileVideosForUserId = null;
       _lastSyncedListenerVideoIds = const <String>{};
       _primeProfileVideoTab();
@@ -187,6 +194,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       if (!mounted) {
         return;
       }
+      ref
+          .read(providers.videoServiceLoadingProvider.notifier)
+          .setIsLoading(true);
       try {
         await ref
             .read(providers.videoServiceStateProvider.notifier)
@@ -194,10 +204,21 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         if (mounted && _isViewingOwnProfile) {
           await ProfilePostCountReconcile.afterProfileVideoMerge(uid);
         }
+        if (mounted) {
+          setState(() {
+            _profileGridHydrationComplete = true;
+          });
+        }
       } catch (e, stackTrace) {
         if (kDebugMode) {
           debugPrint('❌ ProfileView: mergeProfileVideosForUser failed: $e');
           debugPrint('$stackTrace');
+        }
+      } finally {
+        if (mounted) {
+          ref
+              .read(providers.videoServiceLoadingProvider.notifier)
+              .setIsLoading(false);
         }
       }
     });
@@ -206,10 +227,19 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   void _ensureVideoServiceLoaded() {
     if (!mounted || widget.feedType != ProfileVideoFeedType.videos) return;
 
+    final videoServiceNotifier =
+        ref.read(providers.videoServiceStateProvider.notifier);
     final videoServiceState = ref.read(providers.videoServiceStateProvider);
     final isLoadingVideos = ref.read(providers.videoServiceLoadingProvider);
+    if (videoServiceNotifier.isHydratingFeed) {
+      return;
+    }
     if (videoServiceState.isNotEmpty) {
       _bootstrapLoadScheduled = false;
+      if (_isViewingOwnProfile && !_profileGridHydrationComplete) {
+        _mergedProfileVideosForUserId = null;
+        _mergeProfileVideosForGridIfNeeded();
+      }
       return;
     }
     if (isLoadingVideos || _bootstrapLoadScheduled) {
@@ -230,7 +260,18 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             .setIsLoading(true);
         await ref
             .read(providers.videoServiceStateProvider.notifier)
-            .loadAllVideos();
+            .loadAllVideos(source: 'profile_bootstrap');
+        if (mounted && _isViewingOwnProfile) {
+          _mergedProfileVideosForUserId = null;
+          await ref
+              .read(providers.videoServiceStateProvider.notifier)
+              .mergeProfileVideosForUser(widget.userId ?? '');
+          if (mounted) {
+            setState(() {
+              _profileGridHydrationComplete = true;
+            });
+          }
+        }
       } catch (e, stackTrace) {
         if (kDebugMode) {
           debugPrint('❌ ProfileView: Error bootstrapping videos: $e');
@@ -393,12 +434,17 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         try {
           final videoServiceState =
               ref.watch(providers.videoServiceStateProvider);
+          final videoServiceNotifier =
+              ref.read(providers.videoServiceStateProvider.notifier);
           final isLoadingVideos =
               ref.watch(providers.videoServiceLoadingProvider);
           final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
           final isViewingOwnProfile = currentUser != null &&
               widget.userId != null &&
               widget.userId == currentUser.uid;
+          final bool isVideoServiceBusy =
+              videoServiceNotifier.isHydratingFeed ||
+                  videoServiceNotifier.isMergingProfileVideos;
           _ensureVideoServiceLoaded();
 
           // Watch user videos from centralized VideoService
@@ -414,21 +460,46 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                 ..sort((a, b) => b.createdAt.compareTo(a.createdAt)))
               : <OptimisticVideo>[];
 
-          if (kDebugMode) {
+          final bool isServiceBootstrapping = videoServiceState.isEmpty &&
+              (isLoadingVideos ||
+                  _bootstrapLoadScheduled ||
+                  videoServiceNotifier.isHydratingFeed);
+          final bool isProfileVideoHydrating =
+              widget.feedType == ProfileVideoFeedType.videos &&
+                  widget.userId != null &&
+                  widget.userId!.isNotEmpty &&
+                  userVideos.isEmpty &&
+                  optimisticVideos.isEmpty &&
+                  (videoServiceState.isEmpty ||
+                      !_profileGridHydrationComplete ||
+                      isLoadingVideos ||
+                      isVideoServiceBusy ||
+                      _bootstrapLoadScheduled);
+          if (kDebugMode && !isProfileVideoHydrating) {
             debugPrint(
-                '🎬 ProfileView: Found ${userVideos.length} user videos for userId: ${widget.userId}');
+              '🎬 ProfileView: Found ${userVideos.length} user videos for '
+              'userId: ${widget.userId} (canonical: videos collection, '
+              'filtered by creator.id + feed visibility)',
+            );
             debugPrint(
-                '🎬 ProfileView: Total videos in VideoService: ${videoServiceState.length}');
+              '🎬 ProfileView: Total videos in VideoService: '
+              '${videoServiceState.length} (global for-you feed, all creators)',
+            );
             debugPrint(
-                '🎬 ProfileView: Found ${optimisticVideos.length} optimistic processing videos');
+              '🎬 ProfileView: Found ${optimisticVideos.length} optimistic processing videos',
+            );
           }
-
-          final bool isServiceBootstrapping =
-              videoServiceState.isEmpty && isLoadingVideos;
           final bool shouldShowLoadingPlaceholder = videoServiceState.isEmpty &&
               userVideos.isEmpty &&
               optimisticVideos.isEmpty &&
-              (isLoadingVideos || !isViewingOwnProfile);
+              (isLoadingVideos ||
+                  _bootstrapLoadScheduled ||
+                  videoServiceNotifier.isHydratingFeed ||
+                  !isViewingOwnProfile);
+
+          if (isProfileVideoHydrating) {
+            return _buildLoadingGridPlaceholder();
+          }
 
           // Own profile should stay on one stable grid path instead of bouncing
           // between multiple async sources while VideoService warms up.
@@ -717,7 +788,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
             await ref
                 .read(providers.videoServiceStateProvider.notifier)
-                .loadAllVideos();
+                .loadAllVideos(source: 'profile_refresh');
             break;
         }
       },
@@ -736,9 +807,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           // Show all drafts in the first position (index 0)
           if (drafts.isNotEmpty && index == 0) {
             final firstDraft = drafts[0];
-            if (kDebugMode) {
+            if (kDebugMode && _profileGridBuildDiagnosticsEnabled) {
               debugPrint(
-                  '🎬 ProfileView: Building combined drafts card with ${drafts.length} drafts');
+                'PROFILE_VIDEO_CARD_BUILD id=all_drafts count=${drafts.length}',
+              );
             }
             final draftVideo = HomeVideo(
               id: 'all_drafts',
@@ -774,8 +846,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           final optimisticIndex = index - draftOffset;
           if (optimisticIndex >= 0 &&
               optimisticIndex < optimisticVideos.length) {
-            return _buildOptimisticProcessingCard(
-              optimisticVideos[optimisticIndex],
+            return KeyedSubtree(
+              key: ValueKey<String>(
+                'profile-optimistic-${optimisticVideos[optimisticIndex].videoId}',
+              ),
+              child: _buildOptimisticProcessingCard(
+                optimisticVideos[optimisticIndex],
+              ),
             );
           }
 
@@ -783,7 +860,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           final videoIndex = index - draftOffset - optimisticVideos.length;
           if (videoIndex >= 0 && videoIndex < videos.length) {
             final video = videos[videoIndex];
-            return _buildHomeVideoCard(video, videoIndex, videos);
+            return KeyedSubtree(
+              key: ValueKey<String>('profile-video-${video.id}'),
+              child: _buildHomeVideoCard(video, videoIndex, videos),
+            );
           }
 
           return const SizedBox.shrink();
@@ -1005,7 +1085,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
             await ref
                 .read(providers.videoServiceStateProvider.notifier)
-                .loadAllVideos();
+                .loadAllVideos(source: 'profile_refresh');
             break;
         }
       },
@@ -1024,7 +1104,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           if (video.isDraft == true) {
             return const SizedBox.shrink();
           }
-          return _buildHomeVideoCard(video, index, videos);
+          return KeyedSubtree(
+            key: ValueKey<String>('profile-video-${video.id}'),
+            child: _buildHomeVideoCard(video, index, videos),
+          );
         },
       ),
     );
@@ -1047,7 +1130,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                   v['videoURL'] as String? ?? v['videoUrl'] as String? ?? '',
               thumbnailURL:
                   v['thumbnailURL'] as String? ?? v['thumbnailUrl'] as String?,
-              caption: v['caption'] as String? ?? '',
+              caption: resolveVideoCaptionFromFirestoreData(v),
+              overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(v),
               likes: (v['likes'] as int?) ?? 0,
               comments: (v['comments'] as int?) ?? 0,
               views: (v['views'] as int?) ?? 0,
@@ -1079,7 +1163,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
             await ref
                 .read(providers.videoServiceStateProvider.notifier)
-                .loadAllVideos();
+                .loadAllVideos(source: 'profile_refresh');
             break;
         }
       },
@@ -1094,7 +1178,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         itemCount: videos.length,
         itemBuilder: (context, index) {
           final video = videos[index];
-          return _buildPublishedVideoCard(video, index, videos);
+          final String videoId = video['id'] as String? ?? index.toString();
+          return KeyedSubtree(
+            key: ValueKey<String>('profile-map-video-$videoId'),
+            child: _buildPublishedVideoCard(video, index, videos),
+          );
         },
       ),
     );
@@ -1239,18 +1327,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   Widget _buildHomeVideoCard(
       HomeVideo video, int index, List<HomeVideo> allVideos) {
-    if (kDebugMode) {
-      debugPrint('🎬 ProfileView: Building video card ${video.id}');
-      debugPrint('  - thumbnailURL: "${video.thumbnailURL}"');
-      debugPrint('  - videoURL: "${video.videoURL}"');
-      debugPrint('  - thumbnails: ${video.thumbnails != null ? "YES" : "NO"}');
-      if (video.thumbnails != null) {
-        debugPrint('  - thumbnails.urls: ${video.thumbnails!.urls}');
-        debugPrint(
-            '  - thumbnails.generatedAt: ${video.thumbnails!.generatedAt}');
-      }
-      debugPrint('  - isDraft: ${video.isDraft}');
-      debugPrint('  - createdAt: ${video.createdAt}');
+    if (kDebugMode && _profileGridBuildDiagnosticsEnabled) {
+      debugPrint('PROFILE_VIDEO_CARD_BUILD id=${video.id}');
     }
     final bool isSelected = _selectedVideoIds.contains(video.id);
     final bool selectionActive = _isSelectionMode &&
@@ -1264,6 +1342,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       child: Stack(
         children: <Widget>[
           GridThumbnail(
+            key: ValueKey<String>('profile-grid-thumbnail-${video.id}'),
             video: video,
             aspectRatio: _resolveAspectRatioFromHomeVideo(video),
             onTap: () {
@@ -1346,13 +1425,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       likes: video['likes'] ?? 0,
       comments: video['comments'] ?? 0,
       views: video['views'] ?? 0,
-      caption: video['caption'] ?? '',
+      caption: resolveVideoCaptionFromFirestoreData(video),
+      overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(video),
       duration: video['duration']?.toDouble() ?? 0.0,
       categoryId: video['categoryId'] ?? '',
       createdAt: video['createdAt'],
     );
 
     return GridThumbnail(
+      key: ValueKey<String>('profile-grid-thumbnail-${homeVideo.id}'),
       video: homeVideo,
       aspectRatio: _resolveAspectRatioFromVideoMap(video),
       onTap: () {
@@ -1926,7 +2007,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
               likes: videoMap['likes'] ?? 0,
               comments: videoMap['comments'] ?? 0,
               views: videoMap['views'] ?? 0,
-              caption: videoMap['caption'] ?? '',
+              caption: resolveVideoCaptionFromFirestoreData(videoMap),
+              overlayCaption:
+                  resolveVideoOverlayCaptionFromFirestoreData(videoMap),
               duration: videoMap['duration']?.toDouble() ?? 0.0,
               categoryId: videoMap['categoryId'] ?? '',
               createdAt: videoMap['createdAt'],

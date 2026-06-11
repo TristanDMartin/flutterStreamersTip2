@@ -109,6 +109,7 @@ class UnifiedAlgorithmService {
             await _realtimeTrending.calculateTrendingBoost(video.id);
         final velocityBoost =
             await _velocityScoring.calculateVelocityBoost(video.id);
+        final uploadBoost = _calculateUploadRecencyBoost(video);
 
         // Base score (from existing ML score or default)
         double baseScore = video.mlScore;
@@ -118,7 +119,8 @@ class UnifiedAlgorithmService {
             creatorBoost *
             networkBoost *
             trendingBoost *
-            velocityBoost;
+            velocityBoost *
+            uploadBoost;
 
         // Cap at reasonable max
         finalScore = finalScore.clamp(0.0, 500.0);
@@ -132,6 +134,7 @@ class UnifiedAlgorithmService {
             networkBoost: networkBoost,
             trendingBoost: trendingBoost,
             velocityBoost: velocityBoost,
+            uploadBoost: uploadBoost,
             finalScore: finalScore,
           ),
         ));
@@ -141,7 +144,8 @@ class UnifiedAlgorithmService {
             'creator: ${creatorBoost.toStringAsFixed(2)}x, '
             'network: ${networkBoost.toStringAsFixed(2)}x, '
             'trending: ${trendingBoost.toStringAsFixed(2)}x, '
-            'velocity: ${velocityBoost.toStringAsFixed(2)}x)');
+            'velocity: ${velocityBoost.toStringAsFixed(2)}x, '
+            'upload: ${uploadBoost.toStringAsFixed(2)}x)');
       } catch (e) {
         secureLog('❌ Error scoring video ${video.id}: $e');
         // Add with base score if scoring fails
@@ -154,15 +158,29 @@ class UnifiedAlgorithmService {
             networkBoost: 1.0,
             trendingBoost: 1.0,
             velocityBoost: 1.0,
+            uploadBoost: 1.0,
             finalScore: video.mlScore,
           ),
         ));
       }
     }
 
-    // 🚀 NEWEST FIRST: Sort by creation date first (newest first), then by score
-    // This ensures newest videos always appear first, with scoring as secondary factor
+    // Fresh uploads (<30 min) always rank above older content.
     scoredVideos.sort((a, b) {
+      final bool aFresh = _isFreshUpload(a.video);
+      final bool bFresh = _isFreshUpload(b.video);
+      if (aFresh && !bFresh) {
+        return -1;
+      }
+      if (!aFresh && bFresh) {
+        return 1;
+      }
+      if (aFresh && bFresh) {
+        final int aTime = a.video.createdAt?.millisecondsSinceEpoch ?? 0;
+        final int bTime = b.video.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime);
+      }
+
       final aTime = a.video.createdAt?.millisecondsSinceEpoch ?? 0;
       final bTime = b.video.createdAt?.millisecondsSinceEpoch ?? 0;
 
@@ -306,6 +324,31 @@ class UnifiedAlgorithmService {
     secureLog('🎬 Ending session');
     await _advancedEngagement.endSession();
   }
+
+  double _calculateUploadRecencyBoost(HomeVideo video) {
+    if (video.createdAt == null) {
+      return 1.0;
+    }
+    final int ageMinutes =
+        DateTime.now().difference(video.createdAt!.toDate()).inMinutes;
+    if (ageMinutes <= 30) {
+      return 3.0;
+    }
+    if (ageMinutes <= 60) {
+      return 2.0;
+    }
+    if (ageMinutes <= 24 * 60) {
+      return 1.5;
+    }
+    return 1.0;
+  }
+
+  bool _isFreshUpload(HomeVideo video) {
+    if (video.createdAt == null) {
+      return false;
+    }
+    return DateTime.now().difference(video.createdAt!.toDate()).inMinutes <= 30;
+  }
 }
 
 /// Scored video model
@@ -328,6 +371,7 @@ class ScoreBreakdown {
   final double networkBoost;
   final double trendingBoost;
   final double velocityBoost;
+  final double uploadBoost;
   final double finalScore;
 
   ScoreBreakdown({
@@ -336,6 +380,7 @@ class ScoreBreakdown {
     required this.networkBoost,
     required this.trendingBoost,
     required this.velocityBoost,
+    required this.uploadBoost,
     required this.finalScore,
   });
 
@@ -345,6 +390,7 @@ class ScoreBreakdown {
         'networkBoost': networkBoost,
         'trendingBoost': trendingBoost,
         'velocityBoost': velocityBoost,
+        'uploadBoost': uploadBoost,
         'finalScore': finalScore,
       };
 }

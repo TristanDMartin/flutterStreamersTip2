@@ -6,242 +6,286 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/profile_video.dart';
 import '../models/insights_data.dart';
 import '../models/user.dart' as app_user;
+import '../utils/insights_metrics.dart';
 import 'package:streamers_tip/utils/app_log.dart';
 
-/// Firebase service for handling Insights data and ProfileVideo operations
+class CreatorInsightsSnapshot {
+  const CreatorInsightsSnapshot({
+    required this.insights,
+    required this.video,
+    required this.lastUpdated,
+    required this.isLive,
+  });
+
+  final InsightsData insights;
+  final ProfileVideo video;
+  final DateTime lastUpdated;
+  final bool isLive;
+}
+
+/// Firebase-backed creator video insights — videos doc is source of truth for counters.
 class InsightsFirebaseService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
 
-  // Cache for performance
   final Map<String, List<ProfileVideo>> _userVideosCache = {};
   final Map<String, InsightsData> _insightsCache = {};
+  final Map<String, Map<String, dynamic>> _videoInsightsRawCache = {};
 
   bool _isLoading = false;
   String? _errorMessage;
 
-  // Getters
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  /// Get current user's profile videos for insights
-  Future<List<ProfileVideo>> getUserProfileVideos(
-      {bool forceRefresh = false}) async {
-    final currentUser = _auth.currentUser;
+  Future<List<ProfileVideo>> getUserProfileVideos({
+    bool forceRefresh = false,
+  }) async {
+    final firebase_auth.User? currentUser = _auth.currentUser;
     if (currentUser == null) {
       _setError('User not authenticated');
-      return [];
+      return <ProfileVideo>[];
     }
-
-    final userId = currentUser.uid;
-
-    // Return cached data if available and not forcing refresh
+    final String userId = currentUser.uid;
     if (!forceRefresh && _userVideosCache.containsKey(userId)) {
       return _userVideosCache[userId]!;
     }
-
     _setLoading(true);
-
     try {
-      final querySnapshot = await _firestore
+      final QuerySnapshot<Map<String, dynamic>> querySnapshot = await _firestore
           .collection('videos')
           .where('creatorId', isEqualTo: userId)
           .orderBy('createdAt', descending: true)
-          .limit(50) // Limit to recent 50 videos for performance
+          .limit(50)
           .get();
-
-      final videos = <ProfileVideo>[];
-
-      for (final doc in querySnapshot.docs) {
-        final data = doc.data();
-        final video = _mapToProfileVideo(doc.id, data);
+      final List<ProfileVideo> videos = <ProfileVideo>[];
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in querySnapshot.docs) {
+        final ProfileVideo? video = _mapToProfileVideo(doc.id, doc.data());
         if (video != null) {
           videos.add(video);
         }
       }
-
-      // Cache the results
       _userVideosCache[userId] = videos;
       _clearError();
-
       return videos;
     } catch (e) {
       _setError('Failed to load videos: ${e.toString()}');
-      return [];
+      return <ProfileVideo>[];
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Get insights data for a specific video
-  Future<InsightsData?> getVideoInsights(String videoId) async {
-    // Return cached data if available
-    if (_insightsCache.containsKey(videoId)) {
-      return _insightsCache[videoId];
-    }
-
-    _setLoading(true);
-
-    try {
-      // Get video analytics data
-      final analyticsDoc =
-          await _firestore.collection('videoAnalytics').doc(videoId).get();
-
-      if (!analyticsDoc.exists) {
-        _setError('No analytics data available for this video');
-        return null;
-      }
-
-      final analyticsData = analyticsDoc.data()!;
-
-      // Get additional insights data (demographics, traffic sources, etc.)
-      final insightsDoc =
-          await _firestore.collection('videoInsights').doc(videoId).get();
-
-      final insightsData = insightsDoc.exists
-          ? (insightsDoc.data() ?? <String, dynamic>{})
-          : <String, dynamic>{};
-
-      // Build comprehensive insights data
-      final insights = _buildInsightsData(videoId, analyticsData, insightsData);
-
-      // Cache the results
-      _insightsCache[videoId] = insights;
-      _clearError();
-
-      return insights;
-    } catch (e) {
-      _setError('Failed to load insights: ${e.toString()}');
+  Future<ProfileVideo?> getProfileVideo(String videoId) async {
+    final DocumentSnapshot<Map<String, dynamic>> doc =
+        await _firestore.collection('videos').doc(videoId).get();
+    if (!doc.exists) {
       return null;
-    } finally {
-      _setLoading(false);
+    }
+    return _mapToProfileVideo(doc.id, doc.data() ?? <String, dynamic>{});
+  }
+
+  Future<void> assertCurrentUserOwnsVideo(String videoId) async {
+    final firebase_auth.User? user = _auth.currentUser;
+    if (user == null) {
+      throw StateError('You must be signed in to view insights.');
+    }
+    final DocumentSnapshot<Map<String, dynamic>> doc =
+        await _firestore.collection('videos').doc(videoId).get();
+    if (!doc.exists) {
+      throw StateError('Video not found.');
+    }
+    final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
+    final String? creatorId = data['creatorId'] as String? ??
+        data['userId'] as String? ??
+        data['uid'] as String?;
+    if (creatorId != user.uid) {
+      throw StateError('You can only view insights for your own videos.');
     }
   }
 
-  /// Listen to real-time insights updates
-  Stream<InsightsData?> listenToVideoInsights(String videoId) {
-    return _firestore
-        .collection('videoAnalytics')
-        .doc(videoId)
-        .snapshots()
-        .map((snapshot) {
-      if (!snapshot.exists) return null;
-
-      final analyticsData = snapshot.data()!;
-
-      // Get cached insights data for additional fields
-      final cachedInsights = _insightsCache[videoId];
-      final additionalData =
-          cachedInsights != null ? <String, dynamic>{} : <String, dynamic>{};
-
-      final insights =
-          _buildInsightsData(videoId, analyticsData, additionalData);
-
-      // Update cache
-      _insightsCache[videoId] = insights;
-
-      return insights;
-    });
+  Future<CreatorInsightsSnapshot?> getCreatorInsights({
+    required String videoId,
+    required int analyticsWindowDays,
+  }) async {
+    await assertCurrentUserOwnsVideo(videoId);
+    final ProfileVideo? video = await getProfileVideo(videoId);
+    if (video == null) {
+      return null;
+    }
+    final DocumentSnapshot<Map<String, dynamic>> analyticsDoc =
+        await _firestore.collection('videoAnalytics').doc(videoId).get();
+    final DocumentSnapshot<Map<String, dynamic>> insightsDoc =
+        await _firestore.collection('videoInsights').doc(videoId).get();
+    final Map<String, dynamic> videoData =
+        (await _firestore.collection('videos').doc(videoId).get()).data() ??
+            <String, dynamic>{};
+    final Map<String, dynamic> insightsRaw = insightsDoc.exists
+        ? (insightsDoc.data() ?? <String, dynamic>{})
+        : <String, dynamic>{};
+    _videoInsightsRawCache[videoId] = insightsRaw;
+    final InsightsData insights = _buildInsightsData(
+      videoId: videoId,
+      videoData: videoData,
+      analyticsData: analyticsDoc.data(),
+      insightsData: insightsRaw,
+      analyticsWindowDays: analyticsWindowDays,
+    );
+    _insightsCache[videoId] = insights;
+    return CreatorInsightsSnapshot(
+      insights: insights,
+      video: video,
+      lastUpdated: DateTime.now(),
+      isLive: true,
+    );
   }
 
-  /// Create or update insights data for a video
+  Stream<CreatorInsightsSnapshot?> watchCreatorInsights({
+    required String videoId,
+    required int analyticsWindowDays,
+  }) {
+    return _firestore.collection('videos').doc(videoId).snapshots().asyncMap(
+      (DocumentSnapshot<Map<String, dynamic>> videoSnapshot) async {
+        if (!videoSnapshot.exists) {
+          return null;
+        }
+        try {
+          await assertCurrentUserOwnsVideo(videoId);
+        } catch (_) {
+          return null;
+        }
+        final Map<String, dynamic> videoData =
+            videoSnapshot.data() ?? <String, dynamic>{};
+        final ProfileVideo? video = _mapToProfileVideo(videoId, videoData);
+        if (video == null) {
+          return null;
+        }
+        final DocumentSnapshot<Map<String, dynamic>> analyticsDoc =
+            await _firestore.collection('videoAnalytics').doc(videoId).get();
+        final DocumentSnapshot<Map<String, dynamic>> insightsDoc =
+            await _firestore.collection('videoInsights').doc(videoId).get();
+        final Map<String, dynamic> insightsRaw = insightsDoc.exists
+            ? (insightsDoc.data() ?? <String, dynamic>{})
+            : _videoInsightsRawCache[videoId] ?? <String, dynamic>{};
+        _videoInsightsRawCache[videoId] = insightsRaw;
+        final InsightsData insights = _buildInsightsData(
+          videoId: videoId,
+          videoData: videoData,
+          analyticsData: analyticsDoc.data(),
+          insightsData: insightsRaw,
+          analyticsWindowDays: analyticsWindowDays,
+        );
+        _insightsCache[videoId] = insights;
+        return CreatorInsightsSnapshot(
+          insights: insights,
+          video: video,
+          lastUpdated: DateTime.now(),
+          isLive: true,
+        );
+      },
+    );
+  }
+
+  Future<InsightsData?> getVideoInsights(String videoId) async {
+    final CreatorInsightsSnapshot? snapshot = await getCreatorInsights(
+      videoId: videoId,
+      analyticsWindowDays: 7,
+    );
+    return snapshot?.insights;
+  }
+
+  Stream<InsightsData?> listenToVideoInsights(String videoId) {
+    return watchCreatorInsights(videoId: videoId, analyticsWindowDays: 7)
+        .map((CreatorInsightsSnapshot? value) => value?.insights);
+  }
+
   Future<void> updateVideoInsights(
-      String videoId, Map<String, dynamic> insightsData) async {
+    String videoId,
+    Map<String, dynamic> insightsData,
+  ) async {
     try {
       await _firestore
           .collection('videoInsights')
           .doc(videoId)
           .set(insightsData, SetOptions(merge: true));
-
-      // Clear cache to force refresh
       _insightsCache.remove(videoId);
+      _videoInsightsRawCache.remove(videoId);
     } catch (e) {
       _setError('Failed to update insights: ${e.toString()}');
     }
   }
 
-  /// Get aggregated insights for multiple videos
   Future<Map<String, InsightsData>> getBatchInsights(
-      List<String> videoIds) async {
-    final results = <String, InsightsData>{};
-
+    List<String> videoIds,
+  ) async {
+    final Map<String, InsightsData> results = <String, InsightsData>{};
     _setLoading(true);
-
     try {
-      // Fetch all analytics in batch
-      final analyticsSnapshot = await _firestore
-          .collection('videoAnalytics')
-          .where(FieldPath.documentId, whereIn: videoIds)
-          .get();
-
-      for (final doc in analyticsSnapshot.docs) {
-        final videoId = doc.id;
-        final analyticsData = doc.data();
-
-        final insights =
-            _buildInsightsData(videoId, analyticsData, <String, dynamic>{});
-        results[videoId] = insights;
-
-        // Cache the results
-        _insightsCache[videoId] = insights;
+      for (final String videoId in videoIds) {
+        final CreatorInsightsSnapshot? snapshot = await getCreatorInsights(
+          videoId: videoId,
+          analyticsWindowDays: 7,
+        );
+        if (snapshot != null) {
+          results[videoId] = snapshot.insights;
+        }
       }
-
       _clearError();
       return results;
     } catch (e) {
       _setError('Failed to load batch insights: ${e.toString()}');
-      return {};
+      return <String, InsightsData>{};
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Clear cache for a specific user
   void clearUserCache(String userId) {
     _userVideosCache.remove(userId);
   }
 
-  /// Clear all cache
   void clearAllCache() {
     _userVideosCache.clear();
     _insightsCache.clear();
+    _videoInsightsRawCache.clear();
   }
 
-  // Private helper methods
-
-  ProfileVideo? _mapToProfileVideo(String videoId, Map<String, dynamic> data) {
+  ProfileVideo? _mapToProfileVideo(
+    String videoId,
+    Map<String, dynamic> data,
+  ) {
     try {
-      // Get creator data
-      final creatorId = data['creatorId'] as String?;
-      if (creatorId == null) return null;
-
-      // For now, create a minimal user object
-      // In production, you might want to fetch full user data
-      final creator = app_user.User(
+      final String? creatorId = data['creatorId'] as String?;
+      if (creatorId == null) {
+        return null;
+      }
+      final Timestamp? createdAtRaw = data['createdAt'] as Timestamp?;
+      if (createdAtRaw == null) {
+        return null;
+      }
+      final app_user.User creator = app_user.User(
         id: creatorId,
         username: data['creatorUsername'] ?? 'unknown',
         displayName: data['creatorDisplayName'] ?? 'Unknown User',
       );
-
       return ProfileVideo(
         id: videoId,
         creator: creator,
         videoURL: resolveVideoUrl(data),
-        thumbnailURL: data['thumbnailUrl'] ??
-            data[
-                'thumbnailURL'], // Try lowercase first, then uppercase for backwards compatibility
+        thumbnailURL: data['thumbnailUrl'] ?? data['thumbnailURL'],
         duration: (data['duration'] ?? 0.0).toDouble(),
         caption: data['caption'] ?? '',
-        createdAt: (data['createdAt'] as Timestamp).toDate(),
-        likes: data['likes'] ?? 0,
-        comments: data['comments'] ?? 0,
-        views: data['views'] ?? 0,
-        shares: data['shares'] ?? 0,
-        isLiked: data['isLiked'] ?? false,
-        isFavorited: data['isFavorited'] ?? false, // cSpell:ignore Favorited
-        isDraft: data['isDraft'] ?? false,
+        createdAt: createdAtRaw.toDate(),
+        likes: _readInt(data['likes']),
+        comments: _readInt(data['comments']),
+        views: _readInt(data['views']),
+        shares: _readInt(data['shares']),
+        isLiked: data['isLiked'] == true,
+        isFavorited: data['isFavorited'] == true,
+        isDraft: data['isDraft'] == true,
         mlScore: (data['mlScore'] ?? 0.0).toDouble(),
-        categoryId: data['categoryId'] ?? '',
+        categoryId: data['categoryId']?.toString() ?? '',
       );
     } catch (e) {
       if (kDebugMode) {
@@ -251,42 +295,56 @@ class InsightsFirebaseService extends ChangeNotifier {
     }
   }
 
-  InsightsData _buildInsightsData(String videoId,
-      Map<String, dynamic> analyticsData, Map<String, dynamic> insightsData) {
-    final views = analyticsData['views'] ?? 0;
-    final likes = analyticsData['likes'] ?? 0;
-    final comments = analyticsData['comments'] ?? 0;
-    final shares = analyticsData['shares'] ?? 0;
-    final watchTime = (analyticsData['watchTime'] ?? 0.0).toDouble();
-    final uniqueViewers = analyticsData['uniqueViewers'] ?? 0;
-    final engagementRate = (analyticsData['engagementRate'] ?? 0.0).toDouble();
-    final retentionRate = (analyticsData['retentionRate'] ?? 0.0).toDouble();
-
+  InsightsData _buildInsightsData({
+    required String videoId,
+    required Map<String, dynamic> videoData,
+    required Map<String, dynamic>? analyticsData,
+    required Map<String, dynamic> insightsData,
+    required int analyticsWindowDays,
+  }) {
+    final Map<String, dynamic> analytics =
+        analyticsData ?? <String, dynamic>{};
+    final int views = _readInt(analytics['views'], fallback: _readInt(videoData['views']));
+    final int likes = _readInt(analytics['likes'], fallback: _readInt(videoData['likes']));
+    final int comments =
+        _readInt(analytics['comments'], fallback: _readInt(videoData['comments']));
+    final int shares =
+        _readInt(analytics['shares'], fallback: _readInt(videoData['shares']));
+    final int bookmarks = _readInt(
+      analytics['favorites'] ?? analytics['bookmarks'],
+      fallback: _readInt(videoData['bookmarks'] ?? videoData['favorites']),
+    );
+    final double watchTime =
+        _readDouble(analytics['watchTime'] ?? analytics['totalWatchTime']);
+    final int uniqueViewers = _readInt(analytics['uniqueViewers']);
+    final double retentionRate = _readDouble(analytics['retentionRate']);
+    final double engagementRate = views > 0
+        ? InsightsMetrics.engagementRatePercent(
+            views: views,
+            likes: likes,
+            comments: comments,
+            shares: shares,
+            bookmarks: bookmarks,
+          ) / 100
+        : _readDouble(analytics['engagementRate']);
+    final int windowDays = analyticsWindowDays < 7 ? 7 : analyticsWindowDays;
     return InsightsData(
       videoId: videoId,
-      dateRange: DateTime.now().subtract(const Duration(days: 7)),
+      dateRange: DateTime.now().subtract(Duration(days: windowDays)),
       overview: OverviewMetrics(
         totalViews: views,
-        totalWatchTime: Duration(seconds: watchTime.toInt()),
+        totalWatchTime: Duration(seconds: watchTime.round()),
         shares: shares,
         comments: comments,
-        retentionRate: retentionRate,
+        retentionRate: retentionRate.clamp(0.0, 1.0),
         trafficSources: _buildTrafficSources(insightsData),
         searchQueries: _buildSearchQueries(insightsData),
       ),
       viewers: ViewerMetrics(
         totalViews: views,
         uniqueViewers: uniqueViewers,
-        viewerTypes: ViewerTypes(
-          newViewers: (uniqueViewers * 0.6).round(),
-          returningViewers: (uniqueViewers * 0.4).round(),
-        ),
-        genderBreakdown: GenderBreakdown(
-          male: (uniqueViewers * 0.5).round(),
-          female: (uniqueViewers * 0.4).round(),
-          other: (uniqueViewers * 0.1).round(),
-          unknown: 0,
-        ),
+        viewerTypes: _buildViewerTypes(insightsData),
+        genderBreakdown: _buildGenderBreakdown(insightsData),
         ageGroups: _buildAgeGroups(insightsData),
         topLocations: _buildTopLocations(insightsData),
       ),
@@ -294,81 +352,153 @@ class InsightsFirebaseService extends ChangeNotifier {
         likes: likes,
         comments: comments,
         shares: shares,
-        favorites: insightsData['favorites'] ?? 0,
+        favorites: bookmarks,
         engagementRate: engagementRate,
         trends: _buildEngagementTrends(insightsData),
       ),
     );
   }
 
+  ViewerTypes _buildViewerTypes(Map<String, dynamic> data) {
+    final Map<String, dynamic>? raw =
+        data['viewerTypes'] is Map<String, dynamic>
+            ? data['viewerTypes'] as Map<String, dynamic>
+            : null;
+    return ViewerTypes(
+      newViewers: _readInt(raw?['newViewers'] ?? data['newViewers']),
+      returningViewers:
+          _readInt(raw?['returningViewers'] ?? data['returningViewers']),
+    );
+  }
+
+  GenderBreakdown _buildGenderBreakdown(Map<String, dynamic> data) {
+    final Map<String, dynamic>? raw =
+        data['genderBreakdown'] is Map<String, dynamic>
+            ? data['genderBreakdown'] as Map<String, dynamic>
+            : data['gender'] is Map<String, dynamic>
+                ? data['gender'] as Map<String, dynamic>
+                : null;
+    return GenderBreakdown(
+      male: _readInt(raw?['male']),
+      female: _readInt(raw?['female']),
+      other: _readInt(raw?['other']),
+      unknown: _readInt(raw?['unknown']),
+    );
+  }
+
   List<TrafficSource> _buildTrafficSources(Map<String, dynamic> data) {
-    final sources = data['trafficSources'] as List<dynamic>? ?? [];
-    return sources.map((source) {
-      return TrafficSource(
-        source: source['source'] ?? 'Unknown',
-        views: source['views'] ?? 0,
-        percentage: (source['percentage'] ?? 0.0).toDouble(),
-      );
-    }).toList();
+    final List<dynamic> sources = data['trafficSources'] as List<dynamic>? ?? [];
+    return sources
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (Map<String, dynamic> source) => TrafficSource(
+            source: source['source']?.toString() ?? 'Unknown',
+            views: _readInt(source['views']),
+            percentage: _readDouble(source['percentage']),
+          ),
+        )
+        .where((TrafficSource source) => source.views > 0)
+        .toList();
   }
 
   List<String> _buildSearchQueries(Map<String, dynamic> data) {
-    return List<String>.from(data['searchQueries'] ?? []);
+    return List<String>.from(data['searchQueries'] ?? <dynamic>[]);
   }
 
   List<AgeGroup> _buildAgeGroups(Map<String, dynamic> data) {
-    final ageData = data['ageGroups'] as Map<String, dynamic>? ??
-        {
-          '18-24': 0,
-          '25-34': 0,
-          '35-44': 0,
-          '45-54': 0,
-          '55+': 0,
-        };
-
-    return ageData.entries.map((entry) {
-      final count = entry.value as int;
-      final total = ageData.values
-          .fold<int>(0, (totalSum, value) => totalSum + (value as int));
-      final percentage = total > 0 ? (count / total) * 100 : 0.0;
-
-      return AgeGroup(
-        range: entry.key,
-        count: count,
-        percentage: percentage,
-      );
-    }).toList();
+    final Object? raw = data['ageGroups'];
+    if (raw is! Map) {
+      return const <AgeGroup>[];
+    }
+    final Map<String, dynamic> ageData = Map<String, dynamic>.from(raw);
+    final int total = ageData.values.fold<int>(
+      0,
+      (int sum, dynamic value) => sum + _readInt(value),
+    );
+    if (total <= 0) {
+      return const <AgeGroup>[];
+    }
+    return ageData.entries
+        .map((MapEntry<String, dynamic> entry) {
+          final int count = _readInt(entry.value);
+          return AgeGroup(
+            range: entry.key,
+            count: count,
+            percentage: total > 0 ? (count / total) * 100 : 0,
+          );
+        })
+        .where((AgeGroup group) => group.count > 0)
+        .toList();
   }
 
   List<Location> _buildTopLocations(Map<String, dynamic> data) {
-    final locationData = data['countries'] as Map<String, dynamic>? ?? {};
-
-    return locationData.entries.map((entry) {
-      final views = entry.value as int;
-      final total = locationData.values
-          .fold<int>(0, (totalSum, value) => totalSum + (value as int));
-      final percentage = total > 0 ? (views / total) * 100 : 0.0;
-
-      return Location(
-        name: entry.key,
-        views: views,
-        percentage: percentage,
-      );
-    }).toList();
+    final Object? raw = data['countries'] ?? data['topLocations'];
+    if (raw is! Map) {
+      return const <Location>[];
+    }
+    final Map<String, dynamic> locationData = Map<String, dynamic>.from(raw);
+    final int total = locationData.values.fold<int>(
+      0,
+      (int sum, dynamic value) => sum + _readInt(value),
+    );
+    if (total <= 0) {
+      return const <Location>[];
+    }
+    return locationData.entries
+        .map((MapEntry<String, dynamic> entry) {
+          final int views = _readInt(entry.value);
+          return Location(
+            name: entry.key,
+            views: views,
+            percentage: total > 0 ? (views / total) * 100 : 0,
+          );
+        })
+        .where((Location location) => location.views > 0)
+        .toList();
   }
 
   List<EngagementTrend> _buildEngagementTrends(Map<String, dynamic> data) {
-    final trendsData = data['dailyEngagement'] as List<dynamic>? ?? [];
+    final List<dynamic> trendsData =
+        data['dailyEngagement'] as List<dynamic>? ?? <dynamic>[];
+    return trendsData
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (Map<String, dynamic> day) => EngagementTrend(
+            date: DateTime.tryParse(day['date']?.toString() ?? '') ??
+                DateTime.now(),
+            likes: _readInt(day['likes']),
+            comments: _readInt(day['comments']),
+            shares: _readInt(day['shares']),
+            favorites: _readInt(day['favorites']),
+          ),
+        )
+        .toList();
+  }
 
-    return trendsData.map((day) {
-      return EngagementTrend(
-        date: DateTime.parse(day['date']),
-        likes: day['likes'] ?? 0,
-        comments: day['comments'] ?? 0,
-        shares: day['shares'] ?? 0,
-        favorites: day['favorites'] ?? 0,
-      );
-    }).toList();
+  int _readInt(Object? value, {int fallback = 0}) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.round();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? fallback;
+    }
+    return fallback;
+  }
+
+  double _readDouble(Object? value, {double fallback = 0}) {
+    if (value is double) {
+      return value;
+    }
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value) ?? fallback;
+    }
+    return fallback;
   }
 
   void _setLoading(bool loading) {
@@ -387,8 +517,8 @@ class InsightsFirebaseService extends ChangeNotifier {
   }
 }
 
-// Riverpod provider for the service
-final insightsFirebaseServiceProvider =
-    ChangeNotifierProvider<InsightsFirebaseService>((ref) {
+final ChangeNotifierProvider<InsightsFirebaseService>
+    insightsFirebaseServiceProvider =
+    ChangeNotifierProvider<InsightsFirebaseService>((Ref ref) {
   return InsightsFirebaseService();
 });

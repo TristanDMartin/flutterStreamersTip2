@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../core/feature_flags.dart';
+import '../services/creator_cache_service.dart';
 import '../services/video_actions_service.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'streamer_card_view.dart';
@@ -712,6 +713,7 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
       MaterialPageRoute(
         builder: (context) => StreamerCardView(
           userId: userId,
+          initialCreator: CreatorCacheService.instance.get(userId),
           currentUserId: currentUserId,
           onDismiss: () => Navigator.of(context).pop(),
         ),

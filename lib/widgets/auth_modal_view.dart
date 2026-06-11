@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -86,20 +87,29 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     final ColorScheme scheme = theme.colorScheme;
     final bool isDark = theme.brightness == Brightness.dark;
     final authService = ref.watch(robustAuthServiceProvider);
-
-    // Listen to auth state changes to navigate when user signs in
-    ref.listen(robustAuthServiceProvider, (previous, next) {
-      if (previous?.isLoggedIn == true || !next.isLoggedIn || !mounted) {
-        return;
-      }
-      debugPrint("✅ User authenticated, resolving post-auth destination");
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) {
-          return;
+    ref.listen<RobustAuthenticationService>(
+      robustAuthServiceProvider,
+      (RobustAuthenticationService? previous, RobustAuthenticationService next) {
+        final bool wasLoggedIn = previous?.isLoggedIn ?? false;
+        if (!wasLoggedIn && next.isLoggedIn && mounted) {
+          final firebase_auth.User? user =
+              firebase_auth.FirebaseAuth.instance.currentUser;
+          debugPrint(
+            'AUTH POST-LOGIN: social/email shell detected login '
+            'uid=${user?.uid ?? 'null'}',
+          );
+          if (user == null) {
+            return;
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) {
+              return;
+            }
+            await navigateAfterAuthenticated(context);
+          });
         }
-        await navigateAfterAuthenticated(context);
-      });
-    });
+      },
+    );
 
     return Material(
       color: Colors.transparent,
@@ -169,7 +179,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
               ),
 
               // Loading Overlay
-              if (authService.shouldShowLoading)
+              if (authService.isAuthSubmitting)
                 Container(
                   color: scheme.scrim.withValues(alpha: 0.35),
                   child: Center(
@@ -347,7 +357,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           ),
           const SizedBox(height: 6),
           Text(
-            "Pick email for account access or Google for the fastest setup.",
+            "Pick email, Apple, or Google to access your account.",
             style: TextStyle(
               color: scheme.onSurfaceVariant,
               fontSize: 13,
@@ -370,8 +380,12 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
                 ),
               );
             },
-            disabled: authService.shouldShowLoading,
+            disabled: authService.isAuthSubmitting,
           ),
+          if (_shouldShowAppleSignIn) ...<Widget>[
+            const SizedBox(height: 14),
+            _buildAppleSignInButton(authService),
+          ],
           const SizedBox(height: 14),
           _buildAuthButton(
             icon: Icons.language,
@@ -379,10 +393,27 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             backgroundColor: Colors.white,
             textColor: Colors.black,
             onTap: _signInWithGoogle,
-            disabled: authService.shouldShowLoading,
+            disabled: authService.isAuthSubmitting,
           ),
         ],
       ),
+    );
+  }
+
+  bool get _shouldShowAppleSignIn =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
+  Widget _buildAppleSignInButton(RobustAuthenticationService authService) {
+    return _buildAuthButton(
+      key: QaKeys.authAppleOption,
+      icon: Icons.apple,
+      text: 'Continue with Apple',
+      backgroundColor: Colors.white,
+      textColor: Colors.black,
+      onTap: _signInWithApple,
+      disabled: authService.isAuthSubmitting,
     );
   }
 
@@ -625,19 +656,14 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   // Authentication Methods
   Future<void> _signInWithGoogle() async {
     debugPrint("🟢 Google sign-in tapped");
+    final RobustAuthenticationService authService =
+        ref.read(robustAuthServiceProvider);
+    if (authService.isAuthSubmitting) {
+      return;
+    }
     try {
-      final authService = ref.read(robustAuthServiceProvider);
       final result = await authService.debouncedSignInWithGoogle();
-      if (!result.success && mounted) {
-        debugPrint("❌ Google sign-in failed: ${result.error}");
-        setState(() {
-          _alertMessage = _getUserFriendlyErrorMessage(result.error ?? '');
-          _showAlert = true;
-        });
-        return;
-      }
-
-      debugPrint("✅ Google sign-in completed successfully");
+      await _completeSocialSignIn(result, providerLabel: 'Google');
     } catch (e) {
       debugPrint("❌ Google sign-in error: $e");
       if (mounted) {
@@ -647,6 +673,64 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
         });
       }
     }
+  }
+
+  Future<void> _signInWithApple() async {
+    debugPrint("🍎 Apple sign-in tapped");
+    final RobustAuthenticationService authService =
+        ref.read(robustAuthServiceProvider);
+    if (authService.isAuthSubmitting) {
+      return;
+    }
+    try {
+      final result = await authService.debouncedSignInWithApple();
+      await _completeSocialSignIn(result, providerLabel: 'Apple');
+    } catch (e) {
+      debugPrint("❌ Apple sign-in error: $e");
+      if (mounted) {
+        setState(() {
+          _alertMessage = _getUserFriendlyErrorMessage(e.toString());
+          _showAlert = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _completeSocialSignIn(
+    AuthRequestResult result, {
+    required String providerLabel,
+  }) async {
+    final firebase_auth.User? firebaseUser =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    debugPrint(
+      'AUTH POST-LOGIN: $providerLabel result.success=${result.success} '
+      'resultUid=${result.user?.id ?? 'null'} '
+      'firebaseCurrentUid=${firebaseUser?.uid ?? 'null'}',
+    );
+    if (!result.success && mounted) {
+      final String error = result.error ?? '';
+      final bool isCancelled = error.toLowerCase().contains('cancelled');
+      if (isCancelled && firebaseUser == null) {
+        debugPrint('AUTH POST-LOGIN: $providerLabel cancelled');
+        return;
+      }
+      if (firebaseUser == null) {
+        debugPrint("❌ $providerLabel sign-in failed: $error");
+        setState(() {
+          _alertMessage = _getUserFriendlyErrorMessage(error);
+          _showAlert = true;
+        });
+        return;
+      }
+      debugPrint(
+        'AUTH POST-LOGIN: $providerLabel reported failure but Firebase '
+        'session exists uid=${firebaseUser.uid}',
+      );
+    }
+    debugPrint(
+      "✅ $providerLabel sign-in completed — waiting for auth gate "
+      'uid=${firebaseUser?.uid ?? 'null'}',
+    );
   }
 
   String _getUserFriendlyErrorMessage(String error) {

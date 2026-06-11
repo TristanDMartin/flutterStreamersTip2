@@ -5,6 +5,8 @@ import '../models/home_video.dart';
 import '../services/thumbnail_service.dart';
 import '../utils/swallow_non_fatal.dart';
 
+const bool _thumbnailTileDiagnosticsEnabled = false;
+
 /// Single source of truth for all video thumbnail rendering
 /// Handles cache busting, fallbacks, and consistent placeholder behavior
 class ThumbnailTile extends StatelessWidget {
@@ -37,9 +39,11 @@ class ThumbnailTile extends StatelessWidget {
     final thumbnailUrl = _getBestThumbnailUrl(context);
     final cacheKey = _getCacheKey();
 
-    debugPrint('🖼️ ThumbnailTile: Video ${video.id}');
-    debugPrint('  - thumbnailUrl: "$thumbnailUrl"');
-    debugPrint('  - cacheKey: "$cacheKey"');
+    if (_thumbnailTileDiagnosticsEnabled) {
+      debugPrint('🖼️ ThumbnailTile: Video ${video.id}');
+      debugPrint('  - thumbnailUrl: "$thumbnailUrl"');
+      debugPrint('  - cacheKey: "$cacheKey"');
+    }
 
     return GestureDetector(
       onTap: onTap,
@@ -88,17 +92,23 @@ class ThumbnailTile extends StatelessWidget {
     String cacheKey,
   ) {
     if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
-      debugPrint('🖼️ ThumbnailTile: No thumbnail URL, showing placeholder');
+      if (_thumbnailTileDiagnosticsEnabled) {
+        debugPrint('🖼️ ThumbnailTile: No thumbnail URL, showing placeholder');
+      }
       return _buildGradientPlaceholder();
     }
 
     // Check if this is a local file path (drafts use local paths)
     if (_isLocalFilePath(thumbnailUrl)) {
-      debugPrint('🖼️ ThumbnailTile: Loading local file: $thumbnailUrl');
+      if (_thumbnailTileDiagnosticsEnabled) {
+        debugPrint('🖼️ ThumbnailTile: Loading local file: $thumbnailUrl');
+      }
       return _buildLocalFileImage(thumbnailUrl);
     }
 
-    debugPrint('🖼️ ThumbnailTile: Loading image from URL: $thumbnailUrl');
+    if (_thumbnailTileDiagnosticsEnabled) {
+      debugPrint('🖼️ ThumbnailTile: Loading image from URL: $thumbnailUrl');
+    }
 
     return CachedNetworkImage(
       imageUrl: thumbnailUrl,
@@ -112,7 +122,9 @@ class ThumbnailTile extends StatelessWidget {
               .round(),
       filterQuality: FilterQuality.high,
       placeholder: (context, url) {
-        debugPrint('🖼️ ThumbnailTile: Loading placeholder for $url');
+        if (_thumbnailTileDiagnosticsEnabled) {
+          debugPrint('🖼️ ThumbnailTile: Loading placeholder for $url');
+        }
         return Container(
           color: Colors.grey[900], // Simple solid color - no gradients
           child: const Center(
@@ -121,7 +133,9 @@ class ThumbnailTile extends StatelessWidget {
         );
       },
       errorWidget: (context, url, error) {
-        debugPrint('🖼️ ThumbnailTile: Error loading image $url: $error');
+        if (_thumbnailTileDiagnosticsEnabled) {
+          debugPrint('🖼️ ThumbnailTile: Error loading image $url: $error');
+        }
         return Container(
           color: Colors.grey[900], // Simple solid color - no gradients
           child: const Center(
@@ -134,8 +148,10 @@ class ThumbnailTile extends StatelessWidget {
         );
       },
       imageBuilder: (context, imageProvider) {
-        debugPrint(
-            '🖼️ ThumbnailTile: Image loaded successfully: $thumbnailUrl');
+        if (_thumbnailTileDiagnosticsEnabled) {
+          debugPrint(
+              '🖼️ ThumbnailTile: Image loaded successfully: $thumbnailUrl');
+        }
         return Image(
           image: imageProvider,
           fit: BoxFit.cover,
@@ -156,7 +172,9 @@ class ThumbnailTile extends StatelessWidget {
     try {
       final file = File(filePath);
       if (!file.existsSync()) {
-        debugPrint('🖼️ ThumbnailTile: Local file does not exist: $filePath');
+        if (_thumbnailTileDiagnosticsEnabled) {
+          debugPrint('🖼️ ThumbnailTile: Local file does not exist: $filePath');
+        }
         return Container(
           color: Colors.grey[900],
           child: const Center(
@@ -175,8 +193,10 @@ class ThumbnailTile extends StatelessWidget {
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) {
-          debugPrint(
-              '🖼️ ThumbnailTile: Error loading local file $filePath: $error');
+          if (_thumbnailTileDiagnosticsEnabled) {
+            debugPrint(
+                '🖼️ ThumbnailTile: Error loading local file $filePath: $error');
+          }
           return Container(
             color: Colors.grey[900],
             child: const Center(
@@ -190,8 +210,10 @@ class ThumbnailTile extends StatelessWidget {
         },
       );
     } catch (e) {
-      debugPrint(
-          '🖼️ ThumbnailTile: Exception loading local file $filePath: $e');
+      if (_thumbnailTileDiagnosticsEnabled) {
+        debugPrint(
+            '🖼️ ThumbnailTile: Exception loading local file $filePath: $e');
+      }
       return Container(
         color: Colors.grey[900],
         child: const Center(

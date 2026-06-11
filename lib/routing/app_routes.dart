@@ -9,7 +9,6 @@ import '../views/settings_view.dart';
 import '../views/upgrade_view.dart';
 import '../widgets/activity_view.dart';
 import '../widgets/app_startup_wrapper.dart';
-import '../widgets/auth_modal_view.dart';
 import '../widgets/chat_view_optimized.dart';
 import '../widgets/discover_view.dart';
 import '../widgets/inbox_view_optimized.dart';
@@ -17,6 +16,9 @@ import '../widgets/player_screen.dart';
 import '../pages/video_unavailable_page.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/tiktok_camera_view.dart';
+import '../features/analytics/creator_intelligence_view.dart';
+import '../features/analytics/creator_video_insights_view.dart';
+import '../features/analytics/growth_analytics_view.dart';
 import '../features/content_planning/content_planner_view.dart';
 import '../features/content_scheduler/content_scheduler_view.dart';
 import '../features/tippy/tippy_chat_page.dart';
@@ -25,6 +27,7 @@ class AppRoutes {
   static const String root = '/';
   static const String auth = '/auth';
   static const String home = '/home';
+  static const String onboarding = '/onboarding';
   static const String network = '/network';
   static const String camera = '/camera';
   static const String inbox = '/inbox';
@@ -47,6 +50,9 @@ class AppRoutes {
   static const String editField = '/edit_field';
   static const String shareProfile = '/share_profile';
   static const String menu = '/menu';
+  static const String growthAnalytics = '/growth-analytics';
+  static const String videoInsights = '/video-insights';
+  static const String creatorIntelligence = '/creator-intelligence';
 
   static Route<dynamic> onGenerateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
@@ -64,7 +70,7 @@ class AppRoutes {
       case auth:
         return _buildRoute(
           settings: routeSettings,
-          builder: (_) => const AuthModalView(),
+          builder: (_) => const AppStartupWrapper(initialTabIndex: 0),
         );
       case camera:
         return _buildRoute(
@@ -211,6 +217,21 @@ class AppRoutes {
           settings: routeSettings,
           builder: (_) => const TippyChatPage(),
           fullscreenDialog: true,
+        );
+      case growthAnalytics:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const GrowthAnalyticsView(),
+        );
+      case videoInsights:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const CreatorVideoInsightsView(),
+        );
+      case creatorIntelligence:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const CreatorIntelligenceView(),
         );
     }
 

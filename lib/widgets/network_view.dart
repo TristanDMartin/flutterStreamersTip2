@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
+import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart';
 import '../routing/app_navigator.dart';
 import '../services/user_blocking_service.dart';
@@ -157,6 +158,7 @@ class _NetworkViewState extends State<NetworkView>
     AppNavigator.openStreamerCard(
       context,
       userId: user.id,
+      initialCreator: CreatorProfileSnapshot.fromUser(user),
       currentUserId: currentUserId,
       onDismiss: () => Navigator.of(context).pop(),
     );

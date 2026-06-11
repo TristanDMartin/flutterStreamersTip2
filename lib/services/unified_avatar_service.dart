@@ -356,11 +356,47 @@ class UnifiedAvatarService {
     }
   }
 
+  String? _lastKnownAvatarUrl;
+
+  /// Refreshes avatar cache only when the resolved URL changed.
+  Future<bool> refreshAvatarIfUrlChanged(Map<String, dynamic> userData) async {
+    final String? nextUrl = _resolveAvatarUrlFromUserData(userData);
+    final String? previousUrl = _lastKnownAvatarUrl;
+    if (nextUrl == null || nextUrl.isEmpty) {
+      return false;
+    }
+    if (previousUrl != null && previousUrl == nextUrl) {
+      return false;
+    }
+    if (previousUrl != null && previousUrl.isNotEmpty) {
+      _memoryCache.remove(previousUrl);
+      _loadingStates.remove(previousUrl);
+    }
+    _lastKnownAvatarUrl = nextUrl;
+    await _preloadSingleAvatar(nextUrl);
+    debugPrint('✅ UnifiedAvatarService: Avatar refreshed (URL changed)');
+    return true;
+  }
+
+  String? _resolveAvatarUrlFromUserData(Map<String, dynamic> userData) {
+    final Object? raw = userData['avatarURL'] ??
+        userData['avatarUrl'] ??
+        userData['photoURL'] ??
+        userData['photoUrl'] ??
+        userData['profileImageUrl'];
+    final String? trimmed = raw is String ? raw.trim() : null;
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return _normalizeImageUrl(trimmed);
+  }
+
   /// Clear avatar cache
   Future<void> clearCache() async {
     try {
       _memoryCache.clear();
       _loadingStates.clear();
+      _lastKnownAvatarUrl = null;
 
       if (_cacheDir != null && await _cacheDir!.exists()) {
         await _cacheDir!.delete(recursive: true);

@@ -4,11 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../components/onboarding/product_tour_target_keys.dart';
 import '../../core/theme/st_theme_tokens.dart';
 import '../../models/feed_tab.dart';
 import '../../qa/qa_keys.dart';
-import '../../providers/product_tour_ui_provider.dart';
 import 'feed_dropdown_widget.dart';
 
 /// Feed selector widget for HomeView (single themed pill with dropdown + compass)
@@ -94,50 +92,41 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
 
     final OverlayState overlay = Overlay.of(context);
     _overlayEntry = OverlayEntry(
-      builder: (BuildContext overlayContext) => Consumer(
-        builder: (BuildContext ctx, WidgetRef ref, Widget? _) {
-          final ProductTourUiPhase phase =
-              ref.watch(productTourUiPhaseProvider);
-          final FeedTab? tourHighlight =
-              phase == ProductTourUiPhase.progressionDropdown
-                  ? FeedTab.following
-                  : null;
-          return Stack(
-            key: QaKeys.feedSelectorOverlay,
-            children: <Widget>[
-              Positioned.fill(
-                child: GestureDetector(
-                  key: QaKeys.feedSelectorBarrier,
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _closeDropdown,
-                  child: const SizedBox.expand(),
+      builder: (BuildContext overlayContext) {
+        return Stack(
+          key: QaKeys.feedSelectorOverlay,
+          children: <Widget>[
+            Positioned.fill(
+              child: GestureDetector(
+                key: QaKeys.feedSelectorBarrier,
+                behavior: HitTestBehavior.translucent,
+                onTap: _closeDropdown,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _dropdownLink,
+              showWhenUnlinked: false,
+              targetAnchor: Alignment.bottomLeft,
+              followerAnchor: Alignment.topLeft,
+              offset: const Offset(0, 8),
+              child: Material(
+                elevation: 100,
+                color: Colors.transparent,
+                child: FeedDropdownWidget(
+                  activeTab: widget.activeTab,
+                  isVisible: true,
+                  onTabSelected: (FeedTab tab) {
+                    _closeDropdown();
+                    widget.onTabSelected(tab);
+                  },
+                  onClose: _closeDropdown,
                 ),
               ),
-              CompositedTransformFollower(
-                link: _dropdownLink,
-                showWhenUnlinked: false,
-                targetAnchor: Alignment.bottomLeft,
-                followerAnchor: Alignment.topLeft,
-                offset: const Offset(0, 8),
-                child: Material(
-                  elevation: 100,
-                  color: Colors.transparent,
-                  child: FeedDropdownWidget(
-                    activeTab: widget.activeTab,
-                    tourHighlightTab: tourHighlight,
-                    isVisible: true,
-                    onTabSelected: (FeedTab tab) {
-                      _closeDropdown();
-                      widget.onTabSelected(tab);
-                    },
-                    onClose: _closeDropdown,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+            ),
+          ],
+        );
+      },
     );
 
     overlay.insert(_overlayEntry!);
@@ -146,31 +135,6 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<ProductTourUiPhase>(
-      productTourUiPhaseProvider,
-      (ProductTourUiPhase? previous, ProductTourUiPhase next) {
-        if (next == ProductTourUiPhase.progressionDropdown &&
-            !_isDropdownOpen) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) {
-              return;
-            }
-            _setDropdownOpen(true);
-            _showOverlay();
-          });
-        }
-        if (next == ProductTourUiPhase.idle &&
-            previous == ProductTourUiPhase.progressionDropdown &&
-            _isDropdownOpen) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _closeDropdown();
-            }
-          });
-        }
-      },
-    );
-
     return SafeArea(
       top: true,
       child: Container(
@@ -179,11 +143,7 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: <Widget>[
-            KeyedSubtree(
-              key: ProductTourTargetKeys.maybe(
-                ProductTourTargetKeys.progression,
-              ),
-              child: CompositedTransformTarget(
+            CompositedTransformTarget(
                 link: _dropdownLink,
                 child: Semantics(
                   button: true,
@@ -241,12 +201,7 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
                   ),
                 ),
               ),
-            ),
-            KeyedSubtree(
-              key: ProductTourTargetKeys.maybe(
-                ProductTourTargetKeys.discover,
-              ),
-              child: GestureDetector(
+            GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
                   widget.onDiscoverTap();
@@ -269,7 +224,6 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
+import '../services/creator_intelligence_analytics_service.dart';
 import '../services/search_api_service.dart';
 import '../services/logging_service.dart';
 import '../providers/follow_refresh_provider.dart';
+import '../models/creator_profile_snapshot.dart';
 import '../routing/app_navigator.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -214,6 +216,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         _allResults = [...users, ...videos];
         _isLoading = false;
       });
+      unawaited(
+        ref.read(creatorIntelligenceAnalyticsProvider).trackSearchPerformed(
+              query: _searchQuery,
+              resultsCount: users.length + videos.length,
+            ),
+      );
     } catch (e) {
       LoggingService.instance.error(
         'Error performing search: $e',
@@ -579,6 +587,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         AppNavigator.openStreamerCard(
           context,
           userId: result.userId ?? '',
+          initialCreator: CreatorProfileSnapshot(
+            creatorId: result.userId ?? '',
+            displayName: result.displayName ?? result.title,
+            username: result.username ?? result.subtitle,
+            avatarUrl: result.avatarUrl ?? result.imageURL,
+            followersCount: result.followerCount,
+          ),
           currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
           onDismiss: () => Navigator.of(context).pop(),
         );

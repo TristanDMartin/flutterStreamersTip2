@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/home_provider.dart';
 import '../providers/video_service_provider.dart';
 import '../utils/category_schema.dart';
+import '../utils/video_caption_resolver.dart';
 import '../utils/video_url_resolver.dart';
 import 'mux_upload_service.dart';
 import 'optimistic_video_service.dart';
@@ -23,6 +24,7 @@ class VideoPublishFinalizeService {
     required String videoId,
     required String userId,
     WidgetRef? ref,
+    String? caption,
     bool waitForMux = true,
     Duration timeout = const Duration(minutes: 5),
   }) async {
@@ -49,6 +51,7 @@ class VideoPublishFinalizeService {
         userId: userId,
         privacy: privacy,
         category: category,
+        caption: caption,
         timeout: timeout,
         ref: ref,
       );
@@ -59,12 +62,14 @@ class VideoPublishFinalizeService {
         userId: userId,
         privacy: privacy,
         category: category,
+        caption: caption,
       );
       await _ensureFeedIndexes(
         videoId: videoId,
         userId: userId,
         privacy: privacy,
         category: category,
+        caption: caption,
       );
       await refreshAllSurfaces(userId: userId, ref: ref);
       return true;
@@ -81,6 +86,7 @@ class VideoPublishFinalizeService {
     required String userId,
     required String privacy,
     required String category,
+    String? caption,
     Duration timeout = const Duration(minutes: 5),
     WidgetRef? ref,
   }) async {
@@ -92,6 +98,7 @@ class VideoPublishFinalizeService {
         userId: userId,
         privacy: privacy,
         category: category,
+        caption: caption,
         thumbnailUrl: muxReady.thumbnailUrl,
         hlsUrl: muxReady.hlsUrl,
       );
@@ -100,6 +107,7 @@ class VideoPublishFinalizeService {
         userId: userId,
         privacy: privacy,
         category: category,
+        caption: caption,
       );
       await refreshAllSurfaces(userId: userId, ref: ref);
       debugPrint(
@@ -121,6 +129,7 @@ class VideoPublishFinalizeService {
     required String userId,
     required String privacy,
     required String category,
+    String? caption,
     String? thumbnailUrl,
     String? hlsUrl,
   }) async {
@@ -133,14 +142,20 @@ class VideoPublishFinalizeService {
     }
     final Map<String, dynamic> data = snap.data()!;
     final String? owner = getOwnerId(data);
+    final CanonicalCategory existing = readCanonicalCategoryFromVideo(data);
+    final String categorySource = existing.isPopulated
+        ? existing.categoryId
+        : (category.trim().isEmpty ? kDefaultCategoryId : category);
     final Map<String, dynamic> categoryFields =
-        buildCanonicalCategoryFields(category);
+        buildCanonicalCategoryFields(categorySource);
     final String visibility = switch (privacy) {
       'Followers' || 'followers_only' => 'followers_only',
       'Private' || 'private' => 'private',
       _ => 'public',
     };
     final Map<String, dynamic> patch = <String, dynamic>{};
+    final String repairedCaption =
+        caption?.trim().isNotEmpty == true ? caption!.trim() : '';
     if (owner == null || owner != userId) {
       patch['userId'] = userId;
       patch['creatorId'] = userId;
@@ -155,8 +170,17 @@ class VideoPublishFinalizeService {
     if (data['visibility'] == null) {
       patch['visibility'] = visibility;
     }
-    if (data['category'] == null) {
+    if (repairedCaption.isNotEmpty &&
+        resolveVideoCaptionFromFirestoreData(data).isEmpty) {
+      patch['caption'] = repairedCaption;
+      patch['description'] = repairedCaption;
+      patch['title'] = repairedCaption;
+    }
+    if (!videoHasCanonicalCategoryFields(data) || !existing.isPopulated) {
       patch.addAll(categoryFields);
+    } else if (data['categoryName'] == null ||
+        (data['categoryName'] as String?)?.trim().isEmpty == true) {
+      patch['categoryName'] = categoryFields['categoryName'];
     }
     if (data['isReadyForFeed'] != true) {
       patch['isReadyForFeed'] = true;
@@ -201,7 +225,9 @@ class VideoPublishFinalizeService {
     required String userId,
     required String privacy,
     required String category,
+    String? caption,
   }) async {
+    final String trimmedCaption = caption?.trim() ?? '';
     final DocumentReference<Map<String, dynamic>> userVideoRef = _firestore
         .collection('users')
         .doc(userId)
@@ -214,6 +240,9 @@ class VideoPublishFinalizeService {
       'visible': true,
       'category': category,
       'privacy': privacy,
+      if (trimmedCaption.isNotEmpty) 'caption': trimmedCaption,
+      if (trimmedCaption.isNotEmpty) 'description': trimmedCaption,
+      if (trimmedCaption.isNotEmpty) 'title': trimmedCaption,
       'updatedAt': FieldValue.serverTimestamp(),
       'addedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -285,7 +314,9 @@ class VideoPublishFinalizeService {
   }) async {
     if (ref != null) {
       try {
-        await ref.read(videoServiceStateProvider.notifier).loadAllVideos();
+        await ref
+            .read(videoServiceStateProvider.notifier)
+            .loadAllVideos(source: 'publish_finalize');
         await ref
             .read(videoServiceStateProvider.notifier)
             .mergeProfileVideosForUser(userId);

@@ -30,6 +30,14 @@ void main() {
       expect(url, 'https://example.com/master.m3u8');
     });
 
+    test('prefers canonicalPlaybackUrl over synthesized mux URL', () {
+      final String? url = resolvePlaybackUrl(<String, dynamic>{
+        'canonicalPlaybackUrl': 'https://cdn.example.com/ready/master.m3u8',
+        'muxPlaybackId': 'abc123',
+      });
+      expect(url, 'https://cdn.example.com/ready/master.m3u8');
+    });
+
     test('uses videoUrl when no mux or hls', () {
       final String? url = resolvePlaybackUrl(<String, dynamic>{
         'videoUrl': 'https://cdn.example.com/v.mp4',
@@ -56,6 +64,16 @@ void main() {
         resolveReadyPlaybackUrl(<String, dynamic>{
           'status': 'processing',
           'isReadyForFeed': true,
+          'canonicalPlaybackUrl': 'https://stream.mux.com/abc.m3u8',
+        }),
+        isNull,
+      );
+    });
+
+    test('does not play ready videos without the explicit feed gate', () {
+      expect(
+        resolveReadyPlaybackUrl(<String, dynamic>{
+          'status': 'ready',
           'canonicalPlaybackUrl': 'https://stream.mux.com/abc.m3u8',
         }),
         isNull,

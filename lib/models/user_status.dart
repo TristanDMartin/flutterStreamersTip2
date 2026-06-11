@@ -3,18 +3,39 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 enum UserStatus {
   online('online'),
   offline('offline'),
+  away('away'),
   busy('busy'),
-  dnd('dnd'),
   streaming('streaming');
 
   const UserStatus(this.value);
   final String value;
 
+  static const Set<String> validFirestoreValues = <String>{
+    'online',
+    'offline',
+    'away',
+    'busy',
+    'streaming',
+  };
+
+  static bool isValidFirestoreValue(String value) {
+    return validFirestoreValues.contains(value);
+  }
+
   static UserStatus fromString(String value) {
+    final String normalized = value == 'dnd' ? 'away' : value;
     return UserStatus.values.firstWhere(
-      (status) => status.value == value,
+      (UserStatus status) => status.value == normalized,
       orElse: () => UserStatus.offline,
     );
+  }
+
+  static UserStatus? tryParseFirestoreValue(String value) {
+    final String normalized = value == 'dnd' ? 'away' : value;
+    if (!isValidFirestoreValue(normalized)) {
+      return null;
+    }
+    return fromString(normalized);
   }
 
   String get displayName {
@@ -25,8 +46,8 @@ enum UserStatus {
         return 'Offline';
       case UserStatus.busy:
         return 'Busy';
-      case UserStatus.dnd:
-        return 'Do Not Disturb';
+      case UserStatus.away:
+        return 'Away';
       case UserStatus.streaming:
         return 'Streaming';
     }
@@ -40,8 +61,8 @@ enum UserStatus {
         return '⚫';
       case UserStatus.busy:
         return '🟡';
-      case UserStatus.dnd:
-        return '🔴';
+      case UserStatus.away:
+        return '🟠';
       case UserStatus.streaming:
         return '📺';
     }
@@ -55,8 +76,8 @@ enum UserStatus {
         return '#9E9E9E'; // Grey
       case UserStatus.busy:
         return '#FF9800'; // Orange
-      case UserStatus.dnd:
-        return '#F44336'; // Red
+      case UserStatus.away:
+        return '#FF5722'; // Deep orange
       case UserStatus.streaming:
         return '#9C27B0'; // Purple
     }
@@ -107,6 +128,31 @@ class UserPresence {
       status: status ?? this.status,
       lastSeen: lastSeen ?? this.lastSeen,
       lastActive: lastActive ?? this.lastActive,
+    );
+  }
+}
+
+class StatusUpdateOutcome {
+  const StatusUpdateOutcome({
+    required this.success,
+    this.userMessage,
+    this.pendingRetry = false,
+  });
+
+  final bool success;
+  final String? userMessage;
+  final bool pendingRetry;
+
+  static const StatusUpdateOutcome ok = StatusUpdateOutcome(success: true);
+
+  static StatusUpdateOutcome failed({
+    required String userMessage,
+    bool pendingRetry = false,
+  }) {
+    return StatusUpdateOutcome(
+      success: false,
+      userMessage: userMessage,
+      pendingRetry: pendingRetry,
     );
   }
 }
