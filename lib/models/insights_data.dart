@@ -356,3 +356,31 @@ class EngagementTrend {
     };
   }
 }
+
+extension InsightsDataAvailability on InsightsData {
+  bool get hasAudienceBreakdown {
+    final GenderBreakdown gender = viewers.genderBreakdown;
+    final int genderTotal =
+        gender.male + gender.female + gender.other + gender.unknown;
+    if (genderTotal > 0) {
+      return true;
+    }
+    if (viewers.viewerTypes.newViewers > 0 ||
+        viewers.viewerTypes.returningViewers > 0) {
+      return true;
+    }
+    if (viewers.ageGroups.any((AgeGroup group) => group.count > 0)) {
+      return true;
+    }
+    if (viewers.topLocations.isNotEmpty) {
+      return true;
+    }
+    return false;
+  }
+
+  bool get hasTrafficSources => overview.trafficSources.isNotEmpty;
+
+  bool get hasEngagementTrends => engagement.trends.isNotEmpty;
+
+  int get bookmarks => engagement.favorites;
+}
