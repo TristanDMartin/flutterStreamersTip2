@@ -1,7 +1,7 @@
 import '../gamification/models/subscription_plan.dart';
+import 'models/subscription_snapshot.dart';
 
-/// Mirrors website `BILLING_TIERS` / `lib/billing/plans.ts`.
-/// Use [-1] as unlimited in UI logic.
+/// Limits view built from API [ApiEntitlements] — not a local tier table.
 class BillingTierLimits {
   const BillingTierLimits({
     required this.connectedPlatforms,
@@ -21,48 +21,24 @@ class BillingTierLimits {
   final int teamMembers;
   final int crossPostWeeklyLimit;
 
-  static const BillingTierLimits starter = BillingTierLimits(
-    connectedPlatforms: 1,
-    contentPlans: 1,
-    schedulingEnabled: true,
-    analyticsWindowDays: 7,
-    aiCreditsPerMonth: 10,
-    teamMembers: 0,
-    crossPostWeeklyLimit: 1,
-  );
+  factory BillingTierLimits.fromApiEntitlements(ApiEntitlements e) {
+    return BillingTierLimits(
+      connectedPlatforms: e.maxPlatforms,
+      contentPlans: e.contentPlansLimit,
+      schedulingEnabled: true,
+      analyticsWindowDays: e.analyticsWindowDays,
+      aiCreditsPerMonth: e.monthlyAiCredits,
+      teamMembers: e.teamMembersLimit,
+      crossPostWeeklyLimit: e.crossPostWeeklyLimit,
+    );
+  }
 
-  static const BillingTierLimits pro = BillingTierLimits(
-    connectedPlatforms: 5,
-    contentPlans: -1,
-    schedulingEnabled: true,
-    analyticsWindowDays: 90,
-    aiCreditsPerMonth: 250,
-    teamMembers: 0,
-    crossPostWeeklyLimit: -1,
-  );
-
-  static const BillingTierLimits studio = BillingTierLimits(
-    connectedPlatforms: -1,
-    contentPlans: -1,
-    schedulingEnabled: true,
-    analyticsWindowDays: 365,
-    aiCreditsPerMonth: 1000,
-    teamMembers: 5,
-    crossPostWeeklyLimit: -1,
-  );
+  static BillingTierLimits get starter =>
+      BillingTierLimits.fromApiEntitlements(ApiEntitlements.fallbackStarter());
 
   static bool isUnlimited(int value) => value < 0;
 
   static BillingTierLimits forEffectivePlan(SubscriptionPlan plan) {
-    switch (plan) {
-      case SubscriptionPlan.starter:
-        return BillingTierLimits.starter;
-      case SubscriptionPlan.pro:
-        return BillingTierLimits.pro;
-      case SubscriptionPlan.studio:
-        return BillingTierLimits.studio;
-      case SubscriptionPlan.unknown:
-        return BillingTierLimits.starter;
-    }
+    return starter;
   }
 }

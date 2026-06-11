@@ -2,10 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../gamification/models/subscription_plan.dart';
 import 'get_user_tier.dart';
+import 'models/billing_tier.dart';
+import 'models/subscription_snapshot.dart';
+import 'subscription_provider.dart';
 
-/// Live canonical billing tier from `users/{uid}` (subscriptionTier + status).
+/// Firestore tier — badge/display only. Do not use for paid feature gates.
 final StreamProvider<BillingTierAccess> billingTierAccessProvider =
     StreamProvider<BillingTierAccess>((Ref ref) {
   final User? user = FirebaseAuth.instance.currentUser;
@@ -19,18 +21,20 @@ final StreamProvider<BillingTierAccess> billingTierAccessProvider =
       .map(
         (DocumentSnapshot<Map<String, dynamic>> snap) =>
             BillingTierAccess.fromUserDocument(
-                snap.data() ?? <String, dynamic>{}),
+          snap.data() ?? <String, dynamic>{},
+        ),
       );
 });
 
-/// API tier string (`starter` | `pro` | `studio`) for feature gates.
+/// Effective tier from `/api/user/entitlements` (not Firestore alone).
 final Provider<String> resolvedBillingTierProvider =
     Provider<String>((Ref ref) {
-  final BillingTierAccess access =
-      ref.watch(billingTierAccessProvider).valueOrNull ??
-          BillingTierAccess.fallbackLegacy();
-  if (access.usedCanonicalFields) {
-    return subscriptionPlanToApiValue(access.effectivePlan);
+  final SubscriptionSnapshot? cached =
+      ref.read(subscriptionRepositoryProvider).peekCached();
+  final SubscriptionSnapshot? snap =
+      ref.watch(subscriptionSnapshotProvider).valueOrNull ?? cached;
+  if (snap != null) {
+    return snap.tierApi;
   }
-  return 'starter';
+  return billingTierToApiValue(BillingTier.starter);
 });

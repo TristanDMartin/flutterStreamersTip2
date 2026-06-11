@@ -25,13 +25,13 @@ void main() {
   });
 
   group('storeProductIdForPlanAndPeriod', () {
-    test('returns expected ids', () {
+    test('returns Pricing v2 product ids', () {
       expect(
         storeProductIdForPlanAndPeriod(
           plan: SubscriptionPlan.pro,
           isYearly: false,
         ),
-        kStreamersTipProMonthlyId,
+        kCreatorProMonthlyId,
       );
       expect(
         storeProductIdForPlanAndPeriod(

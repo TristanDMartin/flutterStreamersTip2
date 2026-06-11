@@ -54,17 +54,9 @@ void main() {
   });
 
   group('BillingTierLimits', () {
-    test('starter AI credits is 10', () {
-      expect(BillingTierLimits.starter.aiCreditsPerMonth, 10);
-      expect(BillingTierLimits.pro.aiCreditsPerMonth, 250);
-      expect(BillingTierLimits.studio.aiCreditsPerMonth, 1000);
-    });
-
-    test('unknown plan uses starter limits', () {
-      expect(
-        BillingTierLimits.forEffectivePlan(SubscriptionPlan.unknown),
-        BillingTierLimits.starter,
-      );
+    test('starter fallback uses API-shaped defaults', () {
+      expect(BillingTierLimits.starter.analyticsWindowDays, 7);
+      expect(BillingTierLimits.starter.connectedPlatforms, 1);
     });
   });
 }

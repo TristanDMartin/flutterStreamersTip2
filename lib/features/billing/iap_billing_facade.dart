@@ -38,7 +38,7 @@ class IapBillingFacade {
     this.onVerified,
   })  : _store = store ?? InAppPurchase.instance,
         _verificationClient =
-            verificationClient ?? const MobilePurchaseVerificationClient();
+            verificationClient ?? MobilePurchaseVerificationClient();
 
   final InAppPurchase _store;
   final MobilePurchaseVerificationClient _verificationClient;

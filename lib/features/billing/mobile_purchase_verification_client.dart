@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/backend/site_api_base.dart';
 import 'billing_backend_config.dart';
 import 'mobile_purchase_verification_payload.dart';
 
@@ -16,20 +17,24 @@ class MobilePurchaseVerificationException implements Exception {
 }
 
 class MobilePurchaseVerificationClient {
-  const MobilePurchaseVerificationClient({this.httpClient});
+  MobilePurchaseVerificationClient({
+    this.httpClient,
+    String? siteApiBase,
+    String? legacyVerifyUrl,
+  })  : _siteApiBase = resolveSiteApiBase(explicitOverride: siteApiBase),
+        _legacyVerifyUrl = (legacyVerifyUrl ?? kMobileBillingVerifyUrl).trim();
 
   final http.Client? httpClient;
+  final String _siteApiBase;
+  final String _legacyVerifyUrl;
+
+  bool get hasSiteVerify => _siteApiBase.isNotEmpty;
+
+  bool get hasLegacyVerify => _legacyVerifyUrl.isNotEmpty;
 
   Future<void> submitPurchase({
     required MobilePurchaseVerificationPayload payload,
   }) async {
-    final String trimmed = kMobileBillingVerifyUrl.trim();
-    if (trimmed.isEmpty) {
-      throw const MobilePurchaseVerificationException(
-        'MOBILE_BILLING_VERIFY_URL is not set. '
-        'Add --dart-define=MOBILE_BILLING_VERIFY_URL=... at build time.',
-      );
-    }
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       throw const MobilePurchaseVerificationException(
@@ -42,16 +47,55 @@ class MobilePurchaseVerificationClient {
         'Could not read Firebase ID token.',
       );
     }
+    if (hasSiteVerify) {
+      try {
+        await _postVerify(
+          uri: _siteVerifyUri(payload),
+          idToken: idToken,
+          body: payload.toSiteApiJson(),
+        );
+        return;
+      } on MobilePurchaseVerificationException catch (e) {
+        if (!hasLegacyVerify || e.message.contains('404')) {
+          rethrow;
+        }
+      }
+    }
+    if (!hasLegacyVerify) {
+      throw const MobilePurchaseVerificationException(
+        'Billing verify URL is not configured. Set SITE_API_BASE or '
+        'MOBILE_BILLING_VERIFY_URL.',
+      );
+    }
+    await _postVerify(
+      uri: Uri.parse(_legacyVerifyUrl),
+      idToken: idToken,
+      body: payload.toLegacyCloudFunctionJson(),
+    );
+  }
+
+  Uri _siteVerifyUri(MobilePurchaseVerificationPayload payload) {
+    final String url = payload.isIos
+        ? siteAppleBillingVerifyUrl(base: _siteApiBase)
+        : siteGoogleBillingVerifyUrl(base: _siteApiBase);
+    return Uri.parse(url);
+  }
+
+  Future<void> _postVerify({
+    required Uri uri,
+    required String idToken,
+    required Map<String, dynamic> body,
+  }) async {
     final http.Client client = httpClient ?? http.Client();
     final bool ownsClient = httpClient == null;
     try {
       final http.Response response = await client.post(
-        Uri.parse(trimmed),
+        uri,
         headers: <String, String>{
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $idToken',
         },
-        body: jsonEncode(payload.toJson()),
+        body: jsonEncode(body),
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw MobilePurchaseVerificationException(
