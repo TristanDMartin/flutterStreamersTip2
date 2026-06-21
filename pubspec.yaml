@@ -23,7 +23,7 @@ dependencies:
   cloud_functions: ^6.0.1
 
   # Google Sign In - Updated to support GoogleUtilities 8.0
-  google_sign_in: 6.2.2
+  google_sign_in: 7.2.0
   sign_in_with_apple: ^7.0.1
   
   # UI & Navigation
