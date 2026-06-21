@@ -188,6 +188,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
 
   static const Map<String, List<String>> _categoryAliases = {
     'all': ['all'],
+    'general': ['general', 'uncategorized', 'other'],
     'gaming': ['gaming', 'games', 'gameplay'],
     'art': ['art', 'artist', 'creative'],
     'music': ['music', 'musician', 'songs'],

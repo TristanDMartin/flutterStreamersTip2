@@ -116,6 +116,8 @@ class CategoryCard extends StatelessWidget {
     switch (categoryId) {
       case 'All':
         return const Color(0xFF40DCD1);
+      case 'general':
+        return const Color(0xFF607D8B);
       case 'gaming':
         return const Color(0xFF9C27B0);
       case 'art':
@@ -149,6 +151,8 @@ class CategoryCard extends StatelessWidget {
     switch (iconName) {
       case 'square.grid.2x2':
         return Icons.grid_view;
+      case 'sparkles':
+        return Icons.auto_awesome;
       case 'gamecontroller.fill':
         return Icons.sports_esports;
       case 'paintbrush.fill':

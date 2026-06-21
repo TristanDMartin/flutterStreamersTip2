@@ -19,6 +19,11 @@ sealed class Category with _$Category {
         icon: "square.grid.2x2",
         color: Color(0xFF40DCD1)),
     Category(
+        id: "general",
+        name: "General",
+        icon: "sparkles",
+        color: Color(0xFF607D8B)),
+    Category(
         id: "gaming",
         name: "Gaming",
         icon: "gamecontroller.fill",

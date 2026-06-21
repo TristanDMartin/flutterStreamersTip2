@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:streamers_tip/utils/category_schema.dart';
 import 'package:streamers_tip/utils/discover_category_rules.dart';
 
 void main() {
@@ -23,6 +24,14 @@ void main() {
         'hlsUrl': 'https://example.com/a.m3u8',
       };
       expect(matchesDiscoverCategory(data, 'gaming'), isFalse);
+    });
+
+    test('uncategorized video matches general', () {
+      final Map<String, dynamic> data = <String, dynamic>{
+        'hlsUrl': 'https://example.com/a.m3u8',
+      };
+      expect(matchesDiscoverCategory(data, 'general'), isTrue);
+      expect(matchesDiscoverCategory(data, kDefaultCategoryId), isTrue);
     });
 
     test('legacy category field still matches gaming', () {

@@ -68,10 +68,14 @@ void main() {
       );
     });
 
-    test('missing category only matches all', () {
+    test('missing category matches all and general', () {
       final HomeVideo uncategorized = _video(id: 'b', categoryId: '');
       expect(
         homeVideoMatchesDiscoverCategory(uncategorized, 'all'),
+        isTrue,
+      );
+      expect(
+        homeVideoMatchesDiscoverCategory(uncategorized, 'general'),
         isTrue,
       );
       expect(

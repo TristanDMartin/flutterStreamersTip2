@@ -6,6 +6,11 @@ bool isAllCategorySlug(String category) {
   return normalizeCategorySlug(category) == 'all';
 }
 
+bool isGeneralCategorySlug(String category) {
+  return normalizeCategorySlug(category) ==
+      normalizeCategorySlug(kDefaultCategoryId);
+}
+
 /// Legacy slug extraction when [categoryId] is missing on old uploads.
 Set<String> extractLegacyCategorySlugs(Map<String, dynamic> data) {
   final Set<String> slugs = <String>{};
@@ -62,7 +67,12 @@ bool matchesDiscoverCategory(
   if (canonical.isPopulated) {
     matched = canonical.categoryId == selectedSlug;
   } else {
-    matched = extractLegacyCategorySlugs(data).contains(selectedSlug);
+    final Set<String> legacySlugs = extractLegacyCategorySlugs(data);
+    if (legacySlugs.isNotEmpty) {
+      matched = legacySlugs.contains(selectedSlug);
+    } else {
+      matched = isGeneralCategorySlug(selectedSlug);
+    }
   }
 
   if (enableDiagnostics && kDebugMode) {

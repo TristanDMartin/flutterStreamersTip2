@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'category_schema.dart';
 import 'video_caption_resolver.dart';
 import 'video_url_resolver.dart';
 
@@ -13,6 +14,11 @@ const Set<String> kClientVideoMetadataBackfillFields = <String>{
   'privacy',
   'visibility',
   'caption',
+  'category',
+  'categoryId',
+  'category_id',
+  'categoryName',
+  'categories',
   'updatedAt',
 };
 
@@ -65,6 +71,9 @@ bool videoNeedsMetadataBackfill(
       resolveVideoCaptionFromFirestoreData(data).isEmpty) {
     return true;
   }
+  if (!readCanonicalCategoryFromVideo(data).isPopulated) {
+    return true;
+  }
   return false;
 }
 
@@ -106,6 +115,9 @@ Map<String, dynamic> buildVideoMetadataBackfillPatch(
   if (data['caption'] == null &&
       resolveVideoCaptionFromFirestoreData(data).isEmpty) {
     patch['caption'] = '';
+  }
+  if (!readCanonicalCategoryFromVideo(data).isPopulated) {
+    patch.addAll(buildCanonicalCategoryFields(kDefaultCategoryId));
   }
   return patch;
 }
