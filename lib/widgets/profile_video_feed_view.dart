@@ -22,6 +22,7 @@ import '../routing/app_navigator.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/video_caption_resolver.dart';
 import '../utils/video_document_rules.dart';
+import '../utils/profile_grid_video_order.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
@@ -69,7 +70,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       const <Map<String, dynamic>>[];
   bool _bootstrapLoadScheduled = false;
   bool _profileGridHydrationComplete = false;
+  bool _profileGridMergeScheduled = false;
   String? _mergedProfileVideosForUserId;
+  int _profileGridMergeAttempts = 0;
   Set<String> _lastSyncedListenerVideoIds = const <String>{};
   bool _isSelectionMode = false;
   final Set<String> _selectedVideoIds = <String>{};
@@ -95,6 +98,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
       _resetCachedFutures();
       _mergedProfileVideosForUserId = null;
+      _profileGridMergeScheduled = false;
       ref.invalidate(userVideosProvider(widget.userId ?? ''));
       ref
           .read(providers.videoServiceStateProvider.notifier)
@@ -104,11 +108,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         ref
             .read(providers.videoServiceStateProvider.notifier)
             .mergeProfileVideosForUser(uid)
-            .then((_) async {
+            .then((bool changed) async {
           if (!mounted) {
             return;
           }
-          await ProfilePostCountReconcile.afterProfileVideoMerge(uid);
+          await ProfilePostCountReconcile.afterProfileVideoMerge(
+            uid,
+            mergeChangedState: changed,
+          );
         });
       }
     });
@@ -123,6 +130,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       _bootstrapLoadScheduled = false;
       _profileGridHydrationComplete = false;
       _mergedProfileVideosForUserId = null;
+      _profileGridMergeAttempts = 0;
+      _profileGridMergeScheduled = false;
       _lastSyncedListenerVideoIds = const <String>{};
       _primeProfileVideoTab();
     }
@@ -186,23 +195,50 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     if (uid == null || uid.isEmpty) {
       return;
     }
-    if (_mergedProfileVideosForUserId == uid) {
+    if (_profileGridHydrationComplete && _mergedProfileVideosForUserId == uid) {
       return;
     }
+    if (_profileGridMergeScheduled) {
+      return;
+    }
+    final videoServiceNotifier =
+        ref.read(providers.videoServiceStateProvider.notifier);
+    if (videoServiceNotifier.isMergingProfileVideos) {
+      return;
+    }
+    if (_mergedProfileVideosForUserId == uid) {
+      final int loadedCount =
+          ref.read(userVideosProvider(uid)).length;
+      if (loadedCount > 0) {
+        _profileGridHydrationComplete = true;
+        return;
+      }
+      if (_profileGridMergeAttempts >= 3) {
+        return;
+      }
+    } else {
+      _profileGridMergeAttempts = 0;
+    }
     _mergedProfileVideosForUserId = uid;
+    _profileGridMergeAttempts += 1;
+    _profileGridMergeScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
+        _profileGridMergeScheduled = false;
         return;
       }
       ref
           .read(providers.videoServiceLoadingProvider.notifier)
           .setIsLoading(true);
       try {
-        await ref
+        final bool changed = await ref
             .read(providers.videoServiceStateProvider.notifier)
             .mergeProfileVideosForUser(uid);
         if (mounted && _isViewingOwnProfile) {
-          await ProfilePostCountReconcile.afterProfileVideoMerge(uid);
+          await ProfilePostCountReconcile.afterProfileVideoMerge(
+            uid,
+            mergeChangedState: changed,
+          );
         }
         if (mounted) {
           setState(() {
@@ -215,6 +251,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           debugPrint('$stackTrace');
         }
       } finally {
+        _profileGridMergeScheduled = false;
         if (mounted) {
           ref
               .read(providers.videoServiceLoadingProvider.notifier)
@@ -237,7 +274,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     if (videoServiceState.isNotEmpty) {
       _bootstrapLoadScheduled = false;
       if (_isViewingOwnProfile && !_profileGridHydrationComplete) {
-        _mergedProfileVideosForUserId = null;
         _mergeProfileVideosForGridIfNeeded();
       }
       return;
@@ -262,13 +298,17 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             .read(providers.videoServiceStateProvider.notifier)
             .loadAllVideos(source: 'profile_bootstrap');
         if (mounted && _isViewingOwnProfile) {
-          _mergedProfileVideosForUserId = null;
-          await ref
+          final bool changed = await ref
               .read(providers.videoServiceStateProvider.notifier)
               .mergeProfileVideosForUser(widget.userId ?? '');
           if (mounted) {
+            await ProfilePostCountReconcile.afterProfileVideoMerge(
+              widget.userId ?? '',
+              mergeChangedState: changed,
+            );
             setState(() {
               _profileGridHydrationComplete = true;
+              _mergedProfileVideosForUserId = widget.userId;
             });
           }
         }
@@ -475,7 +515,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                       isLoadingVideos ||
                       isVideoServiceBusy ||
                       _bootstrapLoadScheduled);
-          if (kDebugMode && !isProfileVideoHydrating) {
+          if (_profileGridBuildDiagnosticsEnabled &&
+              kDebugMode &&
+              !isProfileVideoHydrating) {
             debugPrint(
               '🎬 ProfileView: Found ${userVideos.length} user videos for '
               'userId: ${widget.userId} (canonical: videos collection, '
@@ -772,8 +814,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       List<OptimisticVideo> optimisticVideos) {
     _scheduleRealtimeDeletionSync(videos);
 
+    final bool leadWithPromoThumbnails =
+        shouldLeadProfileGridWithPromoThumbnails(
+      isViewingOwnProfile: _isViewingOwnProfile,
+      videos: videos,
+    );
+    final int draftSlotCount = drafts.isNotEmpty ? 1 : 0;
     final itemCount =
-        (drafts.isNotEmpty ? 1 : 0) + optimisticVideos.length + videos.length;
+        draftSlotCount + optimisticVideos.length + videos.length;
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return RefreshIndicator(
       onRefresh: () async {
@@ -802,45 +850,37 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: itemCount,
         itemBuilder: (context, index) {
-          final draftOffset = drafts.isNotEmpty ? 1 : 0;
+          if (leadWithPromoThumbnails) {
+            if (index < videos.length) {
+              final HomeVideo video = videos[index];
+              return KeyedSubtree(
+                key: ValueKey<String>('profile-video-${video.id}'),
+                child: _buildHomeVideoCard(video, index, videos),
+              );
+            }
+            final int afterVideos = index - videos.length;
+            if (afterVideos < optimisticVideos.length) {
+              final OptimisticVideo optimisticVideo =
+                  optimisticVideos[afterVideos];
+              return KeyedSubtree(
+                key: ValueKey<String>(
+                  'profile-optimistic-${optimisticVideo.videoId}',
+                ),
+                child: _buildOptimisticProcessingCard(optimisticVideo),
+              );
+            }
+            if (drafts.isNotEmpty &&
+                afterVideos == optimisticVideos.length) {
+              return _buildDraftGridTile(drafts);
+            }
+            return const SizedBox.shrink();
+          }
+
+          final draftOffset = draftSlotCount;
 
           // Show all drafts in the first position (index 0)
           if (drafts.isNotEmpty && index == 0) {
-            final firstDraft = drafts[0];
-            if (kDebugMode && _profileGridBuildDiagnosticsEnabled) {
-              debugPrint(
-                'PROFILE_VIDEO_CARD_BUILD id=all_drafts count=${drafts.length}',
-              );
-            }
-            final draftVideo = HomeVideo(
-              id: 'all_drafts',
-              videoURL: firstDraft['videoPath'] ?? firstDraft['videoUrl'] ?? '',
-              thumbnailURL:
-                  firstDraft['thumbnailPath'] ?? firstDraft['thumbnailUrl'],
-              creator: User(
-                id: 'current_user',
-                displayName: 'You',
-                username: 'you',
-                bio: 'Your draft videos',
-                avatarURL: '',
-              ),
-              caption: '${drafts.length} Draft${drafts.length > 1 ? 's' : ''}',
-              categoryId: 'draft',
-              views: 0,
-              likes: 0,
-              comments: 0,
-              isDraft: true,
-              createdAt: Timestamp.fromDate(
-                DateTime.tryParse(firstDraft['createdAt']?.toString() ?? '') ??
-                    DateTime.now(),
-              ),
-            );
-
-            return _buildCombinedDraftsThumbnail(
-              draftVideo,
-              drafts.length,
-              drafts,
-            );
+            return _buildDraftGridTile(drafts);
           }
 
           final optimisticIndex = index - draftOffset;
@@ -869,6 +909,44 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           return const SizedBox.shrink();
         },
       ),
+    );
+  }
+
+  Widget _buildDraftGridTile(List<Map<String, dynamic>> drafts) {
+    final firstDraft = drafts[0];
+    if (kDebugMode && _profileGridBuildDiagnosticsEnabled) {
+      debugPrint(
+        'PROFILE_VIDEO_CARD_BUILD id=all_drafts count=${drafts.length}',
+      );
+    }
+    final draftVideo = HomeVideo(
+      id: 'all_drafts',
+      videoURL: firstDraft['videoPath'] ?? firstDraft['videoUrl'] ?? '',
+      thumbnailURL:
+          firstDraft['thumbnailPath'] ?? firstDraft['thumbnailUrl'],
+      creator: User(
+        id: 'current_user',
+        displayName: 'You',
+        username: 'you',
+        bio: 'Your draft videos',
+        avatarURL: '',
+      ),
+      caption: '${drafts.length} Draft${drafts.length > 1 ? 's' : ''}',
+      categoryId: 'draft',
+      views: 0,
+      likes: 0,
+      comments: 0,
+      isDraft: true,
+      createdAt: Timestamp.fromDate(
+        DateTime.tryParse(firstDraft['createdAt']?.toString() ?? '') ??
+            DateTime.now(),
+      ),
+    );
+
+    return _buildCombinedDraftsThumbnail(
+      draftVideo,
+      drafts.length,
+      drafts,
     );
   }
 

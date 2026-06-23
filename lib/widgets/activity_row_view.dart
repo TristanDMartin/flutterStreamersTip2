@@ -8,7 +8,7 @@ import '../features/activity/pulse/activity_pulse_logic.dart';
 import '../features/activity/pulse/activity_pulse_tokens.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
-import '../services/auth_service.dart';
+import '../services/robust_auth_service.dart';
 import '../services/follows_service.dart';
 import '../providers/follow_refresh_provider.dart';
 
@@ -59,7 +59,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   }
 
   Future<void> _loadFollowStatus() async {
-    final auth = ref.read(authServiceProvider);
+    final auth = ref.read(robustAuthServiceProvider);
     final currentUserId = auth.currentUser?.id;
 
     if (currentUserId == null || widget.notification.user.id == currentUserId) {
@@ -125,7 +125,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     // Get actual user management from Riverpod
-    final auth = ref.watch(authServiceProvider);
+    final auth = ref.watch(robustAuthServiceProvider);
     final currentUserId = auth.currentUser?.id;
 
     // Calculate follow status
@@ -618,6 +618,9 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   String _getNotificationMessage() {
     switch (widget.notification.type) {
       case ActivityNotificationType.like:
+        if (widget.notification.commentId?.isNotEmpty == true) {
+          return 'liked your comment';
+        }
         return 'liked your post';
       case ActivityNotificationType.follow:
         return 'started following you';

@@ -7,6 +7,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import '../models/activity_notification.dart';
 import '../models/json_converters.dart';
 import '../models/user.dart' as app_user;
+import '../services/user_blocking_service.dart';
 
 part 'activity_provider.freezed.dart';
 
@@ -35,6 +36,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   final Map<String, ActivityNotification> _primaryItems = {};
   final Map<String, ActivityNotification> _forumItems = {};
   bool _isInitialized = false; // FIXED: Prevent multiple initializations
+  VoidCallback? _blockListListener;
 
   bool get isInitialized => _isInitialized;
 
@@ -44,16 +46,22 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     debugPrint('  - Current state: ${state.grouped.length} notifications');
     debugPrint('🔍 ActivityNotifier: About to set up Firestore listener...');
 
-    // Always re-initialize to ensure real-time updates work
-    _isInitialized = true; // Mark as initialized
+    _isInitialized = true;
 
     try {
       await _notifSub?.cancel();
-      state = state.copyWith(isLoading: true, hasError: false, error: null);
+      final bool hasCachedNotifications = state.grouped.isNotEmpty;
+      if (!hasCachedNotifications) {
+        state = state.copyWith(isLoading: true, hasError: false, error: null);
+      }
 
       // Load real data from Firestore
       debugPrint('🔄 Loading real data from Firestore...');
       await _loadFirestoreData(userId);
+      _blockListListener ??= () {
+        unawaited(_rebuildGroupedState());
+      };
+      UserBlockingService().blockListRevision.addListener(_blockListListener!);
     } catch (e) {
       debugPrint('❌ Error in init: $e');
       state = state.copyWith(
@@ -104,7 +112,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
             '⚠️ ActivityNotifier: Forum notifications denied/failed: $e');
       }
 
-      _rebuildGroupedState();
+      unawaited(_rebuildGroupedState());
 
       _notifSub = _db
           .collection('notifications')
@@ -118,7 +126,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         onError: (Object error) {
           debugPrint('⚠️ ActivityNotifier: Primary listener error: $error');
           _primaryItems.clear();
-          _rebuildGroupedState();
+          unawaited(_rebuildGroupedState());
         },
       );
 
@@ -133,7 +141,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         onError: (Object error) {
           debugPrint('⚠️ ActivityNotifier: Forum listener error: $error');
           _forumItems.clear();
-          _rebuildGroupedState();
+          unawaited(_rebuildGroupedState());
         },
       );
     } catch (e) {
@@ -150,7 +158,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       QuerySnapshot<Map<String, dynamic>> snap) async {
     try {
       await _replacePrimarySnapshot(snap);
-      _rebuildGroupedState();
+      unawaited(_rebuildGroupedState());
     } catch (e) {
       debugPrint('🚨 Primary notification parsing error: $e');
       state = state.copyWith(
@@ -164,7 +172,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       QuerySnapshot<Map<String, dynamic>> snap) async {
     try {
       await _replaceForumSnapshot(snap);
-      _rebuildGroupedState();
+      unawaited(_rebuildGroupedState());
     } catch (e) {
       debugPrint('🚨 Forum notification parsing error: $e');
       state = state.copyWith(
@@ -208,13 +216,24 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     );
   }
 
-  void _rebuildGroupedState() {
+  Future<void> _rebuildGroupedState() async {
+    final Set<String> blockedUserIds =
+        (await UserBlockingService().getBlockedUsers()).toSet();
     final rawItems = <ActivityNotification>[
       ..._primaryItems.values,
       ..._forumItems.values,
     ]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-    final items = _dedupeNotifications(rawItems);
+    final items = _dedupeNotifications(
+      blockedUserIds.isEmpty
+          ? rawItems
+          : rawItems
+              .where(
+                (ActivityNotification notification) =>
+                    !blockedUserIds.contains(notification.user.id),
+              )
+              .toList(growable: false),
+    );
 
     final grouped = <String, List<ActivityNotification>>{};
     for (final n in items) {
@@ -1079,6 +1098,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   @override
   void dispose() {
     debugPrint('🧹 ActivityNotifier: Disposing and cancelling listeners');
+    if (_blockListListener != null) {
+      UserBlockingService().blockListRevision.removeListener(_blockListListener!);
+      _blockListListener = null;
+    }
     _notifSub?.cancel();
     _forumSub?.cancel();
     _procSub?.cancel();
@@ -1100,6 +1123,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       case 'like_post':
       case 'like':
       case 'likes':
+      case 'like_comment':
+      case 'liked_comment':
         return ActivityNotificationType.like;
       case 'comment_video':
       case 'comment_post':
@@ -1162,7 +1187,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
 }
 
 final activityProvider =
-    StateNotifierProvider.autoDispose<ActivityNotifier, ActivityState>((ref) {
+    StateNotifierProvider<ActivityNotifier, ActivityState>((ref) {
+  ref.keepAlive();
   return ActivityNotifier();
 });
 

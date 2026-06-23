@@ -71,8 +71,14 @@ class ProfilePostCountReconcile {
 
   /// Call after [VideoService.mergeProfileVideosForUser] on the owner’s
   /// profile so `users.postCount` matches the merged grid without waiting
-  /// for cooldown.
-  static Future<void> afterProfileVideoMerge(String userId) async {
+  /// for cooldown. Skips work when the merge did not change VideoService state.
+  static Future<void> afterProfileVideoMerge(
+    String userId, {
+    bool mergeChangedState = true,
+  }) async {
+    if (!mergeChangedState) {
+      return;
+    }
     invalidateCooldown(userId);
     await reconcileIfStale(
       userId: userId,

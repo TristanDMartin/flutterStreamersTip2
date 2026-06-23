@@ -7,6 +7,7 @@ import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart' as app_user;
 import '../utils/public_video_count_rules.dart';
+import '../utils/profile_grid_video_order.dart';
 import '../utils/category_schema.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/video_url_resolver.dart';
@@ -29,6 +30,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   bool isHydratingFeed = false;
   bool isMergingProfileVideos = false;
   Future<void>? _loadAllVideosInFlight;
+  final Map<String, Future<bool>> _mergeProfileVideosInFlight =
+      <String, Future<bool>>{};
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -1003,26 +1006,47 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   /// Fetches all of [profileUserId]'s public feed-eligible videos and merges them
   /// into [state]. The home feed only loads a small global slice; without this,
   /// [userVideosProvider] under-counts profile grids vs [reconcilePostCount].
-  Future<void> mergeProfileVideosForUser(String profileUserId) async {
+  /// Returns whether [state] changed after merging profile-eligible videos.
+  Future<bool> mergeProfileVideosForUser(String profileUserId) async {
     if (LikeInteractionBoundary.isActive) {
       LikeInteractionBoundary.reportVideoServiceReload(
         source: 'mergeProfileVideosForUser',
       );
-      return;
+      return false;
     }
+    final Future<bool>? inFlight = _mergeProfileVideosInFlight[profileUserId];
+    if (inFlight != null) {
+      if (kDebugMode) {
+        debugPrint(
+          '🎬 VideoService: mergeProfileVideosForUser($profileUserId) '
+          'skipped (in flight)',
+        );
+      }
+      return inFlight;
+    }
+    final Future<bool> run = _runMergeProfileVideosForUser(profileUserId);
+    _mergeProfileVideosInFlight[profileUserId] = run;
+    try {
+      return await run;
+    } finally {
+      _mergeProfileVideosInFlight.remove(profileUserId);
+    }
+  }
+
+  Future<bool> _runMergeProfileVideosForUser(String profileUserId) async {
     isMergingProfileVideos = true;
     try {
       if (Firebase.apps.isEmpty) {
-        return;
+        return false;
       }
       final user = _auth.currentUser;
       if (user == null) {
-        return;
+        return false;
       }
       final List<String> blockedUserIds =
           await UserBlockingService().getBlockedUsers();
       if (blockedUserIds.contains(profileUserId)) {
-        return;
+        return false;
       }
       final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
           <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
@@ -1069,24 +1093,27 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           built.add(video);
         }
       }
-      _mergeProfileVideosIntoState(built);
+      final bool changed = _mergeProfileVideosIntoState(built);
       if (kDebugMode) {
         debugPrint(
           '🎬 VideoService: mergeProfileVideosForUser($profileUserId) → '
-          '${built.length} videos merged into state (total ${state.length})',
+          '${built.length} videos merged into state (total ${state.length}, '
+          'changed=$changed)',
         );
       }
+      return changed;
     } catch (e, stackTrace) {
       debugPrint('❌ VideoService: mergeProfileVideosForUser failed: $e');
       debugPrint('$stackTrace');
+      return false;
     } finally {
       isMergingProfileVideos = false;
     }
   }
 
-  void _mergeProfileVideosIntoState(List<HomeVideo> profileVideos) {
+  bool _mergeProfileVideosIntoState(List<HomeVideo> profileVideos) {
     if (profileVideos.isEmpty) {
-      return;
+      return false;
     }
     final Map<String, HomeVideo> profileById = <String, HomeVideo>{
       for (final HomeVideo v in profileVideos) v.id: v,
@@ -1117,9 +1144,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           'profile grid unchanged',
         );
       }
-      return;
+      return false;
     }
     state = next;
+    return true;
   }
 
   bool _sameProfileGridVideo(HomeVideo a, HomeVideo b) {
@@ -1140,6 +1168,81 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         listEquals(a.playlistIds, b.playlistIds);
   }
 
+  Future<HomeVideo?> _homeVideoFromPromoFixtureDoc({
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required Map<String, dynamic> data,
+    required String ownerId,
+    required String thumbnailUrl,
+  }) async {
+    VideoThumbnails? thumbnails;
+    final Map<String, dynamic>? thumbnailsData =
+        data['thumbnails'] as Map<String, dynamic>?;
+    if (thumbnailsData != null && thumbnailsData['urls'] != null) {
+      final Map<String, dynamic> urlsData =
+          thumbnailsData['urls'] as Map<String, dynamic>;
+      final Map<int, String> urls = <int, String>{};
+      urlsData.forEach((String key, dynamic value) {
+        final int? intKey = int.tryParse(key);
+        if (intKey != null && value is String) {
+          urls[intKey] = value;
+        }
+      });
+      if (urls.isNotEmpty) {
+        thumbnails = VideoThumbnails(
+          urls: urls,
+          generatedAt: thumbnailsData['generatedAt'] as Timestamp? ??
+              data['createdAt'] as Timestamp? ??
+              Timestamp.now(),
+          aspectRatio:
+              (thumbnailsData['aspectRatio'] as num?)?.toDouble() ?? 0.5625,
+        );
+      }
+    }
+    thumbnails ??= VideoThumbnails(
+      urls: <int, String>{
+        360: thumbnailUrl,
+        540: thumbnailUrl,
+        720: thumbnailUrl,
+      },
+      generatedAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+      aspectRatio: 0.5625,
+    );
+    final app_user.User? creator = await _userDataService.getUserById(ownerId);
+    final app_user.User resolvedCreator = creator ??
+        app_user.User(
+          id: ownerId,
+          username: (data['creatorUsername'] ?? data['username'] ?? 'creator')
+              .toString(),
+          displayName:
+              (data['displayName'] ?? data['creatorName'] ?? 'Creator')
+                  .toString(),
+          avatarURL: null,
+          bio: null,
+          hashtags: const <String>[],
+        );
+    return HomeVideo(
+      id: doc.id,
+      creator: resolvedCreator,
+      videoURL: '',
+      thumbnailURL: thumbnailUrl,
+      thumbnails: thumbnails,
+      caption: resolveVideoCaptionFromFirestoreData(data),
+      overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
+      categoryId: categoryIdFromVideoDocument(data),
+      views: data['views']?.toInt() ?? 0,
+      likes: data['likes']?.toInt() ?? 0,
+      comments: data['comments']?.toInt() ?? 0,
+      duration: _parseDuration(
+        data['metadata']?['duration'] ?? data['duration'],
+      ),
+      isDraft: false,
+      createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+      status: (data['status'] as String?) ?? 'ready',
+      visibility: (data['visibility'] as String?) ?? 'public',
+      tags: const <String>['promo_fixture'],
+    );
+  }
+
   Future<HomeVideo?> _homeVideoFromDocAfterPlayableGate(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
     List<String> blockedUserIds,
@@ -1152,6 +1255,14 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     VideoThumbnails? thumbnails;
     final String? thumbnailUrl =
         (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
+    if (isPromoFixtureVideo(data) && promoFixtureHasThumbnail(data)) {
+      return _homeVideoFromPromoFixtureDoc(
+        doc: doc,
+        data: data,
+        ownerId: ownerId,
+        thumbnailUrl: thumbnailUrl!,
+      );
+    }
     final String? videoUrl = resolveReadyPlaybackUrl(data);
     if (videoUrl == null) {
       return null;
@@ -1676,7 +1787,7 @@ final userVideosProvider =
     return matchesUser && !isDraft && isVisible;
   }).toList();
 
-  return userVideos;
+  return orderProfileGridVideos(userVideos);
 });
 
 final _userVideosGridSignatureProvider =
