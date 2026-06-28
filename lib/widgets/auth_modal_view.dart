@@ -5,13 +5,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../core/firebase_bootstrap.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../qa/qa_keys.dart';
 import '../services/robust_auth_service.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../views/terms_and_privacy_view.dart';
 import 'email_login_view.dart';
-import 'privacy_policy_view.dart';
 import 'signup_view.dart';
 
 class AuthModalView extends ConsumerStatefulWidget {
@@ -92,6 +93,9 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
       (RobustAuthenticationService? previous, RobustAuthenticationService next) {
         final bool wasLoggedIn = previous?.isLoggedIn ?? false;
         if (!wasLoggedIn && next.isLoggedIn && mounted) {
+          if (!FirebaseBootstrap.isReady) {
+            return;
+          }
           final firebase_auth.User? user =
               firebase_auth.FirebaseAuth.instance.currentUser;
           debugPrint(
@@ -700,6 +704,15 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     AuthRequestResult result, {
     required String providerLabel,
   }) async {
+    if (!FirebaseBootstrap.isReady) {
+      if (mounted) {
+        setState(() {
+          _alertMessage = 'Still connecting. Please try again in a moment.';
+          _showAlert = true;
+        });
+      }
+      return;
+    }
     final firebase_auth.User? firebaseUser =
         firebase_auth.FirebaseAuth.instance.currentUser;
     debugPrint(
@@ -754,11 +767,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   void _openPrivacyPolicy() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => const PrivacyPolicyView(),
-      ),
-    );
+    launchUrl(Uri.parse('https://www.streamerstip.com/privacy'));
   }
 }
 
@@ -795,7 +804,7 @@ class _PressableAuthButtonState extends State<_PressableAuthButton> {
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOut,
       child: GestureDetector(
-        key: widget.key,
+        behavior: HitTestBehavior.opaque,
         onTap: widget.enabled ? widget.onTap : null,
         onTapDown: (_) => _setPressed(true),
         onTapUp: (_) => _setPressed(false),

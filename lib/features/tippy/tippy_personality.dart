@@ -1,6 +1,8 @@
+import '../billing/models/subscription_snapshot.dart';
 import '../gamification/models/user_progress_bundle.dart';
 import 'tippy_identity.dart';
-import 'tippy_tier.dart' show resolveTippyFeatureTier;
+import 'tippy_tier.dart'
+    show resolveTippyFeatureTier, resolveTippyFeatureTierFromSnapshot;
 
 /// Tier-aware Tippy UI copy — constants live in [TippyIdentity].
 class TippyPersonality {
@@ -41,6 +43,10 @@ class TippyPersonality {
 
   static List<String> quickPromptsForBundle(UserProgressBundle bundle) {
     return quickPromptsForTier(resolveTippyFeatureTier(bundle));
+  }
+
+  static List<String> quickPromptsForSnapshot(SubscriptionSnapshot snapshot) {
+    return quickPromptsForTier(resolveTippyFeatureTierFromSnapshot(snapshot));
   }
 
   static String welcomeSubtitle(TippyFeatureTier tier) {

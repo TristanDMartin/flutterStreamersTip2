@@ -3,6 +3,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'follows_service.dart';
 
+class BlockedUserRecord {
+  const BlockedUserRecord({
+    required this.userId,
+    this.blockedAt,
+  });
+
+  final String userId;
+  final DateTime? blockedAt;
+}
+
 /// Service for managing user blocking functionality
 class UserBlockingService {
   static final UserBlockingService _instance = UserBlockingService._internal();
@@ -89,7 +99,89 @@ class UserBlockingService {
     }
   }
 
-  /// Check if a user is blocked by current user
+  /// Get list of blocked user IDs.
+  Future<List<String>> getBlockedUsers() async {
+    final List<BlockedUserRecord> records = await getBlockedUserRecords();
+    return records.map((BlockedUserRecord record) => record.userId).toList();
+  }
+
+  /// Block edges authored by the current user, including block timestamps.
+  Future<List<BlockedUserRecord>> getBlockedUserRecords() async {
+    try {
+      final String? currentUserId = _auth.currentUser?.uid;
+      if (currentUserId == null) {
+        return <BlockedUserRecord>[];
+      }
+
+      final QuerySnapshot<Map<String, dynamic>> query = await _firestore
+          .collection('user_blocks')
+          .where('blockerId', isEqualTo: currentUserId)
+          .get();
+
+      return query.docs.map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+        final Map<String, dynamic> data = doc.data();
+        final Object? createdAt = data['createdAt'];
+        DateTime? blockedAt;
+        if (createdAt is Timestamp) {
+          blockedAt = createdAt.toDate();
+        }
+        return BlockedUserRecord(
+          userId: data['blockedUserId'] as String,
+          blockedAt: blockedAt,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error getting blocked users: $e');
+      return <BlockedUserRecord>[];
+    }
+  }
+
+  /// True when either user has blocked the other.
+  Future<bool> hasBlockBetween({
+    required String userId,
+    required String otherUserId,
+  }) async {
+    if (userId.isEmpty || otherUserId.isEmpty || userId == otherUserId) {
+      return false;
+    }
+    try {
+      final List<QuerySnapshot<Map<String, dynamic>>> results =
+          await Future.wait(<Future<QuerySnapshot<Map<String, dynamic>>>>[
+        _firestore
+            .collection('user_blocks')
+            .where('blockerId', isEqualTo: userId)
+            .where('blockedUserId', isEqualTo: otherUserId)
+            .limit(1)
+            .get(),
+        _firestore
+            .collection('user_blocks')
+            .where('blockerId', isEqualTo: otherUserId)
+            .where('blockedUserId', isEqualTo: userId)
+            .limit(1)
+            .get(),
+      ]);
+      return results.any(
+        (QuerySnapshot<Map<String, dynamic>> snap) => snap.docs.isNotEmpty,
+      );
+    } catch (e) {
+      debugPrint('❌ Error checking block between users: $e');
+      return false;
+    }
+  }
+
+  /// Whether the signed-in user can open a direct chat with [otherUserId].
+  Future<bool> canOpenDirectMessageWith(String otherUserId) async {
+    final String? currentUserId = _auth.currentUser?.uid;
+    if (currentUserId == null) {
+      return false;
+    }
+    return !(await hasBlockBetween(
+      userId: currentUserId,
+      otherUserId: otherUserId,
+    ));
+  }
+
+  /// Legacy helper — checks only whether the current user blocked [targetUserId].
   Future<bool> isUserBlocked(String targetUserId) async {
     try {
       final currentUserId = _auth.currentUser?.uid;
@@ -106,26 +198,6 @@ class UserBlockingService {
     } catch (e) {
       debugPrint('❌ Error checking if user is blocked: $e');
       return false;
-    }
-  }
-
-  /// Get list of blocked users
-  Future<List<String>> getBlockedUsers() async {
-    try {
-      final currentUserId = _auth.currentUser?.uid;
-      if (currentUserId == null) return [];
-
-      final query = await _firestore
-          .collection('user_blocks')
-          .where('blockerId', isEqualTo: currentUserId)
-          .get();
-
-      return query.docs
-          .map((doc) => doc.data()['blockedUserId'] as String)
-          .toList();
-    } catch (e) {
-      debugPrint('❌ Error getting blocked users: $e');
-      return [];
     }
   }
 }

@@ -4,7 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../routing/app_navigator.dart';
+import '../services/robust_auth_service.dart';
 import '../services/pending_auth_redirect_service.dart';
+
+enum EmailVerificationDisplayMode { gate, banner }
 
 class EmailVerificationView extends ConsumerStatefulWidget {
   final String email;
@@ -14,11 +17,20 @@ class EmailVerificationView extends ConsumerStatefulWidget {
   /// Set false when this widget is embedded in a shell that should rebuild instead.
   final bool navigateToHomeOnVerify;
 
+  final EmailVerificationDisplayMode mode;
+  final VoidCallback? onContinueToSetup;
+
+  /// When false, system UI is managed by an outer shell (e.g. onboarding gate).
+  final bool manageSystemUi;
+
   const EmailVerificationView({
     super.key,
     required this.email,
     this.onVerified,
     this.navigateToHomeOnVerify = true,
+    this.mode = EmailVerificationDisplayMode.gate,
+    this.onContinueToSetup,
+    this.manageSystemUi = true,
   });
 
   @override
@@ -37,7 +49,9 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
   @override
   void initState() {
     super.initState();
-    _setSystemUIOverlayStyle();
+    if (widget.manageSystemUi) {
+      _setSystemUIOverlayStyle();
+    }
     _sendVerificationEmail();
     _startAutoVerificationCheck();
   }
@@ -57,7 +71,9 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
   void dispose() {
     _verificationCheckTimer?.cancel();
     _cooldownTimer?.cancel();
-    _resetSystemUIOverlayStyle();
+    if (widget.manageSystemUi) {
+      _resetSystemUIOverlayStyle();
+    }
     super.dispose();
   }
 
@@ -240,36 +256,36 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
       ),
     );
     if (confirm == true && mounted) {
-      await FirebaseAuth.instance.signOut();
+      await ref.read(robustAuthServiceProvider).signOut();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-            ),
+    if (widget.mode == EmailVerificationDisplayMode.banner) {
+      return _buildBannerMode(context);
+    }
+    return SizedBox.expand(
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[Color(0xFF6137EB), Color(0xFF1C135D)],
           ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  _buildHeader(),
-                  const Spacer(),
-                  _buildVerificationContent(),
-                  const Spacer(),
-                  _buildActionButtons(),
-                  const SizedBox(height: 32),
-                ],
-              ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              children: <Widget>[
+                _buildHeader(),
+                const Spacer(),
+                _buildVerificationContent(),
+                const Spacer(),
+                _buildActionButtons(),
+                const SizedBox(height: 32),
+              ],
             ),
           ),
         ),
@@ -277,16 +293,72 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
     );
   }
 
+  Widget _buildBannerMode(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFEF3C7),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: <Widget>[
+              const Icon(Icons.mail_outline_rounded, color: Color(0xFF92400E)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Verify your email to unlock tipping and DMs',
+                  style: TextStyle(
+                    color: const Color(0xFF92400E),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed:
+                    _isResendingEmail ? null : _resendVerificationEmail,
+                child: Text(
+                  _isResendingEmail ? 'Sending...' : 'Resend →',
+                  style: const TextStyle(
+                    color: Color(0xFF92400E),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleContinueToSetup() {
+    widget.onContinueToSetup?.call();
+    if (widget.onContinueToSetup != null) {
+      return;
+    }
+    PendingAuthRedirectService.instance.consumeOrGoHome(context);
+  }
+
   Widget _buildHeader() {
     return Row(
       children: [
-        TextButton(
-          onPressed: _handleSignOut,
-          child: const Text(
-            'Sign out',
-            style: TextStyle(color: Colors.orange),
+        if (widget.onContinueToSetup != null)
+          TextButton(
+            onPressed: _handleContinueToSetup,
+            child: const Text(
+              'Skip for now',
+              style: TextStyle(color: Colors.white70),
+            ),
+          )
+        else
+          TextButton(
+            onPressed: _handleSignOut,
+            child: const Text(
+              'Sign out',
+              style: TextStyle(color: Colors.orange),
+            ),
           ),
-        ),
         const Spacer(),
         const Text(
           "Verify Email",
@@ -382,13 +454,19 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
     return Column(
       children: [
         _buildButton(
+          text: 'Continue to Setup',
+          onTap: _handleContinueToSetup,
+          isPrimary: true,
+        ),
+        const SizedBox(height: 16),
+        _buildButton(
           text: _isCheckingVerification
               ? "Checking..."
               : "I've Verified My Email",
           onTap: _isCheckingVerification
               ? null
               : () => _checkEmailVerification(silent: false),
-          isPrimary: true,
+          isPrimary: false,
         ),
         const SizedBox(height: 16),
         _buildButton(
@@ -405,7 +483,7 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
         const SizedBox(height: 16),
         TextButton(
           onPressed: () async {
-            await FirebaseAuth.instance.signOut();
+            await ref.read(robustAuthServiceProvider).signOut();
             if (mounted) {
               AppNavigator.replaceWithAuth(context);
             }

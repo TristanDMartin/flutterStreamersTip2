@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,12 @@ import 'package:streamers_tip/features/gamification/models/user_progress_bundle.
 import 'package:streamers_tip/features/gamification/models/user_subscription_model.dart';
 import 'package:streamers_tip/features/tippy/tippy_chat_page.dart';
 import 'package:streamers_tip/features/tippy/tippy_chat_service.dart';
+import 'package:streamers_tip/features/tippy/tippy_legal_service.dart';
+import 'package:streamers_tip/features/tippy/models/tippy_ui_payload.dart';
+import 'package:streamers_tip/services/creator_intelligence_analytics_service.dart';
+
+import '../test_support/fake_firebase_auth.dart';
+import '../test_support/firebase_test_setup.dart';
 
 class FakeTippyChatService extends TippyChatService {
   FakeTippyChatService({
@@ -40,6 +47,15 @@ class FakeTippyChatService extends TippyChatService {
       greeting: 'hello',
       creditsRemaining: 10,
       tier: 'pro',
+    );
+  }
+
+  @override
+  Future<TippyContextSnapshot> fetchContext() async {
+    return TippyContextSnapshot(
+      memoryReady: false,
+      greeting: 'hello',
+      ui: TippyUiPayload.empty,
     );
   }
 
@@ -82,6 +98,23 @@ class FakeTippyChatService extends TippyChatService {
 }
 
 void main() {
+  late TippyLegalService grantedLegalService;
+  late CreatorIntelligenceAnalyticsService analyticsService;
+
+  setUpAll(() async {
+    await setupFirebaseForTests();
+    final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
+    grantedLegalService = TippyLegalService(
+      firestore: firestore,
+      userIdResolver: () => 'test-uid',
+    );
+    await grantedLegalService.recordConsent();
+    analyticsService = CreatorIntelligenceAnalyticsService(
+      firestore: firestore,
+      auth: FakeFirebaseAuth(FakeFirebaseUser('test-uid')),
+    );
+  });
+
   final MeEntitlementsData kMe = SubscriptionSnapshot.fromResponseJson(
     <String, dynamic>{
       'uid': 'test-uid',
@@ -131,9 +164,15 @@ void main() {
             return kMe;
           },
         ),
+        creatorIntelligenceAnalyticsProvider.overrideWithValue(
+          analyticsService,
+        ),
       ],
       child: MaterialApp(
-        home: TippyChatPage(chatService: service),
+        home: TippyChatPage(
+          chatService: service,
+          legalService: grantedLegalService,
+        ),
       ),
     );
   }

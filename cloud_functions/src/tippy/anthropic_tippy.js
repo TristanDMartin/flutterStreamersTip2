@@ -7,6 +7,11 @@ const {
   buildAnalyzeSystemPrompt,
   buildPlanSystemPrompt,
 } = require('./tippy_identity');
+const {resolveModelForPath} = require('./tippy_model_router');
+const {
+  buildKnowledgeBlock,
+  selectKnowledgeChunks,
+} = require('./tippy_knowledge_router');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -143,12 +148,23 @@ async function postAnthropic({
   return {ok: res.ok, status: res.status, parsed, raw};
 }
 
-function resolveModel() {
-  const m = String(process.env.ANTHROPIC_MODEL || '').trim();
-  if (m.length > 0) {
-    return m;
+function resolveModel(path, body) {
+  return resolveModelForPath(path, body);
+}
+
+function appendKnowledgeToSystem(system, tippyContext, promptText) {
+  const memory = tippyContext?.extras?.memory || tippyContext?.memory || {};
+  const goals = tippyContext?.extras?.goals || tippyContext?.goals || [];
+  const chunks = selectKnowledgeChunks({
+    prompt: promptText,
+    goals,
+    niche: memory?.niche?.labels?.[0] || memory?.niche?.primaryCategoryId || '',
+  });
+  const knowledge = buildKnowledgeBlock(chunks);
+  if (!knowledge) {
+    return system;
   }
-  return DEFAULT_MODEL;
+  return `${system}\n\n${knowledge}`;
 }
 
 function readProviderErrorMessage(result) {
@@ -227,18 +243,22 @@ function resolveTippyContext(tippyContext) {
 }
 
 async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) {
-  const model = resolveModel();
+  const model = resolveModel(path, body);
   const {tier, displayName, userData, extras} = resolveTippyContext(tippyContext);
-  if (path === '/tippy/chat') {
+  if (path === '/tippy/chat' || path === '/tippy/hook-ideas') {
     const raw = Array.isArray(body.messages) ? body.messages : [];
     const {system, messages} = sanitizeChatMessages(raw);
-    const sys = buildTippySystemPrompt({
+    const latestPrompt = messages.length > 0
+      ? messages[messages.length - 1].content
+      : '';
+    let sys = buildTippySystemPrompt({
       tier,
       displayName,
       userData,
       extras,
       clientSystem: system,
     });
+    sys = appendKnowledgeToSystem(sys, tippyContext, latestPrompt);
     const maxTokens = 4096;
     const result = await postAnthropicWithModelFallback({
       apiKey,
@@ -279,6 +299,35 @@ async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) 
       };
     }
     return {message: text};
+  }
+  if (path === '/tippy/hook-ideas') {
+    const raw = Array.isArray(body.messages) ? body.messages : [];
+    const {messages} = sanitizeChatMessages(raw);
+    const result = await postAnthropicWithModelFallback({
+      apiKey,
+      model,
+      maxTokens: 1024,
+      system: 'Output valid JSON only.',
+      messages,
+    });
+    if (!result.ok) {
+      return {
+        error: buildErrorPayload(
+          'AI_PROVIDER_ERROR',
+          'Hook generation failed.',
+          502,
+          requestId,
+          true,
+        ),
+        status: 502,
+      };
+    }
+    const text = extractTextFromMessage(result.parsed);
+    const j = tryParseJson(text);
+    const hooks = j && Array.isArray(j.hooks)
+      ? j.hooks.map((hook) => String(hook)).filter(Boolean).slice(0, 5)
+      : text.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 5);
+    return {hooks, message: hooks.join('\n')};
   }
   if (path === '/tippy/create-plan' || path === '/tippy/create-content-plan') {
     const planContext = sanitizePlanMessages(body);

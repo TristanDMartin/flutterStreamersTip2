@@ -4,8 +4,9 @@ const admin = require('firebase-admin');
 
 const firestore = admin.firestore();
 const {buildUserAccess} = require('../shared/user_tippy_access');
-const {getEntitlementsForTier} = require('../shared/entitlements');
+const {getEntitlementsForTier, AI_CREDIT_COSTS} = require('../shared/entitlements');
 const {resolveCreditsForUser} = require('../shared/tippy_credits');
+const {verifyAppCheckHttp} = require('../shared/verify_app_check_http');
 
 function buildErrorResponse({
   code,
@@ -114,13 +115,35 @@ function buildTippyFeatures(tier) {
   return ['ai_chat_limited', 'basic_posting_tips'];
 }
 
+function buildApiEntitlements(tierEntitlements) {
+  const features = tierEntitlements.features || {};
+  return {
+    maxPlatforms: tierEntitlements.connectedPlatforms,
+    monthlyAiCredits: tierEntitlements.aiCreditsPerMonth,
+    contentPlansLimit: tierEntitlements.contentPlans,
+    analyticsWindowDays: tierEntitlements.analyticsWindowDays,
+    crossPostWeeklyLimit: tierEntitlements.crossPostWeeklyLimit,
+    videoUploadsPerMonth: 0,
+    teamMembersLimit: tierEntitlements.teamMembers,
+    canCrossPost: features.crossPosting === true,
+    canBulkPublish: features.bulkPublishing === true,
+    canUseAdvancedAnalytics: features.advancedAnalytics === true,
+    canUseAICaptionRewrite: features.tippyPremium === true,
+    canUseGrowthReports: features.advancedReports === true,
+    canUseTeamMembers: features.teamMembers === true,
+    canUseAutomation: features.automation === true,
+    canExportAnalytics: features.analyticsExport === true,
+    canUseContentPlanner: features.contentPlanner !== false,
+  };
+}
+
 async function handleMeEntitlements(req, res) {
   const requestId = generateRequestId();
   if (req.method === 'OPTIONS') {
     res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.set(
       'Access-Control-Allow-Headers',
-      'Authorization, Content-Type',
+      'Authorization, Content-Type, X-Firebase-AppCheck',
     );
     res.status(204).send('');
     return;
@@ -144,8 +167,22 @@ async function handleMeEntitlements(req, res) {
     return;
   }
 
-  const doc = await firestore.collection('users').doc(authResult.uid).get();
-  const userData = doc.data() || {};
+  const appCheckResult = await verifyAppCheckHttp(req, {requestId});
+  if (!appCheckResult.ok) {
+    res.status(appCheckResult.status).json(
+      buildErrorResponse({
+        code: appCheckResult.code,
+        message: appCheckResult.message,
+        status: appCheckResult.status,
+        retryable: false,
+        requestId,
+      }),
+    );
+    return;
+  }
+
+  const {loadUserWithBilling} = require('../shared/user_billing_storage');
+  const userData = await loadUserWithBilling(authResult.uid);
   const access = buildUserAccess(userData, {
     uid: authResult.uid,
     email: authResult.email,
@@ -153,6 +190,19 @@ async function handleMeEntitlements(req, res) {
   const credits = resolveCreditsForUser(userData, access);
   const monthlyCredits = credits.limit;
   const tierEntitlements = getEntitlementsForTier(access.tier);
+  const billingProvider = String(
+    userData.billingProvider ||
+      userData.subscription?.provider ||
+      '',
+  ).trim();
+  const billingSource =
+    billingProvider === 'apple'
+      ? 'apple'
+      : billingProvider === 'google'
+        ? 'google'
+        : billingProvider === 'stripe'
+          ? 'stripe'
+          : access.tierSource || 'starter_default';
 
   res.status(200).json({
     success: true,
@@ -162,11 +212,24 @@ async function handleMeEntitlements(req, res) {
       tier: access.tier,
       effectiveTier: access.tier,
       tierSource: access.tierSource,
+      source: billingSource,
+      subscriptionProvider: billingProvider || billingSource,
       subscriptionStatus: access.status,
       hasStudioAccess: access.hasStudioAccess === true,
       crossPostLimit: access.crossPostLimit,
       aiCreditsMonthlyLimit: monthlyCredits,
       billingRequired: access.billingRequired !== false,
+      creditsUsed: credits.used,
+      creditsLimit: credits.limit,
+      creditsRemaining: credits.remaining,
+      entitlements: buildApiEntitlements(tierEntitlements),
+      aiCreditCosts: AI_CREDIT_COSTS,
+      usage: {
+        periodKey: credits.periodKey || '',
+        monthlyCreditsUsed: credits.used,
+        monthlyCreditsRemaining: credits.remaining,
+        lastResetDate: credits.resetAt || null,
+      },
       limits: {
         aiCreditsPerMonth: tierEntitlements.aiCreditsPerMonth,
         analyticsWindowDays: tierEntitlements.analyticsWindowDays,

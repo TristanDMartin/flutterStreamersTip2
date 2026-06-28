@@ -1,32 +1,39 @@
 'use strict';
 
-/**
- * POST /verifyMobilePurchase — same JSON body as the Flutter app
- * (MobilePurchaseVerificationPayload).
- *
- * Env (set via Firebase Functions config / secrets):
- * - APP_STORE_SHARED_SECRET — App Store Connect → app → In-App Purchase key
- * - GOOGLE_PLAY_SERVICE_ACCOUNT_JSON — full service account JSON (string)
- * - ANDROID_PACKAGE_NAME — default com.streamerstip.streamersTipApp
- *
- * Apple uses verifyReceipt (classic). StoreKit 2 JWS-only receipts return 501
- * until you add App Store Server API verification.
- */
-
 const admin = require('firebase-admin');
 const https = require('https');
-const {JWT} = require('google-auth-library');
 const {
   SignedDataVerifier,
   Environment,
   OfferType,
 } = require('@apple/app-store-server-library');
 const {loadAppleRootCertificates} = require('./apple_root_cas');
-
-const FieldValue = admin.firestore.FieldValue;
-const Timestamp = admin.firestore.Timestamp;
+const {
+  assertMobilePurchaseAllowed,
+  assertTransactionNotBoundToOtherUser,
+  applyEntitlementDowngrade,
+  buildUserEntitlementPatch,
+  recordTransactionOwner,
+  Timestamp,
+  FieldValue,
+} = require('../shared/subscription_entitlements');
+const {applyEntitlementPatches, loadUserWithBilling} =
+  require('../shared/user_billing_storage');
+const {
+  verifyGooglePlaySubscription,
+  defaultAndroidPackageName,
+} = require('./google_play_verify');
+const {verifyAppCheckHttp} = require('../shared/verify_app_check_http');
 
 const ALLOWED_PRODUCT_IDS = new Set([
+  'streamerstip_pro_monthly_ios',
+  'streamerstip_pro_yearly_ios',
+  'streamerstip_studio_monthly_ios',
+  'streamerstip_studio_yearly_ios',
+  'streamerstip_pro_monthly_android',
+  'streamerstip_pro_yearly_android',
+  'streamerstip_studio_monthly_android',
+  'streamerstip_studio_yearly_android',
   'creator_pro_monthly',
   'creator_pro_yearly',
   'creator_studio_monthly',
@@ -37,16 +44,39 @@ const ALLOWED_PRODUCT_IDS = new Set([
   'streamerstip_studio_yearly',
 ]);
 
-const DEFAULT_ANDROID_PACKAGE = 'com.streamerstip.streamersTipApp';
+const LEGACY_PRODUCT_IDS = new Set([
+  'creator_pro_monthly',
+  'creator_pro_yearly',
+  'creator_studio_monthly',
+  'creator_studio_yearly',
+  'streamerstip_pro_monthly',
+  'streamerstip_pro_yearly',
+  'streamerstip_studio_monthly',
+  'streamerstip_studio_yearly',
+]);
+
 const DEFAULT_APPLE_BUNDLE_ID = 'com.streamerstip.streamersTipApp';
 
 function tierFromProductId(productId) {
-  if (String(productId).includes('studio')) return 'studio';
+  if (String(productId).includes('studio')) {
+    return 'studio';
+  }
   return 'pro';
 }
 
 function billingProvider(platform) {
   return platform === 'ios' ? 'apple' : 'google';
+}
+
+function isProductAllowedForPlatform(productId, platform) {
+  const id = String(productId || '').trim().toLowerCase();
+  if (id.endsWith('_ios')) {
+    return platform === 'ios';
+  }
+  if (id.endsWith('_android')) {
+    return platform === 'android';
+  }
+  return LEGACY_PRODUCT_IDS.has(productId);
 }
 
 function postAppleVerifyReceipt(host, bodyObj) {
@@ -184,124 +214,56 @@ async function verifyAppleStoreKit2Transaction(signedTransaction, expectedProduc
   throw lastError || new Error('Apple JWS verification failed');
 }
 
-function buildUserEntitlementPatch({
+async function applyVerifiedMobileGrant(uid, {
   tier,
   provider,
   productId,
   verified,
-  periodEndTs,
-  trialTs,
-  now,
-  existingUser = {},
+  transactionId,
+  existingUser,
+  existingCreatedAt,
+  lifecycleReason = 'verify_mobile_purchase',
 }) {
-  const isPaid =
-    verified.subscriptionStatus === 'active' ||
-    verified.subscriptionStatus === 'trialing';
-  const existingEnt =
-    existingUser.entitlements &&
-    typeof existingUser.entitlements === 'object' &&
-    !Array.isArray(existingUser.entitlements)
-      ? existingUser.entitlements
-      : {};
-  const existingSub =
-    existingUser.subscription &&
-    typeof existingUser.subscription === 'object' &&
-    !Array.isArray(existingUser.subscription)
-      ? existingUser.subscription
-      : {};
-  const existingTippy =
-    existingEnt.tippyAi &&
-    typeof existingEnt.tippyAi === 'object' &&
-    !Array.isArray(existingEnt.tippyAi)
-      ? existingEnt.tippyAi
-      : {};
-  return {
-    tier,
-    subscriptionTier: tier,
-    subscriptionStatus: verified.subscriptionStatus,
-    billingProvider: provider,
-    planProductId: productId,
-    currentPeriodEnd: periodEndTs,
-    trialEndsAt: trialTs,
-    subscriptionTrialEndAt: trialTs,
-    updatedAt: now,
-    entitlements: {
-      ...existingEnt,
-      active: isPaid,
-      tippyAi: {
-        ...existingTippy,
-        plan: tier,
-        tier,
-        status: verified.subscriptionStatus,
-        productId,
-        provider,
-      },
-    },
-    subscription: {
-      ...existingSub,
+  const now = FieldValue.serverTimestamp();
+  const periodEndTs = Timestamp.fromDate(verified.currentPeriodEnd);
+  const trialTs = verified.trialEndsAt
+    ? Timestamp.fromDate(verified.trialEndsAt)
+    : null;
+  await applyEntitlementPatches(uid, {
+    entitlementPatch: buildUserEntitlementPatch({
       tier,
-      plan: tier,
+      provider,
+      productId,
+      verified,
+      periodEndTs,
+      trialTs,
+      now,
+      existingUser,
+    }),
+    subscriptionsPatch: {
+      uid,
+      tier,
+      provider,
       status: verified.subscriptionStatus,
       productId,
-      provider,
+      originalTransactionId: verified.originalTransactionId,
+      purchaseToken: verified.purchaseTokenStored,
+      transactionId: transactionId || verified.originalTransactionId,
+      currentPeriodStart: now,
       currentPeriodEnd: periodEndTs,
       trialEndsAt: trialTs,
       cancelAtPeriodEnd: false,
+      createdAt: existingCreatedAt || now,
+      updatedAt: now,
+      lastLifecycleReason: lifecycleReason,
     },
-  };
-}
-
-async function verifyGooglePlaySubscription(packageName, productId, purchaseToken) {
-  const raw = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON;
-  if (!raw || raw.trim() === '') {
-    throw new Error('GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not configured');
-  }
-  const cred = JSON.parse(raw);
-  const jwtClient = new JWT({
-    email: cred.client_email,
-    key: cred.private_key,
-    scopes: ['https://www.googleapis.com/auth/androidpublisher'],
   });
-  const url =
-    'https://androidpublisher.googleapis.com/androidpublisher/v3/' +
-    `applications/${encodeURIComponent(packageName)}` +
-    '/purchases/subscriptionsv2/tokens/' +
-    `${encodeURIComponent(purchaseToken)}`;
-  const gRes = await jwtClient.request({url});
-  const data = gRes.data || {};
-  if (gRes.status < 200 || gRes.status >= 300) {
-    throw new Error(
-      `Play API ${gRes.status}: ${JSON.stringify(data).slice(0, 500)}`,
-    );
-  }
-  const state = String(data.subscriptionState || '').toUpperCase();
-  if (!state.includes('ACTIVE') && !state.includes('PENDING')) {
-    throw new Error(`Play subscriptionState: ${data.subscriptionState}`);
-  }
-  const items = data.lineItems || [];
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new Error('Play subscription has no lineItems');
-  }
-  const li =
-    items.find((x) => x.productId === productId) || items[0];
-  const expiryIso = li.expiryTime;
-  if (!expiryIso) {
-    throw new Error('Play lineItem missing expiryTime');
-  }
-  const currentPeriodEnd = new Date(expiryIso);
-  const offer = li.offerDetails || {};
-  const tags = (offer.offerTags || []).map((x) => String(x).toUpperCase());
-  const trial =
-    tags.includes('FREE_TRIAL') ||
-    tags.includes('INTRODUCTORY_PRICE') ||
-    String(offer.basePlanId || '').toLowerCase().includes('trial');
-  return {
-    originalTransactionId: String(data.latestOrderId || purchaseToken),
-    purchaseTokenStored: purchaseToken,
-    currentPeriodEnd,
-    trialEndsAt: trial ? currentPeriodEnd : null,
-    subscriptionStatus: trial ? 'trialing' : 'active',
-  };
+  await recordTransactionOwner({
+    originalTransactionId: verified.originalTransactionId,
+    uid,
+    provider,
+    productId,
+  });
 }
 
 async function handleVerifyMobilePurchase(req, res) {
@@ -327,6 +289,14 @@ async function handleVerifyMobilePurchase(req, res) {
     }
     const idToken = authHeader.slice('Bearer '.length).trim();
     const decoded = await admin.auth().verifyIdToken(idToken);
+    const appCheckResult = await verifyAppCheckHttp(req);
+    if (!appCheckResult.ok) {
+      res.status(appCheckResult.status).json({
+        error: appCheckResult.message,
+        code: appCheckResult.code,
+      });
+      return;
+    }
     const uid = String(body.uid || '').trim();
     if (!uid || uid !== decoded.uid) {
       res.status(403).json({error: 'uid must match signed-in user'});
@@ -340,10 +310,17 @@ async function handleVerifyMobilePurchase(req, res) {
       res.status(400).json({error: 'Invalid productId'});
       return;
     }
+    if (!isProductAllowedForPlatform(productId, platform)) {
+      res.status(400).json({error: 'productId does not match platform'});
+      return;
+    }
     if (!purchaseToken) {
       res.status(400).json({error: 'Missing purchaseToken'});
       return;
     }
+    const existingUser = await loadUserWithBilling(uid);
+    assertMobilePurchaseAllowed(existingUser);
+
     let verified;
     if (platform === 'ios') {
       if (looksLikeStoreKit2Jws(purchaseToken)) {
@@ -360,10 +337,8 @@ async function handleVerifyMobilePurchase(req, res) {
         );
       }
     } else if (platform === 'android') {
-      const pkg =
-        process.env.ANDROID_PACKAGE_NAME || DEFAULT_ANDROID_PACKAGE;
       verified = await verifyGooglePlaySubscription(
-          pkg,
+          defaultAndroidPackageName(),
           productId,
           purchaseToken,
       );
@@ -371,58 +346,41 @@ async function handleVerifyMobilePurchase(req, res) {
       res.status(400).json({error: 'platform must be ios or android'});
       return;
     }
+
+    if (verified.subscriptionStatus === 'expired') {
+      await applyEntitlementDowngrade(uid, {
+        status: 'expired',
+        reason: 'verify_expired',
+      });
+      res.status(410).json({
+        ok: false,
+        error: 'Subscription expired',
+        subscriptionStatus: 'expired',
+      });
+      return;
+    }
+
+    await assertTransactionNotBoundToOtherUser(
+        verified.originalTransactionId,
+        uid,
+    );
+
     const tier = tierFromProductId(productId);
     const provider = billingProvider(platform);
-    const now = FieldValue.serverTimestamp();
-    const userRef = admin.firestore().collection('users').doc(uid);
-    const subRef = admin.firestore().collection('subscriptions').doc(uid);
-    const userSnap = await userRef.get();
-    const existingUser = userSnap.exists ? userSnap.data() || {} : {};
-    const subSnap = await subRef.get();
+    const subSnap = await admin.firestore().collection('subscriptions').doc(uid).get();
     const existingCreatedAt =
       subSnap.exists && subSnap.data().createdAt
         ? subSnap.data().createdAt
         : null;
-    const periodEndTs = Timestamp.fromDate(verified.currentPeriodEnd);
-    const trialTs = verified.trialEndsAt
-      ? Timestamp.fromDate(verified.trialEndsAt)
-      : null;
-    const batch = admin.firestore().batch();
-    batch.set(
-        userRef,
-        buildUserEntitlementPatch({
-          tier,
-          provider,
-          productId,
-          verified,
-          periodEndTs,
-          trialTs,
-          now,
-          existingUser,
-        }),
-        {merge: true},
-    );
-    batch.set(
-        subRef,
-        {
-          uid,
-          tier,
-          provider,
-          status: verified.subscriptionStatus,
-          productId,
-          originalTransactionId: verified.originalTransactionId,
-          purchaseToken: verified.purchaseTokenStored,
-          transactionId: transactionId || verified.originalTransactionId,
-          currentPeriodStart: now,
-          currentPeriodEnd: periodEndTs,
-          trialEndsAt: trialTs,
-          cancelAtPeriodEnd: false,
-          createdAt: existingCreatedAt || now,
-          updatedAt: now,
-        },
-        {merge: true},
-    );
-    await batch.commit();
+    await applyVerifiedMobileGrant(uid, {
+      tier,
+      provider,
+      productId,
+      verified,
+      transactionId,
+      existingUser,
+      existingCreatedAt,
+    });
     res.status(200).json({
       ok: true,
       tier,
@@ -431,8 +389,17 @@ async function handleVerifyMobilePurchase(req, res) {
     });
   } catch (e) {
     console.error('verifyMobilePurchase', e);
-    res.status(500).json({error: e.message || 'Verification failed'});
+    const status =
+      e.code === 'STRIPE_CONFLICT' || e.code === 'TRANSACTION_BOUND'
+        ? 409
+        : 500;
+    res.status(status).json({error: e.message || 'Verification failed'});
   }
 }
 
-module.exports = {handleVerifyMobilePurchase};
+module.exports = {
+  handleVerifyMobilePurchase,
+  tierFromProductId,
+  ALLOWED_PRODUCT_IDS,
+  applyVerifiedMobileGrant,
+};

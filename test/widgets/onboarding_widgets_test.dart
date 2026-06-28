@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/components/onboarding/onboarding_v1_constants.dart';
-import 'package:streamers_tip/components/onboarding/screens/onboarding_goals_screen.dart';
 import 'package:streamers_tip/components/onboarding/screens/onboarding_level_unlock_screen.dart';
-import 'package:streamers_tip/components/onboarding/screens/onboarding_platforms_screen.dart';
+import 'package:streamers_tip/components/onboarding/screens/onboarding_personalize_screen.dart';
 import 'package:streamers_tip/components/onboarding/screens/onboarding_welcome_screen.dart';
+import 'package:streamers_tip/widgets/brand_icons.dart';
 
 void main() {
   testWidgets('welcome screen shows headline and CTA', (WidgetTester tester) async {
@@ -12,67 +12,84 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: OnboardingWelcomeScreen(
+          userId: 'user-1',
           onGetStarted: () {
             tapped = true;
           },
         ),
       ),
     );
-    expect(find.text('Welcome to StreamersTip'), findsOneWidget);
-    expect(find.text('Get Started'), findsOneWidget);
-    await tester.tap(find.text('Get Started'));
+    expect(find.text('Your creator journey starts here'), findsOneWidget);
+    expect(
+      find.textContaining('growth, AI, and community'),
+      findsOneWidget,
+    );
+    expect(find.text('Get Started →'), findsOneWidget);
+    await tester.tap(find.text('Get Started →'));
     await tester.pump();
     expect(tapped, isTrue);
   });
 
-  testWidgets('goals screen requires selection before continue', (
+  testWidgets('personalize screen always enables continue', (
     WidgetTester tester,
   ) async {
-    List<String>? continuedGoals;
+    ({List<String> goals, List<String> platforms})? continued;
     await tester.pumpWidget(
       MaterialApp(
-        home: OnboardingGoalsScreen(
+        home: OnboardingPersonalizeScreen(
           initialGoals: const <String>[],
-          onContinue: (List<String> goals) {
-            continuedGoals = goals;
+          initialPlatforms: const <String>[],
+          onContinue: (({List<String> goals, List<String> platforms}) data) {
+            continued = data;
           },
+          onSkip: () {},
           onBack: () {},
         ),
       ),
     );
-    expect(find.text('What are you here to accomplish?'), findsOneWidget);
-    await tester.tap(find.text('Continue'));
-    await tester.pump();
-    expect(continuedGoals, isNull);
-    await tester.tap(find.text('Growth'));
+    expect(find.text('What\'s your creator focus?'), findsOneWidget);
+    await tester.tap(
+      find.text(
+        'Continue → +${OnboardingV1Constants.personalizeRewardXp} XP',
+      ),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
-    expect(continuedGoals, contains('growth'));
+    expect(continued, isNotNull);
+    expect(continued!.goals, isEmpty);
   });
 
-  testWidgets('platforms screen passes selected platforms', (
+  testWidgets('personalize screen saves selected goals and platforms', (
     WidgetTester tester,
   ) async {
-    List<String>? continuedPlatforms;
+    ({List<String> goals, List<String> platforms})? continued;
     await tester.pumpWidget(
       MaterialApp(
-        home: OnboardingPlatformsScreen(
-          initialPlatforms: const <String>['twitch'],
-          onContinue: (List<String> platforms) {
-            continuedPlatforms = platforms;
+        home: OnboardingPersonalizeScreen(
+          initialGoals: const <String>[],
+          initialPlatforms: const <String>[],
+          onContinue: (({List<String> goals, List<String> platforms}) data) {
+            continued = data;
           },
+          onSkip: () {},
           onBack: () {},
         ),
       ),
     );
-    expect(find.text('Where do you create?'), findsOneWidget);
-    expect(find.text('Twitch'), findsOneWidget);
-    await tester.tap(find.text('YouTube'));
-    await tester.pump();
-    await tester.tap(find.text('Continue'));
-    await tester.pump();
-    expect(continuedPlatforms, containsAll(<String>['twitch', 'youtube']));
+    await tester.tap(find.text('Grow my audience'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -320));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Twitch'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BrandIcon), findsWidgets);
+    await tester.tap(
+      find.text(
+        'Continue → +${OnboardingV1Constants.personalizeRewardXp} XP',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(continued?.goals, contains('growth'));
+    expect(continued?.platforms, contains('twitch'));
   });
 
   testWidgets('level unlock screen lists starter missions and enter CTA', (
@@ -82,6 +99,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: OnboardingLevelUnlockScreen(
+          userId: 'user-1',
           onEnterApp: () {
             entered = true;
           },
@@ -89,14 +107,12 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Level 1: Getting Started'), findsOneWidget);
-    expect(find.text('Complete Creator Card'), findsOneWidget);
-    expect(find.text('Ask Tippy A Question'), findsOneWidget);
-    expect(
-      find.text('+${OnboardingV1Constants.levelOneUnlockRewardXp} XP reward'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Enter StreamersTip'));
+    expect(find.text('Enter StreamersTip →'), findsOneWidget);
+    for (final ({String id, String title, String emoji}) mission
+        in OnboardingLevelOneMissions.starterMissions) {
+      expect(find.text(mission.title), findsOneWidget);
+    }
+    await tester.tap(find.text('Enter StreamersTip →'));
     await tester.pump();
     expect(entered, isTrue);
   });

@@ -8,6 +8,7 @@ class ProfileAboutEditorSection extends StatelessWidget {
     required this.user,
     required this.onEditField,
     this.canChangeName = true,
+    this.showNameRow = true,
     this.showUsernameRow = true,
     this.showPlatformsRow = false,
     this.onNameLockedTap,
@@ -17,6 +18,7 @@ class ProfileAboutEditorSection extends StatelessWidget {
   final Map<String, dynamic> user;
   final ValueChanged<EditableProfileField> onEditField;
   final bool canChangeName;
+  final bool showNameRow;
   final bool showUsernameRow;
   final bool showPlatformsRow;
   final VoidCallback? onNameLockedTap;
@@ -52,15 +54,17 @@ class ProfileAboutEditorSection extends StatelessWidget {
             ),
             child: Column(
               children: <Widget>[
-                _ProfileFieldRow(
-                  label: EditableProfileField.name.title,
-                  value: (user['displayName'] as String?) ?? '',
-                  isLocked: !canChangeName,
-                  onTap: canChangeName
-                      ? () => onEditField(EditableProfileField.name)
-                      : onNameLockedTap,
-                ),
-                _ProfileSectionDivider(),
+                if (showNameRow) ...<Widget>[
+                  _ProfileFieldRow(
+                    label: EditableProfileField.name.title,
+                    value: (user['displayName'] as String?) ?? '',
+                    isLocked: !canChangeName,
+                    onTap: canChangeName
+                        ? () => onEditField(EditableProfileField.name)
+                        : onNameLockedTap,
+                  ),
+                  _ProfileSectionDivider(),
+                ],
                 if (showUsernameRow) ...<Widget>[
                   _UsernameRow(
                     username: (user['username'] as String?) ?? '',

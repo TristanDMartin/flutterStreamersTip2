@@ -35,6 +35,11 @@ class OnboardingState {
     required this.premiumOfferDismissed,
     this.completedAt,
     this.lastSeenAt,
+    this.emailBannerDismissed = false,
+    this.softRatingDismissed = false,
+    this.hasRated = false,
+    this.hasSeenMissionBannerOnHome = false,
+    this.missionBannerDismissed = false,
   });
 
   factory OnboardingState.initial() {
@@ -57,15 +62,21 @@ class OnboardingState {
     final Map<String, dynamic> onboarding =
         (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
             <String, dynamic>{};
-    final bool legacyCompleted = data['hasCompletedOnboarding'] == true ||
-        onboarding['hasCompletedOnboarding'] == true ||
-        onboarding['completed'] == true;
-    final int version =
-        _readInt(onboarding['version']) ?? OnboardingV1Constants.version;
-    final String status = legacyCompleted
+    final int? version = _readInt(onboarding['version']);
+    final bool hasV1Payload = version == OnboardingV1Constants.version;
+    final bool legacyCompleted = !hasV1Payload &&
+        (data['hasCompletedOnboarding'] == true ||
+            data['onboardingCompleted'] == true ||
+            onboarding['hasCompletedOnboarding'] == true ||
+            onboarding['completed'] == true);
+    final bool completed = hasV1Payload
+        ? onboarding['completed'] == true
+        : legacyCompleted || onboarding['completed'] == true;
+    final int resolvedVersion =
+        version ?? OnboardingV1Constants.version;
+    final String status = completed
         ? OnboardingStatus.completed
         : (onboarding['status'] as String?) ?? OnboardingStatus.notStarted;
-    final bool completed = legacyCompleted || onboarding['completed'] == true;
     final int currentStep = completed
         ? OnboardingV1Constants.completedStepMarker
         : (_readInt(onboarding['currentStep']) ??
@@ -75,7 +86,7 @@ class OnboardingState {
         onboarding['hasSeenIntro'] == true ||
         onboarding['hasCompletedProductTour'] == true;
     return OnboardingState(
-      version: version,
+      version: resolvedVersion,
       status: completed ? OnboardingStatus.completed : status,
       completed: completed,
       currentStep: currentStep,
@@ -91,6 +102,12 @@ class OnboardingState {
       lastSeenAt: onboarding['lastSeenAt'] is Timestamp
           ? onboarding['lastSeenAt'] as Timestamp
           : null,
+      emailBannerDismissed: onboarding['emailBannerDismissed'] == true,
+      softRatingDismissed: onboarding['softRatingDismissed'] == true,
+      hasRated: onboarding['hasRated'] == true,
+      hasSeenMissionBannerOnHome:
+          onboarding['hasSeenMissionBannerOnHome'] == true,
+      missionBannerDismissed: onboarding['missionBannerDismissed'] == true,
     );
   }
 
@@ -104,6 +121,11 @@ class OnboardingState {
   final bool premiumOfferDismissed;
   final Timestamp? completedAt;
   final Timestamp? lastSeenAt;
+  final bool emailBannerDismissed;
+  final bool softRatingDismissed;
+  final bool hasRated;
+  final bool hasSeenMissionBannerOnHome;
+  final bool missionBannerDismissed;
 
   bool get isInProgress =>
       !completed && status == OnboardingStatus.inProgress;
@@ -127,7 +149,12 @@ class OnboardingState {
             hasSeenIntro == other.hasSeenIntro &&
             listEquals(creatorGoals, other.creatorGoals) &&
             listEquals(platforms, other.platforms) &&
-            premiumOfferDismissed == other.premiumOfferDismissed;
+            premiumOfferDismissed == other.premiumOfferDismissed &&
+            emailBannerDismissed == other.emailBannerDismissed &&
+            softRatingDismissed == other.softRatingDismissed &&
+            hasRated == other.hasRated &&
+            hasSeenMissionBannerOnHome == other.hasSeenMissionBannerOnHome &&
+            missionBannerDismissed == other.missionBannerDismissed;
   }
 
   @override
@@ -140,6 +167,11 @@ class OnboardingState {
         Object.hashAll(creatorGoals),
         Object.hashAll(platforms),
         premiumOfferDismissed,
+        emailBannerDismissed,
+        softRatingDismissed,
+        hasRated,
+        hasSeenMissionBannerOnHome,
+        missionBannerDismissed,
       );
 }
 

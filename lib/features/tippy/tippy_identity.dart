@@ -1,5 +1,6 @@
 import '../gamification/models/subscription_plan.dart';
 import '../gamification/models/user_progress_bundle.dart';
+import '../../services/creator_personalization_service.dart';
 
 /// Billing tier for Tippy depth and model limits.
 enum TippyFeatureTier { starter, pro, studio }
@@ -166,7 +167,11 @@ abstract final class TippyIdentity {
         'an empty items array.';
   }
 
-  static String buildTippyCreatorContextBlock(UserProgressBundle bundle) {
+  static String buildTippyCreatorContextBlock(
+    UserProgressBundle bundle, {
+    CreatorPersonalizationProfile personalization =
+        CreatorPersonalizationProfile.empty,
+  }) {
     final progress = bundle.progress;
     final List<String> lines = <String>[
       'Progression: level ${progress.level}, ${progress.totalXp} XP, '
@@ -185,6 +190,14 @@ abstract final class TippyIdentity {
     final SubscriptionPlan? plan = bundle.subscription?.plan;
     if (plan != null && plan != SubscriptionPlan.unknown) {
       lines.insert(0, 'Subscription tier (app): ${plan.name}.');
+    }
+    if (personalization.isActive) {
+      lines.addAll(
+        CreatorPersonalizationLogic.tippyContextLines(
+          goals: personalization.creatorGoals,
+          platforms: personalization.platforms,
+        ),
+      );
     }
     return 'Creator context:\n${lines.join('\n')}';
   }

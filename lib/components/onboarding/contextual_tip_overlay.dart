@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/design/st_radius.dart';
 import '../../core/design/st_spacing.dart';
+import '../../constants/playback_owners.dart';
+import '../../routing/app_routes.dart';
+import '../../services/global_playback_manager.dart';
+import 'package:streamers_tip/utils/secure_log.dart';
 import 'contextual_tips_service.dart';
 import 'onboarding_style.dart';
 
@@ -165,6 +169,7 @@ abstract final class ContextualTipCatalog {
   }) {
     return showGeneralDialog<void>(
       context: context,
+      routeSettings: const RouteSettings(name: AppRoutes.contextualTip),
       barrierDismissible: true,
       barrierLabel: 'Dismiss tip',
       barrierColor: Colors.black.withValues(alpha: 0.55),
@@ -187,6 +192,9 @@ abstract final class ContextualTipCatalog {
           curve: Curves.easeOutCubic,
           reverseCurve: Curves.easeInCubic,
         );
+        void dismissTip() {
+          Navigator.of(ctx).pop();
+        }
         return FadeTransition(
           opacity: curved,
           child: SlideTransition(
@@ -206,14 +214,34 @@ abstract final class ContextualTipCatalog {
                   title: tip.title,
                   message: tip.message,
                   emoji: tip.emoji,
-                  onDismiss: () => Navigator.of(ctx).pop(),
+                  onDismiss: dismissTip,
                 ),
               ),
             ),
           ),
         );
       },
-    );
+    ).whenComplete(_resumeHomeFeedPlayback);
+  }
+
+  static void _resumeHomeFeedPlayback() {
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    if (!manager.shouldRestoreHomeShellPlayback()) {
+      secureLog('RESTORE_SKIPPED reason=non_video_tab');
+      return;
+    }
+    final String? blockReason = manager.blockReason;
+    if (blockReason != null && blockReason.startsWith('main_tab_')) {
+      return;
+    }
+    if (manager.visibleOwner != PlaybackOwners.home) {
+      return;
+    }
+    if (manager.isPlaybackBlocked) {
+      return;
+    }
+    manager.restoreCurrentFeedFocus();
+    manager.resumeAfterTabSwitch();
   }
 }
 

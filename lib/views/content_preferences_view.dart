@@ -3,6 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'settings/settings_subpage_widgets.dart';
+import '../services/content_settings_service.dart';
+
 class ContentPreferencesView extends ConsumerStatefulWidget {
   const ContentPreferencesView({super.key});
 
@@ -16,12 +19,10 @@ class _ContentPreferencesViewState
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   bool _isSaving = false;
-
-  // Content preferences state
   bool _autoPlay = true;
   bool _soundEnabled = true;
   bool _dataSaver = false;
-  String _videoQuality = 'auto'; // auto | high | medium | low
+  String _videoQuality = 'auto';
   bool _downloadEnabled = true;
   bool _contentVisibility = true;
   bool _sensitiveContent = false;
@@ -34,24 +35,23 @@ class _ContentPreferencesViewState
   }
 
   Future<void> _loadSettings() async {
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) {
       setState(() => _isLoading = false);
       return;
     }
-
     try {
-      final doc = await _firestore
+      final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
           .collection('users')
           .doc(user.uid)
           .collection('contentSettings')
           .doc('main')
           .get();
-
       if (mounted) {
         setState(() {
-          if (doc.exists) {
-            final data = doc.data()!;
+          if (doc.exists && doc.data() != null) {
+            final Map<String, dynamic> data = doc.data()!;
             _autoPlay = data['autoPlay'] ?? true;
             _soundEnabled = data['soundEnabled'] ?? true;
             _dataSaver = data['dataSaver'] ?? false;
@@ -64,7 +64,7 @@ class _ContentPreferencesViewState
           _isLoading = false;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -72,35 +72,28 @@ class _ContentPreferencesViewState
   }
 
   Future<void> _updateSetting(String key, dynamic value) async {
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
     setState(() => _isSaving = true);
-
     try {
       await _firestore
           .collection('users')
           .doc(user.uid)
           .collection('contentSettings')
           .doc('main')
-          .set({key: value}, SetOptions(merge: true));
-
+          .set(<String, dynamic>{key: value}, SetOptions(merge: true));
+      ContentSettingsService.instance.invalidate(user.uid);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Settings updated'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        SettingsSubpageWidgets.showUpdatedSnackBar(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating settings: $e'),
-            backgroundColor: Colors.red,
-          ),
+        SettingsSubpageWidgets.showErrorSnackBar(
+          context,
+          'Error updating settings: $e',
         );
       }
     } finally {
@@ -110,412 +103,8 @@ class _ContentPreferencesViewState
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF1C135D),
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          title: const Text(
-            'Content Preferences',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF1C135D),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Content Preferences',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_isSaving)
-              const LinearProgressIndicator(
-                backgroundColor: Colors.transparent,
-              ),
-            _buildSection(
-              'Playback',
-              'Control how content plays',
-              [
-                _buildSwitchSetting(
-                  icon: Icons.play_circle_outline,
-                  title: 'Auto-play',
-                  subtitle: 'Automatically play videos when browsing',
-                  value: _autoPlay,
-                  onChanged: (value) {
-                    setState(() => _autoPlay = value);
-                    _updateSetting('autoPlay', value);
-                  },
-                ),
-                _buildSwitchSetting(
-                  icon: Icons.volume_up,
-                  title: 'Sound',
-                  subtitle: 'Enable sound by default',
-                  value: _soundEnabled,
-                  onChanged: (value) {
-                    setState(() => _soundEnabled = value);
-                    _updateSetting('soundEnabled', value);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildSection(
-              'Quality & Data',
-              'Control video quality and data usage',
-              [
-                _buildDropdownSetting(
-                  icon: Icons.high_quality,
-                  title: 'Video Quality',
-                  subtitle: 'Choose preferred video quality',
-                  value: _videoQuality,
-                  options: const ['auto', 'high', 'medium', 'low'],
-                  onChanged: (value) {
-                    setState(() => _videoQuality = value!);
-                    _updateSetting('videoQuality', value);
-                  },
-                ),
-                _buildSwitchSetting(
-                  icon: Icons.data_saver_on,
-                  title: 'Data Saver',
-                  subtitle: 'Reduce data usage by lowering quality',
-                  value: _dataSaver,
-                  onChanged: (value) {
-                    setState(() => _dataSaver = value);
-                    _updateSetting('dataSaver', value);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildSection(
-              'Downloads',
-              'Control downloaded content',
-              [
-                _buildSwitchSetting(
-                  icon: Icons.download,
-                  title: 'Allow Downloads',
-                  subtitle: 'Enable downloading videos',
-                  value: _downloadEnabled,
-                  onChanged: (value) {
-                    setState(() => _downloadEnabled = value);
-                    _updateSetting('downloadEnabled', value);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildSection(
-              'Content Visibility',
-              'Control what content appears',
-              [
-                _buildSwitchSetting(
-                  icon: Icons.visibility,
-                  title: 'Show Sensitive Content',
-                  subtitle: 'Show sensitive or explicit content',
-                  value: _sensitiveContent,
-                  onChanged: (value) {
-                    setState(() => _sensitiveContent = value);
-                    _updateSetting('sensitiveContent', value);
-                  },
-                ),
-                _buildSwitchSetting(
-                  icon: Icons.filter_list,
-                  title: 'Content Filter',
-                  subtitle: 'Filter mature or explicit content',
-                  value: _contentVisibility,
-                  onChanged: (value) {
-                    setState(() => _contentVisibility = value);
-                    _updateSetting('contentVisibility', value);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildSection(
-              'Language',
-              'Language preferences',
-              [
-                _buildDropdownSetting(
-                  icon: Icons.language,
-                  title: 'Preferred Language',
-                  subtitle: 'Set your preferred language',
-                  value: _languagePreference,
-                  options: const [
-                    'en',
-                    'es',
-                    'fr',
-                    'de',
-                    'it',
-                    'pt',
-                    'ja',
-                    'zh'
-                  ],
-                  onChanged: (value) {
-                    setState(() => _languagePreference = value!);
-                    _updateSetting('languagePreference', value);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildInfoCard(),
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSection(String title, String subtitle, List<Widget> children) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          subtitle,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
-            ),
-          ),
-          child: Column(
-            children: [...children],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSwitchSetting({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: const Color(0xFF9248D2),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDropdownSetting({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String value,
-    required List<String> options,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-            ),
-            child: DropdownButton<String>(
-              value: value,
-              dropdownColor: const Color(0xFF1C135D),
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              underline: const SizedBox(),
-              items: options.map((option) {
-                return DropdownMenuItem<String>(
-                  value: option,
-                  child: Text(
-                    _formatOption(option),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                );
-              }).toList(),
-              onChanged: onChanged,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.blue.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, color: Colors.blue, size: 24),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'About Content Preferences',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Customize how you view and interact with content. Adjust quality, playback, and visibility settings to match your preferences.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatOption(String option) {
-    final languageNames = {
+  String _formatLanguage(String code) {
+    const Map<String, String> labels = <String, String>{
       'en': 'English',
       'es': 'Spanish',
       'fr': 'French',
@@ -525,12 +114,179 @@ class _ContentPreferencesViewState
       'ja': 'Japanese',
       'zh': 'Chinese',
     };
+    return labels[code] ?? code.toUpperCase();
+  }
 
-    if (languageNames.containsKey(option)) {
-      return languageNames[option]!;
-    }
-
-    // Format quality options
-    return option[0].toUpperCase() + option.substring(1);
+  @override
+  Widget build(BuildContext context) {
+    return SettingsSubpageWidgets.shell(
+      context: context,
+      title: 'Content Preferences',
+      isLoading: _isLoading,
+      isSaving: _isSaving,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            SettingsSubpageWidgets.section(
+              context: context,
+              title: 'Playback',
+              subtitle: 'Control how content plays',
+              children: <Widget>[
+                SettingsSubpageWidgets.switchRow(
+                  context: context,
+                  icon: Icons.play_circle_outline,
+                  title: 'Auto-play',
+                  subtitle: 'Automatically play videos when browsing',
+                  value: _autoPlay,
+                  onChanged: (bool value) {
+                    setState(() => _autoPlay = value);
+                    _updateSetting('autoPlay', value);
+                  },
+                ),
+                SettingsSubpageWidgets.switchRow(
+                  context: context,
+                  icon: Icons.volume_up,
+                  title: 'Sound',
+                  subtitle: 'Enable sound by default',
+                  value: _soundEnabled,
+                  onChanged: (bool value) {
+                    setState(() => _soundEnabled = value);
+                    _updateSetting('soundEnabled', value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            SettingsSubpageWidgets.section(
+              context: context,
+              title: 'Quality & Data',
+              subtitle: 'Control video quality and data usage',
+              children: <Widget>[
+                SettingsSubpageWidgets.dropdownRow(
+                  context: context,
+                  icon: Icons.high_quality,
+                  title: 'Video Quality',
+                  subtitle: 'Choose preferred video quality',
+                  value: _videoQuality,
+                  options: const <String>['auto', 'high', 'medium', 'low'],
+                  onChanged: (String? value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() => _videoQuality = value);
+                    _updateSetting('videoQuality', value);
+                  },
+                ),
+                SettingsSubpageWidgets.switchRow(
+                  context: context,
+                  icon: Icons.data_saver_on,
+                  title: 'Data Saver',
+                  subtitle: 'Reduce data usage by lowering quality',
+                  value: _dataSaver,
+                  onChanged: (bool value) {
+                    setState(() => _dataSaver = value);
+                    _updateSetting('dataSaver', value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            SettingsSubpageWidgets.section(
+              context: context,
+              title: 'Downloads',
+              subtitle: 'Control downloaded content',
+              children: <Widget>[
+                SettingsSubpageWidgets.switchRow(
+                  context: context,
+                  icon: Icons.download,
+                  title: 'Allow Downloads',
+                  subtitle: 'Enable downloading videos',
+                  value: _downloadEnabled,
+                  onChanged: (bool value) {
+                    setState(() => _downloadEnabled = value);
+                    _updateSetting('downloadEnabled', value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            SettingsSubpageWidgets.section(
+              context: context,
+              title: 'Content Visibility',
+              subtitle: 'Control what content appears',
+              children: <Widget>[
+                SettingsSubpageWidgets.switchRow(
+                  context: context,
+                  icon: Icons.visibility,
+                  title: 'Show Sensitive Content',
+                  subtitle: 'Show sensitive or explicit content',
+                  value: _sensitiveContent,
+                  onChanged: (bool value) {
+                    setState(() => _sensitiveContent = value);
+                    _updateSetting('sensitiveContent', value);
+                  },
+                ),
+                SettingsSubpageWidgets.switchRow(
+                  context: context,
+                  icon: Icons.filter_list,
+                  title: 'Content Filter',
+                  subtitle: 'Filter mature or explicit content',
+                  value: _contentVisibility,
+                  onChanged: (bool value) {
+                    setState(() => _contentVisibility = value);
+                    _updateSetting('contentVisibility', value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            SettingsSubpageWidgets.section(
+              context: context,
+              title: 'Language',
+              subtitle: 'Language preferences',
+              children: <Widget>[
+                SettingsSubpageWidgets.dropdownRow(
+                  context: context,
+                  icon: Icons.language,
+                  title: 'Preferred Language',
+                  subtitle: 'Set your preferred language',
+                  value: _languagePreference,
+                  options: const <String>[
+                    'en',
+                    'es',
+                    'fr',
+                    'de',
+                    'it',
+                    'pt',
+                    'ja',
+                    'zh',
+                  ],
+                  labelForOption: _formatLanguage,
+                  onChanged: (String? value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() => _languagePreference = value);
+                    _updateSetting('languagePreference', value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            SettingsSubpageWidgets.infoCard(
+              context: context,
+              title: 'About Content Preferences',
+              body:
+                  'Customize how you view and interact with content. '
+                  'Adjust quality, playback, and visibility to match your '
+                  'preferences.',
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -21,6 +21,7 @@ import '../features/analytics/creator_video_insights_view.dart';
 import '../features/analytics/growth_analytics_view.dart';
 import '../features/content_planning/content_planner_view.dart';
 import '../features/content_scheduler/content_scheduler_view.dart';
+import '../features/tippy/models/tippy_launch_context.dart';
 import '../features/tippy/tippy_chat_page.dart';
 
 class AppRoutes {
@@ -28,6 +29,7 @@ class AppRoutes {
   static const String auth = '/auth';
   static const String home = '/home';
   static const String onboarding = '/onboarding';
+  static const String contextualTip = '/contextual_tip';
   static const String network = '/network';
   static const String camera = '/camera';
   static const String inbox = '/inbox';
@@ -168,6 +170,7 @@ class AppRoutes {
               initialIndex: args.initialIndex,
               videoIds: args.videoIds,
               videos: args.videos,
+              focusCommentId: args.focusCommentId,
             ),
             fullscreenDialog: args.fullscreenDialog,
           );
@@ -208,14 +211,23 @@ class AppRoutes {
         if (args is VideoUnavailableRouteArgs) {
           return _buildRoute(
             settings: routeSettings,
-            builder: (_) => VideoUnavailablePage(videoId: args.videoId),
+            builder: (_) => VideoUnavailablePage(
+              videoId: args.videoId,
+              creatorId: args.creatorId,
+              creatorName: args.creatorName,
+              creatorUsername: args.creatorUsername,
+            ),
           );
         }
         break;
       case tippyChat:
+        final TippyLaunchContext launchContext =
+            routeSettings.arguments is TippyLaunchContext
+                ? routeSettings.arguments! as TippyLaunchContext
+                : const TippyLaunchContext();
         return _buildRoute(
           settings: routeSettings,
-          builder: (_) => const TippyChatPage(),
+          builder: (_) => TippyChatPage(launchContext: launchContext),
           fullscreenDialog: true,
         );
       case growthAnalytics:
@@ -260,6 +272,7 @@ class PlayerRouteArgs {
     required this.initialIndex,
     required this.videoIds,
     this.videos,
+    this.focusCommentId,
     this.fullscreenDialog = true,
   });
 
@@ -267,13 +280,22 @@ class PlayerRouteArgs {
   final int initialIndex;
   final List<String> videoIds;
   final List<HomeVideo>? videos;
+  final String? focusCommentId;
   final bool fullscreenDialog;
 }
 
 class VideoUnavailableRouteArgs {
-  const VideoUnavailableRouteArgs({required this.videoId});
+  const VideoUnavailableRouteArgs({
+    required this.videoId,
+    this.creatorId,
+    this.creatorName,
+    this.creatorUsername,
+  });
 
   final String videoId;
+  final String? creatorId;
+  final String? creatorName;
+  final String? creatorUsername;
 }
 
 class ProfileRouteArgs {

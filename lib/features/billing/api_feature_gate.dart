@@ -66,6 +66,23 @@ bool isContentPlansUnlimited(SubscriptionSnapshot snapshot) {
   return isEntitlementUnlimited(snapshot.entitlements.contentPlansLimit);
 }
 
+bool canCreateContentPlan(
+  SubscriptionSnapshot snapshot,
+  int existingPlanCount,
+) {
+  if (snapshot.hasFullAccess) {
+    return true;
+  }
+  final int limit = snapshot.entitlements.contentPlansLimit;
+  if (isEntitlementUnlimited(limit)) {
+    return true;
+  }
+  if (limit < 1) {
+    return true;
+  }
+  return existingPlanCount < limit;
+}
+
 int aiCreditCostFromSnapshot(
   SubscriptionSnapshot snapshot,
   String action, {

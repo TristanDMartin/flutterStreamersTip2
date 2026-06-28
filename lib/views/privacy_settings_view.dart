@@ -5,6 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/support_shell_style.dart';
+import '../features/tippy/tippy_legal_service.dart';
+import '../providers/status_provider.dart';
+import '../services/privacy_settings_service.dart';
 
 class PrivacySettingsView extends ConsumerStatefulWidget {
   const PrivacySettingsView({super.key});
@@ -45,6 +48,9 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
   String _allowMessagesFrom = 'everyone';
   bool _showOnlineStatus = true;
   bool _readReceipts = true;
+  bool _deletingTippyHistory = false;
+
+  final TippyLegalService _tippyLegalService = TippyLegalService();
 
   @override
   void initState() {
@@ -105,6 +111,11 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           .collection('privacySettings')
           .doc('main')
           .set({key: value}, SetOptions(merge: true));
+
+      PrivacySettingsService.instance.invalidate(user.uid);
+      if (key == 'showOnlineStatus' && value == false) {
+        await ref.read(statusNotifierProvider.notifier).setOffline();
+      }
 
       if (mounted) {
         final ColorScheme cs = Theme.of(context).colorScheme;
@@ -332,6 +343,14 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 32),
+                _buildSection(
+                  context,
+                  'Tippy AI',
+                  [
+                    _buildDeleteTippyHistoryTile(context),
+                  ],
+                ),
                 const SizedBox(height: 40),
               ],
             ),
@@ -541,5 +560,118 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
 
   String _formatOption(String option) {
     return option[0].toUpperCase() + option.substring(1);
+  }
+
+  Widget _buildDeleteTippyHistoryTile(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Container(
+      padding: EdgeInsets.all(_isIos ? 14 : 20),
+      child: Row(
+        children: <Widget>[
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: shell.chipUnselectedBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: shell.chipUnselectedBorder),
+            ),
+            child: Icon(
+              Icons.delete_forever_outlined,
+              color: shell.onChrome,
+              size: _isIos ? 18 : 20,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Delete Tippy chat history',
+                  style: TextStyle(
+                    color: shell.onChrome,
+                    fontSize: _isIos ? 14 : 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Permanently remove saved Tippy conversations and prompts.',
+                  style: TextStyle(
+                    color: shell.muted,
+                    fontSize: _isIos ? 11 : 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          TextButton(
+            onPressed: _deletingTippyHistory ? null : _confirmDeleteTippyHistory,
+            child: _deletingTippyHistory
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteTippyHistory() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Tippy history?'),
+          content: const Text(
+            'This permanently deletes your saved Tippy conversations. '
+            'This cannot be undone.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() => _deletingTippyHistory = true);
+    try {
+      await _tippyLegalService.deleteAllPromptHistory();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Tippy chat history deleted'),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Could not delete history: $e'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _deletingTippyHistory = false);
+      }
+    }
   }
 }

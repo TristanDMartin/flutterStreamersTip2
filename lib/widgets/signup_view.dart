@@ -11,7 +11,6 @@ import '../utils/auth_post_login_navigation.dart';
 import '../utils/password_validation.dart';
 import '../qa/qa_keys.dart';
 import 'auth_page_shell.dart';
-import 'email_verification_view.dart';
 import 'email_login_view.dart';
 
 class SignupView extends ConsumerStatefulWidget {
@@ -32,30 +31,38 @@ class _SignupViewState extends ConsumerState<SignupView> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
   bool _showAlert = false;
   String _alertMessage = "";
-  PasswordStrength _passwordStrength = PasswordStrength.none;
-  Timer? _passwordStrengthDebounce;
+  Brightness? _appliedSystemUiBrightness;
 
   @override
   void initState() {
     super.initState();
-    _passwordController.addListener(_schedulePasswordStrengthUpdate);
-    _emailController.addListener(_onAnyFieldChanged);
-    _usernameController.addListener(_onAnyFieldChanged);
-    _confirmPasswordController.addListener(_onAnyFieldChanged);
+    ref.listenManual<RobustAuthenticationService>(
+      robustAuthServiceProvider,
+      (RobustAuthenticationService? previous,
+          RobustAuthenticationService next) {
+        if (!next.isLoggedIn || !mounted) {
+          return;
+        }
+        final firebase_auth.User? user =
+            firebase_auth.FirebaseAuth.instance.currentUser;
+        if (user != null && !user.emailVerified) {
+          return;
+        }
+        debugPrint('✅ User authenticated, resolving post-auth destination');
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) {
+            return;
+          }
+          await navigateAfterAuthenticated(context);
+        });
+      },
+    );
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.edgeToEdge,
       overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
     );
-  }
-
-  void _onAnyFieldChanged() {
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   @override
@@ -67,6 +74,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
   void _applySystemUiForTheme() {
     final ThemeData theme = Theme.of(context);
     final Brightness brightness = theme.brightness;
+    if (_appliedSystemUiBrightness == brightness) {
+      return;
+    }
+    _appliedSystemUiBrightness = brightness;
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -82,11 +93,6 @@ class _SignupViewState extends ConsumerState<SignupView> {
 
   @override
   void dispose() {
-    _passwordStrengthDebounce?.cancel();
-    _passwordController.removeListener(_schedulePasswordStrengthUpdate);
-    _emailController.removeListener(_onAnyFieldChanged);
-    _usernameController.removeListener(_onAnyFieldChanged);
-    _confirmPasswordController.removeListener(_onAnyFieldChanged);
     _emailController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
@@ -112,57 +118,18 @@ class _SignupViewState extends ConsumerState<SignupView> {
     );
   }
 
-  void _schedulePasswordStrengthUpdate() {
-    _passwordStrengthDebounce?.cancel();
-    _passwordStrengthDebounce = Timer(const Duration(milliseconds: 140), () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _passwordStrength =
-            _calculatePasswordStrength(_passwordController.text);
-      });
-    });
-  }
-
-  PasswordStrength _calculatePasswordStrength(String password) {
-    if (password.isEmpty) {
-      return PasswordStrength.none;
-    }
-    final Map<String, bool> requirements =
-        PasswordRequirements.checklist(password);
-    final int metCount = requirements.values.where((bool met) => met).length;
-    if (metCount == requirements.length) {
-      return PasswordStrength.strong;
-    }
-    if (metCount >= 5) {
-      return PasswordStrength.medium;
-    }
-    return PasswordStrength.weak;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final authService = ref.watch(robustAuthServiceProvider);
-    ref.listen(robustAuthServiceProvider, (previous, next) {
-      if (next.isLoggedIn && mounted) {
-        final firebase_auth.User? u =
-            firebase_auth.FirebaseAuth.instance.currentUser;
-        if (u != null && !u.emailVerified) {
-          return;
-        }
-        debugPrint("✅ User authenticated, resolving post-auth destination");
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!mounted) return;
-          await navigateAfterAuthenticated(context);
-        });
-      }
-    });
+    final bool showLoading = ref.watch(
+      robustAuthServiceProvider.select(
+        (RobustAuthenticationService auth) => auth.shouldShowLoading,
+      ),
+    );
 
     return AuthPageShell(
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
       minHeightBottomPadding: 20,
-      showLoading: authService.shouldShowLoading,
+      showLoading: showLoading,
       loadingText: 'Creating account...',
       showAlert: _showAlert,
       alertMessage: _alertMessage,
@@ -303,292 +270,53 @@ class _SignupViewState extends ConsumerState<SignupView> {
             ),
           ),
           const SizedBox(height: 28),
-          _buildTextField(
+          _SignupAuthTextField(
             qaFieldKey: QaKeys.authSignupEmail,
             controller: _emailController,
-            hint: "Email",
+            hint: 'Email',
             icon: Icons.email_outlined,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 16),
-          _buildTextField(
+          _SignupAuthTextField(
             qaFieldKey: QaKeys.authSignupUsername,
             controller: _usernameController,
-            hint: "Username",
+            hint: 'Username',
             icon: Icons.person_outline_rounded,
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 16),
-          _buildTextField(
+          _SignupAuthTextField(
             qaFieldKey: QaKeys.authSignupPassword,
             controller: _passwordController,
-            hint: "Password",
+            hint: 'Password',
             icon: Icons.lock_outline_rounded,
             isPassword: true,
             textInputAction: TextInputAction.next,
           ),
-          if (_passwordController.text.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _buildPasswordRequirements(),
-          ],
+          _SignupPasswordRequirementsPanel(
+            passwordController: _passwordController,
+          ),
           const SizedBox(height: 16),
-          _buildTextField(
+          _SignupAuthTextField(
             qaFieldKey: QaKeys.authSignupConfirmPassword,
             controller: _confirmPasswordController,
-            hint: "Confirm Password",
+            hint: 'Confirm Password',
             icon: Icons.lock_outline_rounded,
             isPassword: true,
-            obscureOverride: _obscureConfirmPassword,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _handleSignUp(),
           ),
           const SizedBox(height: 28),
-          _buildSignUpButton(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    Key? qaFieldKey,
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    bool isPassword = false,
-    bool? obscureOverride,
-    TextInputType? keyboardType,
-    TextInputAction? textInputAction,
-    void Function(String)? onSubmitted,
-  }) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color fill = scheme.surfaceContainerHighest.withValues(
-      alpha: isDark ? 0.55 : 0.75,
-    );
-    final Color border = scheme.outline.withValues(alpha: 0.4);
-    final Color iconFg = scheme.onSurface.withValues(alpha: 0.65);
-    final obscure = obscureOverride ?? (isPassword && _obscurePassword);
-    return Container(
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+          _SignupSubmitButton(
+            emailController: _emailController,
+            usernameController: _usernameController,
+            passwordController: _passwordController,
+            confirmPasswordController: _confirmPasswordController,
+            onSubmit: _handleSignUp,
           ),
         ],
-      ),
-      child: TextField(
-        key: qaFieldKey,
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: isPassword ? TextInputType.visiblePassword : keyboardType,
-        textInputAction: textInputAction,
-        onSubmitted: onSubmitted,
-        autocorrect: !isPassword,
-        enableSuggestions: !isPassword,
-        style: TextStyle(color: scheme.onSurface),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: TextStyle(
-            color: scheme.onSurfaceVariant.withValues(alpha: 0.85),
-          ),
-          prefixIcon: Icon(icon, color: iconFg),
-          suffixIcon: isPassword
-              ? IconButton(
-                  icon: Icon(
-                    obscure ? Icons.visibility : Icons.visibility_off,
-                    color: iconFg,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      if (obscureOverride != null) {
-                        _obscureConfirmPassword = !_obscureConfirmPassword;
-                      } else {
-                        _obscurePassword = !_obscurePassword;
-                      }
-                    });
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPasswordRequirements() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final password = _passwordController.text;
-    final Map<String, bool> requirements =
-        PasswordRequirements.checklist(password);
-    final Color borderColor = _passwordStrength == PasswordStrength.strong
-        ? StThemeColors.successGreen
-        : _passwordStrength == PasswordStrength.medium
-            ? StThemeColors.warningAmber
-            : scheme.error.withValues(alpha: 0.55);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                "Password strength: ",
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                _passwordStrength.label,
-                style: TextStyle(
-                  color: _passwordStrength.color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildRequirementItem(
-            "At least 8 characters",
-            requirements['length']!,
-          ),
-          _buildRequirementItem(
-            "One uppercase letter",
-            requirements['uppercase']!,
-          ),
-          _buildRequirementItem(
-            "One lowercase letter",
-            requirements['lowercase']!,
-          ),
-          _buildRequirementItem("One number", requirements['number']!),
-          _buildRequirementItem(
-            "One special character (!@#\$%^&*)",
-            requirements['special']!,
-          ),
-          _buildRequirementItem(
-            'Not a common password',
-            requirements['notWeak']!,
-          ),
-          _buildRequirementItem(
-            'No triple repeated characters (aaa)',
-            requirements['notTripleRepeat']!,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRequirementItem(String text, bool met) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(
-            met ? Icons.check_circle : Icons.cancel,
-            color: met
-                ? StThemeColors.successGreen
-                : scheme.error.withValues(alpha: 0.55),
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: met ? scheme.onSurface : scheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSignUpButton() {
-    final authService = ref.watch(robustAuthServiceProvider);
-    final bool isEnabled = _emailController.text.isNotEmpty &&
-        _usernameController.text.isNotEmpty &&
-        _passwordController.text.isNotEmpty &&
-        _confirmPasswordController.text.isNotEmpty &&
-        _passwordStrength == PasswordStrength.strong &&
-        !authService.shouldShowLoading;
-    return Opacity(
-      opacity: isEnabled ? 1.0 : 0.5,
-      child: Semantics(
-        key: QaKeys.authSignupSubmit,
-        button: true,
-        enabled: isEnabled,
-        label: 'Create account',
-        child: _PressableSignupButton(
-          enabled: isEnabled,
-          onTap: _handleSignUp,
-          child: Container(
-            width: double.infinity,
-            height: 54,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isEnabled
-                    ? const <Color>[Color(0xFF955CFF), Color(0xFF3D99F7)]
-                    : const <Color>[Color(0xFF7158A6), Color(0xFF4D6690)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isEnabled
-                    ? Colors.white.withValues(alpha: 0.16)
-                    : Colors.white.withValues(alpha: 0.08),
-              ),
-              boxShadow: isEnabled
-                  ? const <BoxShadow>[
-                      BoxShadow(
-                        color: Color(0x44318FFF),
-                        blurRadius: 24,
-                        offset: Offset(0, 10),
-                      ),
-                    ]
-                  : const <BoxShadow>[],
-            ),
-            child: Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const <Widget>[
-                  Icon(Icons.person_add_rounded, color: Colors.white, size: 20),
-                  SizedBox(width: 10),
-                  Text(
-                    "Create Account",
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.2,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -658,16 +386,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
           _showAlert = true;
         });
       } else if (result.success && mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => EmailVerificationView(
-              email: email,
-              onVerified: () {
-                debugPrint("✅ Email verified, user can access app");
-              },
-            ),
-          ),
-        );
+        await navigateAfterAuthenticated(context);
       }
     } catch (e) {
       debugPrint("❌ Sign-up error: $e");
@@ -754,7 +473,9 @@ class _SignupViewState extends ConsumerState<SignupView> {
   }
 
   String _getUserFriendlyErrorMessage(String error) {
-    if (error.contains('email-already-in-use')) {
+    if (error.contains('email-already-in-use') ||
+        error.contains('already registered') ||
+        error.contains('already in use')) {
       return 'This email is already registered';
     } else if (error.contains('invalid-email')) {
       return 'Invalid email format';
@@ -767,6 +488,411 @@ class _SignupViewState extends ConsumerState<SignupView> {
     } else {
       return 'Sign-up failed. Please try again';
     }
+  }
+}
+
+PasswordStrength _calculateSignupPasswordStrength(String password) {
+  if (password.isEmpty) {
+    return PasswordStrength.none;
+  }
+  final Map<String, bool> requirements =
+      PasswordRequirements.checklist(password);
+  final int metCount = requirements.values.where((bool met) => met).length;
+  if (metCount == requirements.length) {
+    return PasswordStrength.strong;
+  }
+  if (metCount >= 5) {
+    return PasswordStrength.medium;
+  }
+  return PasswordStrength.weak;
+}
+
+class _SignupAuthTextField extends StatefulWidget {
+  const _SignupAuthTextField({
+    this.qaFieldKey,
+    required this.controller,
+    required this.hint,
+    required this.icon,
+    this.isPassword = false,
+    this.keyboardType,
+    this.textInputAction,
+    this.onSubmitted,
+  });
+
+  final Key? qaFieldKey;
+  final TextEditingController controller;
+  final String hint;
+  final IconData icon;
+  final bool isPassword;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final void Function(String)? onSubmitted;
+
+  @override
+  State<_SignupAuthTextField> createState() => _SignupAuthTextFieldState();
+}
+
+class _SignupAuthTextFieldState extends State<_SignupAuthTextField> {
+  bool _obscureText = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color fill = scheme.surfaceContainerHighest.withValues(
+      alpha: isDark ? 0.55 : 0.75,
+    );
+    final Color border = scheme.outline.withValues(alpha: 0.4);
+    final Color focusedBorder = scheme.primary.withValues(alpha: 0.7);
+    final Color iconFg = scheme.onSurface.withValues(alpha: 0.65);
+    final BorderRadius borderRadius = BorderRadius.circular(18);
+    OutlineInputBorder outlineBorder(
+      Color color, {
+      double width = 1,
+    }) {
+      return OutlineInputBorder(
+        borderRadius: borderRadius,
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: TextField(
+        key: widget.qaFieldKey,
+        controller: widget.controller,
+        obscureText: widget.isPassword && _obscureText,
+        keyboardType: widget.isPassword
+            ? TextInputType.visiblePassword
+            : widget.keyboardType,
+        textInputAction: widget.textInputAction,
+        onSubmitted: widget.onSubmitted,
+        autocorrect: !widget.isPassword,
+        enableSuggestions: !widget.isPassword,
+        style: TextStyle(color: scheme.onSurface),
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          hintStyle: TextStyle(
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.85),
+          ),
+          prefixIcon: Icon(widget.icon, color: iconFg),
+          suffixIcon: widget.isPassword
+              ? IconButton(
+                  icon: Icon(
+                    _obscureText ? Icons.visibility : Icons.visibility_off,
+                    color: iconFg,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _obscureText = !_obscureText;
+                    });
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: fill,
+          border: outlineBorder(border),
+          enabledBorder: outlineBorder(border),
+          focusedBorder: outlineBorder(focusedBorder, width: 1.5),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 18,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SignupPasswordRequirementsPanel extends StatefulWidget {
+  const _SignupPasswordRequirementsPanel({
+    required this.passwordController,
+  });
+
+  final TextEditingController passwordController;
+
+  @override
+  State<_SignupPasswordRequirementsPanel> createState() =>
+      _SignupPasswordRequirementsPanelState();
+}
+
+class _SignupPasswordRequirementsPanelState
+    extends State<_SignupPasswordRequirementsPanel> {
+  Timer? _debounce;
+  PasswordStrength _strength = PasswordStrength.none;
+  bool _isVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.passwordController.addListener(_handlePasswordChanged);
+    _syncFromController();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    widget.passwordController.removeListener(_handlePasswordChanged);
+    super.dispose();
+  }
+
+  void _handlePasswordChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 140), _syncFromController);
+  }
+
+  void _syncFromController() {
+    if (!mounted) {
+      return;
+    }
+    final String password = widget.passwordController.text;
+    final bool nextVisible = password.isNotEmpty;
+    final PasswordStrength nextStrength =
+        _calculateSignupPasswordStrength(password);
+    if (nextVisible == _isVisible && nextStrength == _strength) {
+      return;
+    }
+    setState(() {
+      _isVisible = nextVisible;
+      _strength = nextStrength;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isVisible) {
+      return const SizedBox.shrink();
+    }
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final Map<String, bool> requirements =
+        PasswordRequirements.checklist(widget.passwordController.text);
+    final Color borderColor = _strength == PasswordStrength.strong
+        ? StThemeColors.successGreen
+        : _strength == PasswordStrength.medium
+            ? StThemeColors.warningAmber
+            : scheme.error.withValues(alpha: 0.55);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Text(
+                  'Password strength: ',
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  _strength.label,
+                  style: TextStyle(
+                    color: _strength.color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _SignupRequirementItem(
+              text: 'At least 8 characters',
+              met: requirements['length']!,
+            ),
+            _SignupRequirementItem(
+              text: 'One uppercase letter',
+              met: requirements['uppercase']!,
+            ),
+            _SignupRequirementItem(
+              text: 'One lowercase letter',
+              met: requirements['lowercase']!,
+            ),
+            _SignupRequirementItem(
+              text: 'One number',
+              met: requirements['number']!,
+            ),
+            _SignupRequirementItem(
+              text: 'One special character (!@#\$%^&*)',
+              met: requirements['special']!,
+            ),
+            _SignupRequirementItem(
+              text: 'Not a common password',
+              met: requirements['notWeak']!,
+            ),
+            _SignupRequirementItem(
+              text: 'No triple repeated characters (aaa)',
+              met: requirements['notTripleRepeat']!,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SignupRequirementItem extends StatelessWidget {
+  const _SignupRequirementItem({
+    required this.text,
+    required this.met,
+  });
+
+  final String text;
+  final bool met;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            met ? Icons.check_circle : Icons.cancel,
+            color: met
+                ? StThemeColors.successGreen
+                : scheme.error.withValues(alpha: 0.55),
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: met ? scheme.onSurface : scheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignupSubmitButton extends ConsumerWidget {
+  const _SignupSubmitButton({
+    required this.emailController,
+    required this.usernameController,
+    required this.passwordController,
+    required this.confirmPasswordController,
+    required this.onSubmit,
+  });
+
+  final TextEditingController emailController;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  final TextEditingController confirmPasswordController;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool isLoading = ref.watch(
+      robustAuthServiceProvider.select(
+        (RobustAuthenticationService auth) => auth.shouldShowLoading,
+      ),
+    );
+    return AnimatedBuilder(
+      animation: Listenable.merge(<Listenable>[
+        emailController,
+        usernameController,
+        passwordController,
+        confirmPasswordController,
+      ]),
+      builder: (BuildContext context, Widget? child) {
+        final PasswordStrength strength =
+            _calculateSignupPasswordStrength(passwordController.text);
+        final bool isEnabled = emailController.text.isNotEmpty &&
+            usernameController.text.isNotEmpty &&
+            passwordController.text.isNotEmpty &&
+            confirmPasswordController.text.isNotEmpty &&
+            strength == PasswordStrength.strong &&
+            !isLoading;
+        return Opacity(
+          opacity: isEnabled ? 1.0 : 0.5,
+          child: Semantics(
+            key: QaKeys.authSignupSubmit,
+            button: true,
+            enabled: isEnabled,
+            label: 'Create account',
+            child: _PressableSignupButton(
+              enabled: isEnabled,
+              onTap: onSubmit,
+              child: Container(
+                width: double.infinity,
+                height: 54,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isEnabled
+                        ? const <Color>[Color(0xFF955CFF), Color(0xFF3D99F7)]
+                        : const <Color>[
+                            Color(0xFF7158A6),
+                            Color(0xFF4D6690),
+                          ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isEnabled
+                        ? Colors.white.withValues(alpha: 0.16)
+                        : Colors.white.withValues(alpha: 0.08),
+                  ),
+                  boxShadow: isEnabled
+                      ? const <BoxShadow>[
+                          BoxShadow(
+                            color: Color(0x44318FFF),
+                            blurRadius: 24,
+                            offset: Offset(0, 10),
+                          ),
+                        ]
+                      : const <BoxShadow>[],
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const <Widget>[
+                      Icon(
+                        Icons.person_add_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'Create Account',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

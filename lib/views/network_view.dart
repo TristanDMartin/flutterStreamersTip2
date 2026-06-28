@@ -83,6 +83,12 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     if (!position.hasPixels || !position.hasContentDimensions) return;
     final threshold = position.maxScrollExtent * 0.85;
     if (position.pixels >= threshold) {
+      final List<user_model.User> fullList = _fullListForSelectedTab();
+      final List<user_model.User> displayed = _currentList();
+      if (displayed.length >= fullList.length && _hasMoreFollowGraph) {
+        unawaited(_loadMoreFollowGraph());
+        return;
+      }
       setState(() {
         switch (_selectedTab) {
           case network_models.NetworkTab.connections:
@@ -99,6 +105,39 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     }
   }
 
+  List<user_model.User> _fullListForSelectedTab() {
+    switch (_selectedTab) {
+      case network_models.NetworkTab.connections:
+        return _connectionsUsers;
+      case network_models.NetworkTab.followers:
+        return _followersUsers;
+      case network_models.NetworkTab.following:
+        return _followingUsers;
+    }
+  }
+
+  Future<void> _loadMoreFollowGraph() async {
+    if (_isLoadingMoreFollowGraph || !_hasMoreFollowGraph) {
+      return;
+    }
+    _isLoadingMoreFollowGraph = true;
+    try {
+      final NetworkTabUsers bundle =
+          await FollowsService().loadMoreNetworkTabUsers();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _connectionsUsers = bundle.connections;
+        _followersUsers = bundle.followers;
+        _followingUsers = bundle.following;
+        _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
+      });
+    } finally {
+      _isLoadingMoreFollowGraph = false;
+    }
+  }
+
   // Network connectivity (kept for network error handling)
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
@@ -108,9 +147,14 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription1;
   StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription2;
   bool _listenersInitialized = false;
+  bool _listenersPaused = false;
   bool _isRefreshingNetworkData = false;
+  bool _isLoadingMoreFollowGraph = false;
+  bool _hasMoreFollowGraph = false;
   bool _hasInitialNetworkLoad = false;
+  Timer? _followsDebounceTimer;
   ProviderSubscription<int>? _tabBackgroundRefreshSubscription;
+  ProviderSubscription<int>? _mainTabVisibilitySubscription;
 
   // Error state
   bool _hasShownPermissionError = false;
@@ -164,7 +208,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     PerformanceMonitoringService().startMonitoring();
 
     if (_isFirebaseReady) {
-      unawaited(_bootstrapNetworkData());
+      if (isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+        unawaited(_bootstrapNetworkData());
+      } else {
+        _listenersPaused = true;
+      }
     }
 
     _tabBackgroundRefreshSubscription = ref.listenManual<int>(
@@ -177,6 +225,19 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           return;
         }
         unawaited(_refreshDataInstantly());
+      },
+    );
+    _mainTabVisibilitySubscription = ref.listenManual<int>(
+      mainTabActiveIndexProvider,
+      (int? previous, int next) {
+        if (!mounted) {
+          return;
+        }
+        if (isMainTabNetworkVisible(next)) {
+          _resumeRelationshipListenersIfNeeded();
+        } else {
+          _pauseRelationshipListeners();
+        }
       },
     );
   }
@@ -237,7 +298,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     _contentTransitionController.dispose();
     // Dispose timers
     _searchTimer?.cancel();
+    _followsDebounceTimer?.cancel();
     _tabBackgroundRefreshSubscription?.close();
+    _mainTabVisibilitySubscription?.close();
 
     super.dispose();
   }
@@ -259,9 +322,42 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     });
   }
 
+  void _pauseRelationshipListeners() {
+    if (_listenersPaused) {
+      return;
+    }
+    _listenersPaused = true;
+    _followsDebounceTimer?.cancel();
+    _scopedFollowsSubscription1?.cancel();
+    _scopedFollowsSubscription2?.cancel();
+    _scopedFollowsSubscription1 = null;
+    _scopedFollowsSubscription2 = null;
+    _listenersInitialized = false;
+    PerformanceMonitoringService().stopMonitoring();
+  }
+
+  void _resumeRelationshipListenersIfNeeded() {
+    if (!_listenersPaused || _listenersInitialized || !_isFirebaseReady) {
+      return;
+    }
+    if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+      return;
+    }
+    _listenersPaused = false;
+    PerformanceMonitoringService().startMonitoring();
+    _initializeRelationshipListeners();
+    if (!_hasInitialNetworkLoad) {
+      unawaited(_refreshDataInstantly(forceRefresh: true));
+    }
+  }
+
   /// Initialize real-time relationship listeners for instant updates (OPTIMIZED)
   void _initializeRelationshipListeners() {
-    if (_listenersInitialized) {
+    if (_listenersInitialized || _listenersPaused) {
+      return;
+    }
+    if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+      _listenersPaused = true;
       return;
     }
     _listenersInitialized = true;
@@ -282,17 +378,23 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       '🔄 NetworkView: Initializing real-time listeners for user: $currentUserId',
     );
 
-    Timer? debounceTimer;
-
     void onFollowsUpdate(QuerySnapshot _) {
-      if (!_hasInitialNetworkLoad) {
-        _hasInitialNetworkLoad = true;
-        unawaited(_refreshDataInstantly());
+      if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
         return;
       }
-      debounceTimer?.cancel();
-      debounceTimer = Timer(const Duration(milliseconds: 500), () {
-        _refreshDataInstantly();
+      FollowsService().invalidateFollowIdSetsCache();
+      if (!_hasInitialNetworkLoad) {
+        _hasInitialNetworkLoad = true;
+        unawaited(_refreshDataInstantly(forceRefresh: true));
+        return;
+      }
+      _followsDebounceTimer?.cancel();
+      _followsDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+        if (!mounted ||
+            !isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+          return;
+        }
+        unawaited(_refreshDataInstantly(forceRefresh: true));
       });
     }
 
@@ -412,23 +514,15 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       }
 
       final followsSvc = FollowsService();
-      final FollowCounts followCounts =
-          await followsSvc.getFollowCountsForCurrentUser();
-      if (!mounted) {
-        return;
-      }
-
-      final results = await Future.wait([
-        followsSvc.getUsersForTab('connections'),
-        followsSvc.getUsersForTab('followers'),
-        followsSvc.getUsersForTab('following'),
-      ]);
+      final NetworkTabUsers bundle =
+          await followsSvc.loadNetworkTabUsers();
       if (!mounted) {
         return;
       }
 
       debugPrint(
-        '📊 NetworkView: Raw results - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}',
+        '📊 NetworkView: Raw results - Connections: ${bundle.connections.length}, '
+        'Followers: ${bundle.followers.length}, Following: ${bundle.following.length}',
       );
 
       int? followersCountDoc;
@@ -455,24 +549,25 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       _resetPagination();
 
       setState(() {
-        _connectionsUsers = results[0];
-        _followersUsers = results[1];
-        _followingUsers = results[2];
+        _connectionsUsers = bundle.connections;
+        _followersUsers = bundle.followers;
+        _followingUsers = bundle.following;
         _isLoadingUsers = false;
         _networkErrorMessage = null;
+        _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
       });
 
       _logDriftIfAny(
-        actualFollowersCount: followCounts.followersCount,
-        actualFollowingCount: followCounts.followingCount,
+        actualFollowersCount: bundle.counts.followersCount,
+        actualFollowingCount: bundle.counts.followingCount,
         followersCountDoc: followersCountDoc,
         followingCountDoc: followingCountDoc,
       );
       if (currentUserId != null &&
           ((followersCountDoc != null &&
-                  followersCountDoc != followCounts.followersCount) ||
+                  followersCountDoc != bundle.counts.followersCount) ||
               (followingCountDoc != null &&
-                  followingCountDoc != followCounts.followingCount))) {
+                  followingCountDoc != bundle.counts.followingCount))) {
         unawaited(followsSvc.repairFollowCountersForUser(currentUserId));
       }
 
@@ -1311,7 +1406,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     }
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+    ]);
 
     AppNavigator.openStreamerCard(
       context,
@@ -1958,8 +2055,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   /// Refresh data instantly without showing loading indicator
-  Future<void> _refreshDataInstantly() async {
+  Future<void> _refreshDataInstantly({bool forceRefresh = false}) async {
     if (_isRefreshingNetworkData) {
+      return;
+    }
+    if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
       return;
     }
     _isRefreshingNetworkData = true;
@@ -1978,19 +2078,14 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     try {
       debugPrint('🔄 NetworkView: Starting instant data refresh...');
-      final followsSvc = FollowsService();
-      final FollowCounts followCounts =
-          await followsSvc.getFollowCountsForCurrentUser();
-
-      final results = await Future.wait([
-        followsSvc.getUsersForTab('connections'),
-        followsSvc.getUsersForTab('followers'),
-        followsSvc.getUsersForTab('following'),
-      ]);
+      final FollowsService followsSvc = FollowsService();
+      final NetworkTabUsers bundle = await followsSvc.loadNetworkTabUsers(
+        forceRefresh: forceRefresh,
+      );
 
       debugPrint(
-        '📊 NetworkView: Data loaded - Connections: ${results[0].length}, '
-        'Followers: ${results[1].length}, Following: ${results[2].length}',
+        '📊 NetworkView: Data loaded - Connections: ${bundle.connections.length}, '
+        'Followers: ${bundle.followers.length}, Following: ${bundle.following.length}',
       );
 
       final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
@@ -2013,34 +2108,35 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       }
 
       _logDriftIfAny(
-        actualFollowersCount: followCounts.followersCount,
-        actualFollowingCount: followCounts.followingCount,
+        actualFollowersCount: bundle.counts.followersCount,
+        actualFollowingCount: bundle.counts.followingCount,
         followersCountDoc: followersCountDoc,
         followingCountDoc: followingCountDoc,
       );
       if (currentUserId != null &&
           ((followersCountDoc != null &&
-                  followersCountDoc != followCounts.followersCount) ||
+                  followersCountDoc != bundle.counts.followersCount) ||
               (followingCountDoc != null &&
-                  followingCountDoc != followCounts.followingCount))) {
+                  followingCountDoc != bundle.counts.followingCount))) {
         unawaited(followsSvc.repairFollowCountersForUser(currentUserId));
       }
 
       if (mounted) {
         final bool listsChanged = !_networkListsEqual(
           _connectionsUsers,
-          results[0],
+          bundle.connections,
           _followersUsers,
-          results[1],
+          bundle.followers,
           _followingUsers,
-          results[2],
+          bundle.following,
         );
         setState(() {
           if (listsChanged) {
-            _connectionsUsers = results[0];
-            _followersUsers = results[1];
-            _followingUsers = results[2];
+            _connectionsUsers = bundle.connections;
+            _followersUsers = bundle.followers;
+            _followingUsers = bundle.following;
           }
+          _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
           _isLoadingUsers = false;
         });
         if (listsChanged) {

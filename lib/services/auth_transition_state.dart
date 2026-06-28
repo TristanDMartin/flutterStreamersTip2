@@ -31,26 +31,44 @@ AuthTransitionState resolveDebouncedAuthTransition({
   return AuthTransitionState.unauthenticated;
 }
 
+/// Firebase [StreamBuilder] can briefly report [ConnectionState.waiting] on
+/// rebuild even when [initialData] is already available. Treat that as active
+/// so the auth shell does not flash back to splash.
+ConnectionState resolveEffectiveAuthConnectionState({
+  required ConnectionState authConnectionState,
+  required bool hasAuthSnapshotData,
+  bool hasFirebaseUser = false,
+}) {
+  if (authConnectionState == ConnectionState.waiting &&
+      (hasAuthSnapshotData || hasFirebaseUser)) {
+    return ConnectionState.active;
+  }
+  return authConnectionState;
+}
+
 /// Whether the root shell should show the loading/splash state instead of auth.
 bool resolveStartupShowsAuthLoading({
   required bool isSigningOut,
   required bool hasFirebaseUser,
   required bool isCheckingAuth,
   required bool isOauthInProgress,
+  required bool isSigningIn,
   required ConnectionState authConnectionState,
 }) {
   if (isSigningOut) {
     return true;
   }
   if (hasFirebaseUser) {
+    // Firebase session is authoritative — never block the shell on splash while
+    // robust auth hydrates profile data or the auth stream reconnects.
     return false;
   }
-  // OAuth keeps AuthModalView mounted; it shows its own themed overlay.
+  // Signed-out users see the auth shell immediately; child screens own spinners.
   if (isOauthInProgress) {
     return false;
   }
-  if (isCheckingAuth) {
-    return true;
+  if (isSigningIn) {
+    return false;
   }
-  return authConnectionState == ConnectionState.waiting;
+  return false;
 }

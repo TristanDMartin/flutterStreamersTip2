@@ -8,6 +8,8 @@ import '../models/user_model.dart' as user_model;
 import 'event_trigger_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
+import '../models/user_privacy_settings.dart';
+import 'privacy_settings_service.dart';
 import 'progression_service.dart';
 
 import '../models/user_count_fields.dart';
@@ -24,6 +26,23 @@ class FollowCounts {
   final int connectionsCount;
 }
 
+/// Batched network tab payload — one follow-id load, three user lists.
+class NetworkTabUsers {
+  const NetworkTabUsers({
+    required this.connections,
+    required this.followers,
+    required this.following,
+    required this.counts,
+    this.hasMoreFollowGraph = false,
+  });
+
+  final List<user_model.User> connections;
+  final List<user_model.User> followers;
+  final List<user_model.User> following;
+  final FollowCounts counts;
+  final bool hasMoreFollowGraph;
+}
+
 class _FollowIdSets {
   const _FollowIdSets({
     required this.followerIds,
@@ -32,6 +51,50 @@ class _FollowIdSets {
 
   final Set<String> followerIds;
   final Set<String> followingIds;
+}
+
+class _FollowGraphPageResult {
+  const _FollowGraphPageResult({
+    required this.idSets,
+    required this.hasMore,
+  });
+
+  final _FollowIdSets idSets;
+  final bool hasMore;
+}
+
+class _FollowPaginationState {
+  DocumentSnapshot<Map<String, dynamic>>? followersPrimaryCursor;
+  DocumentSnapshot<Map<String, dynamic>>? followersLegacy1Cursor;
+  DocumentSnapshot<Map<String, dynamic>>? followersLegacy2Cursor;
+  DocumentSnapshot<Map<String, dynamic>>? followingPrimaryCursor;
+  DocumentSnapshot<Map<String, dynamic>>? followingLegacyCursor;
+
+  bool followersPrimaryExhausted = false;
+  bool followersLegacy1Exhausted = false;
+  bool followersLegacy2Exhausted = false;
+  bool followingPrimaryExhausted = false;
+  bool followingLegacyExhausted = false;
+
+  void reset() {
+    followersPrimaryCursor = null;
+    followersLegacy1Cursor = null;
+    followersLegacy2Cursor = null;
+    followingPrimaryCursor = null;
+    followingLegacyCursor = null;
+    followersPrimaryExhausted = false;
+    followersLegacy1Exhausted = false;
+    followersLegacy2Exhausted = false;
+    followingPrimaryExhausted = false;
+    followingLegacyExhausted = false;
+  }
+
+  bool get hasMore =>
+      !followersPrimaryExhausted ||
+      !followersLegacy1Exhausted ||
+      !followersLegacy2Exhausted ||
+      !followingPrimaryExhausted ||
+      !followingLegacyExhausted;
 }
 
 class FollowsService {
@@ -47,6 +110,14 @@ class FollowsService {
   FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
   EventTriggerService? _eventTriggerService;
 
+  _FollowIdSets? _cachedIdSets;
+  String? _cachedIdSetsUserId;
+  DateTime? _cachedIdSetsAt;
+  static const Duration _followIdSetsCacheTtl = Duration(seconds: 45);
+  static const int _followQueryPageSize = 100;
+  final Map<String, _FollowPaginationState> _paginationByUserId =
+      <String, _FollowPaginationState>{};
+
   void setEventTriggerService(EventTriggerService eventTriggerService) {
     _eventTriggerService = eventTriggerService;
   }
@@ -60,6 +131,13 @@ class FollowsService {
     _authOverride = auth;
   }
 
+  void invalidateFollowIdSetsCache() {
+    _cachedIdSets = null;
+    _cachedIdSetsUserId = null;
+    _cachedIdSetsAt = null;
+    _paginationByUserId.clear();
+  }
+
   Future<bool> followUser(String targetUserId) async {
     final User? currentUser = _auth.currentUser;
     if (currentUser == null) {
@@ -69,6 +147,14 @@ class FollowsService {
     if (currentUser.uid == targetUserId) {
       debugPrint('❌ FollowsService: Cannot follow yourself');
       return false;
+    }
+    try {
+      await PrivacySettingsService.instance.assertCanFollow(
+        followerId: currentUser.uid,
+        targetUserId: targetUserId,
+      );
+    } on PrivacySettingsBlockedException {
+      rethrow;
     }
     try {
       final String currentUserId = currentUser.uid;
@@ -176,6 +262,7 @@ class FollowsService {
         ProgressionTaskIds.firstConnectionMade,
         source: 'connections',
       ));
+      invalidateFollowIdSetsCache();
       return true;
     } catch (e) {
       debugPrint('❌ FollowsService: Error following user: $e');
@@ -265,6 +352,7 @@ class FollowsService {
           'updatedAt': FieldValue.serverTimestamp(),
         });
       });
+      invalidateFollowIdSetsCache();
       return true;
     } catch (e) {
       debugPrint('❌ FollowsService: Error unfollowing user: $e');
@@ -287,6 +375,7 @@ class FollowsService {
         targetUserId: currentUser.uid,
         decrementCounters: true,
       );
+      invalidateFollowIdSetsCache();
       return true;
     } catch (e) {
       debugPrint('❌ FollowsService: Error removing follower: $e');
@@ -451,44 +540,185 @@ class FollowsService {
   }
 
   Future<List<user_model.User>> getUsersForTab(String tab) async {
-    final currentUser = _auth.currentUser;
+    final NetworkTabUsers bundle = await loadNetworkTabUsers();
+    switch (tab) {
+      case 'connections':
+        return bundle.connections;
+      case 'followers':
+        return bundle.followers;
+      case 'following':
+        return bundle.following;
+      default:
+        return <user_model.User>[];
+    }
+  }
+
+  /// Loads connections, followers, and following with a single follow-id fetch.
+  Future<NetworkTabUsers> loadNetworkTabUsers({
+    bool forceRefresh = false,
+  }) async {
+    final User? currentUser = _auth.currentUser;
     if (currentUser == null) {
       debugPrint('❌ FollowsService: No current user');
-      return [];
+      return const NetworkTabUsers(
+        connections: <user_model.User>[],
+        followers: <user_model.User>[],
+        following: <user_model.User>[],
+        counts: FollowCounts(
+          followersCount: 0,
+          followingCount: 0,
+          connectionsCount: 0,
+        ),
+      );
     }
     try {
-      final idSets = await _loadFollowIdSets(currentUser.uid);
-      Set<String> targetUserIds;
-      switch (tab) {
-        case 'connections':
-          targetUserIds = idSets.followingIds.intersection(idSets.followerIds);
-          break;
-        case 'followers':
-          targetUserIds = idSets.followerIds.difference(idSets.followingIds);
-          break;
-        case 'following':
-          targetUserIds = idSets.followingIds.difference(idSets.followerIds);
-          break;
-        default:
-          return [];
-      }
-      if (targetUserIds.isEmpty) {
-        return [];
-      }
-      final users = <user_model.User>[];
-      final chunks = _chunkList(targetUserIds.toList(), 30);
-      for (final chunk in chunks) {
-        final usersQuery = await _firestore
-            .collection('users')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
-        users.addAll(usersQuery.docs.map(_userFromDoc));
-      }
-      return users;
+      final _FollowGraphPageResult graph = await _loadFollowIdSets(
+        currentUser.uid,
+        forceRefresh: forceRefresh,
+      );
+      return _buildNetworkTabUsersFromIdSets(
+        currentUser.uid,
+        graph.idSets,
+        hasMoreFollowGraph: graph.hasMore,
+      );
     } catch (e) {
-      debugPrint('❌ FollowsService: Error getting users for tab $tab: $e');
-      return [];
+      debugPrint('❌ FollowsService: Error loading network tabs: $e');
+      return const NetworkTabUsers(
+        connections: <user_model.User>[],
+        followers: <user_model.User>[],
+        following: <user_model.User>[],
+        counts: FollowCounts(
+          followersCount: 0,
+          followingCount: 0,
+          connectionsCount: 0,
+        ),
+      );
     }
+  }
+
+  /// Fetches the next page of follow edges when the graph is larger than
+  /// [_followQueryPageSize] per query lane.
+  Future<NetworkTabUsers> loadMoreNetworkTabUsers() async {
+    final User? currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      return const NetworkTabUsers(
+        connections: <user_model.User>[],
+        followers: <user_model.User>[],
+        following: <user_model.User>[],
+        counts: FollowCounts(
+          followersCount: 0,
+          followingCount: 0,
+          connectionsCount: 0,
+        ),
+      );
+    }
+    final _FollowPaginationState? pagination =
+        _paginationByUserId[currentUser.uid];
+    if (pagination == null || !pagination.hasMore) {
+      return loadNetworkTabUsers();
+    }
+    try {
+      final _FollowGraphPageResult graph = await _loadFollowIdSets(
+        currentUser.uid,
+        loadMore: true,
+      );
+      return _buildNetworkTabUsersFromIdSets(
+        currentUser.uid,
+        graph.idSets,
+        hasMoreFollowGraph: graph.hasMore,
+      );
+    } catch (e) {
+      debugPrint('❌ FollowsService: Error loading more network tabs: $e');
+      return loadNetworkTabUsers();
+    }
+  }
+
+  Future<NetworkTabUsers> _buildNetworkTabUsersFromIdSets(
+    String userId,
+    _FollowIdSets idSets, {
+    required bool hasMoreFollowGraph,
+  }) async {
+    final Set<String> resolvedFollowers =
+        await _filterExistingUserIds(idSets.followerIds);
+    final Set<String> resolvedFollowing =
+        await _filterExistingUserIds(idSets.followingIds);
+    final Set<String> connectionIds =
+        resolvedFollowing.intersection(resolvedFollowers);
+    final Set<String> followerTabIds =
+        resolvedFollowers.difference(resolvedFollowing);
+    final Set<String> followingTabIds =
+        resolvedFollowing.difference(resolvedFollowers);
+    final List<user_model.User> connections =
+        await _usersForIds(connectionIds);
+    final List<user_model.User> followers =
+        await _usersForIds(followerTabIds);
+    final List<user_model.User> following =
+        await _usersForIds(followingTabIds);
+    final FollowCounts computedCounts = FollowCounts(
+      followersCount: resolvedFollowers.length,
+      followingCount: resolvedFollowing.length,
+      connectionsCount: connectionIds.length,
+    );
+    final FollowCounts counts = hasMoreFollowGraph
+        ? (await _tryReadFollowCountsFromUserDoc(userId)) ?? computedCounts
+        : computedCounts;
+    return NetworkTabUsers(
+      connections: connections,
+      followers: followers,
+      following: following,
+      counts: counts,
+      hasMoreFollowGraph: hasMoreFollowGraph,
+    );
+  }
+
+  Future<FollowCounts?> _tryReadFollowCountsFromUserDoc(String userId) async {
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await _firestore.collection('users').doc(userId).get();
+      if (!snap.exists || snap.data() == null) {
+        return null;
+      }
+      final Map<String, dynamic> data = snap.data()!;
+      final int followersCount = UserCountFields.readFollowersCount(data);
+      final int followingCount = UserCountFields.readFollowingCount(data);
+      int connectionsCount = UserCountFields.readConnectionsCount(data);
+      if (connectionsCount <= 0 &&
+          followersCount > 0 &&
+          followingCount > 0) {
+        connectionsCount = math.min(followersCount, followingCount);
+      }
+      return FollowCounts(
+        followersCount: followersCount,
+        followingCount: followingCount,
+        connectionsCount: connectionsCount,
+      );
+    } catch (e) {
+      debugPrint('⚠️ FollowsService: Unable to read doc counts for $userId: $e');
+      return null;
+    }
+  }
+
+  Future<List<user_model.User>> _usersForIds(Set<String> targetUserIds) async {
+    if (targetUserIds.isEmpty) {
+      return <user_model.User>[];
+    }
+    final Set<String> existingUserIds =
+        await _filterExistingUserIds(targetUserIds);
+    if (existingUserIds.isEmpty) {
+      return <user_model.User>[];
+    }
+    final List<user_model.User> users = <user_model.User>[];
+    final List<List<String>> chunks =
+        _chunkList(existingUserIds.toList(), 30);
+    for (final List<String> chunk in chunks) {
+      final QuerySnapshot<Map<String, dynamic>> usersQuery =
+          await _firestore
+              .collection('users')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get();
+      users.addAll(usersQuery.docs.map(_userFromDoc));
+    }
+    return users;
   }
 
   Future<FollowCounts> getFollowCountsForCurrentUser() async {
@@ -505,12 +735,26 @@ class FollowsService {
 
   Future<FollowCounts> getFollowCountsForUser(String userId) async {
     try {
-      final _FollowIdSets idSets = await _loadFollowIdSets(userId);
+      if (_auth.currentUser?.uid == userId) {
+        final FollowCounts? docCounts =
+            await _tryReadFollowCountsFromUserDoc(userId);
+        if (docCounts != null &&
+            (_paginationByUserId[userId]?.hasMore ?? false)) {
+          return docCounts;
+        }
+        final NetworkTabUsers bundle = await loadNetworkTabUsers();
+        return bundle.counts;
+      }
+      final _FollowGraphPageResult graph = await _loadFollowIdSets(userId);
+      final Set<String> resolvedFollowers =
+          await _filterExistingUserIds(graph.idSets.followerIds);
+      final Set<String> resolvedFollowing =
+          await _filterExistingUserIds(graph.idSets.followingIds);
       return FollowCounts(
-        followersCount: idSets.followerIds.length,
-        followingCount: idSets.followingIds.length,
+        followersCount: resolvedFollowers.length,
+        followingCount: resolvedFollowing.length,
         connectionsCount:
-            idSets.followerIds.intersection(idSets.followingIds).length,
+            resolvedFollowers.intersection(resolvedFollowing).length,
       );
     } catch (e) {
       debugPrint('❌ FollowsService: Error counting follows for $userId: $e');
@@ -555,80 +799,209 @@ class FollowsService {
     }
   }
 
-  Future<_FollowIdSets> _loadFollowIdSets(String currentUserId) async {
-    final followersPrimary = await _firestore
-        .collection('follows')
-        .where('targetUserId', isEqualTo: currentUserId)
-        .get();
-    final followersLegacy1 = await _firestore
-        .collection('follows')
-        .where('followingId', isEqualTo: currentUserId)
-        .get();
-    final followersLegacy2 = await _firestore
-        .collection('follows')
-        .where('followedId', isEqualTo: currentUserId)
-        .get();
-    final followingPrimary = await _firestore
-        .collection('follows')
-        .where('followerUserId', isEqualTo: currentUserId)
-        .get();
-    final followingLegacy = await _firestore
-        .collection('follows')
-        .where('followerId', isEqualTo: currentUserId)
-        .get();
-    String? readFollowerId(Map<String, dynamic> data) {
-      final val = data['followerUserId'] ??
-          data['followerId'] ??
-          data['follower'] ??
-          data['follower_id'];
-      return val is String ? val : null;
+  Future<_FollowGraphPageResult> _loadFollowIdSets(
+    String currentUserId, {
+    bool forceRefresh = false,
+    bool loadMore = false,
+  }) async {
+    if (forceRefresh) {
+      _paginationByUserId.remove(currentUserId);
+      if (_cachedIdSetsUserId == currentUserId) {
+        _cachedIdSets = null;
+        _cachedIdSetsUserId = null;
+        _cachedIdSetsAt = null;
+      }
     }
 
-    String? readFollowingId(Map<String, dynamic> data) {
-      final val = data['targetUserId'] ??
-          data['followingId'] ??
-          data['followedId'] ??
-          data['target_user_id'];
-      return val is String ? val : null;
+    final _FollowPaginationState pagination = _paginationByUserId.putIfAbsent(
+      currentUserId,
+      _FollowPaginationState.new,
+    );
+
+    if (!forceRefresh &&
+        !loadMore &&
+        _cachedIdSetsUserId == currentUserId &&
+        _cachedIdSets != null &&
+        _cachedIdSetsAt != null &&
+        DateTime.now().difference(_cachedIdSetsAt!) < _followIdSetsCacheTtl) {
+      return _FollowGraphPageResult(
+        idSets: _cachedIdSets!,
+        hasMore: pagination.hasMore,
+      );
     }
 
-    bool isActiveFollowDoc(Map<String, dynamic> data) {
-      if (!data.containsKey('isActive')) return true;
-      final val = data['isActive'];
-      if (val is bool) return val;
-      return true;
+    if (loadMore && !pagination.hasMore) {
+      return _FollowGraphPageResult(
+        idSets: _cachedIdSets ??
+            const _FollowIdSets(
+              followerIds: <String>{},
+              followingIds: <String>{},
+            ),
+        hasMore: false,
+      );
     }
 
-    final followerIds = <String>{};
-    for (final doc in followersPrimary.docs) {
-      final data = doc.data();
-      if (!isActiveFollowDoc(data)) continue;
-      final id = readFollowerId(data);
-      if (id != null && id.isNotEmpty) followerIds.add(id);
+    final Set<String> followerIds = loadMore &&
+            _cachedIdSetsUserId == currentUserId &&
+            _cachedIdSets != null
+        ? Set<String>.from(_cachedIdSets!.followerIds)
+        : <String>{};
+    final Set<String> followingIds = loadMore &&
+            _cachedIdSetsUserId == currentUserId &&
+            _cachedIdSets != null
+        ? Set<String>.from(_cachedIdSets!.followingIds)
+        : <String>{};
+
+    if (!loadMore) {
+      pagination.reset();
     }
-    for (final doc in [...followersLegacy1.docs, ...followersLegacy2.docs]) {
-      final data = doc.data();
-      if (!isActiveFollowDoc(data)) continue;
-      final id = readFollowerId(data);
-      if (id != null && id.isNotEmpty) followerIds.add(id);
-    }
-    final followingIds = <String>{};
-    for (final doc in followingPrimary.docs) {
-      final data = doc.data();
-      if (!isActiveFollowDoc(data)) continue;
-      final id = readFollowingId(data);
-      if (id != null && id.isNotEmpty) followingIds.add(id);
-    }
-    for (final doc in followingLegacy.docs) {
-      final data = doc.data();
-      if (!isActiveFollowDoc(data)) continue;
-      final id = readFollowingId(data);
-      if (id != null && id.isNotEmpty) followingIds.add(id);
-    }
-    return _FollowIdSets(
+
+    await Future.wait(<Future<void>>[
+      _fetchFollowLanePage(
+        pagination: pagination,
+        targetIds: followerIds,
+        exhausted: () => pagination.followersPrimaryExhausted,
+        setExhausted: () => pagination.followersPrimaryExhausted = true,
+        cursor: () => pagination.followersPrimaryCursor,
+        setCursor: (DocumentSnapshot<Map<String, dynamic>>? value) =>
+            pagination.followersPrimaryCursor = value,
+        queryBuilder: () => _firestore
+            .collection('follows')
+            .where('targetUserId', isEqualTo: currentUserId),
+        readId: _readFollowerId,
+      ),
+      _fetchFollowLanePage(
+        pagination: pagination,
+        targetIds: followerIds,
+        exhausted: () => pagination.followersLegacy1Exhausted,
+        setExhausted: () => pagination.followersLegacy1Exhausted = true,
+        cursor: () => pagination.followersLegacy1Cursor,
+        setCursor: (DocumentSnapshot<Map<String, dynamic>>? value) =>
+            pagination.followersLegacy1Cursor = value,
+        queryBuilder: () => _firestore
+            .collection('follows')
+            .where('followingId', isEqualTo: currentUserId),
+        readId: _readFollowerId,
+      ),
+      _fetchFollowLanePage(
+        pagination: pagination,
+        targetIds: followerIds,
+        exhausted: () => pagination.followersLegacy2Exhausted,
+        setExhausted: () => pagination.followersLegacy2Exhausted = true,
+        cursor: () => pagination.followersLegacy2Cursor,
+        setCursor: (DocumentSnapshot<Map<String, dynamic>>? value) =>
+            pagination.followersLegacy2Cursor = value,
+        queryBuilder: () => _firestore
+            .collection('follows')
+            .where('followedId', isEqualTo: currentUserId),
+        readId: _readFollowerId,
+      ),
+      _fetchFollowLanePage(
+        pagination: pagination,
+        targetIds: followingIds,
+        exhausted: () => pagination.followingPrimaryExhausted,
+        setExhausted: () => pagination.followingPrimaryExhausted = true,
+        cursor: () => pagination.followingPrimaryCursor,
+        setCursor: (DocumentSnapshot<Map<String, dynamic>>? value) =>
+            pagination.followingPrimaryCursor = value,
+        queryBuilder: () => _firestore
+            .collection('follows')
+            .where('followerUserId', isEqualTo: currentUserId),
+        readId: _readFollowingId,
+      ),
+      _fetchFollowLanePage(
+        pagination: pagination,
+        targetIds: followingIds,
+        exhausted: () => pagination.followingLegacyExhausted,
+        setExhausted: () => pagination.followingLegacyExhausted = true,
+        cursor: () => pagination.followingLegacyCursor,
+        setCursor: (DocumentSnapshot<Map<String, dynamic>>? value) =>
+            pagination.followingLegacyCursor = value,
+        queryBuilder: () => _firestore
+            .collection('follows')
+            .where('followerId', isEqualTo: currentUserId),
+        readId: _readFollowingId,
+      ),
+    ]);
+
+    final _FollowIdSets result = _FollowIdSets(
       followerIds: followerIds,
       followingIds: followingIds,
     );
+    _cachedIdSets = result;
+    _cachedIdSetsUserId = currentUserId;
+    _cachedIdSetsAt = DateTime.now();
+    return _FollowGraphPageResult(
+      idSets: result,
+      hasMore: pagination.hasMore,
+    );
+  }
+
+  Future<void> _fetchFollowLanePage({
+    required _FollowPaginationState pagination,
+    required Set<String> targetIds,
+    required bool Function() exhausted,
+    required VoidCallback setExhausted,
+    required DocumentSnapshot<Map<String, dynamic>>? Function() cursor,
+    required void Function(DocumentSnapshot<Map<String, dynamic>>? value)
+        setCursor,
+    required Query<Map<String, dynamic>> Function() queryBuilder,
+    required String? Function(Map<String, dynamic> data) readId,
+  }) async {
+    if (exhausted()) {
+      return;
+    }
+    Query<Map<String, dynamic>> query =
+        queryBuilder().limit(_followQueryPageSize);
+    final DocumentSnapshot<Map<String, dynamic>>? startAfter = cursor();
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await query.get();
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+        in snapshot.docs) {
+      final Map<String, dynamic> data = doc.data();
+      if (!_isActiveFollowDoc(data)) {
+        continue;
+      }
+      final String? id = readId(data);
+      if (id != null && id.isNotEmpty) {
+        targetIds.add(id);
+      }
+    }
+    if (snapshot.docs.length < _followQueryPageSize) {
+      setExhausted();
+      setCursor(null);
+      return;
+    }
+    setCursor(snapshot.docs.last);
+  }
+
+  String? _readFollowerId(Map<String, dynamic> data) {
+    final dynamic val = data['followerUserId'] ??
+        data['followerId'] ??
+        data['follower'] ??
+        data['follower_id'];
+    return val is String ? val : null;
+  }
+
+  String? _readFollowingId(Map<String, dynamic> data) {
+    final dynamic val = data['targetUserId'] ??
+        data['followingId'] ??
+        data['followedId'] ??
+        data['target_user_id'];
+    return val is String ? val : null;
+  }
+
+  bool _isActiveFollowDoc(Map<String, dynamic> data) {
+    if (!data.containsKey('isActive')) {
+      return true;
+    }
+    final dynamic val = data['isActive'];
+    if (val is bool) {
+      return val;
+    }
+    return true;
   }
 
   Future<bool> isFollowing(String targetUserId) async {
@@ -726,12 +1099,18 @@ class FollowsService {
         .collection('follows')
         .where('followerUserId', isEqualTo: userId)
         .snapshots()
-        .asyncMap((_) => getUsersForTab(tab));
+        .asyncMap((_) {
+      invalidateFollowIdSetsCache();
+      return getUsersForTab(tab);
+    });
     final s2 = _firestore
         .collection('follows')
         .where('targetUserId', isEqualTo: userId)
         .snapshots()
-        .asyncMap((_) => getUsersForTab(tab));
+        .asyncMap((_) {
+      invalidateFollowIdSetsCache();
+      return getUsersForTab(tab);
+    });
     return _mergeStreams(s1, s2);
   }
 
@@ -770,6 +1149,22 @@ class FollowsService {
     final data = doc.data();
     final merged = {...data, 'id': data['id'] ?? doc.id};
     return user_model.User.fromMap(merged);
+  }
+
+  Future<Set<String>> _filterExistingUserIds(Set<String> userIds) async {
+    if (userIds.isEmpty) {
+      return <String>{};
+    }
+    final Set<String> existing = <String>{};
+    final List<String> idList = userIds.toList();
+    for (final List<String> chunk in _chunkList(idList, 30)) {
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      existing.addAll(snapshot.docs.map((doc) => doc.id));
+    }
+    return existing;
   }
 
   List<List<T>> _chunkList<T>(List<T> list, int chunkSize) {

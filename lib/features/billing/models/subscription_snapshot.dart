@@ -112,7 +112,7 @@ class ApiEntitlements {
   factory ApiEntitlements.fallbackStarter() {
     return const ApiEntitlements(
       maxPlatforms: 1,
-      monthlyAiCredits: 0,
+      monthlyAiCredits: 25,
       contentPlansLimit: 1,
       analyticsWindowDays: 7,
       crossPostWeeklyLimit: 1,
@@ -184,7 +184,7 @@ class AiCreditCosts {
 
   factory AiCreditCosts.fromJson(Map<String, dynamic>? raw) {
     if (raw == null || raw.isEmpty) {
-      return const AiCreditCosts(costs: <String, int>{});
+      return AiCreditCosts.canonical;
     }
     final Map<String, int> out = <String, int>{};
     raw.forEach((String key, Object? value) {
@@ -193,8 +193,21 @@ class AiCreditCosts {
         out[key] = n;
       }
     });
+    if (out.isEmpty) {
+      return AiCreditCosts.canonical;
+    }
     return AiCreditCosts(costs: out);
   }
+
+  static const AiCreditCosts canonical = AiCreditCosts(
+    costs: <String, int>{
+      'captionRewrite': 1,
+      'hashtags': 1,
+      'captionGeneration': 2,
+      'contentPlan': 5,
+      'growthAnalysis': 10,
+    },
+  );
 }
 
 /// Parsed `/api/user/entitlements` payload for the signed-in user.
@@ -221,6 +234,7 @@ class SubscriptionSnapshot {
     this.source = '',
     this.uid = '',
     this.email = '',
+    this.canUseTippy = true,
   });
 
   final BillingTier tier;
@@ -244,6 +258,7 @@ class SubscriptionSnapshot {
   final AiCreditCosts aiCreditCosts;
   final String uid;
   final String email;
+  final bool canUseTippy;
 
   String get tierApi => billingTierToApiValue(effectiveTier);
 
@@ -262,7 +277,7 @@ class SubscriptionSnapshot {
   int get analyticsDays => entitlements.analyticsWindowDays;
 
   TippyAiEntitlementPayload get tippyAi => TippyAiEntitlementPayload(
-        enabled: hasFullAccess || entitlements.canUseAICaptionRewrite,
+        enabled: hasFullAccess || canUseTippy,
         monthlyCredits: entitlements.monthlyAiCredits > 0
             ? entitlements.monthlyAiCredits
             : creditsLimit,
@@ -322,7 +337,7 @@ class SubscriptionSnapshot {
         canCrossPost: entitlements.canCrossPost,
         canBulkPublish: entitlements.canBulkPublish,
         canUseAdvancedAnalytics: entitlements.canUseAdvancedAnalytics,
-        canUseAICaptionRewrite: tippyMap['enabled'] == true,
+        canUseAICaptionRewrite: entitlements.canUseAICaptionRewrite,
         canUseGrowthReports: entitlements.canUseGrowthReports,
         canUseTeamMembers: entitlements.canUseTeamMembers,
         canUseAutomation: entitlements.canUseAutomation,
@@ -391,6 +406,9 @@ class SubscriptionSnapshot {
             ? root['aiCreditCosts'] as Map<String, dynamic>
             : null,
       ),
+      canUseTippy: tippyMap != null
+          ? tippyMap['enabled'] == true
+          : true,
     );
   }
 
@@ -415,7 +433,7 @@ class SubscriptionSnapshot {
         monthlyCreditsUsed: 0,
         monthlyCreditsRemaining: 0,
       ),
-      aiCreditCosts: const AiCreditCosts(costs: <String, int>{}),
+      aiCreditCosts: AiCreditCosts.canonical,
     );
   }
 }
@@ -463,7 +481,7 @@ bool _inferIsPaid({
     return false;
   }
   final String s = status.trim().toLowerCase();
-  if (s == 'active' || s == 'trialing') {
+  if (s == 'active' || s == 'trialing' || s == 'grace_period') {
     return true;
   }
   if (periodEnd != null && periodEnd.isAfter(DateTime.now())) {

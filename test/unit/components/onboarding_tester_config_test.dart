@@ -3,9 +3,19 @@ import 'package:streamers_tip/components/onboarding/onboarding_tester_config.dar
 
 void main() {
   group('OnboardingTesterConfig', () {
-    test('matches username tester', () {
+    test('isTesterUser is off by default in unit tests', () {
       expect(
         OnboardingTesterConfig.isTesterUser(
+          userId: 'uid-123',
+          email: 'tester@streamerstip.com',
+        ),
+        isFalse,
+      );
+    });
+
+    test('matches username tester via visible matcher', () {
+      expect(
+        OnboardingTesterConfig.matchesTesterIdentity(
           userId: 'uid-123',
           username: 'tester',
         ),
@@ -13,9 +23,9 @@ void main() {
       );
     });
 
-    test('matches configured tester email', () {
+    test('matches configured tester email via visible matcher', () {
       expect(
-        OnboardingTesterConfig.isTesterUser(
+        OnboardingTesterConfig.matchesTesterIdentity(
           userId: 'uid-123',
           email: 'tester@streamerstip.com',
         ),
@@ -23,9 +33,9 @@ void main() {
       );
     });
 
-    test('matches contact tester email from default csv', () {
+    test('matches contact tester email from default csv via visible matcher', () {
       expect(
-        OnboardingTesterConfig.isTesterUser(
+        OnboardingTesterConfig.matchesTesterIdentity(
           userId: 'uid-123',
           email: 'contact@streamerstip.com',
         ),
@@ -33,9 +43,9 @@ void main() {
       );
     });
 
-    test('matches tester display name', () {
+    test('matches tester display name via visible matcher', () {
       expect(
-        OnboardingTesterConfig.isTesterUser(
+        OnboardingTesterConfig.matchesTesterIdentity(
           userId: 'uid-123',
           displayName: 'Tester',
         ),
@@ -43,22 +53,34 @@ void main() {
       );
     });
 
-    test('matches streamerstiptester username from default csv', () {
+    test('does not match regular users via visible matcher', () {
       expect(
-        OnboardingTesterConfig.isTesterUser(
+        OnboardingTesterConfig.matchesTesterIdentity(
           userId: 'uid-123',
-          username: 'streamerstiptester',
+          email: 'creator@example.com',
+          username: 'mychannel',
+        ),
+        isFalse,
+      );
+    });
+
+    test('promo data matches firestore eligibility flag', () {
+      expect(
+        OnboardingTesterConfig.isPromoDataTester(
+          userId: 'uid-123',
+          email: 'creator@example.com',
+          username: 'mychannel',
+          promoEligibleFromFirestore: true,
         ),
         isTrue,
       );
     });
 
-    test('does not match regular users', () {
+    test('promo identity matching is off by default in unit tests', () {
       expect(
-        OnboardingTesterConfig.isTesterUser(
+        OnboardingTesterConfig.isPromoDataTester(
           userId: 'uid-123',
-          email: 'creator@example.com',
-          username: 'mychannel',
+          username: 'my_tester_account',
         ),
         isFalse,
       );

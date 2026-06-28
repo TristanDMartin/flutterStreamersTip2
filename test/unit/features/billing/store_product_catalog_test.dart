@@ -5,40 +5,42 @@ import 'package:streamers_tip/features/gamification/models/subscription_plan.dar
 
 void main() {
   group('subscriptionPlanForStoreProductId', () {
-    test('maps pro products', () {
+    test('maps iOS pro products', () {
       expect(
-        subscriptionPlanForStoreProductId(kStreamersTipProMonthlyId),
+        subscriptionPlanForStoreProductId(kIosProMonthlyId),
         SubscriptionPlan.pro,
       );
       expect(
-        subscriptionPlanForStoreProductId(kStreamersTipProYearlyId),
+        subscriptionPlanForStoreProductId(kIosProYearlyId),
         SubscriptionPlan.pro,
       );
     });
 
-    test('maps studio products', () {
+    test('maps android studio products', () {
       expect(
-        subscriptionPlanForStoreProductId(kStreamersTipStudioMonthlyId),
+        subscriptionPlanForStoreProductId(kAndroidStudioMonthlyId),
         SubscriptionPlan.studio,
       );
     });
   });
 
   group('storeProductIdForPlanAndPeriod', () {
-    test('returns Pricing v2 product ids', () {
+    test('returns iOS product ids when platform is ios', () {
       expect(
         storeProductIdForPlanAndPeriod(
           plan: SubscriptionPlan.pro,
           isYearly: false,
+          platform: BillingStorePlatform.ios,
         ),
-        kCreatorProMonthlyId,
+        kIosProMonthlyId,
       );
       expect(
         storeProductIdForPlanAndPeriod(
           plan: SubscriptionPlan.studio,
           isYearly: true,
+          platform: BillingStorePlatform.android,
         ),
-        kStreamersTipStudioYearlyId,
+        kAndroidStudioYearlyId,
       );
     });
   });

@@ -1,15 +1,35 @@
 import 'package:flutter/material.dart';
+
 import 'global_playback_manager.dart';
 import '../constants/playback_owners.dart';
 import '../utils/playback_route_policies.dart';
 
-/// Navigation observer that handles route changes and coordinates with playback
+/// Navigation observer that handles route changes and coordinates with playback.
 class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
+  AppNavigationObserver._();
+
+  static final AppNavigationObserver instance = AppNavigationObserver._();
+
   final GlobalPlaybackManager _manager = GlobalPlaybackManager.instance;
+  final List<Route<dynamic>> _blockingRoutes = <Route<dynamic>>[];
+
+  @visibleForTesting
+  void clearRoutePlaybackSuppressions() {
+    final List<Route<dynamic>> routes =
+        List<Route<dynamic>>.from(_blockingRoutes);
+    for (final Route<dynamic> route in routes) {
+      _releaseRouteBlock(route);
+    }
+    _blockingRoutes.clear();
+  }
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
+    if (_shouldBlockRoute(route)) {
+      _handleRoutePush(route);
+      return;
+    }
     _handleRouteChange(route, isForeground: true);
   }
 
@@ -27,6 +47,8 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       );
     }
 
+    _handleRoutePop(route);
+
     final String poppedRouteName =
         route.settings.name ?? route.runtimeType.toString();
     final bool isPoppingDiscoverView =
@@ -38,7 +60,7 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       final bool isReturningToHome =
           previousRouteName.toLowerCase().contains('home');
 
-      if (isReturningToHome) {
+      if (isReturningToHome && !_manager.isSuppressedForSignOut) {
         debugPrint(
           '🔄 NavigationObserver: Returning to HomeView from DiscoverView',
         );
@@ -47,19 +69,89 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       }
     }
 
-    _handleRouteChange(previousRoute, isForeground: true);
+    if (previousRoute != null && !_shouldBlockRoute(previousRoute)) {
+      _handleRouteChange(previousRoute, isForeground: true);
+    }
   }
 
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didRemove(route, previousRoute);
+    _handleRoutePop(route);
     _handleRouteChange(previousRoute, isForeground: true);
   }
 
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    if (oldRoute != null) {
+      _handleRoutePop(oldRoute);
+    }
+    if (newRoute != null) {
+      _handleRoutePush(newRoute);
+    }
     _handleRouteChange(newRoute, isForeground: true);
+  }
+
+  String _routeBlockReason(Route<dynamic> route) {
+    final String? name = route.settings.name;
+    if (name != null && name.isNotEmpty) {
+      return 'route_$name';
+    }
+    return 'route_overlay_${route.hashCode}';
+  }
+
+  bool _shouldBlockRoute(Route<dynamic> route) {
+    if (route is! PageRoute && route is! MaterialPageRoute) {
+      return false;
+    }
+    final String? name = route.settings.name;
+    final String routeName = (name ?? route.runtimeType.toString()).toLowerCase();
+
+    if (PlaybackRoutePolicies.isShellRoute(routeName)) {
+      return false;
+    }
+    if (PlaybackRoutePolicies.isOnboardingRoute(routeName)) {
+      return false;
+    }
+    if (PlaybackRoutePolicies.isVideoPlaybackRoute(routeName)) {
+      return false;
+    }
+    if (PlaybackRoutePolicies.isCommentsOrShareModalRoute(routeName)) {
+      return false;
+    }
+    if (PlaybackRoutePolicies.isKeepPlayingOverlayRoute(routeName)) {
+      return false;
+    }
+    if (PlaybackRoutePolicies.isNonVideoScreenRoute(routeName)) {
+      return true;
+    }
+    if (route is MaterialPageRoute && name == null) {
+      return true;
+    }
+    return false;
+  }
+
+  void _handleRoutePush(Route<dynamic> route) {
+    if (!_shouldBlockRoute(route)) {
+      return;
+    }
+    if (_blockingRoutes.contains(route)) {
+      return;
+    }
+    _blockingRoutes.add(route);
+    _manager.block(reason: _routeBlockReason(route));
+  }
+
+  void _handleRoutePop(Route<dynamic> route) {
+    _releaseRouteBlock(route);
+  }
+
+  void _releaseRouteBlock(Route<dynamic> route) {
+    if (!_blockingRoutes.remove(route)) {
+      return;
+    }
+    _manager.unblock(reason: _routeBlockReason(route));
   }
 
   void _activateVideoSurface(String owner) {
@@ -69,7 +161,6 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
 
   void _suppressPlayback({required String reason, String? visibleOwner}) {
     _manager.block(reason: reason);
-    _manager.pauseAll();
     if (visibleOwner != null) {
       _manager.setVisibleOwner(visibleOwner);
     }
@@ -88,6 +179,13 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     debugPrint(
       '[NavigationObserver] route: ${route.settings.name ?? typeName}',
     );
+
+    if (_manager.isSuppressedForSignOut) {
+      debugPrint(
+        '🚫 NavigationObserver: Sign-out suppression active — skip restore',
+      );
+      return;
+    }
 
     if (PlaybackRoutePolicies.isShellRoute(routeName)) {
       debugPrint(
@@ -110,6 +208,13 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     if (isSupportedPlaybackModal) {
       debugPrint(
         '🎵 NavigationObserver: Comments/share modal — keep playing',
+      );
+      return;
+    }
+
+    if (PlaybackRoutePolicies.isKeepPlayingOverlayRoute(routeName)) {
+      debugPrint(
+        '🎵 NavigationObserver: Keep-playing overlay — no block',
       );
       return;
     }
@@ -152,6 +257,7 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     required bool isPresented,
     String? modalType,
   }) {
+    final String reason = 'modal_${modalType ?? 'unknown'}';
     if (isPresented) {
       if (modalType?.contains('comments') == true ||
           modalType?.contains('Comments') == true ||
@@ -162,11 +268,12 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
         );
         return;
       }
-      _manager.block(reason: 'modal_${modalType ?? 'unknown'}');
-      _manager.pauseAll();
+      _manager.block(reason: reason);
       debugPrint('🎵 NavigationObserver: Modal presented — $modalType');
       return;
     }
+
+    _manager.unblock(reason: reason);
 
     if (_manager.isPlaybackBlocked) {
       debugPrint(

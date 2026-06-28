@@ -1,25 +1,31 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../routing/app_routes.dart';
 import '../../../routing/navigation_context.dart';
-import '../../../services/auth_service.dart';
+import '../../../services/robust_auth_service.dart';
 import '../../../services/profile_update_service.dart';
+import '../../../services/username_lock_service.dart';
 import '../../../utils/category_schema.dart';
 import '../../../widgets/edit_field_view.dart';
 import '../../../widgets/profile/editable_profile_field.dart';
 import '../../../widgets/profile/profile_about_editor_section.dart';
 import '../../../widgets/profile/profile_avatar_picker_actions.dart';
 import '../../../widgets/profile/profile_avatar_picker_section.dart';
+import '../../../widgets/profile/profile_creator_identity_fields.dart';
 import '../../../widgets/profile/profile_field_update_helper.dart';
 import '../../../widgets/profile/profile_platforms_update_helper.dart';
+import '../../../widgets/profile/profile_username_availability_controller.dart';
+import '../../../widgets/profile/profile_username_rules.dart';
 import '../../../widgets/profile/profile_username_utils.dart';
 import '../onboarding_style.dart';
 import '../onboarding_v1_constants.dart';
+import '../widgets/onboarding_full_screen_shell.dart';
 import '../widgets/onboarding_progress_header.dart';
 
 class OnboardingCreatorCardScreen extends ConsumerStatefulWidget {
@@ -43,15 +49,27 @@ class _OnboardingCreatorCardScreenState
     extends ConsumerState<OnboardingCreatorCardScreen>
     with AutomaticKeepAliveClientMixin {
   late Map<String, dynamic> _user;
+  late String _initialUsername;
   File? _selectedImage;
   bool _isUploadingAvatar = false;
   String? _uploadError;
   bool _isSaving = false;
   String? _error;
+  bool _usernameManuallyEdited = false;
   ProfileUpdateService? _profileUpdateService;
+  final ProfileUsernameAvailabilityController _usernameAvailability =
+      ProfileUsernameAvailabilityController();
+  UsernameAvailabilityStatus _usernameStatus = UsernameAvailabilityStatus.idle;
+  String? _usernameStatusMessage;
 
   @override
   bool get wantKeepAlive => true;
+
+  String get _userId =>
+      widget.initialUser['uid'] as String? ??
+      widget.initialUser['id'] as String? ??
+      fa.FirebaseAuth.instance.currentUser?.uid ??
+      '';
 
   @override
   void initState() {
@@ -60,21 +78,54 @@ class _OnboardingCreatorCardScreenState
     if (_user['platforms'] == null) {
       _user['platforms'] = <Map<String, dynamic>>[];
     }
+    _initialUsername = (_user['username'] as String?)?.trim() ?? '';
+    if (_initialUsername.isNotEmpty) {
+      _usernameManuallyEdited = true;
+    }
     _profileUpdateService = ProfileUpdateService();
     unawaited(_profileUpdateService!.initialize());
+    _scheduleUsernameAvailabilityCheck();
   }
 
   @override
   void dispose() {
+    _usernameAvailability.dispose();
     _profileUpdateService = null;
     super.dispose();
   }
 
-  bool get _isValid {
+  bool get _hasAvatar {
+    if (_selectedImage != null) {
+      return true;
+    }
+    final String? url = _avatarUrl;
+    return url != null && url.isNotEmpty;
+  }
+
+  bool get _canContinue {
     final String displayName = (_user['displayName'] as String?)?.trim() ?? '';
     final String bio = (_user['bio'] as String?)?.trim() ?? '';
-    final String username = (_user['username'] as String?)?.trim() ?? '';
-    return displayName.length >= 2 && bio.isNotEmpty && username.isNotEmpty;
+    final String username =
+        ProfileUsernameRules.normalize((_user['username'] as String?) ?? '');
+    if (displayName.length < 2 || bio.isEmpty || username.isEmpty) {
+      return false;
+    }
+    if (!ProfileUsernameRules.isFormatValid(username)) {
+      return false;
+    }
+    if (_isUploadingAvatar || _isSaving) {
+      return false;
+    }
+    if (_usernameStatus == UsernameAvailabilityStatus.checking) {
+      return false;
+    }
+    if (_usernameStatus == UsernameAvailabilityStatus.taken ||
+        _usernameStatus == UsernameAvailabilityStatus.invalid ||
+        _usernameStatus == UsernameAvailabilityStatus.tooShort ||
+        _usernameStatus == UsernameAvailabilityStatus.error) {
+      return false;
+    }
+    return _usernameStatus == UsernameAvailabilityStatus.available;
   }
 
   String? get _avatarUrl {
@@ -85,9 +136,53 @@ class _OnboardingCreatorCardScreenState
     return (_user['photoURL'] as String?)?.trim();
   }
 
+  void _scheduleUsernameAvailabilityCheck() {
+    final String username = (_user['username'] as String?) ?? '';
+    _usernameAvailability.scheduleCheck(
+      username: username,
+      userId: _userId,
+      onStatusChanged: (UsernameAvailabilityStatus status, String? message) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _usernameStatus = status;
+          _usernameStatusMessage = message;
+        });
+      },
+    );
+  }
+
+  void _onDisplayNameChanged(String value) {
+    final ProfileFieldUpdateResult local = ProfileFieldUpdateHelper.applyLocalUpdate(
+      user: _user,
+      key: EditableProfileField.name.key,
+      value: value,
+      syncUsernameFromDisplayName: !_usernameManuallyEdited,
+    );
+    if (!local.isSuccess || local.updatedUser == null) {
+      return;
+    }
+    setState(() {
+      _user = local.updatedUser!;
+    });
+    _scheduleUsernameAvailabilityCheck();
+  }
+
+  void _onUsernameChanged(String value) {
+    _usernameManuallyEdited = true;
+    final String normalized = ProfileUsernameUtils.normalizeUsername(value);
+    setState(() {
+      _user['username'] = normalized;
+    });
+    _scheduleUsernameAvailabilityCheck();
+  }
+
   void _showImagePicker() {
     ProfileAvatarPickerActions.showImagePicker(
       context,
+      hasExistingPhoto: _hasAvatar,
+      onRemovePhoto: _removeAvatar,
       onImageSelected: _handleImageSelected,
     );
   }
@@ -100,8 +195,29 @@ class _OnboardingCreatorCardScreenState
     unawaited(_uploadAvatar(imageFile));
   }
 
+  Future<void> _removeAvatar() async {
+    setState(() {
+      _selectedImage = null;
+      _uploadError = null;
+      _user['avatarURL'] = null;
+      _user['photoURL'] = null;
+    });
+    try {
+      await _profileUpdateService?.updateUserData(<String, dynamic>{
+        'avatarURL': null,
+        'photoURL': null,
+        'avatarUrl': null,
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('OnboardingCreatorCard: avatar remove failed: $e');
+      }
+    }
+  }
+
   Future<void> _uploadAvatar(File imageFile) async {
-    final AuthenticationService authService = ref.read(authServiceProvider);
+    final RobustAuthenticationService authService =
+        ref.read(robustAuthServiceProvider);
     setState(() {
       _isUploadingAvatar = true;
       _uploadError = null;
@@ -120,10 +236,11 @@ class _OnboardingCreatorCardScreenState
         _selectedImage = null;
         _isUploadingAvatar = false;
       });
-      _showAvatarSnackBar(
-        'Avatar updated successfully!',
-        backgroundColor: Colors.green,
-      );
+      await _profileUpdateService?.updateUserData(<String, dynamic>{
+        'avatarURL': downloadUrl,
+        'photoURL': downloadUrl,
+        'avatarUrl': downloadUrl,
+      });
     } catch (e) {
       if (kDebugMode) {
         debugPrint('OnboardingCreatorCard: avatar upload failed: $e');
@@ -135,10 +252,6 @@ class _OnboardingCreatorCardScreenState
         _isUploadingAvatar = false;
         _uploadError = _formatAvatarUploadError(e);
       });
-      _showAvatarSnackBar(
-        _uploadError ?? 'Avatar upload failed. Please try again.',
-        backgroundColor: Colors.red,
-      );
     }
   }
 
@@ -159,28 +272,12 @@ class _OnboardingCreatorCardScreenState
     return 'Avatar upload failed. Please try again.';
   }
 
-  void _showAvatarSnackBar(
-    String message, {
-    required Color backgroundColor,
-  }) {
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: backgroundColor,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
   Future<void> _updateField(String key, String value) async {
     final ProfileFieldUpdateResult local = ProfileFieldUpdateHelper.applyLocalUpdate(
       user: _user,
       key: key,
       value: value,
-      syncUsernameFromDisplayName: true,
+      syncUsernameFromDisplayName: false,
       recordNameChangeDate: false,
     );
     if (!local.isSuccess) {
@@ -255,7 +352,7 @@ class _OnboardingCreatorCardScreenState
   }
 
   Future<void> _submit() async {
-    if (!_isValid || _isSaving) {
+    if (!_canContinue || _isSaving) {
       return;
     }
     setState(() {
@@ -264,13 +361,31 @@ class _OnboardingCreatorCardScreenState
     });
     try {
       final String displayName = (_user['displayName'] as String?)?.trim() ?? '';
-      String username = (_user['username'] as String?)?.trim() ?? '';
-      if (username.isEmpty) {
-        username = ProfileUsernameUtils.generateUsernameFromDisplayName(
-          displayName,
-        );
-        _user['username'] = username;
+      final String username = ProfileUsernameRules.normalize(
+        (_user['username'] as String?)?.trim() ?? '',
+      );
+      await _usernameAvailability.checkNow(
+        username: username,
+        userId: _userId,
+        onStatusChanged: (UsernameAvailabilityStatus status, String? message) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _usernameStatus = status;
+            _usernameStatusMessage = message;
+          });
+        },
+      );
+      if (_usernameAvailability.status !=
+          UsernameAvailabilityStatus.available) {
+        throw Exception(_usernameStatusMessage ?? 'Username unavailable');
       }
+      await UsernameLockService().reserveUsername(
+        username: username,
+        userId: _userId,
+        previousUsername: _initialUsername,
+      );
       final String bio = (_user['bio'] as String?)?.trim() ?? '';
       final String? avatarUrl = _avatarUrl;
       final String categoryId =
@@ -289,6 +404,14 @@ class _OnboardingCreatorCardScreenState
         'photoURL': avatarUrl,
         'platforms': platforms,
       });
+    } on UsernameTakenException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _usernameStatus = UsernameAvailabilityStatus.taken;
+          _usernameStatusMessage = 'Username already taken';
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -307,87 +430,104 @@ class _OnboardingCreatorCardScreenState
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    return ColoredBox(
-      color: cs.surface,
-      child: SafeArea(
-        child: Column(
-          children: <Widget>[
-            OnboardingProgressHeader(
-              step: 4,
-              totalSteps: OnboardingV1Constants.totalSteps,
-              showBack: true,
-              onBack: widget.onBack,
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                      child: Text(
-                        'Build your Creator Card',
-                        style: OnboardingStyle.titleFor(context),
+    return OnboardingScreenLayout(
+      child: Column(
+        children: <Widget>[
+          OnboardingProgressHeader(
+            step: 3,
+            totalSteps: OnboardingV1Constants.totalSteps,
+            showBack: true,
+            onBack: widget.onBack,
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                    child: Text(
+                      'STEP 3 OF 4',
+                      style: OnboardingStyle.plainTextStyle(
+                        TextStyle(
+                          color: const Color(0xFF9248D2).withValues(alpha: 0.95),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
                       ),
                     ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+                    child: Text(
+                      'Build your creator identity',
+                      style: OnboardingStyle.titleFor(context, fontSize: 30),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                    child: Text(
+                      'This is how other streamers find and know you.',
+                      style: OnboardingStyle.bodyFor(context, fontSize: 15),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ProfileAvatarPickerSection(
+                    avatarUrl: _avatarUrl,
+                    selectedImage: _selectedImage,
+                    isUploading: _isUploadingAvatar,
+                    uploadError: _uploadError,
+                    onTap: _isUploadingAvatar ? null : _showImagePicker,
+                  ),
+                  ProfileCreatorIdentityFields(
+                    displayName: (_user['displayName'] as String?) ?? '',
+                    username: (_user['username'] as String?) ?? '',
+                    onDisplayNameChanged: _onDisplayNameChanged,
+                    onUsernameChanged: _onUsernameChanged,
+                    usernameStatus: _usernameStatus,
+                    usernameStatusMessage: _usernameStatusMessage,
+                  ),
+                  ProfileAboutEditorSection(
+                    user: _user,
+                    canChangeName: false,
+                    showNameRow: false,
+                    showUsernameRow: false,
+                    showPlatformsRow: true,
+                    onEditField: _showEditField,
+                    onEditPlatforms: _showPlatformsEditor,
+                  ),
+                  if (_error != null)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
+                      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
                       child: Text(
-                        'Complete your card and earn '
+                        _error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+            child: SizedBox(
+              width: double.infinity,
+              child: GradientPillButton(
+                useSolidPurple: true,
+                label: _isSaving
+                    ? 'Saving...'
+                    : 'Create My Card → '
                         '+${OnboardingV1Constants.creatorCardRewardXp} XP',
-                        style: OnboardingStyle.plainTextStyle(
-                          const TextStyle(
-                            color: Color(0xFF58CC02),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ProfileAvatarPickerSection(
-                      avatarUrl: _avatarUrl,
-                      selectedImage: _selectedImage,
-                      isUploading: _isUploadingAvatar,
-                      uploadError: _uploadError,
-                      onTap: _isUploadingAvatar ? null : _showImagePicker,
-                    ),
-                    ProfileAboutEditorSection(
-                      user: _user,
-                      canChangeName: true,
-                      showPlatformsRow: true,
-                      onEditField: _showEditField,
-                      onEditPlatforms: _showPlatformsEditor,
-                    ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(
-                            color: cs.error,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+                onPressed: _canContinue && !_isSaving ? _submit : null,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-              child: SizedBox(
-                width: double.infinity,
-                child: GradientPillButton(
-                  label: _isSaving ? 'Saving...' : 'Generate Creator Card',
-                  onPressed: _isValid && !_isSaving ? _submit : null,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -1,33 +1,23 @@
 'use strict';
 
-/**
- * Single resolution order for app + Tippy + /me/entitlements.
- * Prefer users/{uid}.subscription.tier after migration; keep legacy fallbacks.
- */
-function normalizeTierString(val) {
-  if (val === undefined || val === null) {
-    return null;
-  }
-  const s = String(val).trim().toLowerCase();
-  if (s === 'pro' || s === 'professional') {
-    return 'pro';
-  }
-  if (s === 'studio' || s === 'enterprise') {
-    return 'studio';
-  }
-  if (s === 'starter' || s === 'free') {
-    return 'starter';
-  }
-  return null;
-}
+const {
+  isPaidSubscriptionStatus,
+  isSubscriptionPeriodActive,
+  normalizeTierString,
+  readPeriodEndFromUserDoc,
+} = require('./subscription_entitlements');
 
-function resolveTierFromUserDoc(userData) {
+/**
+ * Canonical tier resolution — server-owned fields only.
+ * Does not read client-writable legacy root fields (plan, tier, stripeRole).
+ */
+function resolveTierFromUserDoc(userData = {}) {
   const rootTierRaw = userData.subscriptionTier;
   const rootStatus = String(userData.subscriptionStatus || '')
     .toLowerCase()
     .trim();
-  const paidStatuses =
-    rootStatus === 'active' || rootStatus === 'trialing';
+  const periodActive = isSubscriptionPeriodActive(userData);
+
   if (
     rootTierRaw !== undefined &&
     rootTierRaw !== null &&
@@ -35,7 +25,7 @@ function resolveTierFromUserDoc(userData) {
   ) {
     const normalizedRoot = normalizeTierString(rootTierRaw);
     if (normalizedRoot) {
-      if (paidStatuses) {
+      if (isPaidSubscriptionStatus(rootStatus) && periodActive) {
         return {tier: normalizedRoot, sourceField: 'subscriptionTier'};
       }
       return {tier: 'starter', sourceField: 'subscriptionTier+inactive'};
@@ -46,35 +36,23 @@ function resolveTierFromUserDoc(userData) {
     userData.subscription && typeof userData.subscription === 'object'
       ? userData.subscription
       : {};
-  const ent =
-    userData.entitlements && typeof userData.entitlements === 'object'
-      ? userData.entitlements
-      : {};
-  const tippyEnt =
-    ent.tippyAi &&
-    typeof ent.tippyAi === 'object' &&
-    !Array.isArray(ent.tippyAi)
-      ? ent.tippyAi
-      : {};
+  const subStatus = String(sub.status || sub.subscriptionStatus || '')
+    .toLowerCase()
+    .trim();
+  const subTier = normalizeTierString(sub.tier || sub.plan);
+  const subPeriodEnd = readPeriodEndFromUserDoc({subscription: sub});
+  const subPeriodActive =
+    !subPeriodEnd || subPeriodEnd.getTime() > Date.now();
 
-  const candidates = [
-    ['subscription.tier', sub.tier],
-    ['subscription.plan', sub.plan],
-    ['stripeRole', userData.stripeRole],
-    ['plan', userData.plan],
-    ['entitlements.tippyAi.plan', tippyEnt.plan],
-    ['entitlements.tippyAi.tier', tippyEnt.tier],
-    ['tier', userData.tier],
-  ];
-
-  for (let i = 0; i < candidates.length; i++) {
-    const sourceField = candidates[i][0];
-    const t = normalizeTierString(candidates[i][1]);
-    if (t) {
-      return {tier: t, sourceField};
-    }
+  if (
+    subTier &&
+    isPaidSubscriptionStatus(subStatus) &&
+    subPeriodActive
+  ) {
+    return {tier: subTier, sourceField: 'subscription.tier'};
   }
-  return {tier: 'unknown', sourceField: 'none'};
+
+  return {tier: 'starter', sourceField: 'none'};
 }
 
 module.exports = {

@@ -1,24 +1,84 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/app_store_review_service.dart';
 import '../onboarding_style.dart';
 import '../onboarding_v1_constants.dart';
+import '../widgets/onboarding_full_screen_shell.dart';
 import '../widgets/onboarding_progress_header.dart';
+import '../widgets/onboarding_soft_rating_widget.dart';
+import '../widgets/xp_pop_animation.dart';
 
-class OnboardingLevelUnlockScreen extends StatelessWidget {
+class OnboardingLevelUnlockScreen extends StatefulWidget {
   const OnboardingLevelUnlockScreen({
     super.key,
+    required this.userId,
     required this.onEnterApp,
     required this.onBack,
     this.isLoading = false,
+    this.displayName = 'Creator',
   });
 
+  final String userId;
   final VoidCallback onEnterApp;
   final VoidCallback onBack;
   final bool isLoading;
+  final String displayName;
+
+  @override
+  State<OnboardingLevelUnlockScreen> createState() =>
+      _OnboardingLevelUnlockScreenState();
+}
+
+class _OnboardingLevelUnlockScreenState extends State<OnboardingLevelUnlockScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseController;
+  bool _xpPopShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showXpPop());
+  }
+
+  void _showXpPop() {
+    if (_xpPopShown || !mounted) {
+      return;
+    }
+    final OverlayState? overlay = Overlay.maybeOf(context);
+    if (overlay == null) {
+      return;
+    }
+    _xpPopShown = true;
+    XpPopAnimation.show(
+      context: context,
+      xpAmount: '+${OnboardingV1Constants.levelOneUnlockRewardXp} XP',
+      onComplete: () {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final String headlineName = widget.displayName.trim().isEmpty
+        ? 'Creator'
+        : widget.displayName.trim();
+    final double screenHeight = MediaQuery.sizeOf(context).height;
+    final bool isCompact = screenHeight < 760;
+    final double badgeSize = isCompact ? 72 : 88;
+    final double titleSize = isCompact ? 22 : 28;
+    final double sectionGap = isCompact ? 12 : 24;
+    final double missionGap = isCompact ? 8 : 10;
+    final double missionPaddingV = isCompact ? 10 : 14;
+    return OnboardingScreenLayout(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -30,99 +90,87 @@ class OnboardingLevelUnlockScreen extends StatelessWidget {
           ],
         ),
       ),
-      child: SafeArea(
-        child: Column(
-          children: <Widget>[
-            OnboardingProgressHeader(
-              step: 5,
-              totalSteps: OnboardingV1Constants.totalSteps,
-              showBack: true,
-              onBack: onBack,
-            ),
-            Expanded(
+      child: Column(
+        children: <Widget>[
+          OnboardingProgressHeader(
+            step: 4,
+            totalSteps: OnboardingV1Constants.totalSteps,
+            showBack: true,
+            onBack: widget.onBack,
+          ),
+          Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                padding: EdgeInsets.fromLTRB(24, isCompact ? 4 : 8, 24, 12),
                 child: Column(
                   children: <Widget>[
-                    Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: OnboardingStyle.primaryGradient,
-                        boxShadow: <BoxShadow>[
-                          BoxShadow(
-                            color:
-                                const Color(0xFF9248D2).withValues(alpha: 0.4),
-                            blurRadius: 24,
-                            offset: const Offset(0, 8),
+                    AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (BuildContext context, Widget? child) {
+                        final double glow =
+                            12 + (_pulseController.value * 16);
+                        return Container(
+                          width: badgeSize,
+                          height: badgeSize,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: OnboardingStyle.primaryGradient,
+                            boxShadow: <BoxShadow>[
+                              BoxShadow(
+                                color: const Color(0xFF9248D2)
+                                    .withValues(alpha: 0.35 + _pulseController.value * 0.25),
+                                blurRadius: glow,
+                                spreadRadius: 2,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: const Center(
+                          child: child,
+                        );
+                      },
+                      child: Center(
                         child: Text(
                           '1',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 40,
+                            fontSize: isCompact ? 34 : 40,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: isCompact ? 12 : 20),
                     Text(
-                      'Level 1: Getting Started',
+                      'You\'re Level 1, $headlineName!',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: OnboardingStyle.textPrimaryFor(context),
-                        fontSize: 28,
+                        fontSize: titleSize,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: isCompact ? 4 : 8),
                     Text(
-                      'Your starter missions are ready. Complete them to '
-                      'level up fast.',
-                      textAlign: TextAlign.center,
+                      '+${OnboardingV1Constants.levelOneUnlockRewardXp} XP',
                       style: TextStyle(
-                        color: OnboardingStyle.textSecondaryFor(context),
-                        fontSize: 15,
-                        height: 1.4,
+                        color: const Color(0xFF00F5A0),
+                        fontWeight: FontWeight.w900,
+                        fontSize: isCompact ? 16 : 18,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF58CC02).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: const Color(0xFF58CC02).withValues(alpha: 0.5),
-                        ),
-                      ),
-                      child: Text(
-                        '+${OnboardingV1Constants.levelOneUnlockRewardXp} XP reward',
-                        style: const TextStyle(
-                          color: Color(0xFF58CC02),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+                    SizedBox(height: sectionGap),
                     ...OnboardingLevelOneMissions.starterMissions.map(
-                      (({String title, String emoji}) mission) {
+                      (({String id, String title, String emoji}) mission) {
+                        final bool isComplete =
+                            OnboardingLevelOneMissions.isMissionComplete(
+                          missionId: mission.id,
+                          creatorCardCompleted: true,
+                        );
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
+                          padding: EdgeInsets.only(bottom: missionGap),
                           child: Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
+                            padding: EdgeInsets.symmetric(
                               horizontal: 16,
-                              vertical: 14,
+                              vertical: missionPaddingV,
                             ),
                             decoration: BoxDecoration(
                               color: OnboardingStyle.surfaceFor(context)
@@ -136,26 +184,39 @@ class OnboardingLevelUnlockScreen extends StatelessWidget {
                               children: <Widget>[
                                 Text(
                                   mission.emoji,
-                                  style: const TextStyle(fontSize: 22),
+                                  style: TextStyle(
+                                    fontSize: isCompact ? 18 : 22,
+                                  ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
                                     mission.title,
                                     style: TextStyle(
-                                      color: OnboardingStyle.textPrimaryFor(
-                                        context,
-                                      ),
+                                      color: isComplete
+                                          ? OnboardingStyle.textSecondaryFor(
+                                              context,
+                                            )
+                                          : OnboardingStyle.textPrimaryFor(
+                                              context,
+                                            ),
+                                      decoration: isComplete
+                                          ? TextDecoration.lineThrough
+                                          : null,
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 15,
+                                      fontSize: isCompact ? 14 : 15,
                                     ),
                                   ),
                                 ),
                                 Icon(
-                                  Icons.lock_open_rounded,
-                                  color: OnboardingStyle.textSecondaryFor(
-                                    context,
-                                  ),
+                                  isComplete
+                                      ? Icons.check_circle_rounded
+                                      : Icons.lock_rounded,
+                                  color: isComplete
+                                      ? const Color(0xFF00F5A0)
+                                      : OnboardingStyle.textSecondaryFor(
+                                          context,
+                                        ),
                                   size: 18,
                                 ),
                               ],
@@ -164,24 +225,31 @@ class OnboardingLevelUnlockScreen extends StatelessWidget {
                         );
                       },
                     ),
+                    SizedBox(height: isCompact ? 10 : 16),
+                    OnboardingSoftRatingWidget(
+                      userId: widget.userId,
+                      onRequestReview: requestAppStoreReview,
+                      compact: isCompact,
+                    ),
                   ],
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+              padding: EdgeInsets.fromLTRB(24, 0, 24, isCompact ? 16 : 28),
               child: SizedBox(
                 width: double.infinity,
                 child: GradientPillButton(
-                  label: isLoading ? 'Loading...' : 'Enter StreamersTip',
-                  icon: Icons.rocket_launch_rounded,
-                  onPressed: isLoading ? null : onEnterApp,
+                  useSolidPurple: true,
+                  label: widget.isLoading
+                      ? 'Loading...'
+                      : 'Enter StreamersTip →',
+                  onPressed: widget.isLoading ? null : widget.onEnterApp,
                 ),
               ),
             ),
           ],
         ),
-      ),
     );
   }
 }

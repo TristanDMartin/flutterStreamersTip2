@@ -2,6 +2,7 @@
 /// Backend owns XP, mission progress, and deduplication by `eventId`.
 abstract final class GamificationEventTypes {
   static const String userOnboardingCompleted = 'user.onboarding_completed';
+  static const String onboardingPersonalized = 'onboarding.personalized';
 
   static const String profileCompleted = 'profile.completed';
   static const String profileAvatarUploaded = 'profile.avatar_uploaded';

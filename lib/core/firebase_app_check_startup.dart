@@ -20,24 +20,35 @@ class AppCheckReadiness {
   );
 }
 
-/// Activates App Check. Debug builds use debug providers; release uses
-/// Play Integrity / DeviceCheck when [ST_ENABLE_APP_CHECK] is set.
+/// Whether App Check is enabled for this build.
+///
+/// Release/profile: on by default (opt out with [ST_DISABLE_APP_CHECK]).
+/// Debug: opt in with [ST_ENABLE_APP_CHECK_DEBUG].
+bool isAppCheckEnabledForBuild() {
+  const bool disabled = bool.fromEnvironment('ST_DISABLE_APP_CHECK');
+  if (disabled) {
+    return false;
+  }
+  if (kDebugMode) {
+    return const bool.fromEnvironment('ST_ENABLE_APP_CHECK_DEBUG');
+  }
+  return true;
+}
+
+/// Activates App Check. Debug builds use debug providers; release/profile use
+/// Play Integrity / DeviceCheck by default.
 Future<void> activateAppCheckIfEnabled() async {
   if (Firebase.apps.isEmpty) {
     return;
   }
-  const bool releaseEnabled = bool.fromEnvironment('ST_ENABLE_APP_CHECK');
-  const bool debugEnabled = bool.fromEnvironment('ST_ENABLE_APP_CHECK_DEBUG');
-  if (kDebugMode) {
-    if (!debugEnabled) {
+  if (!isAppCheckEnabledForBuild()) {
+    if (kDebugMode) {
       debugPrint(
         'ℹ️ App Check skipped in debug '
         '(pass --dart-define=ST_ENABLE_APP_CHECK_DEBUG=true after registering '
         'the iOS debug token in Firebase Console → App Check)',
       );
-      return;
     }
-  } else if (!releaseEnabled) {
     return;
   }
   try {
@@ -62,6 +73,17 @@ Future<void> activateAppCheckIfEnabled() async {
       }
     });
   } catch (e) {
+    final String message = e.toString();
+    if (message.toLowerCase().contains('app not registered') ||
+        message.toLowerCase().contains('failed_precondition')) {
+      debugPrint(
+        '⚠️ App Check iOS misconfiguration: register the app in Firebase '
+        'Console → App Check (bundle com.streamerstip.streamersTipApp, '
+        'app 1:161050969080:ios:0280d1b8f828f21004cc0d). '
+        'Debug: flutter run --dart-define=ST_ENABLE_APP_CHECK_DEBUG=true '
+        'then ./scripts/setup_ios_app_check_debug.sh <token>',
+      );
+    }
     debugPrint('⚠️ Firebase App Check activation failed: $e');
   }
 }
@@ -76,6 +98,9 @@ bool _isAttestationFailure(String message) {
   final String lower = message.toLowerCase();
   return lower.contains('attestation') ||
       lower.contains('403') ||
+      lower.contains('400') ||
+      lower.contains('app not registered') ||
+      lower.contains('failed_precondition') ||
       lower.contains('too many attempts');
 }
 
@@ -89,9 +114,7 @@ Future<AppCheckReadiness> ensureAppCheckReadyForFirestore({
       detail: 'Firebase not initialized',
     );
   }
-  const bool releaseEnabled = bool.fromEnvironment('ST_ENABLE_APP_CHECK');
-  const bool debugEnabled = bool.fromEnvironment('ST_ENABLE_APP_CHECK_DEBUG');
-  if (kDebugMode ? !debugEnabled : !releaseEnabled) {
+  if (!isAppCheckEnabledForBuild()) {
     return AppCheckReadiness.skipped;
   }
   final DateTime? backoffUntil = _attestationBackoffUntil;
@@ -154,6 +177,42 @@ Future<AppCheckReadiness> _fetchAppCheckReadiness({
       isReady: false,
       detail: message,
     );
+  }
+}
+
+/// App Check token for HTTP backends (`X-Firebase-AppCheck` header).
+Future<String?> fetchAppCheckHttpToken({bool forceRefresh = false}) async {
+  if (!isAppCheckEnabledForBuild() || Firebase.apps.isEmpty) {
+    return null;
+  }
+  final DateTime? backoffUntil = _attestationBackoffUntil;
+  if (!forceRefresh &&
+      backoffUntil != null &&
+      DateTime.now().isBefore(backoffUntil)) {
+    return null;
+  }
+  try {
+    final String? token =
+        await FirebaseAppCheck.instance.getToken(forceRefresh);
+    if (token != null && token.isNotEmpty) {
+      _attestationBackoffUntil = null;
+      return token;
+    }
+    return null;
+  } catch (e) {
+    final String message = e.toString();
+    if (_isAttestationFailure(message)) {
+      _attestationBackoffUntil = DateTime.now().add(_attestationBackoff);
+      final DateTime? lastLogged = _lastAttestationFailureLoggedAt;
+      if (lastLogged == null ||
+          DateTime.now().difference(lastLogged) > _attestationBackoff) {
+        _lastAttestationFailureLoggedAt = DateTime.now();
+        debugPrint('APP_CHECK_HTTP_TOKEN_FAILED (backoff) $message');
+      }
+    } else {
+      debugPrint('APP_CHECK_HTTP_TOKEN_FAILED $message');
+    }
+    return null;
   }
 }
 

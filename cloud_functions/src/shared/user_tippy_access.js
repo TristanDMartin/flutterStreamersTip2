@@ -6,15 +6,19 @@ const {
   getCrossPostWeeklyLimitForTier,
   getEntitlementsForTier,
 } = require('./entitlements');
+const {isSubscriptionPeriodActive} = require('./subscription_entitlements');
 
-const STUDIO_BYPASS_UIDS = new Set([
-  'bU0RxyZ2L4ULAv1Co5L4f825yV73',
-  'jsmbQMLQjoUyC5cUFvkrRbi9mkp1',
-]);
+const STUDIO_BYPASS_UIDS = new Set(
+  process.env.STUDIO_BYPASS_UIDS
+    ? process.env.STUDIO_BYPASS_UIDS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [],
+);
 
-const STUDIO_BYPASS_EMAILS = new Set([
-  'buzzz@streamerstip.com',
-]);
+const STUDIO_BYPASS_EMAILS = new Set(
+  process.env.STUDIO_BYPASS_EMAILS
+    ? process.env.STUDIO_BYPASS_EMAILS.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : [],
+);
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -104,18 +108,20 @@ function buildUserAccess(userData, options = {}) {
     return bypass;
   }
   const resolved = resolveTierFromUserDoc(userData);
-  const tier = resolved.tier;
+  let tier = resolved.tier;
+  if (
+    (tier === 'pro' || tier === 'studio') &&
+    !isSubscriptionPeriodActive(userData)
+  ) {
+    tier = 'starter';
+  }
   const tierSource = resolved.sourceField;
   const status = resolveSubscriptionStatus(userData);
   const hasEntitlement = resolveHasTippyEntitlement(userData);
-  const hasActiveSubscription = ['active', 'trialing', 'past_due'].includes(
-    status,
-  );
-  const isTierAllowed = tier === 'pro' || tier === 'studio';
-  const canUseTippy =
-    hasEntitlement || (hasActiveSubscription && isTierAllowed);
   const effectiveTier =
     tier === 'unknown' ? 'starter' : tier;
+  // All tiers (including Free/starter) get Tippy with tier-scoped credits and features.
+  const canUseTippy = true;
   return {
     tier: effectiveTier,
     tierSource,

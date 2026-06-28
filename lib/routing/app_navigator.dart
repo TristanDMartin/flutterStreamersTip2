@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../services/creator_intelligence_analytics_service.dart';
+import '../services/email_verification_feature_gate.dart';
 import '../models/chat.dart';
 import '../models/creator_profile_snapshot.dart';
 import '../models/home_video.dart';
@@ -9,7 +10,10 @@ import '../models/user.dart';
 import '../services/creator_cache_service.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/player_screen.dart';
+import '../utils/home_video_from_firestore.dart';
 import 'app_routes.dart';
+import '../providers/unread_messages_provider.dart';
+import '../features/tippy/models/tippy_launch_context.dart';
 
 class AppNavigator {
   static void _trackToolOpened(String toolId) {
@@ -24,15 +28,49 @@ class AppNavigator {
     required int initialIndex,
     required List<String> videoIds,
     List<HomeVideo>? videos,
+    String? focusCommentId,
     bool fullscreenDialog = true,
-  }) {
+  }) async {
+    if (videoIds.isEmpty) {
+      return null;
+    }
+    final int safeIndex = initialIndex.clamp(0, videoIds.length - 1);
+    final String targetVideoId = videoIds[safeIndex];
+    final HomeVideo? resolvedVideo =
+        await loadHomeVideoForPlayback(targetVideoId);
+    if (!context.mounted) {
+      return null;
+    }
+    if (resolvedVideo == null) {
+      return openVideoUnavailable<T>(
+        context,
+        videoId: targetVideoId,
+      );
+    }
+    final List<HomeVideo> resolvedVideos = videos == null || videos.isEmpty
+        ? <HomeVideo>[resolvedVideo]
+        : videos
+            .where((HomeVideo video) => video.id.isNotEmpty)
+            .toList(growable: false);
+    final List<String> resolvedIds = resolvedVideos
+        .map((HomeVideo video) => video.id)
+        .where((String id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (resolvedIds.isEmpty) {
+      return openVideoUnavailable<T>(
+        context,
+        videoId: targetVideoId,
+      );
+    }
+    final int resolvedIndex = resolvedIds.indexOf(targetVideoId);
     return Navigator.of(context).pushNamed<T>(
       AppRoutes.player,
       arguments: PlayerRouteArgs(
         mode: mode,
-        initialIndex: initialIndex,
-        videoIds: videoIds,
-        videos: videos,
+        initialIndex: resolvedIndex >= 0 ? resolvedIndex : 0,
+        videoIds: resolvedIds,
+        videos: resolvedVideos,
+        focusCommentId: focusCommentId,
         fullscreenDialog: fullscreenDialog,
       ),
     );
@@ -63,7 +101,17 @@ class AppNavigator {
     bool otherUserIsOnline = false,
     Map<String, dynamic>? draftToSend,
     bool fullscreenDialog = true,
-  }) {
+  }) async {
+    final bool allowed = await EmailVerificationFeatureGate.ensureCanSendDirectMessage(
+      context,
+    );
+    if (!allowed || !context.mounted) {
+      return null;
+    }
+    final String? chatId = chat.id;
+    if (chatId != null && chatId.isNotEmpty) {
+      unawaited(UnreadMessagesService.markChatAsRead(chatId));
+    }
     return Navigator.of(context).pushNamed<T>(
       AppRoutes.chat,
       arguments: ChatRouteArgs(
@@ -81,10 +129,18 @@ class AppNavigator {
   static Future<T?> openVideoUnavailable<T>(
     BuildContext context, {
     required String videoId,
+    String? creatorId,
+    String? creatorName,
+    String? creatorUsername,
   }) {
     return Navigator.of(context).pushNamed<T>(
       AppRoutes.videoUnavailable,
-      arguments: VideoUnavailableRouteArgs(videoId: videoId),
+      arguments: VideoUnavailableRouteArgs(
+        videoId: videoId,
+        creatorId: creatorId,
+        creatorName: creatorName,
+        creatorUsername: creatorUsername,
+      ),
     );
   }
 
@@ -129,9 +185,15 @@ class AppNavigator {
     return Navigator.of(context).pushNamed<T>(AppRoutes.contentPlanner);
   }
 
-  static Future<T?> openTippyChat<T>(BuildContext context) {
+  static Future<T?> openTippyChat<T>(
+    BuildContext context, {
+    TippyLaunchContext launchContext = const TippyLaunchContext(),
+  }) {
     _trackToolOpened('ask-tippy');
-    return Navigator.of(context).pushNamed<T>(AppRoutes.tippyChat);
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.tippyChat,
+      arguments: launchContext,
+    );
   }
 
   static Future<T?> openManagePostsWithArgs<T>(

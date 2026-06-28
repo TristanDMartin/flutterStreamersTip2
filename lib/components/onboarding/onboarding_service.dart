@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../features/gamification/create_gamification_event.dart';
 import '../../features/gamification/gamification_event_types.dart';
 import '../../utils/user_profile_firestore.dart';
+import '../../services/app_session_cache.dart';
 import 'onboarding_models.dart';
 import 'onboarding_v1_constants.dart';
 
@@ -43,9 +44,21 @@ class OnboardingService {
   }
 
   Future<OnboardingState> fetchOnboarding(String userId) async {
+    final OnboardingState? cached =
+        AppSessionCache.instance.peekOnboarding(userId);
+    if (cached != null) {
+      unawaited(_fetchOnboardingRemote(userId));
+      return cached;
+    }
+    return _fetchOnboardingRemote(userId);
+  }
+
+  Future<OnboardingState> _fetchOnboardingRemote(String userId) async {
     final DocumentSnapshot<Map<String, dynamic>> snapshot =
         await _userRef(userId).get();
-    return OnboardingState.fromUserMap(snapshot.data());
+    final OnboardingState state = OnboardingState.fromUserMap(snapshot.data());
+    AppSessionCache.instance.putOnboarding(userId, state);
+    return state;
   }
 
   /// Existing users bypass onboarding on first V1 migration.
@@ -66,7 +79,8 @@ class OnboardingService {
             <String, dynamic>{};
     final int? version = onboarding['version'] as int?;
     if (version == OnboardingV1Constants.version) {
-      return current;
+      await _reconcileIncompleteV1Flags(userId, data, onboarding);
+      return fetchOnboarding(userId);
     }
     if (_isExistingUser(data)) {
       await _safeUserSet(userId, _completedMigrationPayload());
@@ -81,24 +95,18 @@ class OnboardingService {
   }
 
   bool _isExistingUser(Map<String, dynamic> data) {
-    if (data['hasCompletedOnboarding'] == true) {
+    if (data['hasCompletedOnboarding'] == true ||
+        data['onboardingCompleted'] == true) {
       return true;
     }
     final Map<String, dynamic> onboarding =
         (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
             <String, dynamic>{};
-    if (onboarding['hasCompletedOnboarding'] == true ||
-        onboarding['hasCompletedProductTour'] == true ||
-        onboarding['hasSeenIntro'] == true) {
+    if (onboarding['completed'] == true ||
+        onboarding['hasCompletedOnboarding'] == true) {
       return true;
     }
-    final String displayName = (data['displayName'] as String?)?.trim() ?? '';
-    final String username = (data['username'] as String?)?.trim() ?? '';
-    if (displayName.length >= 2 && username.length >= 2) {
-      return true;
-    }
-    final int xp = _readInt(data['xp']) ?? 0;
-    if (xp > 0) {
+    if (onboarding['hasCompletedProductTour'] == true) {
       return true;
     }
     final Timestamp? createdAt = data['createdAt'] as Timestamp?;
@@ -112,9 +120,36 @@ class OnboardingService {
     return false;
   }
 
-  Map<String, dynamic> _newUserOnboardingPayload({required int step}) {
+  Future<void> _reconcileIncompleteV1Flags(
+    String userId,
+    Map<String, dynamic> data,
+    Map<String, dynamic> onboarding,
+  ) async {
+    final bool staleComplete = data['hasCompletedOnboarding'] == true ||
+        data['onboardingCompleted'] == true ||
+        onboarding['hasCompletedOnboarding'] == true;
+    if (!staleComplete) {
+      return;
+    }
+    await _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'hasCompletedOnboarding': false,
+        'onboardingCompleted': false,
+        'onboarding': <String, dynamic>{
+          'hasCompletedOnboarding': false,
+          'completed': false,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  /// Firestore fields for accounts that have not finished onboarding.
+  static Map<String, dynamic> newAccountDocumentFields({int step = 0}) {
     return <String, dynamic>{
       'hasCompletedOnboarding': false,
+      'onboardingCompleted': false,
       'onboarding': <String, dynamic>{
         'version': OnboardingV1Constants.version,
         'status': step > 0
@@ -132,9 +167,14 @@ class OnboardingService {
     };
   }
 
+  Map<String, dynamic> _newUserOnboardingPayload({required int step}) {
+    return newAccountDocumentFields(step: step);
+  }
+
   Map<String, dynamic> _completedMigrationPayload() {
     return <String, dynamic>{
       'hasCompletedOnboarding': true,
+      'onboardingCompleted': true,
       'onboarding': <String, dynamic>{
         'version': OnboardingV1Constants.version,
         'status': OnboardingStatus.completed,
@@ -164,38 +204,57 @@ class OnboardingService {
   }
 
   Future<void> saveCreatorGoals(String userId, List<String> goals) {
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        'creatorGoals': goals,
-        'onboarding': <String, dynamic>{
-          'version': OnboardingV1Constants.version,
-          'status': OnboardingStatus.inProgress,
-          'currentStep': 2,
-          'creatorGoals': goals,
-          'hasSeenIntro': true,
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
+    return savePersonalize(
+      userId: userId,
+      goals: goals,
+      platforms: const <String>[],
+      skipSave: true,
+    );
+  }
+
+  Future<void> savePersonalize({
+    required String userId,
+    required List<String> goals,
+    required List<String> platforms,
+    bool skipSave = false,
+  }) async {
+    final List<Map<String, dynamic>> platformStubs =
+        UserProfileFirestore.platformStubsFromSelection(platforms);
+    final Map<String, dynamic> payload = <String, dynamic>{
+      if (goals.isNotEmpty) 'creatorGoals': goals,
+      if (platforms.isNotEmpty)
+        UserProfileFirestore.platformsField: platformStubs,
+      'onboarding': <String, dynamic>{
+        'version': OnboardingV1Constants.version,
+        'status': OnboardingStatus.inProgress,
+        'currentStep': 2,
+        if (goals.isNotEmpty) 'creatorGoals': goals,
+        if (platforms.isNotEmpty) 'platforms': platforms,
+        'hasSeenIntro': true,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      },
+    };
+    await _safeUserSet(userId, payload);
+    if (skipSave || goals.isEmpty && platforms.isEmpty) {
+      return;
+    }
+    _scheduleOnboardingGamificationEvent(
+      type: GamificationEventTypes.onboardingPersonalized,
+      entityType: 'user',
+      entityId: userId,
+      metadata: <String, dynamic>{
+        'rewardXp': OnboardingV1Constants.personalizeRewardXp,
+        'source': 'onboarding_v1',
       },
     );
   }
 
   Future<void> savePlatforms(String userId, List<String> platforms) {
-    final List<Map<String, dynamic>> platformStubs =
-        UserProfileFirestore.platformStubsFromSelection(platforms);
-    return _safeUserSet(
-      userId,
-      <String, dynamic>{
-        UserProfileFirestore.platformsField: platformStubs,
-        'onboarding': <String, dynamic>{
-          'version': OnboardingV1Constants.version,
-          'status': OnboardingStatus.inProgress,
-          'currentStep': 3,
-          'platforms': platforms,
-          'hasSeenIntro': true,
-          'lastSeenAt': FieldValue.serverTimestamp(),
-        },
-      },
+    return savePersonalize(
+      userId: userId,
+      goals: const <String>[],
+      platforms: platforms,
+      skipSave: true,
     );
   }
 
@@ -219,6 +278,7 @@ class OnboardingService {
     final Map<String, dynamic> profile = <String, dynamic>{
       'displayName': displayName.trim(),
       'username': username.trim().toLowerCase(),
+      'usernameLowercase': username.trim().toLowerCase(),
       'bio': bio.trim(),
       'categoryId': categoryId,
       'category': categoryId,
@@ -238,7 +298,7 @@ class OnboardingService {
         'onboarding': <String, dynamic>{
           'version': OnboardingV1Constants.version,
           'status': OnboardingStatus.inProgress,
-          'currentStep': 4,
+          'currentStep': 3,
           'hasSeenIntro': true,
           'creatorCardCompleted': true,
           'lastSeenAt': FieldValue.serverTimestamp(),
@@ -273,6 +333,7 @@ class OnboardingService {
       userId,
       <String, dynamic>{
         'hasCompletedOnboarding': true,
+        'onboardingCompleted': true,
         'onboarding': <String, dynamic>{
           'version': OnboardingV1Constants.version,
           'status': OnboardingStatus.completed,
@@ -332,6 +393,80 @@ class OnboardingService {
     );
   }
 
+  Future<void> dismissEmailBanner(String userId) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'emailBannerDismissed': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> markSoftRatingDismissed(String userId) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'softRatingDismissed': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> markHasRated(String userId) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'hasRated': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> saveOnboardingFeedback(String userId, String feedback) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboardingFeedback': feedback.trim(),
+        'onboarding': <String, dynamic>{
+          'softRatingDismissed': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> markMissionBannerSeenOnHome(String userId) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'hasSeenMissionBannerOnHome': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  Future<void> dismissMissionBanner(String userId) {
+    return _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'missionBannerDismissed': true,
+          'hasSeenMissionBannerOnHome': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
   Future<void> resetForDeveloperTesterInstall(String userId) {
     return _safeUserSet(
       userId,
@@ -356,12 +491,5 @@ class OnboardingService {
         },
       },
     );
-  }
-
-  int? _readInt(Object? value) {
-    if (value is int) return value;
-    if (value is double) return value.round();
-    if (value is String) return int.tryParse(value);
-    return null;
   }
 }

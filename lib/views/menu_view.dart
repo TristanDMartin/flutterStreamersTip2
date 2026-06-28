@@ -11,6 +11,7 @@ import 'contact_support_view.dart';
 import '../constants/app_colors.dart';
 import 'upgrade_view.dart';
 import '../routing/app_navigator.dart';
+import '../routing/app_routes.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/responsive_layout.dart';
 
@@ -354,7 +355,11 @@ class _MenuViewState extends ConsumerState<MenuView> {
         icon: Icons.support_agent,
         title: 'Contact Support',
         subtitle: 'Get help & support',
-        onTap: () => _navigateToPage(context, const ContactSupportView()),
+        onTap: () => _navigateToPage(
+          context,
+          const ContactSupportView(),
+          '${AppRoutes.settings}/contact-support',
+        ),
       ),
       _buildMenuCard(
         context,
@@ -363,7 +368,11 @@ class _MenuViewState extends ConsumerState<MenuView> {
         title: 'Upgrade',
         subtitle: 'View tiers & subscribe',
         isPrimary: true,
-        onTap: () => _navigateToPage(context, const UpgradeView()),
+        onTap: () => _navigateToPage(
+          context,
+          const UpgradeView(),
+          AppRoutes.upgrade,
+        ),
       ),
       _buildMenuCard(
         context,
@@ -371,7 +380,11 @@ class _MenuViewState extends ConsumerState<MenuView> {
         icon: Icons.bookmark,
         title: 'Bookmarks',
         subtitle: 'Saved content',
-        onTap: () => _navigateToPage(context, const BookmarkView()),
+        onTap: () => _navigateToPage(
+          context,
+          const BookmarkView(),
+          '/bookmarks',
+        ),
       ),
       _buildMenuCard(
         context,
@@ -398,6 +411,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
         onTap: () => _navigateToPage(
           context,
           const AppearanceSettingsView(),
+          '${AppRoutes.settings}/appearance',
         ),
       ),
       _buildMenuCard(
@@ -549,26 +563,29 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  void _navigateToPage(BuildContext context, Widget page) {
+  void _navigateToPage(BuildContext context, Widget page, String routeName) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => page,
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: routeName),
+        builder: (BuildContext context) => page,
       ),
     );
   }
 
   void _navigateToSettings(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const SettingsView(),
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: AppRoutes.settings),
+        builder: (BuildContext context) => const SettingsView(),
       ),
     );
   }
 
   void _navigateToManagePosts(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const ManagePostsView(),
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: AppRoutes.managePosts),
+        builder: (BuildContext context) => const ManagePostsView(),
       ),
     );
   }

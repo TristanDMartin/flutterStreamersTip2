@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
 import 'mobile_purchase_verification_client.dart';
 import 'mobile_purchase_verification_payload.dart';
@@ -36,6 +37,7 @@ class IapBillingFacade {
     required this.onUiChanged,
     this.onRecoverableMessage,
     this.onVerified,
+    this.onEntitlementsRefresh,
   })  : _store = store ?? InAppPurchase.instance,
         _verificationClient =
             verificationClient ?? MobilePurchaseVerificationClient();
@@ -45,6 +47,7 @@ class IapBillingFacade {
   final void Function() onUiChanged;
   final void Function(String message)? onRecoverableMessage;
   final void Function()? onVerified;
+  Future<void> Function()? onEntitlementsRefresh;
 
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   final Set<String> _verificationCompleteKeys = <String>{};
@@ -83,8 +86,14 @@ class IapBillingFacade {
       return;
     }
     lastError = null;
+    final Set<String> productIds = storeSubscriptionProductIds();
+    if (productIds.isEmpty) {
+      lastError = 'In-app purchases are not supported on this platform.';
+      onUiChanged();
+      return;
+    }
     final ProductDetailsResponse response =
-        await _store.queryProductDetails(kStreamersTipSubscriptionProductIds);
+        await _store.queryProductDetails(productIds);
     if (response.error != null) {
       lastError = response.error!.message;
       onUiChanged();
@@ -104,12 +113,23 @@ class IapBillingFacade {
       return;
     }
     lastError = null;
+    lastRecoverableHint = 'Checking ${billingStorePlatformForPayload() == 'ios' ? 'App Store' : 'Google Play'} purchases…';
+    purchaseBusy = true;
+    onUiChanged();
     try {
       await _store.restorePurchases();
+      if (onEntitlementsRefresh != null) {
+        await onEntitlementsRefresh!();
+      }
+      lastRecoverableHint =
+          'Restore complete. Your subscription tier has been refreshed.';
     } catch (err) {
       lastError = err.toString();
+      lastRecoverableHint = null;
+    } finally {
+      purchaseBusy = false;
+      onUiChanged();
     }
-    onUiChanged();
   }
 
   Future<void> buySubscription(ProductDetails product) async {
@@ -128,8 +148,8 @@ class IapBillingFacade {
     lastRecoverableHint = null;
     purchaseBusy = true;
     onUiChanged();
-    final PurchaseParam purchaseParam = PurchaseParam(
-      productDetails: product,
+    final PurchaseParam purchaseParam = _buildSubscriptionPurchaseParam(
+      product: product,
       applicationUserName: user.uid,
     );
     final bool sent = await _store.buyNonConsumable(
@@ -145,6 +165,23 @@ class IapBillingFacade {
   Future<void> dispose() async {
     await _purchaseSub?.cancel();
     _purchaseSub = null;
+  }
+
+  PurchaseParam _buildSubscriptionPurchaseParam({
+    required ProductDetails product,
+    required String applicationUserName,
+  }) {
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        product is GooglePlayProductDetails) {
+      return GooglePlayPurchaseParam(
+        productDetails: product,
+        applicationUserName: applicationUserName,
+      );
+    }
+    return PurchaseParam(
+      productDetails: product,
+      applicationUserName: applicationUserName,
+    );
   }
 
   String _dedupeKey(PurchaseDetails purchase) {
@@ -208,32 +245,62 @@ class IapBillingFacade {
       return;
     }
     final String transactionId = _readTransactionId(purchase);
-    try {
-      await _verificationClient.submitPurchase(
-        payload: MobilePurchaseVerificationPayload(
-          uid: user.uid,
-          platform: billingStorePlatformForPayload(),
-          productId: purchase.productID,
-          purchaseToken: token,
-          transactionId: transactionId,
-        ),
-      );
-      await _store.completePurchase(purchase);
-      _verificationCompleteKeys.add(key);
-      purchaseBusy = false;
-      lastError = null;
-      lastRecoverableHint = 'Purchase verified.';
-      onUiChanged();
-      onVerified?.call();
-    } on MobilePurchaseVerificationException catch (e) {
-      purchaseBusy = false;
-      lastError = e.message;
-      onUiChanged();
-    } catch (e) {
-      purchaseBusy = false;
-      lastError = e.toString();
-      onUiChanged();
+    const int maxAttempts = 3;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await _verificationClient.submitPurchase(
+          payload: MobilePurchaseVerificationPayload(
+            uid: user.uid,
+            platform: billingStorePlatformForPayload(),
+            productId: purchase.productID,
+            purchaseToken: token,
+            transactionId: transactionId,
+          ),
+        );
+        await _store.completePurchase(purchase);
+        _verificationCompleteKeys.add(key);
+        purchaseBusy = false;
+        lastError = null;
+        lastRecoverableHint = 'Purchase verified.';
+        onUiChanged();
+        onVerified?.call();
+        return;
+      } on MobilePurchaseVerificationException catch (e) {
+        final bool canRetry =
+            _isRetryableVerificationMessage(e.message) && attempt < maxAttempts;
+        if (!canRetry) {
+          purchaseBusy = false;
+          lastError = e.message;
+          onUiChanged();
+          return;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
+      } catch (e) {
+        final String message = e.toString();
+        final bool canRetry =
+            _isRetryableVerificationMessage(message) && attempt < maxAttempts;
+        if (!canRetry) {
+          purchaseBusy = false;
+          lastError = message;
+          onUiChanged();
+          return;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
+      }
     }
+  }
+
+  bool _isRetryableVerificationMessage(String message) {
+    final String lower = message.toLowerCase();
+    return lower.contains('500') ||
+        lower.contains('502') ||
+        lower.contains('503') ||
+        lower.contains('504') ||
+        lower.contains('timeout') ||
+        lower.contains('timed out') ||
+        lower.contains('socket') ||
+        lower.contains('connection reset') ||
+        lower.contains('connection refused');
   }
 
   String _readTransactionId(PurchaseDetails purchase) {

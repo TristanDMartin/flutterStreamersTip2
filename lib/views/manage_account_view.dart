@@ -4,8 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/two_factor_settings_view.dart';
-import '../widgets/tiktok_account_switcher_modal.dart';
-import '../services/tiktok_account_switcher.dart';
+import '../services/account_management_service.dart';
+import '../services/account_deletion_service.dart';
+import '../routing/app_routes.dart';
+import '../services/unified_avatar_service.dart' as nav;
 import '../utils/avatar_url_resolver.dart';
 import '../utils/swallow_non_fatal.dart';
 
@@ -18,8 +20,11 @@ class ManageAccountView extends ConsumerStatefulWidget {
 
 class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final AccountManagementService _accountManagementService =
+      const AccountManagementService();
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
+  bool _isAccountActionInFlight = false;
 
   bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -91,47 +96,24 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Future<void> _switchAccount() async {
-    final accountSwitcher = TikTokAccountSwitcher();
-    await accountSwitcher.initialize();
-    final savedAccounts = accountSwitcher.savedAccounts;
-
-    debugPrint('🔄 Switch Account - Saved accounts: ${savedAccounts.length}');
-
-    if (savedAccounts.isEmpty || savedAccounts.length == 1) {
-      debugPrint('⚠️ Only one account, triggering Add Account instead');
-      if (mounted) {
-        final ColorScheme cs = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Add another account to enable switching',
-              style: TextStyle(color: cs.onInverseSurface),
-            ),
-            backgroundColor: cs.inverseSurface,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-      _addAccount();
+    if (_isAccountActionInFlight) {
       return;
     }
-
-    debugPrint('✅ Showing account switcher modal');
-    if (mounted) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => const TikTokAccountSwitcherModal(),
-      );
+    setState(() => _isAccountActionInFlight = true);
+    try {
+      await _accountManagementService.showAccountSwitcher(context);
+    } finally {
+      if (mounted) {
+        setState(() => _isAccountActionInFlight = false);
+      }
     }
   }
 
   Future<void> _addAccount() async {
-    debugPrint('➕ Add Account button tapped');
-
-    // Show loading dialog
+    if (_isAccountActionInFlight) {
+      return;
+    }
+    setState(() => _isAccountActionInFlight = true);
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -145,7 +127,7 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
               CircularProgressIndicator(color: cs.primary),
               const SizedBox(height: 16),
               Text(
-                'Signing in with Google...',
+                'Adding account...',
                 style: TextStyle(color: cs.onSurface),
               ),
             ],
@@ -153,66 +135,57 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         );
       },
     );
-
     try {
-      final accountSwitcher = TikTokAccountSwitcher();
-      debugPrint('🔄 Calling performGoogleSignIn...');
-      final success = await accountSwitcher.performGoogleSignIn();
-      debugPrint('✅ Google Sign-In result: $success');
-
+      final AddAccountResult result = await _accountManagementService.addAccount(
+        context: context,
+        ref: ref,
+      );
       if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
+        Navigator.of(context).pop();
       }
-
-      if (success && mounted) {
-        debugPrint('✅ Adding account to saved list...');
-        await accountSwitcher.addCurrentAccount();
-        debugPrint('✅ Account added successfully');
-
-        if (!mounted) {
-          return;
-        }
-        final ColorScheme csOk = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Account added successfully.',
-              style: TextStyle(color: csOk.onInverseSurface),
+      if (!mounted || result.outcome == AddAccountOutcome.cancelled) {
+        return;
+      }
+      final ColorScheme cs = Theme.of(context).colorScheme;
+      final bool isError = result.outcome == AddAccountOutcome.failed;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            result.message ??
+                (isError
+                    ? 'Failed to add account. Please try again.'
+                    : 'Account added successfully.'),
+            style: TextStyle(
+              color: isError ? cs.onErrorContainer : cs.onInverseSurface,
             ),
-            backgroundColor: csOk.inverseSurface,
-            duration: const Duration(seconds: 3),
           ),
-        );
-      } else if (mounted) {
-        final ColorScheme csErr = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Failed to add account. Please try again.',
-              style: TextStyle(color: csErr.onErrorContainer),
-            ),
-            backgroundColor: csErr.errorContainer,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+          backgroundColor:
+              isError ? cs.errorContainer : cs.inverseSurface,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      if (result.isSuccess) {
+        await _loadUserData();
       }
     } catch (e) {
-      debugPrint('❌ Error in _addAccount: $e');
       if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-        final ColorScheme csE = Theme.of(context).colorScheme;
+        Navigator.of(context).pop();
+        final ColorScheme cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
             content: Text(
               'Error: $e',
-              style: TextStyle(color: csE.onErrorContainer),
+              style: TextStyle(color: cs.onErrorContainer),
             ),
-            backgroundColor: csE.errorContainer,
+            backgroundColor: cs.errorContainer,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isAccountActionInFlight = false);
       }
     }
   }
@@ -258,15 +231,19 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     );
 
     if (confirm == true) {
-      await firebase_auth.FirebaseAuth.instance.signOut();
-      if (mounted) {
-        Navigator.of(context).pop();
-        showModalBottomSheet(
+      if (_isAccountActionInFlight || !mounted) {
+        return;
+      }
+      setState(() => _isAccountActionInFlight = true);
+      try {
+        await _accountManagementService.signOut(
           context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => const TikTokAccountSwitcherModal(),
+          ref: ref,
         );
+      } finally {
+        if (mounted) {
+          setState(() => _isAccountActionInFlight = false);
+        }
       }
     }
   }
@@ -448,10 +425,6 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Future<void> _performAccountDeletion() async {
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    // Show loading dialog
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -473,107 +446,71 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         );
       },
     );
-
     try {
-      final userId = user.uid;
-
-      // Delete user data from Firestore
-      await _deleteUserData(userId);
-
-      // Delete Firebase Auth account
-      await user.delete();
-
-      if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-        Navigator.of(context).pop(); // Pop manage account view
-        Navigator.of(context).pop(); // Pop settings view
-
-        // Show success message
-        final ColorScheme csDel = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Account deleted successfully',
-              style: TextStyle(color: csDel.onInverseSurface),
-            ),
-            backgroundColor: csDel.inverseSurface,
-          ),
-        );
+      final AccountDeletionResult result =
+          await _accountManagementService.deleteAccount(
+        context: context,
+        ref: ref,
+      );
+      if (!mounted) {
+        return;
       }
+      Navigator.of(context).pop();
+      final ColorScheme cs = Theme.of(context).colorScheme;
+      if (result.isSuccess) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          AppRoutes.root,
+          (Route<dynamic> route) => false,
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+          final BuildContext? rootContext =
+              nav.NavigationService.navigatorKey.currentContext;
+          if (rootContext == null || !rootContext.mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(rootContext).showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                result.message ?? 'Account deleted successfully',
+                style: TextStyle(color: cs.onInverseSurface),
+              ),
+              backgroundColor: cs.inverseSurface,
+            ),
+          );
+        });
+        return;
+      }
+      if (result.outcome == AccountDeletionOutcome.cancelled) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            result.message ?? 'Error deleting account. Please try again.',
+            style: TextStyle(color: cs.onErrorContainer),
+          ),
+          backgroundColor: cs.errorContainer,
+        ),
+      );
     } catch (e) {
       if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-
-        final ColorScheme csX = Theme.of(context).colorScheme;
+        Navigator.of(context).pop();
+        final ColorScheme cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
             content: Text(
-              'Error deleting account: ${e.toString()}',
-              style: TextStyle(color: csX.onErrorContainer),
+              'Error deleting account: $e',
+              style: TextStyle(color: cs.onErrorContainer),
             ),
-            backgroundColor: csX.errorContainer,
+            backgroundColor: cs.errorContainer,
           ),
         );
       }
     }
-  }
-
-  Future<void> _deleteUserData(String userId) async {
-    final batch = _firestore.batch();
-
-    // Delete user document
-    final userRef = _firestore.collection('users').doc(userId);
-    batch.delete(userRef);
-
-    // Delete user's videos
-    final videosSnapshot = await _firestore
-        .collection('videos')
-        .where('userId', isEqualTo: userId)
-        .get();
-    for (var doc in videosSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete user's messages
-    final messagesSnapshot = await _firestore
-        .collection('messages')
-        .where('userId', isEqualTo: userId)
-        .get();
-    for (var doc in messagesSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete user's comments
-    final commentsSnapshot = await _firestore
-        .collection('comments')
-        .where('userId', isEqualTo: userId)
-        .get();
-    for (var doc in commentsSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete user's bookmarks
-    final bookmarksSnapshot = await _firestore
-        .collection('bookmarks')
-        .where('userId', isEqualTo: userId)
-        .get();
-    for (var doc in bookmarksSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete user's calendar events
-    final calendarSnapshot = await _firestore
-        .collection('calendar_events')
-        .where('userId', isEqualTo: userId)
-        .get();
-    for (var doc in calendarSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Commit batch delete
-    await batch.commit();
   }
 
   @override
@@ -1015,7 +952,7 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
                   ),
                 ),
                 subtitle: Text(
-                  'Add a new Google account',
+                  'Add another account to switch later',
                   style: TextStyle(
                     color: c.onSurfaceVariant,
                     fontSize: _listSubtitleSize,

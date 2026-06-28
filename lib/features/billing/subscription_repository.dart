@@ -6,8 +6,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/app_check_http_headers.dart';
 import '../../core/backend/firebase_https_function_url.dart';
 import '../../core/backend/site_api_base.dart';
+import '../../services/production_monitoring_service.dart';
 import 'models/subscription_snapshot.dart';
 
 typedef SubscriptionTokenProvider = Future<String?> Function();
@@ -59,6 +61,7 @@ class SubscriptionRepository {
 
   SubscriptionSnapshot? _cached;
   DateTime? _fetchedAt;
+  bool _loggedSiteApiFallback = false;
 
   bool get hasSiteApiBase => _siteApiBase.isNotEmpty;
 
@@ -106,7 +109,8 @@ class SubscriptionRepository {
         );
       } on SubscriptionRepositoryException catch (e) {
         if (hasLegacyApiBase && e.statusCode != 401) {
-          if (kDebugMode) {
+          if (kDebugMode && !_loggedSiteApiFallback) {
+            _loggedSiteApiFallback = true;
             debugPrint(
               'SubscriptionRepository: site API failed (${e.statusCode}), '
               'trying legacy CF',
@@ -130,21 +134,29 @@ class SubscriptionRepository {
     String idToken,
   ) async {
     try {
+      final Map<String, String> headers =
+          await buildAuthenticatedHttpHeaders(idToken: idToken);
       final http.Response response = await _client
           .get(
             uri,
-            headers: <String, String>{
-              'Authorization': 'Bearer $idToken',
-            },
+            headers: headers,
           )
           .timeout(_requestTimeout);
       if (response.statusCode == 401) {
+        await ProductionMonitoringService.instance.recordHttpFailure(
+          endpoint: 'me_entitlements',
+          statusCode: response.statusCode,
+        );
         throw const SubscriptionRepositoryException(
           'Session expired. Please sign in again.',
           statusCode: 401,
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        await ProductionMonitoringService.instance.recordHttpFailure(
+          endpoint: 'me_entitlements',
+          statusCode: response.statusCode,
+        );
         if (kDebugMode) {
           debugPrint(
             'SubscriptionRepository: HTTP ${response.statusCode} '

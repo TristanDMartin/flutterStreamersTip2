@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,20 +8,27 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
 import '../utils/apple_sign_in_nonce.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/user_profile_firestore.dart';
 import '../utils/password_validation.dart';
+import '../components/onboarding/onboarding_service.dart';
 import 'auth_rate_limiting_service.dart';
 import 'auth_session_teardown.dart';
+import 'auth_session_hint_storage.dart';
 import 'auth_transition_state.dart';
 import '../features/home/application/home_first_frame_gate.dart';
 import 'tiktok_account_switcher.dart';
 import 'google_services_fix.dart';
+import '../core/firebase_bootstrap.dart';
+import '../core/firebase_app_check_startup.dart';
 import 'username_lock_service.dart';
 import 'two_factor_auth_service.dart';
+import 'retention_tracking_service.dart';
+import 'r2_media_service.dart';
 
 /// Request-scoped authentication result
 class AuthRequestResult {
@@ -112,12 +120,20 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   final AuthRateLimitingService _rateLimiter = AuthRateLimitingService();
-  final UsernameLockService _usernameLockService = UsernameLockService();
-  final TikTokAccountSwitcher _accountSwitcher = TikTokAccountSwitcher();
-  final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
+  UsernameLockService? _usernameLockServiceCache;
+  TwoFactorAuthService? _twoFactorServiceCache;
+
+  UsernameLockService get _usernameLockService =>
+      _usernameLockServiceCache ??= UsernameLockService();
+
+  TwoFactorAuthService get _twoFactorService =>
+      _twoFactorServiceCache ??= TwoFactorAuthService();
+
+  TikTokAccountSwitcher get _accountSwitcher => TikTokAccountSwitcher();
 
   User? _currentUser;
   bool _isLoggedIn = false;
+  bool _awaiting2FA = false;
   bool _isCheckingAuth = false;
   AuthTransitionState _authTransitionState = AuthTransitionState.checkingAuth;
   String? _signingOutUid;
@@ -149,6 +165,8 @@ class RobustAuthenticationService extends ChangeNotifier {
   AuthTransitionState get authTransitionState => _authTransitionState;
   bool get isSigningOut =>
       _authTransitionState == AuthTransitionState.signingOut;
+  bool get isSigningIn =>
+      _authTransitionState == AuthTransitionState.signingIn;
   bool get isLoggedIn => resolveAuthShellLoggedIn(
         loggedInFlag: _isLoggedIn,
         transitionState: _authTransitionState,
@@ -156,6 +174,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   bool get isCheckingAuth => _isCheckingAuth;
   bool get isRequestInFlight => _currentRequestId != null;
   bool get isOauthInProgress => _oauthInProgress;
+  bool get isAwaiting2FA => _awaiting2FA;
   bool get isAuthSubmitting => _oauthInProgress || shouldShowLoading;
 
   bool _shouldIgnoreAuthUserEvent(firebase_auth.User user) {
@@ -179,67 +198,83 @@ class RobustAuthenticationService extends ChangeNotifier {
   Map<String, dynamic>? get currentUserProfile => _currentUserProfile;
 
   RobustAuthenticationService() {
-    // Set initial loading state
-    _isCheckingAuth = true;
-
-    // CRITICAL: Defer Firebase access until after Firebase is initialized
-    // This prevents iOS cold start crashes
-    Future.microtask(() async {
+    if (FirebaseBootstrap.isReady) {
       try {
-        // Wait for Firebase to be ready (iOS cold start issue)
-        if (Firebase.apps.isEmpty) {
-          debugPrint(
-              '⏳ Firebase not ready yet - service will initialize when ready');
-          // Wait briefly and retry
-          await Future.delayed(const Duration(milliseconds: 100));
-          if (Firebase.apps.isEmpty) {
-            debugPrint('⚠️ Firebase still not ready - will retry auth check');
-            _isCheckingAuth = false;
-            _authTransitionState = AuthTransitionState.unauthenticated;
-            notifyListeners();
-            return;
-          }
+        final firebase_auth.User? currentUser = _authInstance.currentUser;
+        if (currentUser != null && !_shouldIgnoreAuthUserEvent(currentUser)) {
+          _promoteFirebaseSession(currentUser);
+          _isCheckingAuth = false;
+          _authTransitionState = AuthTransitionState.authenticated;
         }
-
-        _authTransitionState = AuthTransitionState.checkingAuth;
-        // Check initial authentication state asynchronously
-        _checkInitialAuthState();
-
-        // Listen to authentication state changes
-        _authStateSubscription =
-            _authInstance.authStateChanges().listen((firebase_auth.User? user) {
-          try {
-            debugPrint(
-              'AUTH STATE CHANGED: ${user?.uid ?? 'SIGNED OUT'}',
-            );
-            if (user != null) {
-              if (_shouldIgnoreAuthUserEvent(user)) {
-                return;
-              }
-              debugPrint('AUTH_TRANSITION firebase_session_available');
-              _promoteFirebaseSession(user);
-              unawaited(_handleUserSignIn(user));
-            } else {
-              debugPrint('AUTH_TRANSITION signed_out');
-              _signingOutUid = null;
-              _authTransitionState = AuthTransitionState.unauthenticated;
-              _cancelUserFirestoreSubscription();
-              _currentUser = null;
-              _isLoggedIn = false;
-              _isCheckingAuth = false;
-              notifyListeners();
-            }
-          } catch (e) {
-            debugPrint('❌ Error in auth state listener: $e');
-          }
-        });
       } catch (e) {
-        debugPrint('❌ Error initializing RobustAuthenticationService: $e');
+        debugPrint(
+          '⚠️ RobustAuthenticationService: deferred session restore: $e',
+        );
+      }
+    }
+    Future.microtask(() async {
+      await _initializeAuthWhenFirebaseReady();
+    });
+  }
+
+  Future<void> _initializeAuthWhenFirebaseReady() async {
+    try {
+      if (!await _waitForFirebaseReady()) {
         _isCheckingAuth = false;
         _authTransitionState = AuthTransitionState.unauthenticated;
         notifyListeners();
+        return;
       }
-    });
+      final bool alreadyAuthenticated =
+          _authTransitionState == AuthTransitionState.authenticated &&
+              _isLoggedIn;
+      if (!alreadyAuthenticated) {
+        _authTransitionState = AuthTransitionState.checkingAuth;
+        _isCheckingAuth = true;
+        notifyListeners();
+      }
+      _checkInitialAuthState();
+      _authStateSubscription =
+          _authInstance.authStateChanges().listen((firebase_auth.User? user) {
+        try {
+          debugPrint(
+            'AUTH STATE CHANGED: ${user?.uid ?? 'SIGNED OUT'}',
+          );
+          if (user != null) {
+            if (_shouldIgnoreAuthUserEvent(user)) {
+              return;
+            }
+            if (_awaiting2FA) {
+              debugPrint('AUTH_TRANSITION awaiting_2fa_skip_hydrate');
+              return;
+            }
+            debugPrint('AUTH_TRANSITION firebase_session_available');
+            _promoteFirebaseSession(user);
+            unawaited(_handleUserSignIn(user));
+          } else {
+            debugPrint('AUTH_TRANSITION signed_out');
+            _signingOutUid = null;
+            _authTransitionState = AuthTransitionState.unauthenticated;
+            _cancelUserFirestoreSubscription();
+            _currentUser = null;
+            _isLoggedIn = false;
+            _isCheckingAuth = false;
+            notifyListeners();
+          }
+        } catch (e) {
+          debugPrint('❌ Error in auth state listener: $e');
+        }
+      });
+    } catch (e) {
+      debugPrint('❌ Error initializing RobustAuthenticationService: $e');
+      _isCheckingAuth = false;
+      _authTransitionState = AuthTransitionState.unauthenticated;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> _waitForFirebaseReady() async {
+    return FirebaseBootstrap.ensureInitialized();
   }
 
   /// Check the initial authentication state when the service is created
@@ -262,6 +297,11 @@ class RobustAuthenticationService extends ChangeNotifier {
 
       if (currentUser != null) {
         if (_shouldIgnoreAuthUserEvent(currentUser)) {
+          _isCheckingAuth = false;
+          if (_authTransitionState == AuthTransitionState.checkingAuth) {
+            _authTransitionState = AuthTransitionState.unauthenticated;
+          }
+          notifyListeners();
           return;
         }
         // User is logged in - show UI immediately, load data in background
@@ -445,6 +485,8 @@ class RobustAuthenticationService extends ChangeNotifier {
               'for Authentication while testing.';
         case 'weak-password':
           return 'Password is too weak. Use a stronger password.';
+        case 'email-already-in-use':
+          return 'This email is already registered.';
         default:
           if (_isNetworkAuthError(e)) {
             return 'Network error. Please check your connection.';
@@ -480,6 +522,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     required firebase_auth.User firebaseUser,
     required String provider,
     bool requires2FA = false,
+    bool isNewUser = false,
   }) async {
     final firebase_auth.User? verifiedUser =
         await _awaitVerifiedFirebaseSession(firebaseUser);
@@ -499,6 +542,19 @@ class RobustAuthenticationService extends ChangeNotifier {
     debugPrint(
       'AUTH_TRANSITION $provider firebase_session_verified uid=${verifiedUser.uid}',
     );
+
+    if (requires2FA) {
+      _awaiting2FA = true;
+      _isCheckingAuth = false;
+      _authTransitionState = AuthTransitionState.unauthenticated;
+      notifyListeners();
+      return AuthRequestResult(
+        requestId: requestId,
+        success: true,
+        requires2FA: true,
+      );
+    }
+
     _promoteFirebaseSession(verifiedUser);
     debugPrint('AUTH_TRANSITION $provider hydrating_profile');
     try {
@@ -511,11 +567,32 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
     debugPrint('AUTH_TRANSITION $provider authenticated');
 
+    _trackRetentionAfterAuth(
+      uid: verifiedUser.uid,
+      provider: provider,
+      isNewUser: isNewUser,
+    );
+
     return AuthRequestResult(
       requestId: requestId,
       success: true,
       user: _currentUser,
       requires2FA: requires2FA,
+    );
+  }
+
+  void _trackRetentionAfterAuth({
+    required String uid,
+    required String provider,
+    required bool isNewUser,
+  }) {
+    final bool isSignup = isNewUser || provider.contains('signup');
+    unawaited(
+      RetentionTrackingService.instance.trackAuth(
+        uid: uid,
+        isSignup: isSignup,
+        metadata: <String, dynamic>{'provider': provider},
+      ),
     );
   }
 
@@ -525,10 +602,25 @@ class RobustAuthenticationService extends ChangeNotifier {
     String password,
     String requestId,
   ) async {
+    return _signInWithEmailAndPassword(
+      email: email,
+      password: password,
+      requestId: requestId,
+      provider: 'email',
+      checkRateLimit: true,
+    );
+  }
+
+  Future<AuthRequestResult> _signInWithEmailAndPassword({
+    required String email,
+    required String password,
+    required String requestId,
+    required String provider,
+    required bool checkRateLimit,
+  }) async {
     try {
-      // Check rate limiting first
-      if (await _rateLimiter.isRateLimited()) {
-        final message = await _rateLimiter.getRateLimitMessage();
+      if (checkRateLimit && await _rateLimiter.isRateLimited()) {
+        final String? message = await _rateLimiter.getRateLimitMessage();
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -537,34 +629,33 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
 
-      final userCredential = await _authInstance.signInWithEmailAndPassword(
-          email: email, password: password);
+      final firebase_auth.UserCredential userCredential =
+          await _authInstance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-      if (userCredential.user != null) {
-        // Record successful authentication
-        await _rateLimiter.recordSuccess();
-
-        // Check if user has 2FA enabled
-        final requires2FA = await _twoFactorService.requires2FA(
-          userCredential.user!.uid,
-        );
-
-        return _completeSuccessfulAuth(
-          requestId: requestId,
-          firebaseUser: userCredential.user!,
-          provider: 'email',
-          requires2FA: requires2FA,
-        );
-      } else {
-        // Record failed attempt
+      if (userCredential.user == null) {
         await _rateLimiter.recordAttempt();
-
         return AuthRequestResult(
           requestId: requestId,
           success: false,
           error: 'Authentication failed',
         );
       }
+
+      await _rateLimiter.recordSuccess();
+
+      final bool requires2FA = await _twoFactorService.requires2FA(
+        userCredential.user!.uid,
+      );
+
+      return _completeSuccessfulAuth(
+        requestId: requestId,
+        firebaseUser: userCredential.user!,
+        provider: provider,
+        requires2FA: requires2FA,
+      );
     } catch (e) {
       await _rateLimiter.recordAttempt();
       return AuthRequestResult(
@@ -582,9 +673,8 @@ class RobustAuthenticationService extends ChangeNotifier {
     String requestId,
   ) async {
     try {
-      // Check rate limiting first
       if (await _rateLimiter.isRateLimited()) {
-        final message = await _rateLimiter.getRateLimitMessage();
+        final String? message = await _rateLimiter.getRateLimitMessage();
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -615,7 +705,13 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
 
-      return await signInWithEmail(resolvedEmail.trim(), password, requestId);
+      return _signInWithEmailAndPassword(
+        email: resolvedEmail.trim(),
+        password: password,
+        requestId: requestId,
+        provider: 'username',
+        checkRateLimit: false,
+      );
     } catch (e) {
       await _rateLimiter.recordAttempt();
       return AuthRequestResult(
@@ -680,14 +776,17 @@ class RobustAuthenticationService extends ChangeNotifier {
         if (userCredential.user != null) {
           final firebase_auth.User hydratedUser =
               await _reloadFirebaseUser(userCredential.user!);
-          await _ensureMinimalUserDocument(
-            firebaseUser: hydratedUser,
-            authProvider: 'google',
+          unawaited(
+            _ensureMinimalUserDocument(
+              firebaseUser: hydratedUser,
+              authProvider: 'google',
+            ),
           );
           return _completeSuccessfulAuth(
             requestId: requestId,
             firebaseUser: hydratedUser,
             provider: 'google',
+            isNewUser: userCredential.additionalUserInfo?.isNewUser ?? false,
           );
         } else {
           return AuthRequestResult(
@@ -793,14 +892,17 @@ class RobustAuthenticationService extends ChangeNotifier {
       );
       final firebase_auth.User hydratedUser =
           await _reloadFirebaseUser(firebaseUser);
-      await _ensureMinimalUserDocument(
-        firebaseUser: hydratedUser,
-        authProvider: 'apple',
+      unawaited(
+        _ensureMinimalUserDocument(
+          firebaseUser: hydratedUser,
+          authProvider: 'apple',
+        ),
       );
       return _completeSuccessfulAuth(
         requestId: requestId,
         firebaseUser: hydratedUser,
         provider: 'apple',
+        isNewUser: userCredential.additionalUserInfo?.isNewUser ?? false,
       );
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
@@ -904,12 +1006,56 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
   }
 
+  /// Complete sign-in after 2FA verification succeeds.
+  Future<void> completeTwoFactorAuth() async {
+    if (!_awaiting2FA) {
+      return;
+    }
+    final firebase_auth.User? firebaseUser = _authInstance.currentUser;
+    if (firebaseUser == null) {
+      _awaiting2FA = false;
+      notifyListeners();
+      return;
+    }
+    _awaiting2FA = false;
+    _promoteFirebaseSession(firebaseUser);
+    try {
+      await _handleUserSignIn(firebaseUser).timeout(_userHydrationTimeout);
+    } on TimeoutException {
+      debugPrint('AUTH_TRANSITION 2fa profile_hydration_deferred');
+    } catch (error, stackTrace) {
+      debugPrint('AUTH_TRANSITION 2fa profile_hydration_failed: $error');
+      debugPrint('$stackTrace');
+    }
+    _trackRetentionAfterAuth(
+      uid: firebaseUser.uid,
+      provider: 'email',
+      isNewUser: false,
+    );
+    notifyListeners();
+  }
+
+  /// Abort pending 2FA and sign out.
+  Future<void> cancelTwoFactorAuth() async {
+    _awaiting2FA = false;
+    try {
+      await _authInstance.signOut();
+    } catch (e) {
+      debugPrint('AUTH_TRANSITION 2fa_cancel_sign_out_failed: $e');
+    }
+    _currentUser = null;
+    _isLoggedIn = false;
+    _authTransitionState = AuthTransitionState.unauthenticated;
+    notifyListeners();
+  }
+
   void _promoteFirebaseSession(firebase_auth.User firebaseUser) {
     _signingOutUid = null;
     _currentUser ??= _mapFirebaseUserToFallback(firebaseUser);
     _isLoggedIn = true;
     _isCheckingAuth = false;
     _authTransitionState = AuthTransitionState.authenticated;
+    unawaited(AuthSessionHintStorage.markHasSession());
     notifyListeners();
   }
 
@@ -941,20 +1087,24 @@ class RobustAuthenticationService extends ChangeNotifier {
         providerPhotoUrl: firebaseUser.photoURL,
         existingData: existingData,
       );
+      final Map<String, dynamic> payload = <String, dynamic>{
+        'uid': firebaseUser.uid,
+        'id': firebaseUser.uid,
+        'displayName': firebaseUser.displayName,
+        'authProvider': authProvider,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'isDeleted': false,
+        ...avatarFields,
+      };
+      if (!existingSnapshot.exists) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload.addAll(OnboardingService.newAccountDocumentFields());
+      }
       await _firestoreInstance.collection('users').doc(firebaseUser.uid).set(
-        <String, dynamic>{
-          'uid': firebaseUser.uid,
-          'id': firebaseUser.uid,
-          'email': firebaseUser.email,
-          'displayName': firebaseUser.displayName,
-          'authProvider': authProvider,
-          'updatedAt': FieldValue.serverTimestamp(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'isDeleted': false,
-          ...avatarFields,
-        },
+        payload,
         SetOptions(merge: true),
       );
+      await _savePrivateContactEmail(firebaseUser.uid, firebaseUser.email);
       debugPrint(
         'AUTH_TRANSITION $authProvider minimal_profile_merged uid=${firebaseUser.uid}',
       );
@@ -1013,11 +1163,19 @@ class RobustAuthenticationService extends ChangeNotifier {
     ).whenComplete(_endOauthHandoff);
   }
 
-  /// Resolve a normalized username to the account email stored in Firestore.
+  /// Resolve a normalized username to the account login email.
   Future<String?> resolveEmailForUsername(String normalizedUsername) async {
     final String normalized = normalizedUsername.trim().toLowerCase();
     if (normalized.isEmpty) {
       return null;
+    }
+    final DocumentSnapshot<Map<String, dynamic>> mappingSnap =
+        await _firestoreInstance.collection('usernames').doc(normalized).get();
+    if (mappingSnap.exists) {
+      final String? uid = mappingSnap.data()?['uid'] as String?;
+      if (uid != null && uid.isNotEmpty) {
+        return _readLoginEmailForUid(uid);
+      }
     }
     final QuerySnapshot<Map<String, dynamic>> lowercaseQuery =
         await _firestoreInstance
@@ -1026,7 +1184,7 @@ class RobustAuthenticationService extends ChangeNotifier {
             .limit(1)
             .get();
     if (lowercaseQuery.docs.isNotEmpty) {
-      return lowercaseQuery.docs.first.data()['email'] as String?;
+      return _readLoginEmailForUid(lowercaseQuery.docs.first.id);
     }
     final QuerySnapshot<Map<String, dynamic>> usernameQuery =
         await _firestoreInstance
@@ -1037,7 +1195,215 @@ class RobustAuthenticationService extends ChangeNotifier {
     if (usernameQuery.docs.isEmpty) {
       return null;
     }
-    return usernameQuery.docs.first.data()['email'] as String?;
+    return _readLoginEmailForUid(usernameQuery.docs.first.id);
+  }
+
+  Future<String?> _readLoginEmailForUid(String uid) async {
+    final DocumentSnapshot<Map<String, dynamic>> privateSnap =
+        await _firestoreInstance
+            .collection('users')
+            .doc(uid)
+            .collection('private')
+            .doc('contact')
+            .get();
+    final String privateEmail =
+        (privateSnap.data()?['email'] as String?)?.trim() ?? '';
+    if (privateEmail.isNotEmpty) {
+      return privateEmail;
+    }
+    final DocumentSnapshot<Map<String, dynamic>> userSnap =
+        await _firestoreInstance.collection('users').doc(uid).get();
+    if (!userSnap.exists) {
+      return null;
+    }
+    final String publicEmail =
+        (userSnap.data()?['email'] as String?)?.trim() ?? '';
+    return publicEmail.isEmpty ? null : publicEmail;
+  }
+
+  Future<void> _savePrivateContactEmail(String userId, String? email) async {
+    final String normalized = email?.trim() ?? '';
+    if (normalized.isEmpty) {
+      return;
+    }
+    await _firestoreInstance
+        .collection('users')
+        .doc(userId)
+        .collection('private')
+        .doc('contact')
+        .set(
+      <String, dynamic>{
+        'email': normalized,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Change password for the signed-in email/password user.
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final firebase_auth.User? user = _authInstance.currentUser;
+    if (user == null) {
+      throw Exception('No user is currently signed in');
+    }
+    final String? rejectReason =
+        PasswordRequirements.signupRejectReason(newPassword);
+    if (rejectReason != null) {
+      throw Exception(rejectReason);
+    }
+    final String? email = user.email;
+    if (email == null || email.isEmpty) {
+      throw Exception('Email is required to change password');
+    }
+    final firebase_auth.AuthCredential credential =
+        firebase_auth.EmailAuthProvider.credential(
+      email: email,
+      password: currentPassword,
+    );
+    try {
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password') {
+        throw Exception('Current password is incorrect');
+      }
+      if (e.code == 'weak-password') {
+        throw Exception('New password is too weak');
+      }
+      throw Exception('Failed to change password. Please try again');
+    }
+  }
+
+  /// Upload avatar to R2 and mirror profile fields.
+  Future<String> uploadAvatar(File imageFile) async {
+    final firebase_auth.User? user = _authInstance.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+    if (!await imageFile.exists()) {
+      throw Exception('Selected image file does not exist');
+    }
+    final int fileSize = await imageFile.length();
+    const int maxSize = 5 * 1024 * 1024;
+    if (fileSize > maxSize) {
+      throw Exception('Image file is too large. Maximum size is 5MB.');
+    }
+    final List<ConnectivityResult> connectivityResult =
+        await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      throw Exception(
+        'No internet connection. Please check your network and try again.',
+      );
+    }
+    final AppCheckReadiness appCheck =
+        await ensureAppCheckReadyForFirestore();
+    if (!appCheck.isReady) {
+      throw Exception(
+        'Upload blocked by security check. Restart the app and try again.',
+      );
+    }
+    final String downloadUrl =
+        await R2MediaService.instance.uploadAvatar(imageFile);
+    final FieldValue nowTs = FieldValue.serverTimestamp();
+    await _firestoreInstance.collection('users').doc(user.uid).update({
+      'avatarURL': downloadUrl,
+      'avatarUrl': downloadUrl,
+      'photoURL': downloadUrl,
+      'avatarUpdatedAt': nowTs,
+      'updatedAt': nowTs,
+    });
+    await _syncPublicUserAvatar(user.uid, downloadUrl);
+    try {
+      await user.updatePhotoURL(downloadUrl);
+      await user.reload();
+      await user.getIdToken(true);
+    } catch (e) {
+      debugPrint(
+        'AUTH_TRANSITION avatar_auth_photo_url_failed: $e',
+      );
+    }
+    if (_currentUserProfile != null) {
+      _currentUserProfile!['avatarURL'] = downloadUrl;
+      _currentUserProfile!['avatarUrl'] = downloadUrl;
+      _currentUserProfile!['photoURL'] = downloadUrl;
+      _currentUserProfile!['avatarUpdatedAt'] =
+          DateTime.now().toIso8601String();
+      _currentUserProfile!['updatedAt'] = DateTime.now().toIso8601String();
+    }
+    if (_currentUser != null) {
+      _currentUser = User(
+        id: _currentUser!.id,
+        username: _currentUser!.username,
+        displayName: _currentUser!.displayName,
+        bio: _currentUser!.bio,
+        avatarURL: downloadUrl,
+        onlineStatus: _currentUser!.onlineStatus,
+        hashtags: _currentUser!.hashtags,
+        postCount: _currentUser!.postCount,
+        followerCount: _currentUser!.followerCount,
+        followingCount: _currentUser!.followingCount,
+      );
+      notifyListeners();
+    }
+    return downloadUrl;
+  }
+
+  Future<void> _syncPublicUserAvatar(String uid, String avatarUrl) async {
+    try {
+      final String? displayName =
+          _currentUser?.displayName ?? _currentUserProfile?['displayName'];
+      final String? username =
+          _currentUser?.username ?? _currentUserProfile?['username'];
+      await _firestoreInstance.collection('publicUsers').doc(uid).set(
+        <String, dynamic>{
+          'uid': uid,
+          'id': uid,
+          if (displayName != null) 'displayName': displayName,
+          if (username != null) 'username': username,
+          'avatarUrl': avatarUrl,
+          'avatarURL': avatarUrl,
+          'avatarUpdatedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('AUTH_TRANSITION public_users_avatar_mirror_failed: $e');
+    }
+  }
+
+  /// Update allowed profile fields on the signed-in user document.
+  Future<void> updateUserProfile(Map<String, dynamic> userData) async {
+    final firebase_auth.User? user = _authInstance.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+    final Map<String, dynamic> updateData = <String, dynamic>{
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (userData.containsKey('displayName')) {
+      updateData['displayName'] = userData['displayName'];
+    }
+    if (userData.containsKey('bio')) {
+      updateData['bio'] = userData['bio'];
+    }
+    if (userData.containsKey('hashtags')) {
+      updateData['hashtags'] = userData['hashtags'];
+    }
+    if (userData.containsKey('onlineStatus')) {
+      updateData['onlineStatus'] = userData['onlineStatus'];
+    }
+    if (userData.containsKey('platforms')) {
+      updateData['platforms'] = userData['platforms'];
+    }
+    await _firestoreInstance.collection('users').doc(user.uid).update(updateData);
+    if (_currentUserProfile != null) {
+      _currentUserProfile!.addAll(updateData);
+      _currentUserProfile!['updatedAt'] = DateTime.now().toIso8601String();
+    }
   }
 
   Future<AuthRequestResult> debouncedSignUpWithEmail({
@@ -1103,27 +1469,42 @@ class RobustAuthenticationService extends ChangeNotifier {
       if (userCredential.user != null) {
         debugPrint("✅ User created successfully");
 
+        final firebase_auth.User firebaseUser = userCredential.user!;
         final String profileDisplayName = displayName.trim().isNotEmpty
             ? displayName.trim()
             : normalizedUsername;
-        await userCredential.user!.updateDisplayName(profileDisplayName);
+        try {
+          await firebaseUser.updateDisplayName(profileDisplayName);
 
-        await _createUserDocument(
-          userCredential.user!,
-          displayName: profileDisplayName,
-          username: normalizedUsername,
-        );
+          await _createUserDocument(
+            firebaseUser,
+            displayName: profileDisplayName,
+            username: normalizedUsername,
+          );
+          await _usernameLockService.reserveUsername(
+            username: normalizedUsername,
+            userId: firebaseUser.uid,
+          );
+          await _savePrivateContactEmail(
+            firebaseUser.uid,
+            trimmedEmail,
+          );
 
-        final AuthRequestResult completion = await _completeSuccessfulAuth(
-          requestId: requestId ?? _generateRequestId(),
-          firebaseUser: userCredential.user!,
-          provider: 'email_signup',
-        );
-        if (!completion.success) {
-          throw Exception(completion.error ?? 'Authentication failed');
+          final AuthRequestResult completion = await _completeSuccessfulAuth(
+            requestId: requestId ?? _generateRequestId(),
+            firebaseUser: firebaseUser,
+            provider: 'email_signup',
+            isNewUser: true,
+          );
+          if (!completion.success) {
+            throw Exception(completion.error ?? 'Authentication failed');
+          }
+
+          debugPrint("✅ Sign up completed successfully");
+        } catch (e) {
+          await _cleanupOrphanedSignupUser(firebaseUser);
+          rethrow;
         }
-
-        debugPrint("✅ Sign up completed successfully");
       } else {
         throw Exception('No user returned from Firebase');
       }
@@ -1135,6 +1516,42 @@ class RobustAuthenticationService extends ChangeNotifier {
       debugPrint("❌ Error type: ${e.runtimeType}");
       rethrow;
     }
+  }
+
+  /// Removes partial Firestore profile and Firebase Auth user after failed signup.
+  Future<void> _cleanupOrphanedSignupUser(firebase_auth.User firebaseUser) async {
+    debugPrint(
+      'AUTH_TRANSITION email_signup_cleanup uid=${firebaseUser.uid}',
+    );
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> userSnap =
+          await _firestoreInstance.collection('users').doc(firebaseUser.uid).get();
+      final String? username =
+          (userSnap.data()?['username'] as String?)?.trim().toLowerCase();
+      if (username != null && username.isNotEmpty) {
+        await _firestoreInstance.collection('usernames').doc(username).delete();
+      }
+      if (userSnap.exists) {
+        await _firestoreInstance.collection('users').doc(firebaseUser.uid).delete();
+      }
+    } catch (e) {
+      debugPrint('AUTH_TRANSITION email_signup_cleanup_firestore_failed: $e');
+    }
+    try {
+      await firebaseUser.delete();
+    } catch (e) {
+      debugPrint('AUTH_TRANSITION email_signup_cleanup_auth_failed: $e');
+    }
+    try {
+      await _authInstance.signOut();
+    } catch (e) {
+      debugPrint('AUTH_TRANSITION email_signup_cleanup_signout_failed: $e');
+    }
+    _currentUser = null;
+    _isLoggedIn = false;
+    _awaiting2FA = false;
+    _authTransitionState = AuthTransitionState.unauthenticated;
+    notifyListeners();
   }
 
   /// Handle existing user check for account deletion scenarios
@@ -1170,27 +1587,28 @@ class RobustAuthenticationService extends ChangeNotifier {
           {
             'uid': firebaseUser.uid,
             'id': firebaseUser.uid,
-            'email': firebaseUser.email,
             'updatedAt': FieldValue.serverTimestamp(),
             'isDeleted': false,
           },
           SetOptions(merge: true),
         );
       } else {
-        await userRef.set({
+        await userRef.set(<String, dynamic>{
           'uid': firebaseUser.uid,
           'id': firebaseUser.uid,
-          'email': firebaseUser.email,
           'displayName': displayName,
           'username': username,
+          'usernameLowercase': username.toLowerCase(),
           'avatarURL': null,
           'bio': '',
           'hashtags': [],
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
           'isDeleted': false,
+          ...OnboardingService.newAccountDocumentFields(),
         });
       }
+      await _savePrivateContactEmail(firebaseUser.uid, firebaseUser.email);
 
       // appLog("✅ User document created in Firestore");
     } catch (e) {
@@ -1320,6 +1738,11 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         // Save the new user to Firestore
         await _saveUserToFirestore(user, email: firebaseUser.email);
+        await _usernameLockService.reserveUsername(
+          username: user.username,
+          userId: user.id,
+        );
+        await _savePrivateContactEmail(user.id, firebaseUser.email);
 
         _currentUser = user;
         _isLoggedIn = true;
@@ -1454,10 +1877,10 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<String> _generateUniqueUsername(String baseUsername) async {
     String username = baseUsername;
     int counter = 1;
+    const int maxAttempts = 999;
 
-    while (true) {
-      // Check if username is available (not taken and not reserved)
-      final isAvailable =
+    while (counter <= maxAttempts) {
+      final bool isAvailable =
           await _usernameLockService.isUsernameAvailable(username);
 
       if (isAvailable) {
@@ -1467,12 +1890,15 @@ class RobustAuthenticationService extends ChangeNotifier {
       username = '$baseUsername$counter';
       counter++;
     }
+    throw Exception('Could not generate a unique username');
   }
 
   /// Save user to Firestore
   Future<void> _saveUserToFirestore(User user, {String? email}) async {
     try {
       final String? avatarUrl = normalizeAvatarPhotoUrl(user.avatarURL);
+      final DocumentSnapshot<Map<String, dynamic>> existingSnapshot =
+          await _firestoreInstance.collection('users').doc(user.id).get();
       final userData = <String, dynamic>{
         'uid': user.id,
         'id': user.id,
@@ -1492,15 +1918,16 @@ class RobustAuthenticationService extends ChangeNotifier {
         'updatedAt': FieldValue.serverTimestamp(),
         'isDeleted': false,
       };
-
-      if (email != null) {
-        userData['email'] = email;
+      if (!existingSnapshot.exists) {
+        userData['createdAt'] = FieldValue.serverTimestamp();
+        userData.addAll(OnboardingService.newAccountDocumentFields());
       }
 
       await _firestoreInstance.collection('users').doc(user.id).set(
             userData,
             SetOptions(merge: true),
           );
+      await _savePrivateContactEmail(user.id, email);
     } catch (e) {
       rethrow;
     }
@@ -1520,9 +1947,11 @@ class RobustAuthenticationService extends ChangeNotifier {
         : providerId == 'google.com'
             ? 'google'
             : providerId ?? 'password';
-    await _ensureMinimalUserDocument(
-      firebaseUser: firebaseUser,
-      authProvider: authProvider,
+    unawaited(
+      _ensureMinimalUserDocument(
+        firebaseUser: firebaseUser,
+        authProvider: authProvider,
+      ),
     );
   }
 
@@ -1545,6 +1974,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       final String? signingOutUid =
           _authInstance.currentUser?.uid ?? _currentUser?.id;
       _signingOutUid = signingOutUid;
+      _awaiting2FA = false;
 
       _authTransitionState = AuthTransitionState.signingOut;
       _userSignInInFlight = null;
@@ -1735,6 +2165,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     _debounceTimer?.cancel();
     _minimumSpinnerTimer?.cancel();
     _isMinimumSpinnerActive = false;
+    unawaited(AuthSessionHintStorage.clearSession());
     notifyListeners();
   }
 
@@ -1785,66 +2216,134 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<PasswordResetRequestResult> sendPasswordResetForIdentifier(
     String emailOrUsername,
   ) async {
-    final String trimmed = emailOrUsername.trim();
-    if (trimmed.isEmpty) {
-      return const PasswordResetRequestResult(
-        success: false,
-        error: 'Enter your email or username.',
-      );
-    }
-    String? targetEmail;
-    if (trimmed.contains('@')) {
-      if (!trimmed.contains('.') || trimmed.length < 5) {
+    try {
+      final PasswordResetRequestResult? unavailable =
+          await _ensureFirebaseReadyForPasswordReset();
+      if (unavailable != null) {
+        return unavailable;
+      }
+      final String trimmed = emailOrUsername.trim();
+      if (trimmed.isEmpty) {
         return const PasswordResetRequestResult(
           success: false,
-          error: 'Enter a valid email address.',
+          error: 'Enter your email or username.',
         );
       }
-      targetEmail = trimmed;
-    } else {
-      targetEmail = await resolveEmailForUsername(trimmed.toLowerCase());
-    }
-    if (targetEmail != null && targetEmail.trim().isNotEmpty) {
-      try {
-        await _authInstance.sendPasswordResetEmail(email: targetEmail.trim());
-      } on firebase_auth.FirebaseAuthException catch (e) {
-        if (e.code == 'invalid-email') {
+      String? targetEmail;
+      if (trimmed.contains('@')) {
+        if (!trimmed.contains('.') || trimmed.length < 5) {
           return const PasswordResetRequestResult(
             success: false,
             error: 'Enter a valid email address.',
           );
         }
-        if (e.code == 'too-many-requests') {
-          return const PasswordResetRequestResult(
-            success: false,
-            error: 'Too many requests. Please try again later.',
-          );
-        }
-        if (_isNetworkAuthError(e)) {
-          return const PasswordResetRequestResult(
-            success: false,
-            error: 'Network error. Please check your connection.',
-          );
-        }
-      } catch (e) {
-        if (_isNetworkAuthError(e)) {
-          return const PasswordResetRequestResult(
-            success: false,
-            error: 'Network error. Please check your connection.',
-          );
+        targetEmail = trimmed;
+      } else {
+        try {
+          targetEmail = await resolveEmailForUsername(trimmed.toLowerCase());
+        } catch (e) {
+          if (_isFirebaseUnavailableError(e)) {
+            return const PasswordResetRequestResult(
+              success: false,
+              error:
+                  'Still connecting. Please wait a moment and try again.',
+            );
+          }
+          rethrow;
         }
       }
+      if (targetEmail != null && targetEmail.trim().isNotEmpty) {
+        try {
+          await _authInstance.sendPasswordResetEmail(email: targetEmail.trim());
+        } on firebase_auth.FirebaseAuthException catch (e) {
+          if (e.code == 'invalid-email') {
+            return const PasswordResetRequestResult(
+              success: false,
+              error: 'Enter a valid email address.',
+            );
+          }
+          if (e.code == 'too-many-requests') {
+            return const PasswordResetRequestResult(
+              success: false,
+              error: 'Too many requests. Please try again later.',
+            );
+          }
+          if (_isNetworkAuthError(e)) {
+            return const PasswordResetRequestResult(
+              success: false,
+              error: 'Network error. Please check your connection.',
+            );
+          }
+          if (_isFirebaseUnavailableError(e)) {
+            return const PasswordResetRequestResult(
+              success: false,
+              error:
+                  'Still connecting. Please wait a moment and try again.',
+            );
+          }
+        } catch (e) {
+          if (_isNetworkAuthError(e)) {
+            return const PasswordResetRequestResult(
+              success: false,
+              error: 'Network error. Please check your connection.',
+            );
+          }
+          if (_isFirebaseUnavailableError(e)) {
+            return const PasswordResetRequestResult(
+              success: false,
+              error:
+                  'Still connecting. Please wait a moment and try again.',
+            );
+          }
+        }
+      }
+      return const PasswordResetRequestResult(
+        success: true,
+        message:
+            'Password reset email sent if an account exists for that address.',
+      );
+    } catch (e) {
+      debugPrint('❌ sendPasswordResetForIdentifier: $e');
+      if (_isFirebaseUnavailableError(e)) {
+        return const PasswordResetRequestResult(
+          success: false,
+          error: 'Still connecting. Please wait a moment and try again.',
+        );
+      }
+      return const PasswordResetRequestResult(
+        success: false,
+        error: 'Unable to send reset email. Please try again.',
+      );
     }
-    return const PasswordResetRequestResult(
-      success: true,
-      message:
-          'Password reset email sent if an account exists for that address.',
+  }
+
+  Future<PasswordResetRequestResult?> _ensureFirebaseReadyForPasswordReset() async {
+    if (FirebaseBootstrap.isReady) {
+      return null;
+    }
+    final bool ready = await FirebaseBootstrap.ensureInitialized().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => FirebaseBootstrap.isReady,
     );
+    if (!ready) {
+      return const PasswordResetRequestResult(
+        success: false,
+        error: 'Still connecting. Please wait a moment and try again.',
+      );
+    }
+    return null;
   }
 
   bool _isNetworkAuthError(Object error) {
     final String message = error.toString().toLowerCase();
     return message.contains('network') || message.contains('socket');
+  }
+
+  bool _isFirebaseUnavailableError(Object error) {
+    final String message = error.toString().toLowerCase();
+    return message.contains('[core/no-app]') ||
+        message.contains('firebase not initialized') ||
+        message.contains('no firebase app');
   }
 
   String _fcmPlatformName() {

@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../billing/api_feature_gate.dart';
 import '../billing/tier_display_names.dart';
+import '../billing/subscription_provider.dart';
 import '../entitlements/me_entitlements_models.dart';
 import '../entitlements/me_entitlements_provider.dart';
 import '../gamification/gamification_providers.dart';
@@ -21,22 +23,40 @@ import '../content_planning/content_planning_provider.dart';
 import '../content_planning/content_planning_repository.dart';
 import 'tippy_access.dart';
 import 'tippy_chat_service.dart';
+import 'tippy_legal_service.dart';
 import 'tippy_message_content.dart';
+import 'widgets/tippy_consent_gate.dart';
 import 'tippy_personality.dart';
 import 'tippy_tier.dart';
 import '../../components/onboarding/contextual_tip_overlay.dart';
+import '../../providers/creator_personalization_provider.dart';
 import '../../services/creator_intelligence_analytics_service.dart';
+import '../../services/retention_tracking_service.dart';
+import '../../services/creator_personalization_service.dart';
 import '../analytics/models/analytics_profile.dart';
+import 'creator_goals_repository.dart';
+import 'models/creator_goal_model.dart';
+import 'models/tippy_launch_context.dart';
+import 'models/tippy_ui_payload.dart';
+import 'widgets/tippy_action_card.dart';
+import 'widgets/tippy_approval_sheet.dart';
+import 'widgets/tippy_context_strip.dart';
+import 'widgets/tippy_goal_sheet.dart';
+import 'widgets/tippy_memory_empty_state.dart';
 
 class TippyChatPage extends ConsumerStatefulWidget {
   const TippyChatPage({
     super.key,
     this.chatService,
     this.historyStore,
+    this.legalService,
+    this.launchContext = const TippyLaunchContext(),
   });
 
   final TippyChatService? chatService;
   final TippyConversationHistoryStore? historyStore;
+  final TippyLegalService? legalService;
+  final TippyLaunchContext launchContext;
 
   @override
   ConsumerState<TippyChatPage> createState() => _TippyChatPageState();
@@ -50,6 +70,13 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       widget.chatService ?? TippyChatService();
   late final TippyConversationHistoryStore _historyStore =
       widget.historyStore ?? TippyConversationHistoryStore();
+  late final TippyLegalService _legalService =
+      widget.legalService ?? TippyLegalService();
+  StreamSubscription<bool>? _tippyEnabledSub;
+  bool _consentLoading = true;
+  bool _consentGranted = false;
+  bool _consentSaving = false;
+  bool _tippyEnabled = true;
   bool _busy = false;
   int? _creditsRemaining;
   String? _creditsTier;
@@ -57,24 +84,79 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   String? _nudge;
   String? _conversationId;
   _RetryAction? _pendingRetryAction;
+  TippyUiPayload _uiPayload = TippyUiPayload.empty;
+  bool _memoryReady = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        invalidateSubscriptionEntitlements(ref);
         ContextualTipCatalog.scheduleFeatureTipOnMount(
           context: context,
           tip: ContextualTipCatalog.tippyTip,
         );
       }
-      _loadPersonalization();
+      unawaited(_bootstrapLegalGates());
+      unawaited(_loadPersonalization());
+      final String? prompt = widget.launchContext.prefilledPrompt ??
+          widget.launchContext.insightPrompt;
+      if (prompt != null && prompt.trim().isNotEmpty) {
+        _input.text = prompt.trim();
+      }
     });
+  }
+
+  Future<void> _bootstrapLegalGates() async {
+    try {
+      final bool granted = await _legalService.hasConsent();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _consentGranted = granted;
+        _consentLoading = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _consentLoading = false);
+      }
+    }
+    _tippyEnabledSub?.cancel();
+    _tippyEnabledSub = _legalService.watchTippyEnabled().listen(
+      (bool enabled) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _tippyEnabled = enabled);
+      },
+    );
+  }
+
+  Future<void> _acceptConsent() async {
+    if (_consentSaving) {
+      return;
+    }
+    setState(() => _consentSaving = true);
+    try {
+      await _legalService.recordConsent();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _consentGranted = true;
+        _consentSaving = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _consentSaving = false);
+      }
+    }
   }
 
   @override
   void dispose() {
+    _tippyEnabledSub?.cancel();
     _input.dispose();
     _scroll.dispose();
     _service.dispose();
@@ -83,6 +165,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
 
   Future<void> _loadPersonalization() async {
     try {
+      final TippyContextSnapshot contextSnapshot = await _service.fetchContext();
       final TippyCreditsInfo credits = await _service.fetchCreditsInfo();
       String? nudge = await _service.fetchNudge();
       final AnalyticsProfile profile = await ref
@@ -96,14 +179,36 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         return;
       }
       setState(() {
-        _greeting = credits.greeting;
+        _greeting = contextSnapshot.greeting.isNotEmpty
+            ? contextSnapshot.greeting
+            : credits.greeting;
         _creditsRemaining = credits.creditsRemaining;
         _creditsTier = credits.tier;
         _nudge = nudge;
+        _uiPayload = contextSnapshot.ui;
+        _memoryReady =
+            contextSnapshot.memoryReady || credits.memoryReady;
       });
+      final String? prompt = widget.launchContext.prefilledPrompt ??
+          widget.launchContext.insightPrompt;
+      if (prompt != null && prompt.trim().isNotEmpty && _lines.isEmpty) {
+        await _send();
+      }
     } on TippyChatException {
       return;
     }
+  }
+
+  Future<void> _openGoalsSheet() async {
+    final CreatorGoalModel? goal = await showTippyGoalSheet(context);
+    if (goal == null || !mounted) {
+      return;
+    }
+    final CreatorGoalsRepository repository = CreatorGoalsRepository(
+      chatService: _service,
+    );
+    await repository.saveGoal(goal);
+    await _loadPersonalization();
   }
 
   Future<void> _runCreatePlan() async {
@@ -118,6 +223,40 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
             user: false,
             text:
                 'Tell me what this content plan should be about first, then I can add it to your planner.',
+            isError: true,
+          ),
+        );
+      });
+      _scrollToEnd();
+      return;
+    }
+    final MeEntitlementsData? me =
+        ref.read(meEntitlementsProvider).valueOrNull;
+    final List<ContentPlan> plans =
+        ref.read(contentPlansProvider).valueOrNull ?? const <ContentPlan>[];
+    if (me != null && !canAffordAiAction(me, 'contentPlan')) {
+      setState(() {
+        _lines.add(
+          const _ChatLine(
+            user: false,
+            text:
+                'Not enough AI credits for a content plan. '
+                'Upgrade or wait for your monthly reset.',
+            isError: true,
+          ),
+        );
+      });
+      _scrollToEnd();
+      return;
+    }
+    if (me != null && !canCreateContentPlan(me, plans.length)) {
+      setState(() {
+        _lines.add(
+          const _ChatLine(
+            user: false,
+            text:
+                'Your Creator plan includes one active content plan. '
+                'Upgrade to Pro for unlimited plans.',
             isError: true,
           ),
         );
@@ -165,6 +304,16 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
               planId: planId,
             ),
       );
+      final String? uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        unawaited(
+          RetentionTrackingService.instance.trackContentPlanCreated(
+            uid: uid,
+            planId: planId,
+            metadata: const <String, dynamic>{'surface': 'tippy_chat'},
+          ),
+        );
+      }
     } on TippyChatException catch (e) {
       await _handleTippyError(
         error: e,
@@ -285,6 +434,257 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         setState(() {
           _busy = false;
         });
+      }
+      _scrollToEnd();
+    }
+  }
+
+  Future<void> _runAnalyzeContent() async {
+    if (_busy) {
+      return;
+    }
+    final String content = _input.text.trim().isNotEmpty
+        ? _input.text.trim()
+        : (_lines.isNotEmpty ? _lines.last.text : '');
+    if (content.isEmpty) {
+      setState(() {
+        _lines.add(
+          const _ChatLine(
+            user: false,
+            text: 'Paste a caption or script to review first.',
+            isError: true,
+          ),
+        );
+      });
+      _scrollToEnd();
+      return;
+    }
+    final MeEntitlementsData? me =
+        ref.read(meEntitlementsProvider).valueOrNull;
+    if (me != null && !canAffordAiAction(me, 'growthAnalysis')) {
+      setState(() {
+        _lines.add(
+          const _ChatLine(
+            user: false,
+            text:
+                'Not enough AI credits for content analysis. '
+                'Upgrade or wait for your monthly reset.',
+            isError: true,
+          ),
+        );
+      });
+      _scrollToEnd();
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final TippyAnalyzeContentResult result =
+          await _service.analyzeContent(content: content);
+      if (!mounted) {
+        return;
+      }
+      final String actions = result.actionItems.isEmpty
+          ? ''
+          : '\n\nNext steps:\n${result.actionItems.map((String item) => '• $item').join('\n')}';
+      setState(() {
+        _lines.add(
+          _ChatLine(
+            user: false,
+            text: '${result.summary}$actions'.trim(),
+            cards: result.ui.cards,
+          ),
+        );
+        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
+      });
+      await _persistConversation();
+      await _refreshCreditsSnapshot();
+    } on TippyChatException catch (e) {
+      await _handleTippyError(error: e);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+      _scrollToEnd();
+    }
+  }
+
+  Future<void> _runHookIdeas() async {
+    if (_busy) {
+      return;
+    }
+    final String prompt = _input.text.trim().isEmpty
+        ? 'Give me 5 hooks for my next short'
+        : _input.text.trim();
+    setState(() => _busy = true);
+    try {
+      final TippyHookIdeasResult result =
+          await _service.fetchHookIdeas(prompt: prompt);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _lines.add(
+          _ChatLine(
+            user: false,
+            text: result.hooks.isEmpty
+                ? (result.message ?? 'No hooks returned.')
+                : result.hooks.map((String hook) => '• $hook').join('\n'),
+          ),
+        );
+        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
+      });
+      await _persistConversation();
+      await _refreshCreditsSnapshot();
+    } on TippyChatException catch (e) {
+      await _handleTippyError(error: e);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+      _scrollToEnd();
+    }
+  }
+
+  Future<void> _runGenerateMission() async {
+    if (_busy) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final TippyMissionResult result = await _service.generateDailyMission();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _lines.add(
+          _ChatLine(
+            user: false,
+            text:
+                'Today\'s mission: ${result.title}'
+                '${result.description == null ? '' : '\n${result.description}'}',
+          ),
+        );
+        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
+      });
+      await _persistConversation();
+      await _refreshCreditsSnapshot();
+    } on TippyChatException catch (e) {
+      await _handleTippyError(error: e);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+      _scrollToEnd();
+    }
+  }
+
+  Future<void> _runGrowthProgram() async {
+    if (_busy) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final TippyPlanResult result = await _service.startGrowthProgram();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _lines.add(
+          _ChatLine(
+            user: false,
+            text: result.message ??
+                'Your 30-day growth program is ready in the planner.',
+            cards: result.ui.cards,
+          ),
+        );
+        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
+      });
+      ref.invalidate(contentPlansProvider);
+      await _persistConversation();
+      await _refreshCreditsSnapshot();
+    } on TippyChatException catch (e) {
+      await _handleTippyError(error: e);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+      _scrollToEnd();
+    }
+  }
+
+  Future<void> _runProposeSchedule() async {
+    if (_busy) {
+      return;
+    }
+    final String prompt = _input.text.trim().isEmpty
+        ? 'Propose 3 posting slots this week based on my goals'
+        : _input.text.trim();
+    setState(() => _busy = true);
+    try {
+      final TippyScheduleProposalResult result =
+          await _service.proposeSchedule(prompt: prompt);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _lines.add(
+          _ChatLine(
+            user: false,
+            text: result.message ??
+                'Review the schedule proposals below and approve the ones you want.',
+            cards: result.ui.cards,
+          ),
+        );
+        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
+      });
+      await _persistConversation();
+      await _refreshCreditsSnapshot();
+    } on TippyChatException catch (e) {
+      await _handleTippyError(error: e);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+      _scrollToEnd();
+    }
+  }
+
+  Future<void> _reviewScheduleProposal(TippyUiCardData card) async {
+    final String proposalId =
+        (card.ctaValue ?? card.planId ?? '').trim();
+    if (proposalId.isEmpty || _busy) {
+      return;
+    }
+    final bool? approved = await TippyApprovalSheet.show(
+      context,
+      title: card.title,
+      subtitle: card.body.isEmpty
+          ? 'Approve this posting slot?'
+          : card.body,
+    );
+    if (approved != true || !mounted) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await _service.approveScheduleProposal(proposalId: proposalId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _lines.add(
+          _ChatLine(
+            user: false,
+            text: 'Approved "${card.title}". It is now on your schedule.',
+          ),
+        );
+      });
+      await _persistConversation();
+    } on TippyChatException catch (e) {
+      await _handleTippyError(error: e);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
       }
       _scrollToEnd();
     }
@@ -425,7 +825,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         final int thinkingIndex = _lines.lastIndexWhere(
           (_ChatLine line) => line.isThinking,
         );
-        final _ChatLine replyLine = _ChatLine(user: false, text: reply.message);
+        final _ChatLine replyLine = _ChatLine(
+          user: false,
+          text: reply.message,
+          cards: reply.ui.cards,
+        );
         if (thinkingIndex >= 0) {
           _lines[thinkingIndex] = replyLine;
         } else {
@@ -433,6 +837,9 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         }
         _creditsRemaining = reply.creditsRemaining;
         _pendingRetryAction = null;
+        if (reply.ui != TippyUiPayload.empty) {
+          _uiPayload = reply.ui;
+        }
       });
       await _persistConversation();
       await _refreshCreditsSnapshot();
@@ -519,8 +926,43 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     }
     if (error.status == 402 || error is TippyUpgradeRequiredException) {
       return _TippyErrorHandling(
-        message: error.message,
+        message: error.code == 'CONTENT_PLAN_LIMIT'
+            ? error.message
+            : error.message,
         routeName: AppRoutes.upgrade,
+      );
+    }
+    if (error.code == 'CONSENT_REQUIRED') {
+      if (mounted) {
+        setState(() => _consentGranted = false);
+      }
+      return const _TippyErrorHandling(
+        message: 'Accept Tippy consent to continue.',
+      );
+    }
+    if (error.code == 'TIPPY_DISABLED') {
+      if (mounted) {
+        setState(() => _tippyEnabled = false);
+      }
+      return const _TippyErrorHandling(
+        message: 'Tippy AI is temporarily unavailable.',
+      );
+    }
+    if (error.code == 'APP_CHECK_REQUIRED' || error.code == 'APP_CHECK_INVALID') {
+      return const _TippyErrorHandling(
+        message:
+            'App verification failed. Restart the app or update to the latest build.',
+        showRetryButton: true,
+        shouldRestoreInput: true,
+      );
+    }
+    if (error.code == 'AI_PROVIDER_ERROR' ||
+        error.code == 'SERVICE_UNAVAILABLE' ||
+        error.code == 'RATE_LIMITED') {
+      return _TippyErrorHandling(
+        message: error.message,
+        showRetryButton: true,
+        shouldRestoreInput: true,
       );
     }
     if (error.status == 429) {
@@ -539,14 +981,18 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         showRetryButton: true,
       );
     }
-    if (error.status >= 500) {
+    if (error.status >= 500 && error.code == 'INTERNAL_ERROR') {
       return const _TippyErrorHandling(
         message: 'Tippy hit a temporary issue. Your credits were not used.',
         shouldRestoreInput: true,
         showRetryButton: true,
       );
     }
-    return _TippyErrorHandling(message: error.message);
+    return _TippyErrorHandling(
+      message: error.message,
+      shouldRestoreInput: true,
+      showRetryButton: error.retryable,
+    );
   }
 
   Future<void> _refreshCreditsSnapshot() async {
@@ -684,27 +1130,87 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         ref.watch(userProgressBundleProvider);
     return bundleAsync.when(
       data: (UserProgressBundle bundle) {
-        if (!resolveTippyEnabled(bundle)) {
-          return _TippyLockedScaffold(
-            onUpgrade: () {
-              Navigator.of(context).pushNamed(AppRoutes.upgrade);
-            },
-          );
-        }
         final AsyncValue<MeEntitlementsData> meAsync =
             ref.watch(meEntitlementsProvider);
         return meAsync.when(
           data: (MeEntitlementsData me) {
+            if (!resolveTippyEnabledFromSnapshot(me)) {
+              return _TippyLockedScaffold(
+                onUpgrade: () {
+                  Navigator.of(context).pushNamed(AppRoutes.upgrade);
+                },
+              );
+            }
+            if (!_tippyEnabled) {
+              return const _TippyDisabledScaffold();
+            }
+            if (_consentLoading) {
+              return const _TippyLoadingScaffold(
+                message: 'Loading Tippy...',
+              );
+            }
+            if (!_consentGranted) {
+              return TippyConsentGate(
+                busy: _consentSaving,
+                onAccepted: _acceptConsent,
+              );
+            }
             return _buildChatScaffold(
               context,
               bundle: bundle,
               me: me,
             );
           },
-          loading: () => const _TippyLoadingScaffold(
-            message: 'Checking your plan...',
-          ),
+          loading: () {
+            final SubscriptionSnapshot? cached =
+                readCachedSubscriptionSnapshot(ref);
+            if (cached != null) {
+              if (!_tippyEnabled) {
+                return const _TippyDisabledScaffold();
+              }
+              if (_consentLoading) {
+                return const _TippyLoadingScaffold(
+                  message: 'Loading Tippy...',
+                );
+              }
+              if (!_consentGranted) {
+                return TippyConsentGate(
+                  busy: _consentSaving,
+                  onAccepted: _acceptConsent,
+                );
+              }
+              return _buildChatScaffold(
+                context,
+                bundle: bundle,
+                me: cached,
+              );
+            }
+            return const _TippyLoadingScaffold(
+              message: 'Checking your plan...',
+            );
+          },
           error: (Object e, StackTrace st) {
+            if (resolveTippyEnabled(bundle)) {
+              if (!_tippyEnabled) {
+                return const _TippyDisabledScaffold();
+              }
+              if (_consentLoading) {
+                return const _TippyLoadingScaffold(
+                  message: 'Loading Tippy...',
+                );
+              }
+              if (!_consentGranted) {
+                return TippyConsentGate(
+                  busy: _consentSaving,
+                  onAccepted: _acceptConsent,
+                );
+              }
+              return _buildChatScaffold(
+                context,
+                bundle: bundle,
+                me: SubscriptionSnapshot.starterFallback(),
+              );
+            }
             return _TippyErrorScaffold(
               title: 'Could not verify your plan.',
               details: e.toString(),
@@ -736,6 +1242,21 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     final ThemeData theme = Theme.of(context);
     final int? displayCredits = _displayCreditsRemaining(me);
     final String creditsLabel = _planSubtitle(bundle, me: me);
+    final CreatorPersonalizationProfile personalization =
+        ref.watch(creatorPersonalizationProvider).valueOrNull ??
+            CreatorPersonalizationProfile.empty;
+    final TippyFeatureTier featureTier =
+        resolveTippyFeatureTierFromSnapshot(me);
+    final List<String> quickPrompts =
+        _uiPayload.suggestedPrompts.isNotEmpty
+            ? _uiPayload.suggestedPrompts
+            : CreatorPersonalizationLogic.mergeQuickPrompts(
+                basePrompts: TippyPersonality.quickPromptsForSnapshot(me),
+                goalPrompts:
+                    CreatorPersonalizationLogic.tippyQuickPromptsForGoals(
+                  personalization.creatorGoals,
+                ),
+              );
     return Scaffold(
       backgroundColor: const Color(0xFF050816),
       body: DecoratedBox(
@@ -758,6 +1279,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                 busy: _busy,
                 onHistory: _openHistorySheet,
                 onNewChat: _startNewConversation,
+                onGoals: _openGoalsSheet,
               ),
               Expanded(
                 child: ListView.builder(
@@ -776,14 +1298,22 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                               nudge: _nudge,
                               creditsLabel: creditsLabel,
                               subtitle: TippyPersonality.welcomeSubtitle(
-                                resolveTippyFeatureTier(bundle),
+                                featureTier,
                               ),
                             ),
+                            const SizedBox(height: 10),
+                            if (_memoryReady)
+                              TippyContextStrip(data: _uiPayload.contextStrip)
+                            else
+                              TippyMemoryEmptyState(
+                                onUploadTap: () {
+                                  Navigator.of(context)
+                                      .pushNamed(AppRoutes.camera);
+                                },
+                              ),
                             const SizedBox(height: 14),
                             _QuickPromptGrid(
-                              prompts: TippyPersonality.quickPromptsForBundle(
-                                bundle,
-                              ),
+                              prompts: quickPrompts,
                               onPrompt: (String prompt) {
                                 _input.text = prompt;
                                 _send();
@@ -799,6 +1329,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                       onContentPlanDeepLink: line.user || line.isThinking
                           ? null
                           : _openContentPlanById,
+                      onPrefillPrompt: (String prompt) {
+                        _input.text = prompt;
+                        _send();
+                      },
+                      onApproveSchedule: _reviewScheduleProposal,
                     );
                   },
                 ),
@@ -853,6 +1388,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                 onRetry: _retryLastAction,
                 onCreatePlan: _runCreatePlan,
                 onGenerateCaption: _runGenerateCaption,
+                onAnalyzeContent: _runAnalyzeContent,
+                onHookIdeas: _runHookIdeas,
+                onGenerateMission: _runGenerateMission,
+                onProposeSchedule: _runProposeSchedule,
+                onGrowthProgram: _runGrowthProgram,
               ),
               SafeArea(
                 top: false,
@@ -933,12 +1473,14 @@ class _TippyTopBar extends StatelessWidget {
     required this.busy,
     required this.onHistory,
     required this.onNewChat,
+    required this.onGoals,
   });
 
   final String creditsLabel;
   final bool busy;
   final VoidCallback onHistory;
   final VoidCallback onNewChat;
+  final VoidCallback onGoals;
 
   @override
   Widget build(BuildContext context) {
@@ -1016,6 +1558,12 @@ class _TippyTopBar extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          IconButton(
+            tooltip: 'Creator goals',
+            onPressed: onGoals,
+            icon: const Icon(Icons.flag_rounded),
+            color: Colors.white.withValues(alpha: 0.82),
           ),
           IconButton(
             tooltip: 'New chat',
@@ -1224,6 +1772,11 @@ class _TippyActionDock extends StatelessWidget {
     required this.onRetry,
     required this.onCreatePlan,
     required this.onGenerateCaption,
+    required this.onAnalyzeContent,
+    required this.onHookIdeas,
+    required this.onGenerateMission,
+    required this.onProposeSchedule,
+    required this.onGrowthProgram,
   });
 
   final bool busy;
@@ -1232,20 +1785,27 @@ class _TippyActionDock extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback onCreatePlan;
   final VoidCallback onGenerateCaption;
+  final VoidCallback onAnalyzeContent;
+  final VoidCallback onHookIdeas;
+  final VoidCallback onGenerateMission;
+  final VoidCallback onProposeSchedule;
+  final VoidCallback onGrowthProgram;
 
   Future<void> _openTools(BuildContext context) async {
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF0B1220),
       showDragHandle: true,
       builder: (BuildContext context) {
         return SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
                 ListTile(
                   onTap: busy
                       ? null
@@ -1268,6 +1828,107 @@ class _TippyActionDock extends StatelessWidget {
                     'Build a content plan and send it to your planner.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.58),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onAnalyzeContent();
+                        },
+                  leading: const Icon(
+                    Icons.insights_rounded,
+                    color: Color(0xFF93C5FD),
+                  ),
+                  title: const Text(
+                    'Review my content',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onHookIdeas();
+                        },
+                  leading: const Icon(
+                    Icons.bolt_rounded,
+                    color: Color(0xFF93C5FD),
+                  ),
+                  title: const Text(
+                    '5 hook ideas',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onGenerateMission();
+                        },
+                  leading: const Icon(
+                    Icons.emoji_events_rounded,
+                    color: Color(0xFF93C5FD),
+                  ),
+                  title: const Text(
+                    'Today\'s mission',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onProposeSchedule();
+                        },
+                  leading: const Icon(
+                    Icons.event_available_rounded,
+                    color: Color(0xFF93C5FD),
+                  ),
+                  title: const Text(
+                    'Propose posting schedule',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Draft slots for the week and approve what you want.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.58),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  onTap: busy
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onGrowthProgram();
+                        },
+                  leading: const Icon(
+                    Icons.timeline_rounded,
+                    color: Color(0xFF93C5FD),
+                  ),
+                  title: const Text(
+                    'Start 30-day growth program',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -1299,6 +1960,7 @@ class _TippyActionDock extends StatelessWidget {
               ],
             ),
           ),
+        ),
         );
       },
     );
@@ -1914,6 +2576,76 @@ class _TippyHistorySheet extends StatelessWidget {
   }
 }
 
+class _TippyDisabledScaffold extends StatelessWidget {
+  const _TippyDisabledScaffold();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF050816),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF111827),
+              Color(0xFF07111F),
+              Color(0xFF050816),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    tooltip: 'Back',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    color: Colors.white,
+                  ),
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.smart_toy_outlined,
+                  color: Colors.white54,
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Tippy is temporarily unavailable',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Our team has paused Tippy AI. Please check back later.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontSize: 14,
+                    height: 1.45,
+                  ),
+                ),
+                const Spacer(flex: 2),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TippyLockedScaffold extends StatelessWidget {
   const _TippyLockedScaffold({required this.onUpgrade});
 
@@ -2033,22 +2765,28 @@ class _ChatLine {
     required this.text,
     this.isError = false,
     this.isThinking = false,
+    this.cards = const <TippyUiCardData>[],
   });
 
   final bool user;
   final String text;
   final bool isError;
   final bool isThinking;
+  final List<TippyUiCardData> cards;
 }
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
     required this.line,
     this.onContentPlanDeepLink,
+    this.onPrefillPrompt,
+    this.onApproveSchedule,
   });
 
   final _ChatLine line;
   final void Function(String planId)? onContentPlanDeepLink;
+  final void Function(String prompt)? onPrefillPrompt;
+  final void Function(TippyUiCardData card)? onApproveSchedule;
 
   @override
   Widget build(BuildContext context) {
@@ -2093,14 +2831,35 @@ class _ChatBubble extends StatelessWidget {
             ),
           ],
         ),
-        child: TippyMessageContent(
-          text: line.text,
-          style: TextStyle(
-            color: fg,
-            fontSize: 14,
-            height: 1.35,
-          ),
-          onContentPlanDeepLink: onContentPlanDeepLink,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            TippyMessageContent(
+              text: line.text,
+              style: TextStyle(
+                color: fg,
+                fontSize: 14,
+                height: 1.35,
+              ),
+              onContentPlanDeepLink: onContentPlanDeepLink,
+            ),
+            for (final TippyUiCardData card in line.cards)
+              TippyActionCard(
+                card: card,
+                onDeepLink: (String value) {
+                  final RegExp planPattern = RegExp(
+                    r'streamerstip://content-plan/([A-Za-z0-9_-]+)',
+                  );
+                  final RegExpMatch? match = planPattern.firstMatch(value);
+                  if (match != null) {
+                    onContentPlanDeepLink?.call(match.group(1)!);
+                    return;
+                  }
+                },
+                onPrefillPrompt: onPrefillPrompt,
+                onApproveSchedule: onApproveSchedule,
+              ),
+          ],
         ),
       ),
     );

@@ -25,9 +25,9 @@ abstract final class AuthSessionTeardown {
       debugPrint('⚠️ AuthSessionTeardown relationship teardown: $e');
     }
     try {
-      GlobalPlaybackManager.instance.pauseAll();
+      GlobalPlaybackManager.instance.teardownForSignOut();
     } catch (e) {
-      debugPrint('⚠️ AuthSessionTeardown playback pause: $e');
+      debugPrint('⚠️ AuthSessionTeardown playback teardown: $e');
     }
     debugPrint('🧹 AuthSessionTeardown: session listeners cancelled');
   }

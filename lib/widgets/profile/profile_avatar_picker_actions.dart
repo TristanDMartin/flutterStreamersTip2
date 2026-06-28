@@ -9,6 +9,8 @@ abstract final class ProfileAvatarPickerActions {
   static void showImagePicker(
     BuildContext context, {
     required void Function(File imageFile) onImageSelected,
+    VoidCallback? onRemovePhoto,
+    bool hasExistingPhoto = false,
   }) {
     if (!NavigationContext.canNavigate(context)) {
       return;
@@ -22,6 +24,8 @@ abstract final class ProfileAvatarPickerActions {
       backgroundColor: Colors.transparent,
       builder: (BuildContext sheetContext) {
         return ImagePickerWidget(
+          hasExistingPhoto: hasExistingPhoto,
+          onRemovePhoto: onRemovePhoto,
           onImageSelected: (File imageFile) {
             Navigator.of(sheetContext).pop();
             onImageSelected(imageFile);

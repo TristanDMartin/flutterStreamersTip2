@@ -29,10 +29,10 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
         _isLoading = true;
       });
 
-      // Get blocked user IDs
-      final blockedUserIds = await _blockingService.getBlockedUsers();
+      final List<BlockedUserRecord> blockedRecords =
+          await _blockingService.getBlockedUserRecords();
 
-      if (blockedUserIds.isEmpty) {
+      if (blockedRecords.isEmpty) {
         setState(() {
           _blockedUsers = [];
           _isLoading = false;
@@ -40,27 +40,26 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
         return;
       }
 
-      // Fetch user details for blocked users
       final users = <BlockedUserInfo>[];
-      for (final userId in blockedUserIds) {
+      for (final BlockedUserRecord record in blockedRecords) {
         try {
           final userDoc = await FirebaseFirestore.instance
               .collection('users')
-              .doc(userId)
+              .doc(record.userId)
               .get();
 
           if (userDoc.exists) {
             final userData = userDoc.data()!;
             users.add(BlockedUserInfo(
-              id: userId,
+              id: record.userId,
               displayName: userData['displayName'] ?? 'Unknown User',
               username: userData['username'] ?? 'unknown',
               avatarURL: resolveAvatarUrl(userData),
-              blockedAt: userData['blockedAt'] ?? userDoc.data()!['createdAt'],
+              blockedAt: record.blockedAt,
             ));
           }
         } catch (e) {
-          debugPrint('Error loading user $userId: $e');
+          debugPrint('Error loading user ${record.userId}: $e');
         }
       }
 
@@ -110,27 +109,33 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
       String userId, String displayName) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Unblock User',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Are you sure you want to unblock $displayName? You will be able to see their content and interact with them again.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+      builder: (BuildContext dialogContext) {
+        final StSupportShellStyle shell =
+            StSupportShellStyle.of(dialogContext);
+        final ColorScheme cs = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          backgroundColor: shell.surfaceCard,
+          title: Text(
+            'Unblock User',
+            style: TextStyle(color: shell.onChrome),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Unblock', style: TextStyle(color: Colors.green)),
+          content: Text(
+            'Are you sure you want to unblock $displayName? You will be able '
+            'to see their content and interact with them again.',
+            style: TextStyle(color: shell.muted),
           ),
-        ],
-      ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text('Cancel', style: TextStyle(color: shell.muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text('Unblock', style: TextStyle(color: cs.primary)),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true) {
@@ -325,7 +330,7 @@ class BlockedUserInfo {
   final String displayName;
   final String username;
   final String? avatarURL;
-  final dynamic blockedAt;
+  final DateTime? blockedAt;
 
   BlockedUserInfo({
     required this.id,

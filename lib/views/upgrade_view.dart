@@ -15,7 +15,6 @@ import '../features/billing/subscription_provider.dart';
 import '../features/billing/tier_display_names.dart';
 import '../features/billing/upgrade_tier_marketing.dart';
 import '../features/billing/iap_billing_coordinator.dart';
-import '../features/billing/mobile_billing_setup_status_banner.dart';
 import '../features/billing/iap_billing_facade.dart';
 import '../features/billing/store_product_catalog.dart';
 import '../features/billing/store_product_ids.dart';
@@ -32,7 +31,6 @@ class UpgradeView extends ConsumerStatefulWidget {
 class _UpgradeViewState extends ConsumerState<UpgradeView> {
   Color get _on => Theme.of(context).colorScheme.onSurface;
   Color get _onP => Theme.of(context).colorScheme.onPrimary;
-  String? _localProductHint;
 
   IapBillingFacade get _iap => IapBillingCoordinator.instance.facade;
   final SubscriptionManageService _manageService =
@@ -45,18 +43,26 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
   }
 
   void _onPurchaseVerified() {
-    if (mounted) {
-      invalidateSubscriptionEntitlements(ref);
-      final String tier = ref
-              .read(subscriptionSnapshotProvider)
-              .valueOrNull
-              ?.tierApi ??
-          'starter';
+    unawaited(_handlePurchaseVerified());
+  }
+
+  Future<void> _handlePurchaseVerified() async {
+    if (!mounted) {
+      return;
+    }
+    invalidateSubscriptionEntitlements(ref);
+    try {
+      final SubscriptionSnapshot snapshot =
+          await refreshSubscriptionEntitlements(ref, forceRefresh: true);
       unawaited(
         CreatorIntelligenceAnalyticsService().trackSubscriptionStarted(
-          tier: tier,
+          tier: snapshot.tierApi,
         ),
       );
+    } catch (e) {
+      debugPrint('UpgradeView: post-purchase entitlements refresh failed: $e');
+    }
+    if (mounted) {
       setState(() {});
     }
   }
@@ -65,6 +71,9 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
   void initState() {
     super.initState();
     final IapBillingCoordinator coordinator = IapBillingCoordinator.instance;
+    coordinator.setEntitlementsRefreshHandler(
+      () => refreshSubscriptionEntitlements(ref, forceRefresh: true),
+    );
     coordinator.addListener(_onIapUi);
     coordinator.addVerifiedHandler(_onPurchaseVerified);
     unawaited(coordinator.refreshStoreCatalog());
@@ -84,6 +93,7 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
   @override
   void dispose() {
     final IapBillingCoordinator coordinator = IapBillingCoordinator.instance;
+    coordinator.setEntitlementsRefreshHandler(null);
     coordinator.removeListener(_onIapUi);
     coordinator.removeVerifiedHandler(_onPurchaseVerified);
     super.dispose();
@@ -94,15 +104,10 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
       return;
     }
     setState(() {
-      _localProductHint = null;
       _iap.lastRecoverableHint = null;
     });
     final ProductDetails? details = _iap.productsById[productId];
     if (details == null) {
-      setState(() {
-        _localProductHint = 'That product is not available from the store yet. '
-            'Check App Store Connect / Play Console IDs match the app.';
-      });
       return;
     }
     await _iap.buySubscription(details);
@@ -120,11 +125,11 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(kStreamersTipProMonthlyId),
+              onPressed: () => Navigator.of(ctx).pop(storeProMonthlyId()),
               child: const Text('Monthly'),
             ),
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(kStreamersTipProYearlyId),
+              onPressed: () => Navigator.of(ctx).pop(storeProYearlyId()),
               child: const Text('Yearly'),
             ),
           ],
@@ -152,12 +157,12 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
           actions: <Widget>[
             TextButton(
               onPressed: () =>
-                  Navigator.of(ctx).pop(kStreamersTipStudioMonthlyId),
+                  Navigator.of(ctx).pop(storeStudioMonthlyId()),
               child: const Text('Monthly'),
             ),
             TextButton(
               onPressed: () =>
-                  Navigator.of(ctx).pop(kStreamersTipStudioYearlyId),
+                  Navigator.of(ctx).pop(storeStudioYearlyId()),
               child: const Text('Yearly'),
             ),
           ],
@@ -201,6 +206,35 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
 
   String _tierLabel(String tier) => tierDisplayNameForApi(tier);
 
+  String _subscriptionFootnote({
+    required SubscriptionSnapshot? entitlements,
+    required bool blockStorePurchase,
+    required String storeLabel,
+  }) {
+    if (blockStorePurchase) {
+      return 'You already have an active plan from the website. '
+          'Manage billing at streamerstip.com — $storeLabel checkout is '
+          'not used for that subscription.';
+    }
+    if (entitlements != null &&
+        entitlements.isPaid &&
+        !entitlements.isStarter &&
+        entitlements.isPaidViaMobileStore &&
+        entitlements.billingSource !=
+            (defaultTargetPlatform == TargetPlatform.iOS
+                ? SubscriptionBillingSource.apple
+                : SubscriptionBillingSource.google)) {
+      return 'Your ${entitlements.tierDisplayName} plan is active on this '
+          'account (purchased via ${entitlements.billingSourceDisplayLabel}). '
+          'This device shows $storeLabel products only; your features unlock '
+          'from your StreamersTip account everywhere.';
+    }
+    return 'Subscriptions on this device use $storeLabel only (not Stripe). '
+        'After purchase, StreamersTip verifies your receipt and updates your '
+        'account; features unlock on iOS, Android, and the web via your '
+        'StreamersTip account.';
+  }
+
   String _statusLabel(String? status) => subscriptionStatusDisplayLabel(status);
 
   @override
@@ -213,13 +247,16 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
     final bool blockStorePurchase =
         entitlements?.shouldBlockInAppStorePurchase ?? false;
     final ProductDetails? proMonthly =
-        _iap.productsById[kStreamersTipProMonthlyId];
+        _iap.productsById[storeProMonthlyId()];
     final ProductDetails? proYearly =
-        _iap.productsById[kStreamersTipProYearlyId];
+        _iap.productsById[storeProYearlyId()];
     final ProductDetails? studioMonthly =
-        _iap.productsById[kStreamersTipStudioMonthlyId];
+        _iap.productsById[storeStudioMonthlyId()];
     final ProductDetails? studioYearly =
-        _iap.productsById[kStreamersTipStudioYearlyId];
+        _iap.productsById[storeStudioYearlyId()];
+    final String storeLabel = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'App Store'
+        : 'Google Play';
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -230,15 +267,11 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
             children: [
               _buildHeader(context),
               const SizedBox(height: 24),
-              _buildHero(),
-              const SizedBox(height: 16),
               _buildCurrentPlanCard(),
               if (entitlements != null) ...<Widget>[
                 const SizedBox(height: 12),
                 _buildBillingChannelCard(entitlements),
               ],
-              const SizedBox(height: 16),
-              _buildMobileStoreSection(),
               const SizedBox(height: 24),
               _buildTierCard(
                 context,
@@ -272,7 +305,7 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
                         resolvedTier == 'starter'
                     ? _pickProProductThenBuy
                     : null,
-                storePrimaryLabel: 'Subscribe with App Store / Google Play',
+                storePrimaryLabel: 'Subscribe with $storeLabel',
               ),
               const SizedBox(height: 16),
               _buildTierCard(
@@ -299,14 +332,11 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
               ),
               const SizedBox(height: 20),
               Text(
-                blockStorePurchase
-                    ? 'You already have an active plan from the website. '
-                        'Manage billing at streamerstip.com — Apple and '
-                        'Google checkout are not used for that subscription.'
-                    : 'Subscriptions on iOS and Android use the App Store or '
-                        'Google Play only (not Stripe). After purchase, '
-                        'StreamersTip verifies your receipt and updates your '
-                        'account; features unlock via /api/user/entitlements.',
+                _subscriptionFootnote(
+                  entitlements: entitlements,
+                  blockStorePurchase: blockStorePurchase,
+                  storeLabel: storeLabel,
+                ),
                 style: TextStyle(
                   color: _on.withValues(alpha: 0.62),
                   fontSize: 13,
@@ -386,103 +416,6 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMobileStoreSection() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: _on.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: _on.withValues(alpha: 0.1),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Apple & Google subscriptions',
-            style: TextStyle(
-              color: _on.withValues(alpha: 0.72),
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const MobileBillingSetupStatusBanner(),
-          const SizedBox(height: 8),
-          if (_iap.purchaseBusy)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: LinearProgressIndicator(minHeight: 3),
-            ),
-          if (_iap.lastError != null)
-            SelectableText.rich(
-              TextSpan(
-                text: _iap.lastError!,
-                style: const TextStyle(
-                  color: Colors.redAccent,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          if (_iap.notFoundProductIds.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 8),
-            SelectableText.rich(
-              TextSpan(
-                style: TextStyle(
-                  color: Colors.orange.shade200,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-                children: <InlineSpan>[
-                  const TextSpan(text: 'Store returned no match for: '),
-                  TextSpan(
-                    text: _iap.notFoundProductIds.join(', '),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (_localProductHint != null) ...<Widget>[
-            const SizedBox(height: 8),
-            SelectableText.rich(
-              TextSpan(
-                text: _localProductHint!,
-                style: TextStyle(
-                  color: Colors.orange.shade200,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-          if (_iap.lastRecoverableHint != null) ...<Widget>[
-            const SizedBox(height: 8),
-            Text(
-              _iap.lastRecoverableHint!,
-              style: TextStyle(
-                color: _on.withValues(alpha: 0.75),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-          if (_iap.storeAvailable)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed:
-                    _iap.purchaseBusy ? null : () => _iap.restorePurchases(),
-                child: const Text('Restore purchases'),
-              ),
-            ),
         ],
       ),
     );
@@ -628,62 +561,6 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHero() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: AppColors.supportAccentGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: _on.withValues(alpha: 0.18),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.2),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: _onP.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Icon(
-              Icons.workspace_premium_rounded,
-              color: _onP,
-              size: 28,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Creator keeps things lightweight, Creator Pro unlocks serious '
-            'publishing power, and Studio adds advanced analytics, '
-            'automation, and team features.',
-            style: TextStyle(
-              color: _onP.withValues(alpha: 0.9),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-            ),
-            softWrap: true,
           ),
         ],
       ),

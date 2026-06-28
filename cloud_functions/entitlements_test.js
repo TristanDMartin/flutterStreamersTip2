@@ -7,6 +7,7 @@ const {
   hasBillingFeature,
   creditCostForAction,
   isUnlimited,
+  canCreateContentPlan,
 } = require('./src/shared/entitlements');
 
 function test(name, fn) {
@@ -46,6 +47,13 @@ test('studio has team feature', () => {
 test('credit costs', () => {
   assert.strictEqual(creditCostForAction('contentPlan'), 5);
   assert.strictEqual(creditCostForAction('growthAnalysis'), 10);
+});
+
+test('starter content plan limit is one', () => {
+  assert.strictEqual(getEntitlementsForTier('starter').contentPlans, 1);
+  assert.strictEqual(canCreateContentPlan('starter', 0), true);
+  assert.strictEqual(canCreateContentPlan('starter', 1), false);
+  assert.strictEqual(canCreateContentPlan('pro', 10), true);
 });
 
 console.log('entitlements_test.js: all passed');

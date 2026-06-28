@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/app_check_http_headers.dart';
 import '../../core/backend/site_api_base.dart';
+import '../../services/production_monitoring_service.dart';
 import 'billing_backend_config.dart';
 import 'mobile_purchase_verification_payload.dart';
 
@@ -89,15 +91,21 @@ class MobilePurchaseVerificationClient {
     final http.Client client = httpClient ?? http.Client();
     final bool ownsClient = httpClient == null;
     try {
+      final Map<String, String> headers =
+          await buildAuthenticatedHttpHeaders(
+        idToken: idToken,
+        extra: const <String, String>{'Content-Type': 'application/json'},
+      );
       final http.Response response = await client.post(
         uri,
-        headers: <String, String>{
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $idToken',
-        },
+        headers: headers,
         body: jsonEncode(body),
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        await ProductionMonitoringService.instance.recordHttpFailure(
+          endpoint: 'verify_mobile_purchase',
+          statusCode: response.statusCode,
+        );
         throw MobilePurchaseVerificationException(
           'Verification failed (${response.statusCode}): ${response.body}',
         );

@@ -16,7 +16,10 @@ import 'terms_and_privacy_view.dart';
 import '../core/theme/support_shell_style.dart';
 import '../core/feature_flags.dart';
 import '../components/onboarding/contextual_tips_service.dart';
-import '../routing/app_navigator.dart';
+import '../features/analytics/creator_intelligence_view.dart';
+import '../features/analytics/creator_video_insights_view.dart';
+import 'linked_platforms_view.dart';
+import '../routing/app_routes.dart';
 import '../widgets/two_factor_settings_view.dart';
 import '../widgets/video_categorization_screen.dart';
 
@@ -98,16 +101,16 @@ class _SettingsViewState extends State<SettingsView> {
                             onTap: () =>
                                 _navigateToPage(context, 'Manage Account'),
                           ),
-                          if (FeatureFlags.linkedPlatforms)
-                            _buildSettingsItem(
-                              context,
-                              icon: Icons.link,
-                              title: 'Linked Platforms',
-                              subtitle:
-                                  'Reconnect YouTube, TikTok, Instagram, and more',
-                              onTap: () =>
-                                  _navigateToPage(context, 'Linked Platforms'),
-                            ),
+                          _buildSettingsItem(
+                            context,
+                            icon: Icons.link,
+                            title: 'Linked Platforms',
+                            subtitle: FeatureFlags.linkedPlatforms
+                                ? 'Reconnect YouTube, TikTok, Instagram, and more'
+                                : 'Coming soon — connect destinations for cross-posting',
+                            onTap: () =>
+                                _navigateToPage(context, 'Linked Platforms'),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -445,11 +448,13 @@ class _SettingsViewState extends State<SettingsView> {
       return null;
     }
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-        child: Row(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+          child: Row(
           children: <Widget>[
             Container(
               width: 40,
@@ -503,111 +508,131 @@ class _SettingsViewState extends State<SettingsView> {
           ],
         ),
       ),
+    ),
+    );
+  }
+
+  void _pushSettingsPage(BuildContext context, Widget page, String routeName) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: routeName),
+        builder: (BuildContext context) => page,
+      ),
     );
   }
 
   void _navigateToPage(BuildContext context, String pageName) {
     switch (pageName) {
       case 'Manage Account':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const ManageAccountView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const ManageAccountView(),
+          '${AppRoutes.settings}/manage-account',
         );
         return;
       case 'Two-Factor Authentication':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const TwoFactorSettingsView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const TwoFactorSettingsView(),
+          '${AppRoutes.settings}/two-factor',
         );
         return;
       case 'Linked Platforms':
-        if (FeatureFlags.linkedPlatforms) {
-          AppNavigator.openLinkedPlatforms(context);
-        }
+        _pushSettingsPage(
+          context,
+          const LinkedPlatformsView(),
+          AppRoutes.linkedPlatforms,
+        );
         return;
       case 'Creator Intelligence':
-        AppNavigator.openCreatorIntelligence(context);
+        _pushSettingsPage(
+          context,
+          const CreatorIntelligenceView(),
+          AppRoutes.creatorIntelligence,
+        );
         return;
       case 'Video Insights':
-        AppNavigator.openVideoInsights(context);
+        _pushSettingsPage(
+          context,
+          const CreatorVideoInsightsView(),
+          AppRoutes.videoInsights,
+        );
         return;
       case 'Blocked Accounts':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const BlockedAccountsView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const BlockedAccountsView(),
+          '${AppRoutes.settings}/blocked-accounts',
         );
         return;
       case 'Privacy Settings':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const PrivacySettingsView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const PrivacySettingsView(),
+          '${AppRoutes.settings}/privacy',
         );
         return;
       case 'Mentions & Tags':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const MentionsTagsView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const MentionsTagsView(),
+          '${AppRoutes.settings}/mentions-tags',
         );
         return;
       case 'Notifications':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const NotificationsView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const NotificationsView(),
+          '${AppRoutes.settings}/notifications',
         );
         return;
       case 'Video Categorization':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const VideoCategorizationScreen(),
-          ),
+        _pushSettingsPage(
+          context,
+          const VideoCategorizationScreen(),
+          '${AppRoutes.settings}/video-categorization',
         );
         return;
       case 'Content Preferences':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const ContentPreferencesView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const ContentPreferencesView(),
+          '${AppRoutes.settings}/content-preferences',
         );
         return;
       case 'Report a Problem':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const ContactSupportView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const ContactSupportView(),
+          '${AppRoutes.settings}/contact-support',
         );
         return;
       case 'Safety Center':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const SafetyCenterView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const SafetyCenterView(),
+          '${AppRoutes.settings}/safety-center',
         );
         return;
       case 'Community Guidelines':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const CommunityGuidelinesView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const CommunityGuidelinesView(),
+          '${AppRoutes.settings}/community-guidelines',
         );
         return;
       case 'Terms & Privacy Policy':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const TermsAndPrivacyView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const TermsAndPrivacyView(),
+          '${AppRoutes.settings}/terms-privacy',
         );
         return;
       case 'About':
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const AboutView(),
-          ),
+        _pushSettingsPage(
+          context,
+          const AboutView(),
+          '${AppRoutes.settings}/about',
         );
         return;
       default:

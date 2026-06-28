@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../routing/app_routes.dart';
 import '../services/pending_auth_redirect_service.dart';
-import '../widgets/email_verification_view.dart';
 
 bool _consumeOrGoHomeInFlight = false;
 
@@ -31,14 +30,7 @@ Future<void> navigateAfterAuthenticated(BuildContext context) async {
     if (routeName == AppRoutes.root || routeName == AppRoutes.home) {
       return;
     }
-    await Navigator.of(context).pushReplacement<void, void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext ctx) => EmailVerificationView(
-          email: fresh.email ?? '',
-          onVerified: () {},
-        ),
-      ),
-    );
+    await PendingAuthRedirectService.instance.consumeOrGoHome(context);
     return;
   }
   if (_consumeOrGoHomeInFlight) {

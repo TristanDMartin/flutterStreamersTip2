@@ -32,6 +32,207 @@ function readString(obj, keys) {
   return '';
 }
 
+function readStringList(raw, limit = 8) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+const GOAL_LABELS = {
+  growth: 'Grow audience and engagement',
+  monetization: 'Monetize content',
+  ai_assistance: 'AI coaching and workflow help',
+  networking: 'Build creator connections',
+  content_creation: 'Plan and create content',
+  streaming: 'Improve live streaming',
+};
+
+const PLATFORM_LABELS = {
+  twitch: 'Twitch',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  kick: 'Kick',
+  instagram: 'Instagram',
+  facebook_gaming: 'Facebook Gaming',
+};
+
+const PLATFORM_GUIDANCE = {
+  twitch:
+    'Twitch context: categories, stream titles, raids, clips, panels, ' +
+    'and live engagement.',
+  youtube:
+    'YouTube context: thumbnails, hooks, Shorts vs long-form, and ' +
+    'upload cadence.',
+  tiktok:
+    'TikTok context: hooks in the first second, trends, and vertical pacing.',
+  kick:
+    'Kick context: live categories, discoverability, and clip highlights.',
+  instagram:
+    'Instagram context: Reels hooks, aesthetic consistency, and CTAs.',
+  facebook_gaming:
+    'Facebook Gaming context: live discovery, community posts, and clips.',
+};
+
+function readOnboardingGoals(userData) {
+  const onboarding =
+    userData.onboarding &&
+    typeof userData.onboarding === 'object' &&
+    !Array.isArray(userData.onboarding)
+      ? userData.onboarding
+      : {};
+  return readStringList(
+    userData.creatorGoals || onboarding.creatorGoals || onboarding.creatorGoal,
+  );
+}
+
+function readOnboardingPlatforms(userData) {
+  const onboarding =
+    userData.onboarding &&
+    typeof userData.onboarding === 'object' &&
+    !Array.isArray(userData.onboarding)
+      ? userData.onboarding
+      : {};
+  return readStringList(onboarding.platforms);
+}
+
+function appendMemoryLines(lines, memory) {
+  if (!memory || typeof memory !== 'object' || Object.keys(memory).length === 0) {
+    return;
+  }
+  const niche =
+    memory.niche &&
+    Array.isArray(memory.niche.labels) &&
+    memory.niche.labels.length > 0
+      ? memory.niche.labels.join(', ')
+      : readString(memory.niche, ['primaryCategoryId']);
+  if (niche) {
+    lines.push(`Creator niche focus: ${niche}.`);
+  }
+  const posting =
+    memory.posting && typeof memory.posting === 'object' ? memory.posting : null;
+  if (posting) {
+    const avg = readNumber(posting, ['avgUploadsPerWeek']);
+    const week = readNumber(posting, ['postsThisWeek']);
+    if (avg != null || week != null) {
+      const parts = [];
+      if (avg != null) {
+        parts.push(`average ${avg} uploads/week`);
+      }
+      if (week != null) {
+        parts.push(`${week} posts this week`);
+      }
+      lines.push(`Posting rhythm: ${parts.join(', ')}.`);
+    }
+  }
+  const style =
+    memory.contentStyle && typeof memory.contentStyle === 'object'
+      ? memory.contentStyle
+      : null;
+  if (style) {
+    const avgDuration = readNumber(style, ['avgDurationSec']);
+    const dominant = readString(style, ['dominantFormat']);
+    if (avgDuration != null || dominant) {
+      lines.push(
+        `Content style: ${dominant || 'mixed'}` +
+          (avgDuration != null ? `, ~${avgDuration}s average length` : '') +
+          '.',
+      );
+    }
+  }
+  const performance =
+    memory.performance && typeof memory.performance === 'object'
+      ? memory.performance
+      : null;
+  if (performance && Array.isArray(performance.insightLines)) {
+    for (const insight of performance.insightLines.slice(0, 3)) {
+      if (insight) {
+        lines.push(`Performance insight: ${insight}`);
+      }
+    }
+  }
+  if (Array.isArray(memory.weakPoints) && memory.weakPoints.length > 0) {
+    lines.push(`Improve: ${memory.weakPoints.join(', ')}.`);
+  }
+  if (Array.isArray(memory.strongPoints) && memory.strongPoints.length > 0) {
+    lines.push(`Strengths: ${memory.strongPoints.join(', ')}.`);
+  }
+}
+
+function appendGoalLines(lines, goals) {
+  if (!Array.isArray(goals) || goals.length === 0) {
+    return;
+  }
+  const labels = goals.slice(0, 5).map((goal) => {
+    const title = readString(goal, ['title']) || readString(goal, ['type']);
+    const target = readNumber(goal, ['targetValue']);
+    const current = readNumber(goal, ['currentValue']);
+    if (target != null && current != null && target > 0) {
+      const pct = Math.min(100, Math.round((current / target) * 100));
+      return `${title} (${pct}%)`;
+    }
+    return title;
+  }).filter(Boolean);
+  if (labels.length > 0) {
+    lines.push(`Active creator goals: ${labels.join('; ')}.`);
+    lines.push('Anchor advice to these goals when relevant.');
+  }
+}
+
+function appendAnalyticsProfileLines(lines, analyticsProfile) {
+  if (!analyticsProfile || typeof analyticsProfile !== 'object') {
+    return;
+  }
+  const stage = readString(analyticsProfile, ['creatorStage']);
+  if (stage) {
+    lines.push(`Creator stage (app analytics): ${stage}.`);
+  }
+  const score = readNumber(analyticsProfile, ['engagementScore']);
+  if (score != null) {
+    lines.push(`Engagement score: ${score}.`);
+  }
+  const actions = analyticsProfile.recommendedNextActions;
+  if (Array.isArray(actions) && actions.length > 0) {
+    lines.push(
+      `Recommended next actions: ${actions.slice(0, 3).join('; ')}.`,
+    );
+  }
+}
+
+function appendPersonalizationLines(lines, userData) {
+  const goals = readOnboardingGoals(userData);
+  const platforms = readOnboardingPlatforms(userData);
+  if (goals.length > 0) {
+    const labels = goals.map((goal) => GOAL_LABELS[goal] || goal);
+    lines.push(`Onboarding creator goals: ${labels.join('; ')}.`);
+  }
+  if (platforms.length > 0) {
+    const labels = platforms.map(
+      (platform) => PLATFORM_LABELS[platform.toLowerCase()] || platform,
+    );
+    lines.push(`Primary platforms: ${labels.join(', ')}.`);
+    for (const platform of platforms.slice(0, 3)) {
+      const guidance = PLATFORM_GUIDANCE[String(platform).toLowerCase()];
+      if (guidance) {
+        lines.push(guidance);
+      }
+    }
+  }
+  if (goals.includes('ai_assistance')) {
+    lines.push(
+      'Prioritize actionable coaching, scripts, and next-step plans.',
+    );
+  }
+  if (goals.includes('content_creation')) {
+    lines.push(
+      'Suggest concrete content ideas, hooks, and weekly cadence.',
+    );
+  }
+}
+
 function mergeProgressMaps(userData) {
   const gam =
     userData.gamification &&
@@ -165,6 +366,19 @@ function buildCreatorContextBlock(userData = {}, extras = {}) {
   if (extras.surface) {
     lines.push(`User is in: ${extras.surface}.`);
   }
+  if (extras.memory && typeof extras.memory === 'object') {
+    appendMemoryLines(lines, extras.memory);
+  }
+  if (Array.isArray(extras.goals) && extras.goals.length > 0) {
+    appendGoalLines(lines, extras.goals);
+  }
+  if (
+    extras.analyticsProfile &&
+    typeof extras.analyticsProfile === 'object'
+  ) {
+    appendAnalyticsProfileLines(lines, extras.analyticsProfile);
+  }
+  appendPersonalizationLines(lines, userData);
   if (lines.length === 0) {
     return 'Creator context: limited profile data available; ask one clarifying question when personalization matters.';
   }
@@ -172,5 +386,8 @@ function buildCreatorContextBlock(userData = {}, extras = {}) {
 }
 
 module.exports = {
+  appendAnalyticsProfileLines,
+  appendGoalLines,
+  appendMemoryLines,
   buildCreatorContextBlock,
 };

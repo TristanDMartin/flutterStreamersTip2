@@ -412,6 +412,14 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
           _showAlert = true;
         });
       }
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _alertMessage = 'Unable to send reset email. Please try again.';
+        _showAlert = true;
+      });
     } finally {
       if (mounted) {
         setState(() {

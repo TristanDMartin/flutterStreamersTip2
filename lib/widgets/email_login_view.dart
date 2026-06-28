@@ -562,7 +562,6 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
           _showAlert = true;
         });
       } else if (result.success && result.requires2FA && mounted) {
-        // User requires 2FA verification
         final user = firebase_auth.FirebaseAuth.instance.currentUser;
         if (user != null) {
           Navigator.of(context).push(
@@ -572,15 +571,15 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 onVerified: (bool verified) async {
                   if (verified && mounted) {
                     Navigator.of(context).pop();
+                    await authService.completeTwoFactorAuth();
                     WidgetsBinding.instance.addPostFrameCallback((_) async {
                       if (!mounted) return;
                       await navigateAfterAuthenticated(context);
                     });
                   }
                 },
-                onCancel: () {
-                  // Sign out and pop verification view
-                  firebase_auth.FirebaseAuth.instance.signOut();
+                onCancel: () async {
+                  await authService.cancelTwoFactorAuth();
                   if (mounted) {
                     Navigator.of(context).pop();
                   }

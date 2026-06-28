@@ -33,6 +33,17 @@ void main() {
       expect(a.subscriptionTrialEndAt, isNotNull);
     });
 
+    test('grace_period studio keeps studio tier', () {
+      final BillingTierAccess a = BillingTierAccess.fromUserDocument(
+        <String, dynamic>{
+          'subscriptionTier': 'studio',
+          'subscriptionStatus': 'grace_period',
+        },
+      );
+      expect(a.usedCanonicalFields, isTrue);
+      expect(a.effectivePlan, SubscriptionPlan.studio);
+    });
+
     test('studio canceled behaves as starter', () {
       final BillingTierAccess a = BillingTierAccess.fromUserDocument(
         <String, dynamic>{

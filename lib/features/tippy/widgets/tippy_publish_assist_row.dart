@@ -72,7 +72,7 @@ class _LockedHint extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Unlock Tippy on Pro for caption and hashtag help',
+                'Sign in to use Tippy for caption and hashtag help',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.62),
                   fontSize: 12,

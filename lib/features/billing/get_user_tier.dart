@@ -50,7 +50,11 @@ class BillingTierAccess {
     }
     final String? rootStatus = raw['subscriptionStatus'] as String?;
     final String sl = (rootStatus ?? '').trim().toLowerCase();
-    const Set<String> paidStatuses = <String>{'active', 'trialing'};
+    const Set<String> paidStatuses = <String>{
+      'active',
+      'trialing',
+      'grace_period',
+    };
     final SubscriptionPlan effective = paidStatuses.contains(sl)
         ? subscriptionPlanFromString(tl)
         : SubscriptionPlan.starter;

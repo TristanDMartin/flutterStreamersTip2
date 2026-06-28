@@ -1153,6 +1153,24 @@ class GlobalPlaybackManager {
     );
   }
 
+  /// Compatibility shims for auth/onboarding until full playback bring-over.
+  bool get isStartupLocked => false;
+
+  bool get isHomeFeedUserScrolling => false;
+
+  bool get isHomeMainTabSelected => true;
+
+  bool shouldRestoreHomeShellPlayback() => false;
+
+  /// Pauses playback and blocks resume during sign-out teardown.
+  void teardownForSignOut() {
+    secureLog('🧹 PlaybackManager: Teardown for sign-out');
+    clearAllDesiredFocus();
+    _currentlyPlayingController = null;
+    pauseAll();
+    block(reason: 'auth_sign_out');
+  }
+
   /// Pin home warm window and retain pooled controllers during main-tab leave.
   void beginHomeTabBackgroundRetention({int? currentIndex}) {
     _retainHomePoolForTabBackground = true;

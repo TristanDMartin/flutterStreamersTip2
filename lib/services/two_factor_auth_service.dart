@@ -1,12 +1,23 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'totp_service.dart';
 
 class TwoFactorAuthService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore? _firestoreCache;
   final TotpService _totpService = TotpService();
+
+  FirebaseFirestore get _firestore {
+    if (_firestoreCache == null) {
+      if (Firebase.apps.isEmpty) {
+        throw StateError('Firebase not initialized');
+      }
+      _firestoreCache = FirebaseFirestore.instance;
+    }
+    return _firestoreCache!;
+  }
 
   /// Enable 2FA for a user with authenticator app
   Future<bool> enable2FA({

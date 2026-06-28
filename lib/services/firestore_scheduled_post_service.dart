@@ -430,6 +430,44 @@ class FirestoreScheduledPostService {
     return deleteScheduledPost(scheduledPostId);
   }
 
+  /// Publishing history entries stored on the scheduled post document.
+  Future<List<Map<String, dynamic>>> getPublishingHistory(
+    String scheduledPostId,
+  ) async {
+    try {
+      final doc = await _firestore
+          .collection('scheduled_posts')
+          .doc(scheduledPostId)
+          .get();
+      if (!doc.exists) {
+        return [];
+      }
+      final data = doc.data() as Map<String, dynamic>;
+      return (data['history'] as List<dynamic>? ?? const [])
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .toList();
+    } catch (e) {
+      secureLog('❌ Error loading publishing history: $e',
+          name: 'FirestoreScheduledPostService');
+      return [];
+    }
+  }
+
+  /// Whether a scheduled post document exists in Firestore.
+  Future<bool> scheduledPostExists(String scheduledPostId) async {
+    try {
+      final doc = await _firestore
+          .collection('scheduled_posts')
+          .doc(scheduledPostId)
+          .get();
+      return doc.exists;
+    } catch (e) {
+      secureLog('❌ Error checking scheduled post existence: $e',
+          name: 'FirestoreScheduledPostService');
+      return false;
+    }
+  }
+
   /// Publish a scheduled post immediately
   Future<ScheduledPost> publishNow(String scheduledPostId) async {
     try {
@@ -1038,85 +1076,18 @@ class FirestoreScheduledPostService {
     }
   }
 
-  /// Add video to appropriate feeds based on privacy setting
-  /// (Matches VideoUploadService._addToFeeds logic)
+  /// Public feed mirrors are written by Mux Worker + Cloud Functions only.
   Future<void> _addToFeeds(String videoId, String privacy, String userId,
       {String? category}) async {
     try {
       switch (privacy) {
         case 'Everyone':
-          // Add to public feeds (For You feed)
-          await _firestore
-              .collection('feeds')
-              .doc('for_you')
-              .collection('videos')
-              .doc(videoId)
-              .set({
-            'videoId': videoId,
-            'userId': userId,
-            'privacy': privacy,
-            'addedAt': FieldValue.serverTimestamp(),
-          });
-
-          // Add to following feed for user's followers
-          await _firestore
-              .collection('feeds')
-              .doc('following')
-              .collection('videos')
-              .doc(videoId)
-              .set({
-            'videoId': videoId,
-            'userId': userId,
-            'privacy': privacy,
-            'addedAt': FieldValue.serverTimestamp(),
-          });
-
-          // Add to category feed if category is specified
-          if (category != null && category.isNotEmpty) {
-            await _firestore
-                .collection('feeds')
-                .doc('categories')
-                .collection(category)
-                .doc(videoId)
-                .set({
-              'videoId': videoId,
-              'userId': userId,
-              'category': category,
-              'privacy': privacy,
-              'addedAt': FieldValue.serverTimestamp(),
-            });
-          }
-          break;
-
         case 'Connections':
-          // Add only to following feed (connections can see)
-          await _firestore
-              .collection('feeds')
-              .doc('following')
-              .collection('videos')
-              .doc(videoId)
-              .set({
-            'videoId': videoId,
-            'userId': userId,
-            'privacy': privacy,
-            'addedAt': FieldValue.serverTimestamp(),
-          });
-
-          // Add to connections-only category feed if category is specified
-          if (category != null && category.isNotEmpty) {
-            await _firestore
-                .collection('feeds')
-                .doc('connections_categories')
-                .collection(category)
-                .doc(videoId)
-                .set({
-              'videoId': videoId,
-              'userId': userId,
-              'category': category,
-              'privacy': privacy,
-              'addedAt': FieldValue.serverTimestamp(),
-            });
-          }
+          secureLog(
+            'Feed indexes for $videoId are managed server-side '
+            '(Mux + Cloud Functions)',
+            name: 'FirestoreScheduledPostService',
+          );
           break;
 
         case 'Private':

@@ -12,11 +12,34 @@ const DAILY_REQUEST_LIMITS = {
 };
 const {buildUserAccess} = require('../shared/user_tippy_access');
 const {
+  loadUserWithBilling,
+  mergeBillingIntoUserData,
+} = require('../shared/user_billing_storage');
+const {
   buildCreditWrite,
   resolveCreditsForUser,
 } = require('../shared/tippy_credits');
-const {applyCreditDeduction} = require('../shared/tippy_credit_manager');
+const {
+  applyCreditDeduction,
+  resolveCreditCost,
+} = require('../shared/tippy_credit_manager');
 const {runAnthropicTippy} = require('./anthropic_tippy');
+const {canCreateContentPlan} = require('../shared/entitlements');
+const {loadTippyPromptContext, buildUiPayload, buildMemoryAwareGreeting} =
+  require('./tippy_prompt_context');
+const {refreshTippyMemory} = require('./aggregate_tippy_memory');
+const {syncCreatorGoalProgress} = require('./sync_creator_goal_progress');
+const {verifyAppCheckHttp} = require('../shared/verify_app_check_http');
+const {
+  handleApproveSchedule,
+  handleGenerateMission,
+  handleGoalsPost,
+  handleGrowthProgram,
+  handleHookIdeas,
+  handlePostAnalysis,
+  handleProposeSchedule,
+  handleTippyContextGet,
+} = require('./tippy_extended_handlers');
 
 function emitRequestLog(payload) {
   console.log(JSON.stringify(payload));
@@ -117,8 +140,7 @@ async function verifyFirebaseUser(req, requestId) {
 }
 
 async function readCurrentCredits(uid, email = '') {
-  const doc = await firestore.collection('users').doc(uid).get();
-  const userData = doc.data() || {};
+  const userData = await loadUserWithBilling(uid);
   const access = buildUserAccess(userData, {uid, email});
   const credits = resolveCreditsForUser(userData, access);
   return {credits, access, userData};
@@ -390,6 +412,23 @@ function serializeContentPlanItemsForClient(items) {
   }));
 }
 
+async function countUserContentPlans(uid) {
+  const snap = await firestore
+    .collection('users')
+    .doc(uid)
+    .collection('contentPlans')
+    .count()
+    .get();
+  return snap.data().count || 0;
+}
+
+function isContentPlanPath(path) {
+  const normalized = String(path || '').trim();
+  return normalized === '/tippy/create-plan' ||
+    normalized === '/tippy/create-content-plan' ||
+    normalized === '/tippy/growth-program';
+}
+
 async function writeContentPlan(uid, generatedPlan) {
   const sanitized = sanitizeGeneratedPlan(generatedPlan, uid);
   const planRef = firestore
@@ -426,6 +465,32 @@ function titleCaseTier(tier) {
   return 'Creator';
 }
 
+function creditActionForPath(path) {
+  const normalized = String(path || '').trim();
+  if (normalized === '/tippy/create-plan' ||
+      normalized === '/tippy/create-content-plan' ||
+      normalized === '/tippy/propose-schedule' ||
+      normalized === '/tippy/growth-program') {
+    return 'contentPlan';
+  }
+  if (normalized === '/tippy/analyze-content' ||
+      normalized === '/tippy/post-analysis') {
+    return 'growthAnalysis';
+  }
+  if (normalized === '/tippy/ai-caption' ||
+      normalized === '/tippy/hook-ideas' ||
+      normalized === '/tippy/generate-mission') {
+    return 'captionGeneration';
+  }
+  return 'captionRewrite';
+}
+
+function isTippyGetPath(path) {
+  const normalized = String(path || '').trim();
+  return normalized === '/tippy/credits' ||
+    normalized === '/tippy/context';
+}
+
 async function countScheduledPostsThisWeek(uid) {
   const now = new Date();
   const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -449,11 +514,16 @@ async function countScheduledPostsThisWeek(uid) {
   return count;
 }
 
-async function reserveCreditAtomically(uid, email = '') {
+async function reserveCreditAtomically(uid, email = '', action = 'captionRewrite') {
   const userRef = firestore.collection('users').doc(uid);
+  const billingRef = userRef.collection('billing').doc('subscription');
   return firestore.runTransaction(async (tx) => {
     const userSnap = await tx.get(userRef);
-    const userData = userSnap.data() || {};
+    const billingSnap = await tx.get(billingRef);
+    const userData = mergeBillingIntoUserData(
+      userSnap.data() || {},
+      billingSnap.exists ? billingSnap.data() || {} : null,
+    );
     const access = buildUserAccess(userData, {uid, email});
     if (!access.canUseTippy) {
       return {
@@ -462,7 +532,7 @@ async function reserveCreditAtomically(uid, email = '') {
       };
     }
     const current = resolveCreditsForUser(userData, access);
-    const nextCredits = applyCreditDeduction(current, 'captionRewrite');
+    const nextCredits = applyCreditDeduction(current, action);
     if (nextCredits == null) {
       return {
         ok: false,
@@ -480,20 +550,32 @@ async function reserveCreditAtomically(uid, email = '') {
       previousCredits: current,
       credits: nextCredits,
       access,
+      action,
+      creditCost: resolveCreditCost(action),
     };
   });
 }
 
-async function rollbackReservedCreditAtomically(uid, email = '') {
+async function rollbackReservedCreditAtomically(
+  uid,
+  email = '',
+  action = 'captionRewrite',
+) {
+  const creditCost = resolveCreditCost(action);
   const userRef = firestore.collection('users').doc(uid);
+  const billingRef = userRef.collection('billing').doc('subscription');
   return firestore.runTransaction(async (tx) => {
     const userSnap = await tx.get(userRef);
-    const userData = userSnap.data() || {};
+    const billingSnap = await tx.get(billingRef);
+    const userData = mergeBillingIntoUserData(
+      userSnap.data() || {},
+      billingSnap.exists ? billingSnap.data() || {} : null,
+    );
     const access = buildUserAccess(userData, {uid, email});
     const current = resolveCreditsForUser(userData, access);
     const restored = {
-      remaining: Math.min(current.limit, current.remaining + 1),
-      used: current.used > 0 ? current.used - 1 : 0,
+      remaining: Math.min(current.limit, current.remaining + creditCost),
+      used: current.used > creditCost ? current.used - creditCost : 0,
       limit: current.limit,
       tier: current.tier,
       resetAt: current.resetAt,
@@ -553,28 +635,52 @@ async function executeAiAction({
   }
   const apiKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
   if (apiKey.length > 0) {
-    let snapshot = null;
+    let promptContext = null;
     try {
-      snapshot = await readCurrentCredits(uid, email);
+      promptContext = await loadTippyPromptContext(uid, email, {
+        category: typeof body.category === 'string' ? body.category : undefined,
+        surface: typeof body.surface === 'string' ? body.surface : undefined,
+      });
+      if (!promptContext.memory || !promptContext.memory.memoryReady) {
+        await refreshTippyMemory(uid).catch((err) => {
+          console.warn('Tippy memory refresh failed:', err.message || err);
+        });
+        promptContext = await loadTippyPromptContext(uid, email, {
+          category: typeof body.category === 'string' ? body.category : undefined,
+          surface: typeof body.surface === 'string' ? body.surface : undefined,
+        });
+      }
     } catch (err) {
       console.warn(
         'Tippy creator context load failed:',
         err && err.message ? err.message : err,
       );
     }
-    const userData = snapshot ? snapshot.userData : {};
-    const access = snapshot ? snapshot.access : buildUserAccess(userData, {uid, email});
+    const ctx = promptContext || {
+      tier: 'starter',
+      creatorName: 'creator',
+      userData: {},
+      extras: {},
+      memory: {},
+      goals: [],
+      analyticsProfile: {},
+    };
     return runAnthropicTippy({
       apiKey,
       path,
       body,
       requestId,
       tippyContext: {
-        tier: access.tier,
-        creatorName: readCreatorName(userData),
-        userData,
+        tier: ctx.tier,
+        creatorName: ctx.creatorName,
+        userData: ctx.userData,
+        memory: ctx.memory,
+        goals: ctx.goals,
         extras: {
-          category: typeof body.category === 'string' ? body.category : undefined,
+          ...ctx.extras,
+          memory: ctx.memory,
+          goals: ctx.goals,
+          analyticsProfile: ctx.analyticsProfile,
         },
       },
     });
@@ -676,6 +782,167 @@ async function writeTelemetry({
     requestId,
     createdAt: FieldValue.serverTimestamp(),
   });
+}
+
+async function writeAiAuditLog({
+  uid,
+  path,
+  requestId,
+  tier,
+  prompt,
+  response,
+  status,
+}) {
+  await firestore.collection('tippy_ai_audit').add({
+    uid,
+    path,
+    requestId,
+    tier,
+    prompt: String(prompt || '').slice(0, 4000),
+    response: String(response || '').slice(0, 8000),
+    status,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+}
+
+async function writeAiAuditLogSafe(payload) {
+  try {
+    await writeAiAuditLog(payload);
+  } catch (err) {
+    console.error('tippy ai audit write failed', err);
+  }
+}
+
+function extractAuditPrompt(path, body) {
+  if (path === '/tippy/ai-caption') {
+    return String(body.prompt || '').slice(0, 4000);
+  }
+  if (path === '/tippy/analyze-content') {
+    return String(body.content || '').slice(0, 4000);
+  }
+  if (path === '/tippy/create-plan' || path === '/tippy/create-content-plan') {
+    const prompt = String(body.prompt || '').trim();
+    const latest = latestUserMessage(body);
+    const text = prompt || latest || conversationText(body);
+    return text.slice(0, 4000);
+  }
+  const latest = latestUserMessage(body);
+  if (latest.length > 0) {
+    return latest.slice(0, 4000);
+  }
+  return conversationText(body).slice(0, 4000);
+}
+
+function extractAuditResponse(path, aiResult) {
+  if (!aiResult || typeof aiResult !== 'object') {
+    return '';
+  }
+  if (path === '/tippy/chat') {
+    return String(aiResult.message || '').slice(0, 8000);
+  }
+  if (path === '/tippy/ai-caption') {
+    return String(
+      aiResult.caption || aiResult.bestCaption || aiResult.message || '',
+    ).slice(0, 8000);
+  }
+  if (path === '/tippy/analyze-content') {
+    const items = Array.isArray(aiResult.actionItems)
+      ? aiResult.actionItems.join('; ')
+      : '';
+    return `${String(aiResult.summary || '')}\n${items}`.trim().slice(0, 8000);
+  }
+  if (path === '/tippy/create-content-plan' || path === '/tippy/create-plan') {
+    const plan = aiResult.plan && typeof aiResult.plan === 'object'
+      ? aiResult.plan
+      : aiResult;
+    return String(plan.title || plan.message || plan.description || '')
+      .slice(0, 8000);
+  }
+  return JSON.stringify(aiResult).slice(0, 8000);
+}
+
+async function readTippyEnabled() {
+  const doc = await firestore.collection('system').doc('feature_flags').get();
+  const data = doc.data() || {};
+  return data.tippyEnabled !== false;
+}
+
+async function readTippyConsent(uid) {
+  const doc = await firestore
+    .collection('users')
+    .doc(uid)
+    .collection('privacySettings')
+    .doc('main')
+    .get();
+  const data = doc.data() || {};
+  if (!data.tippyAiConsentAt) {
+    return false;
+  }
+  const version = String(data.tippyAiConsentVersion || '').trim();
+  return version.length > 0;
+}
+
+async function respondIfConsentMissing({uid, path, res, requestId}) {
+  const hasConsent = await readTippyConsent(uid);
+  if (hasConsent) {
+    return false;
+  }
+  await writeTelemetrySafe({
+    uid,
+    path,
+    status: 403,
+    code: 'CONSENT_REQUIRED',
+    tier: 'unknown',
+    requestId,
+  });
+  res.status(403).json(
+    buildErrorResponse({
+      code: 'CONSENT_REQUIRED',
+      message: 'Accept Tippy AI consent before continuing.',
+      status: 403,
+      retryable: false,
+      requestId,
+    }),
+  );
+  return true;
+}
+
+async function deleteQueryBatch(query, batchSize = 200) {
+  const snap = await query.limit(batchSize).get();
+  if (snap.empty) {
+    return 0;
+  }
+  const batch = firestore.batch();
+  snap.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+  return snap.size;
+}
+
+async function deleteCollectionDocs(collectionRef, batchSize = 200) {
+  let deleted = 0;
+  while (true) {
+    const count = await deleteQueryBatch(collectionRef, batchSize);
+    if (count === 0) {
+      break;
+    }
+    deleted += count;
+  }
+  return deleted;
+}
+
+async function deleteUserTippyAudit(uid) {
+  let deleted = 0;
+  while (true) {
+    const count = await deleteQueryBatch(
+      firestore.collection('tippy_ai_audit').where('uid', '==', uid),
+      200,
+    );
+    if (count === 0) {
+      break;
+    }
+    deleted += count;
+  }
+  return deleted;
 }
 
 async function writeTelemetrySafe(payload) {
@@ -784,6 +1051,8 @@ async function handleCreditsGet({uid, email = '', requestId, res}) {
   }
   const creatorName = readCreatorName(snapshot.userData);
   let scheduledThisWeek = 0;
+  let memoryReady = false;
+  let memoryGreeting = null;
   try {
     scheduledThisWeek = await countScheduledPostsThisWeek(uid);
   } catch (err) {
@@ -792,18 +1061,33 @@ async function handleCreditsGet({uid, email = '', requestId, res}) {
       err && err.message ? err.message : err,
     );
   }
+  try {
+    await syncCreatorGoalProgress(uid);
+    const memory = await refreshTippyMemory(uid);
+    memoryReady = memory?.memoryReady === true;
+    memoryGreeting = buildMemoryAwareGreeting(
+      creatorName,
+      memory || {},
+      titleCaseTier(tier),
+    );
+  } catch (err) {
+    console.warn('Tippy memory greeting failed:', err && err.message ? err.message : err);
+  }
   const tierLabel = titleCaseTier(tier);
   const itemLabel = scheduledThisWeek === 1 ? 'item' : 'items';
   const data = {
-    greeting:
+    greeting: memoryGreeting ||
       `Hey ${creatorName}! You're on the ${tierLabel} plan with ` +
       `${credits.remaining} of ${credits.limit} AI credits left this month. ` +
       'Ask me anything about growing your channel.',
     nudge: scheduledThisWeek > 0
       ? `You have ${scheduledThisWeek} ${itemLabel} scheduled this week. ` +
         'Want me to draft a caption for your next post?'
-      : 'Try one short-form post with a direct question CTA.',
+      : memoryReady
+        ? 'Try asking me to plan your week or review your last clip.'
+        : 'Upload a few clips so I can personalize your coaching.',
     scheduledThisWeek,
+    memoryReady,
   };
   await writeTelemetrySafe({
     uid,
@@ -836,6 +1120,48 @@ async function handleAiAction({
   const effectivePath = wantsContentPlanSync(path, body)
     ? '/tippy/create-content-plan'
     : path;
+  const tippyEnabled = await readTippyEnabled();
+  if (!tippyEnabled) {
+    await writeTelemetrySafe({
+      uid,
+      path,
+      status: 503,
+      code: 'TIPPY_DISABLED',
+      tier: 'unknown',
+      requestId,
+    });
+    res.status(503).json(
+      buildErrorResponse({
+        code: 'TIPPY_DISABLED',
+        message: 'Tippy AI is temporarily unavailable.',
+        status: 503,
+        retryable: true,
+        requestId,
+      }),
+    );
+    return;
+  }
+  const hasConsent = await readTippyConsent(uid);
+  if (!hasConsent) {
+    await writeTelemetrySafe({
+      uid,
+      path,
+      status: 403,
+      code: 'CONSENT_REQUIRED',
+      tier: 'unknown',
+      requestId,
+    });
+    res.status(403).json(
+      buildErrorResponse({
+        code: 'CONSENT_REQUIRED',
+        message: 'Accept Tippy AI consent before continuing.',
+        status: 403,
+        retryable: false,
+        requestId,
+      }),
+    );
+    return;
+  }
   const creditCheckStartedAtMs = Date.now();
   const snapshot = await readCurrentCredits(uid, email);
   const tier = snapshot.access.tier;
@@ -941,7 +1267,45 @@ async function handleAiAction({
     });
     return;
   }
-  const reservation = await reserveCreditAtomically(uid, email);
+  const creditAction = creditActionForPath(effectivePath);
+  if (isContentPlanPath(effectivePath)) {
+    const existingPlans = await countUserContentPlans(uid);
+    if (!canCreateContentPlan(tier, existingPlans)) {
+      await writeTelemetrySafe({
+        uid,
+        path: effectivePath,
+        status: 402,
+        code: 'CONTENT_PLAN_LIMIT',
+        tier,
+        requestId,
+      });
+      res.status(402).json(
+        buildErrorResponse({
+          code: 'CONTENT_PLAN_LIMIT',
+          message:
+            'Your plan includes one active content plan. ' +
+            'Upgrade to Pro for unlimited plans.',
+          status: 402,
+          retryable: false,
+          requestId,
+        }),
+      );
+      emitRequestLog({
+        requestId,
+        endpoint: effectivePath,
+        uid,
+        tier,
+        creditsBefore,
+        creditsAfter: creditsBefore,
+        status: 402,
+        latencyMs: Date.now() - startedAtMs,
+        errorCode: 'CONTENT_PLAN_LIMIT',
+        failureReason: 'content_plan_limit_reached',
+      });
+      return;
+    }
+  }
+  const reservation = await reserveCreditAtomically(uid, email, creditAction);
   if (!reservation.ok) {
     const isUpgradeRequired = reservation.reason === 'UPGRADE_REQUIRED';
     const code = isUpgradeRequired ? 'UPGRADE_REQUIRED' : 'INSUFFICIENT_CREDITS';
@@ -992,14 +1356,55 @@ async function handleAiAction({
   });
   let aiResult;
   try {
-    aiResult = await executeAiAction({
-      uid,
-      email,
-      path: effectivePath,
-      body,
-      requestId,
-      req,
-    });
+    const apiKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
+    if (effectivePath === '/tippy/propose-schedule') {
+      aiResult = await handleProposeSchedule({
+        uid,
+        email,
+        body,
+        requestId,
+        apiKey,
+      });
+    } else if (effectivePath === '/tippy/growth-program') {
+      aiResult = await handleGrowthProgram({
+        uid,
+        email,
+        requestId,
+        apiKey,
+      });
+    } else if (effectivePath === '/tippy/generate-mission') {
+      aiResult = await handleGenerateMission({
+        uid,
+        email,
+        requestId,
+        apiKey,
+      });
+    } else if (effectivePath === '/tippy/hook-ideas') {
+      aiResult = await handleHookIdeas({
+        uid,
+        email,
+        body,
+        requestId,
+        apiKey,
+      });
+    } else if (effectivePath === '/tippy/post-analysis') {
+      aiResult = await handlePostAnalysis({
+        uid,
+        email,
+        body,
+        requestId,
+        apiKey,
+      });
+    } else {
+      aiResult = await executeAiAction({
+        uid,
+        email,
+        path: effectivePath,
+        body,
+        requestId,
+        req,
+      });
+    }
   } catch (err) {
     console.error('Tippy AI action failed', err);
     aiResult = {
@@ -1014,7 +1419,7 @@ async function handleAiAction({
     };
   }
   if (aiResult.error != null) {
-    await rollbackReservedCreditAtomically(uid, email);
+    await rollbackReservedCreditAtomically(uid, email, creditAction);
     await writeTelemetrySafe({
       uid,
       path,
@@ -1054,7 +1459,7 @@ async function handleAiAction({
       saved = await writeContentPlan(uid, aiResult.plan || aiResult);
     } catch (err) {
       console.error('Tippy content plan save failed', err);
-      await rollbackReservedCreditAtomically(uid, email);
+      await rollbackReservedCreditAtomically(uid, email, creditAction);
       await writeTelemetrySafe({
         uid,
         path: effectivePath,
@@ -1092,6 +1497,31 @@ async function handleAiAction({
       latencyMs: Date.now() - saveStartedAtMs,
     });
   }
+  let promptContext = null;
+  try {
+    promptContext = await loadTippyPromptContext(uid, email);
+  } catch (_) {
+    promptContext = null;
+  }
+  data = {
+    ...data,
+    ui: buildUiPayload({
+      memory: promptContext?.memory || {},
+      goals: promptContext?.goals || [],
+      analyticsProfile: promptContext?.analyticsProfile || {},
+      path: effectivePath,
+      data,
+    }),
+  };
+  await writeAiAuditLogSafe({
+    uid,
+    path: effectivePath,
+    requestId,
+    tier,
+    prompt: extractAuditPrompt(effectivePath, body),
+    response: extractAuditResponse(effectivePath, data),
+    status: 200,
+  });
   await writeTelemetrySafe({
     uid,
     path: effectivePath,
@@ -1120,6 +1550,25 @@ async function handleAiAction({
   });
 }
 
+async function handleDeleteHistory({uid, res, requestId}) {
+  const conversationsRef = firestore
+    .collection('users')
+    .doc(uid)
+    .collection('tippyConversations');
+  const conversationsDeleted = await deleteCollectionDocs(conversationsRef);
+  const auditDeleted = await deleteUserTippyAudit(uid);
+  res.status(200).json(
+    buildSuccessResponse({
+      data: {
+        conversationsDeleted,
+        auditDeleted,
+      },
+      credits: null,
+      requestId,
+    }),
+  );
+}
+
 async function handleTippyRequest(req, res) {
   const startedAtMs = Date.now();
   const requestId = generateRequestId();
@@ -1130,6 +1579,15 @@ async function handleTippyRequest(req, res) {
     '/tippy/ai-caption',
     '/tippy/analyze-content',
     '/tippy/credits',
+    '/tippy/context',
+    '/tippy/goals',
+    '/tippy/hook-ideas',
+    '/tippy/generate-mission',
+    '/tippy/propose-schedule',
+    '/tippy/approve-schedule',
+    '/tippy/growth-program',
+    '/tippy/post-analysis',
+    '/tippy/delete-history',
   ]);
   const path = normalizeTippyPath(req.path);
   if (!allowedPaths.has(path)) {
@@ -1154,7 +1612,7 @@ async function handleTippyRequest(req, res) {
     });
     return;
   }
-  if (path === '/tippy/credits' && req.method !== 'GET') {
+  if (isTippyGetPath(path) && req.method !== 'GET') {
     res.status(500).json(
       buildErrorResponse({
         code: 'INTERNAL_ERROR',
@@ -1164,19 +1622,9 @@ async function handleTippyRequest(req, res) {
         requestId,
       }),
     );
-    emitRequestLog({
-      requestId,
-      endpoint: path,
-      uid: 'anonymous',
-      tier: 'unknown',
-      status: 500,
-      latencyMs: Date.now() - startedAtMs,
-      errorCode: 'INTERNAL_ERROR',
-      failureReason: 'invalid_method',
-    });
     return;
   }
-  if (path !== '/tippy/credits' && req.method !== 'POST') {
+  if (!isTippyGetPath(path) && req.method !== 'POST') {
     res.status(500).json(
       buildErrorResponse({
         code: 'INTERNAL_ERROR',
@@ -1221,6 +1669,27 @@ async function handleTippyRequest(req, res) {
     });
     return;
   }
+  const appCheckResult = await verifyAppCheckHttp(req, {requestId});
+  if (!appCheckResult.ok) {
+    await writeTelemetrySafe({
+      uid: authResult.uid,
+      path,
+      status: appCheckResult.status,
+      code: appCheckResult.code,
+      tier: 'unknown',
+      requestId,
+    });
+    res.status(appCheckResult.status).json(
+      buildErrorResponse({
+        code: appCheckResult.code,
+        message: appCheckResult.message,
+        status: appCheckResult.status,
+        retryable: false,
+        requestId,
+      }),
+    );
+    return;
+  }
   emitRequestLog({
     requestId,
     endpoint: path,
@@ -1229,6 +1698,14 @@ async function handleTippyRequest(req, res) {
     latencyMs: Date.now() - startedAtMs,
   });
   if (path === '/tippy/credits') {
+    if (await respondIfConsentMissing({
+      uid: authResult.uid,
+      path,
+      res,
+      requestId,
+    })) {
+      return;
+    }
     const snapshot = await handleCreditsGet({
       uid: authResult.uid,
       email: authResult.email,
@@ -1245,6 +1722,154 @@ async function handleTippyRequest(req, res) {
       status: 200,
       latencyMs: Date.now() - startedAtMs,
       failureReason: null,
+    });
+    return;
+  }
+  if (path === '/tippy/context') {
+    if (await respondIfConsentMissing({
+      uid: authResult.uid,
+      path,
+      res,
+      requestId,
+    })) {
+      return;
+    }
+    try {
+      const data = await handleTippyContextGet({
+        uid: authResult.uid,
+        email: authResult.email,
+        requestId,
+      });
+      res.status(200).json(
+        buildSuccessResponse({
+          data,
+          credits: null,
+          requestId,
+        }),
+      );
+    } catch (err) {
+      console.error('Tippy context failed', err);
+      res.status(500).json(
+        buildErrorResponse({
+          code: 'INTERNAL_ERROR',
+          message: 'Could not load Tippy context.',
+          status: 500,
+          retryable: true,
+          requestId,
+        }),
+      );
+    }
+    return;
+  }
+  if (path === '/tippy/goals') {
+    if (await respondIfConsentMissing({
+      uid: authResult.uid,
+      path,
+      res,
+      requestId,
+    })) {
+      return;
+    }
+    try {
+      const body = parseJsonBody(req);
+      const data = await handleGoalsPost({
+        uid: authResult.uid,
+        body,
+      });
+      res.status(200).json(
+        buildSuccessResponse({
+          data,
+          credits: null,
+          requestId,
+        }),
+      );
+    } catch (err) {
+      console.error('Tippy goals failed', err);
+      res.status(500).json(
+        buildErrorResponse({
+          code: 'INTERNAL_ERROR',
+          message: 'Could not save creator goal.',
+          status: 500,
+          retryable: true,
+          requestId,
+        }),
+      );
+    }
+    return;
+  }
+  if (path === '/tippy/approve-schedule') {
+    if (await respondIfConsentMissing({
+      uid: authResult.uid,
+      path,
+      res,
+      requestId,
+    })) {
+      return;
+    }
+    try {
+      const body = parseJsonBody(req);
+      const result = await handleApproveSchedule({
+        uid: authResult.uid,
+        body,
+      });
+      if (result.error) {
+        res.status(result.status || 400).json(
+          buildErrorResponse({
+            code: 'INVALID_ARGUMENT',
+            message: result.error,
+            status: result.status || 400,
+            retryable: false,
+            requestId,
+          }),
+        );
+        return;
+      }
+      res.status(200).json(
+        buildSuccessResponse({
+          data: result,
+          credits: null,
+          requestId,
+        }),
+      );
+    } catch (err) {
+      console.error('Tippy approve schedule failed', err);
+      res.status(500).json(
+        buildErrorResponse({
+          code: 'INTERNAL_ERROR',
+          message: 'Could not approve schedule proposal.',
+          status: 500,
+          retryable: true,
+          requestId,
+        }),
+      );
+    }
+    return;
+  }
+  if (path === '/tippy/delete-history') {
+    if (await respondIfConsentMissing({
+      uid: authResult.uid,
+      path,
+      res,
+      requestId,
+    })) {
+      return;
+    }
+    if (req.method !== 'POST') {
+      res.status(500).json(
+        buildErrorResponse({
+          code: 'INTERNAL_ERROR',
+          message: 'Method not allowed.',
+          status: 500,
+          retryable: false,
+          requestId,
+        }),
+      );
+      return;
+    }
+    await handleDeleteHistory({
+      uid: authResult.uid,
+      res,
+      requestId,
     });
     return;
   }

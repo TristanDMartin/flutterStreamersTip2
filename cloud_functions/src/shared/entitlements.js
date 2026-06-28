@@ -152,6 +152,14 @@ function creditCostForAction(action) {
   return Number.isFinite(cost) && cost > 0 ? cost : 1;
 }
 
+function canCreateContentPlan(tier, existingCount) {
+  const limit = getEntitlementsForTier(tier).contentPlans;
+  if (isUnlimited(limit)) {
+    return true;
+  }
+  return Number(existingCount) < Number(limit);
+}
+
 module.exports = {
   UNLIMITED,
   TIER_ENTITLEMENTS,
@@ -165,4 +173,5 @@ module.exports = {
   getCrossPostWeeklyLimitForTier,
   hasBillingFeature,
   creditCostForAction,
+  canCreateContentPlan,
 };

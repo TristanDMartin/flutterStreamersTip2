@@ -1,20 +1,19 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
-import 'package:firebase_core/firebase_core.dart';
+import '../core/firebase_bootstrap.dart';
+import '../core/firebase_bootstrap_ready_provider.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../services/auth_transition_state.dart';
 import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
-import '../utils/auth_post_login_navigation.dart';
-import '../widgets/auth_modal_view.dart';
-import '../widgets/email_verification_view.dart';
+import '../services/global_playback_manager.dart';
 import '../pages/main_tab_view.dart';
 import 'account_status_guard.dart';
+import 'auth_modal_view.dart';
 
 /// App startup wrapper that handles authentication flow
 class AppStartupWrapper extends ConsumerStatefulWidget {
@@ -39,9 +38,14 @@ StartupShell resolveStartupShell({
   required bool isSigningOut,
   required bool isCheckingAuth,
   required bool isOauthInProgress,
+  required bool isSigningIn,
+  bool allowDegradedAuthShell = false,
+  bool isAwaiting2FA = false,
 }) {
-  // Keep splash until Firebase is ready — avoids auth flash on slow cold start.
   if (!firebaseInitialized) {
+    if (allowDegradedAuthShell && startupGracePeriodElapsed) {
+      return StartupShell.auth;
+    }
     return StartupShell.loading;
   }
   if (resolveStartupShowsAuthLoading(
@@ -49,16 +53,25 @@ StartupShell resolveStartupShell({
     hasFirebaseUser: hasFirebaseUser,
     isCheckingAuth: isCheckingAuth,
     isOauthInProgress: isOauthInProgress,
+    isSigningIn: isSigningIn,
     authConnectionState: authConnectionState,
   )) {
     return StartupShell.loading;
+  }
+  if (isAwaiting2FA && hasFirebaseUser) {
+    return StartupShell.auth;
   }
   return hasFirebaseUser ? StartupShell.home : StartupShell.auth;
 }
 
 class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
-  bool _firebaseStartupGracePeriodElapsed = false;
+  bool _firebaseStartupGracePeriodElapsed = true;
   bool _calendarCleanupStarted = false;
+  Timer? _firebaseReadyPollTimer;
+  Widget? _cachedHomeShell;
+  String? _cachedHomeUid;
+  static const Duration _firebaseReadyPollInterval =
+      Duration(milliseconds: 150);
 
   @override
   void didChangeDependencies() {
@@ -70,6 +83,16 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   void initState() {
     super.initState();
     _setSystemUIOverlayStyle();
+    _startFirebaseReadyPolling();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      precacheImage(
+        const AssetImage('assets/logo.png'),
+        context,
+      );
+    });
     ref.listenManual<(bool, bool)>(
       robustAuthServiceProvider.select(
         (RobustAuthenticationService auth) =>
@@ -77,16 +100,50 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
       ),
       _onAuthStateChanged,
     );
-    Future<void>.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      _scheduleRebuild(() {
-        _firebaseStartupGracePeriodElapsed = true;
-      });
-    });
+  }
+
+  void _startFirebaseReadyPolling() {
+    if (FirebaseBootstrap.isReady) {
+      return;
+    }
+    unawaited(
+      FirebaseBootstrap.ensureInitialized().then((bool ready) {
+        if (ready && mounted) {
+          setState(() {});
+        }
+      }),
+    );
+    _firebaseReadyPollTimer?.cancel();
+    _firebaseReadyPollTimer = Timer.periodic(
+      _firebaseReadyPollInterval,
+      (Timer timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (FirebaseBootstrap.isReady) {
+          timer.cancel();
+          _firebaseReadyPollTimer = null;
+          setState(() {});
+          return;
+        }
+        unawaited(
+          FirebaseBootstrap.ensureInitialized().then((bool ready) {
+            if (ready && mounted) {
+              timer.cancel();
+              _firebaseReadyPollTimer = null;
+              setState(() {});
+            }
+          }),
+        );
+      },
+    );
   }
 
   @override
   void dispose() {
+    _firebaseReadyPollTimer?.cancel();
+    _firebaseReadyPollTimer = null;
     _resetSystemUIOverlayStyle();
     super.dispose();
   }
@@ -103,8 +160,33 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     if (!loadingChanged && !loginChanged) {
       return;
     }
+    // AuthModalView shows its own overlay during OAuth; skip root rebuilds
+    // that would remount the sign-in screen while the picker is opening.
+    if (loadingChanged &&
+        !loginChanged &&
+        ref.read(robustAuthServiceProvider).isOauthInProgress) {
+      return;
+    }
+    if (GlobalPlaybackManager.instance.isStartupLocked &&
+        !loginChanged &&
+        next.$2) {
+      if (kDebugMode) {
+        debugPrint(
+          '⏸️ AppStartupWrapper: Skipping auth rebuild during startup lock',
+        );
+      }
+      return;
+    }
     if (next.$2 && !next.$1) {
       _runCalendarCleanup();
+    }
+    if (next.$2 && !previous.$2) {
+      GlobalPlaybackManager.instance.forceUnblock();
+    }
+    if (!next.$2 && previous.$2) {
+      GlobalPlaybackManager.instance.teardownForSignOut();
+      _cachedHomeShell = null;
+      _cachedHomeUid = null;
     }
     if (kDebugMode) {
       debugPrint('🔄 AppStartupWrapper: Auth state changed');
@@ -190,21 +272,26 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   Widget build(BuildContext context) {
     final RobustAuthenticationService authService =
         ref.watch(robustAuthServiceProvider);
-    if (Firebase.apps.isEmpty) {
+    final bool firebaseReady = ref.watch(firebaseBootstrapReadyProvider) &&
+        FirebaseBootstrap.isReady;
+    if (!firebaseReady) {
+      if (kDebugMode) {
+        debugPrint(
+          '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen',
+        );
+      }
       final StartupShell shell = resolveStartupShell(
         firebaseInitialized: false,
         startupGracePeriodElapsed: _firebaseStartupGracePeriodElapsed,
+        allowDegradedAuthShell: true,
         authConnectionState: ConnectionState.waiting,
         hasFirebaseUser: false,
         isSigningOut: authService.isSigningOut,
         isCheckingAuth: authService.isCheckingAuth,
         isOauthInProgress: authService.isOauthInProgress,
+        isSigningIn: authService.isSigningIn,
+        isAwaiting2FA: authService.isAwaiting2FA,
       );
-      if (shell == StartupShell.firebaseWaiting && kDebugMode) {
-        debugPrint(
-          '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen',
-        );
-      }
       if (shell == StartupShell.auth) {
         return const KeyedSubtree(
           key: ValueKey<String>('app_startup_auth'),
@@ -221,20 +308,31 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
       stream: fa.FirebaseAuth.instance.authStateChanges(),
       initialData: fa.FirebaseAuth.instance.currentUser,
       builder: (BuildContext context, AsyncSnapshot<fa.User?> snapshot) {
+        final fa.User? firebaseUser =
+            snapshot.data ?? fa.FirebaseAuth.instance.currentUser;
+        final ConnectionState authConnectionState =
+            resolveEffectiveAuthConnectionState(
+          authConnectionState: snapshot.connectionState,
+          hasAuthSnapshotData: snapshot.hasData,
+          hasFirebaseUser: firebaseUser != null,
+        );
         if (kDebugMode) {
           debugPrint(
             'AUTH STATE CHANGED: ${snapshot.data?.uid ?? 'SIGNED OUT'} '
-            'connection=${snapshot.connectionState.name}',
+            'connection=${snapshot.connectionState.name} '
+            'effective=${authConnectionState.name}',
           );
         }
         final StartupShell shell = resolveStartupShell(
           firebaseInitialized: true,
           startupGracePeriodElapsed: _firebaseStartupGracePeriodElapsed,
-          authConnectionState: snapshot.connectionState,
-          hasFirebaseUser: snapshot.data != null,
+          authConnectionState: authConnectionState,
+          hasFirebaseUser: firebaseUser != null,
           isSigningOut: authService.isSigningOut,
           isCheckingAuth: authService.isCheckingAuth,
           isOauthInProgress: authService.isOauthInProgress,
+          isSigningIn: authService.isSigningIn,
+          isAwaiting2FA: authService.isAwaiting2FA,
         );
         if (kDebugMode) {
           final String routeDecision = switch (shell) {
@@ -250,7 +348,25 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
             'oauthInProgress=${authService.isOauthInProgress}',
           );
         }
-        return _buildResolvedShell(shell, authService);
+        if (GlobalPlaybackManager.instance.isStartupLocked &&
+            _cachedHomeShell != null &&
+            shell == StartupShell.home &&
+            firebaseUser?.uid != null &&
+            firebaseUser!.uid == _cachedHomeUid) {
+          if (kDebugMode) {
+            debugPrint(
+              '⏸️ AppStartupWrapper: Returning cached home shell '
+              'during startup lock',
+            );
+          }
+          return _cachedHomeShell!;
+        }
+        final Widget resolved = _buildResolvedShell(shell, authService);
+        if (shell == StartupShell.home && firebaseUser?.uid != null) {
+          _cachedHomeShell = resolved;
+          _cachedHomeUid = firebaseUser!.uid;
+        }
+        return resolved;
       },
     );
   }
@@ -334,11 +450,13 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
                 child: Image.asset(
                   'assets/logo.png',
                   fit: BoxFit.contain,
-                  errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                  errorBuilder: (BuildContext context, Object error,
+                      StackTrace? stackTrace) {
                     return Image.asset(
                       'assets/app_logo.PNG',
                       fit: BoxFit.contain,
-                      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                      errorBuilder: (BuildContext context, Object error,
+                          StackTrace? stackTrace) {
                         return Icon(
                           Icons.play_circle_filled,
                           color: scheme.primary,
@@ -386,94 +504,20 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   }
 }
 
-/// Blocks [MainTabView] until Firebase reports [User.emailVerified] (web parity).
-class _EmailVerificationOrHome extends StatefulWidget {
+/// Routes signed-in users to [MainTabView]. Email verification is a soft gate
+/// during onboarding, not a hard block on the app shell.
+class _EmailVerificationOrHome extends StatelessWidget {
   const _EmailVerificationOrHome({required this.initialTabIndex});
 
   final int initialTabIndex;
 
   @override
-  State<_EmailVerificationOrHome> createState() =>
-      _EmailVerificationOrHomeState();
-}
-
-class _EmailVerificationOrHomeState extends State<_EmailVerificationOrHome> {
-  final GlobalKey _mainTabKey = GlobalKey();
-  late bool _verified;
-  String _email = '';
-
-  @override
-  void initState() {
-    super.initState();
-    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
-    _verified = !firebaseUserNeedsEmailVerification(user);
-    _email = user?.email ?? '';
-    unawaited(_syncVerification());
-  }
-
-  Future<void> _syncVerification() async {
-    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (!mounted) {
-        return;
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _verified = true;
-        });
-      });
-      return;
-    }
-    try {
-      await user.reload().timeout(const Duration(seconds: 2));
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('⚠️ Email verification refresh deferred: $e');
-      }
-    }
-    final fa.User? fresh = fa.FirebaseAuth.instance.currentUser;
-    if (!mounted) {
-      return;
-    }
-    final bool nextVerified = !firebaseUserNeedsEmailVerification(fresh);
-    final String nextEmail = fresh?.email ?? '';
-    if (_verified == nextVerified && _email == nextEmail) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _verified = nextVerified;
-        _email = nextEmail;
-      });
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!_verified) {
-      return KeyedSubtree(
-        key: const ValueKey<String>('app_startup_email_verification'),
-        child: EmailVerificationView(
-          email: _email,
-          navigateToHomeOnVerify: false,
-          onVerified: () {
-            _syncVerification();
-          },
-        ),
-      );
-    }
     return KeyedSubtree(
       key: const ValueKey<String>('app_startup_main_tab'),
       child: AccountStatusGuard(
         child: MainTabView(
-          key: _mainTabKey,
-          initialTabIndex: widget.initialTabIndex,
+          initialTabIndex: initialTabIndex,
         ),
       ),
     );

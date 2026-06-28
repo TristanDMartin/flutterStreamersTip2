@@ -28,16 +28,26 @@ bool resolveTippyEnabledFromSnapshot(SubscriptionSnapshot? snapshot) {
   if (snapshot.hasFullAccess) {
     return true;
   }
-  return snapshot.entitlements.canUseAICaptionRewrite;
+  return snapshot.canUseTippy;
 }
 
-/// Whether caption/hashtag Tippy assist is available for the signed-in user.
+/// Whether Tippy chat / assist entry points are available for the signed-in user.
 bool resolveTippyEnabled(UserProgressBundle bundle) {
   if (bundle.entitlements.tippyAi) {
     return true;
   }
   final UserSubscriptionModel? sub = bundle.subscription;
-  if (sub != null && _isPaidPlan(sub.plan) && _statusAllowsTippy(sub.status)) {
+  if (sub == null) {
+    return true;
+  }
+  if (sub.plan == SubscriptionPlan.starter ||
+      sub.plan == SubscriptionPlan.unknown) {
+    return true;
+  }
+  if (_isPaidPlan(sub.plan) && _statusAllowsTippy(sub.status)) {
+    return true;
+  }
+  if (_isPaidPlan(sub.plan)) {
     return true;
   }
   return false;
@@ -56,6 +66,10 @@ bool resolveTippyEnabledForPublish({
     return true;
   }
   if (billing != null && billing.usedCanonicalFields) {
+    if (billing.effectivePlan == SubscriptionPlan.starter ||
+        billing.effectivePlan == SubscriptionPlan.unknown) {
+      return true;
+    }
     if (_isPaidPlan(billing.effectivePlan) &&
         _statusAllowsTippy(billing.subscriptionStatusForDisplay ?? '')) {
       return true;

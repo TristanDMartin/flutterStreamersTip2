@@ -10,6 +10,14 @@ class IapBillingCoordinator {
   IapBillingFacade? _facade;
   final List<VoidCallback> _listeners = <VoidCallback>[];
   final List<VoidCallback> _verifiedHandlers = <VoidCallback>[];
+  Future<void> Function()? _entitlementsRefreshHandler;
+
+  void setEntitlementsRefreshHandler(Future<void> Function()? handler) {
+    _entitlementsRefreshHandler = handler;
+    if (_facade != null) {
+      _facade!.onEntitlementsRefresh = handler;
+    }
+  }
 
   IapBillingFacade get facade {
     _facade ??= IapBillingFacade(
@@ -22,6 +30,7 @@ class IapBillingCoordinator {
         }
         _notifyListeners();
       },
+      onEntitlementsRefresh: _entitlementsRefreshHandler,
     );
     return _facade!;
   }

@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'dart:ui';
 import 'dart:async';
 import 'services/analytics_service.dart';
+import 'services/production_monitoring_service.dart';
 import 'services/error_handler_service.dart';
 import 'utils/performance_utils.dart';
 import 'services/memory_optimization_service.dart';
@@ -19,6 +20,7 @@ import 'services/firestore_optimization_service.dart';
 import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/global_playback_manager.dart';
+import 'services/playback_pool_policy.dart';
 import 'services/audio_enhancement_service.dart';
 import 'services/algorithm_cache_service.dart';
 import 'services/performance_emergency_service.dart';
@@ -36,7 +38,9 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/app_theme_mode.dart';
 import 'core/design/streamers_tip_design.dart';
 import 'features/home/application/home_first_frame_gate.dart';
-import 'features/billing/iap_billing_coordinator.dart';
+import 'features/home/application/home_startup_playback_coordinator.dart';
+import 'core/firebase_bootstrap.dart';
+import 'core/firebase_bootstrap_ready_provider.dart';
 import 'core/firebase_app_check_startup.dart';
 import 'qa/qa_runtime.dart';
 
@@ -47,36 +51,44 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('✅ WidgetsFlutterBinding: Initialized at ${DateTime.now()}');
   STSystemUi.configureDefault();
-
-  // Firebase must be ready before auth/feed providers build. Native iOS may
-  // configure Firebase in AppDelegate, but Dart plugins still need this call.
-  await _initializeFirebaseForStartup();
-  await _preloadHomeFeedForInstantStart();
-
-  if (Firebase.apps.isNotEmpty) {
-    debugPrint('⏰ Crashlytics: Installing handlers before runApp');
-    await AnalyticsService.instance.installCrashHandlers();
-    debugPrint('✅ Crashlytics: Handlers installed');
-  } else {
-    _initializeGlobalErrorHandler();
-    debugPrint('⚠️ Crashlytics: Firebase unavailable; console-only errors');
-  }
+  _initializeGlobalErrorHandler();
 
   debugPrint('🏃 Running app at ${DateTime.now()}');
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
 
-  // Initialize heavier services after runApp so the first Flutter frame is not
-  // blocked by network/auth/feed work.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_configurePlaybackPoolAfterFirstFrame());
+  });
+
+  unawaited(_runStartupWarmup());
+
   scheduleMicrotask(() async {
     try {
-      await HomeFirstFrameGate.instance.waitForFirstFrameOrTimeout(
-        timeout: const Duration(seconds: 4),
+      await HomeFirstFrameGate.instance.waitForFirstFramePlaybackOrTimeout(
+        timeout: const Duration(seconds: 15),
       );
+      if (!HomeFirstFrameGate.instance.isFirstFramePlaybackStarted) {
+        debugPrint(
+          '⏳ All Services: first playback frame not visible yet; '
+          'service initialization remains deferred',
+        );
+        unawaited(
+          HomeFirstFrameGate.instance.runAfterFirstFramePlayback(() async {
+            debugPrint(
+              '⏰ All Services: Starting initialization after visible '
+              'playback frame at ${DateTime.now()}',
+            );
+            unawaited(_initializeAllServices());
+          }),
+        );
+        return;
+      }
       debugPrint(
-        '⏰ All Services: Starting initialization after first frame at ${DateTime.now()}',
+        '⏰ All Services: Starting initialization after first playback frame '
+        'at ${DateTime.now()}',
       );
-      await _initializeAllServices();
-      debugPrint('✅ Startup Phase 1 completed at ${DateTime.now()}');
+      unawaited(_initializeAllServices());
+      debugPrint('✅ Startup Phase 1 scheduled at ${DateTime.now()}');
 
       final appReadyTime = DateTime.now();
       final totalStartupTime = appReadyTime.difference(appStartTime);
@@ -90,7 +102,72 @@ void main() async {
   });
 }
 
-Future<void> _preloadHomeFeedForInstantStart() async {
+/// Device playback policy, feed cache, and crash handlers — after runApp.
+Future<void> _runStartupWarmup() async {
+  try {
+    unawaited(_initializeFirebaseAndCrashHandlers());
+    unawaited(_preloadHomeFeedMetadataOnly());
+  } catch (e) {
+    debugPrint('⚠️ STARTUP: Warmup failed (non-fatal): $e');
+  }
+}
+
+Future<void> _configurePlaybackPoolAfterFirstFrame() async {
+  try {
+    await PlaybackPoolPolicy.configureForDevice();
+  } catch (e) {
+    debugPrint('⚠️ STARTUP: PlaybackPoolPolicy failed (non-fatal): $e');
+  }
+}
+
+/// Firebase init runs after first frame — AppStartupWrapper polls until ready.
+Future<void> _initializeFirebaseAndCrashHandlers() async {
+  await _initializeFirebaseForStartup();
+  if (Firebase.apps.isEmpty) {
+    debugPrint('⚠️ Crashlytics: Firebase unavailable; console-only errors');
+    return;
+  }
+  unawaited(activateAppCheckIfEnabled());
+  debugPrint('⏰ Crashlytics: Installing handlers after runApp');
+  await AnalyticsService.instance.installCrashHandlers();
+  await _recordProductionStartupHealth();
+  debugPrint('✅ Crashlytics: Handlers installed');
+}
+
+Future<void> _recordProductionStartupHealth() async {
+  if (Firebase.apps.isEmpty) {
+    return;
+  }
+  final bool appCheckEnabled = isAppCheckEnabledForBuild();
+  unawaited(() async {
+    AppCheckReadiness readiness = AppCheckReadiness.skipped;
+    if (appCheckEnabled) {
+      try {
+        readiness = await ensureAppCheckReadyForFirestore().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => const AppCheckReadiness(
+            isReady: false,
+            detail: 'App Check readiness timed out during startup',
+          ),
+        );
+      } catch (e) {
+        readiness = AppCheckReadiness(
+          isReady: false,
+          detail: e.toString(),
+        );
+      }
+    }
+    await ProductionMonitoringService.instance.recordStartupHealth(
+      firebaseReady: FirebaseBootstrap.isReady,
+      appCheckEnabled: appCheckEnabled,
+      appCheckReady: readiness.isReady,
+      appCheckDetail: readiness.detail,
+    );
+  }());
+}
+
+/// Hydrate feed metadata from disk/memory only — no video controller warm-up.
+Future<void> _preloadHomeFeedMetadataOnly() async {
   try {
     String? userId;
     if (Firebase.apps.isNotEmpty) {
@@ -101,44 +178,36 @@ Future<void> _preloadHomeFeedForInstantStart() async {
     final warm = cache.peekForYouWarmFeed();
     if (warm != null && warm.videos.isNotEmpty) {
       debugPrint(
-        '⚡ STARTUP: Pre-warming ${warm.videos.length} cached videos before runApp',
-      );
-      await GlobalPlaybackManager.instance.warmFirstFeedController(
-        warm.videos,
-      );
-      GlobalPlaybackManager.instance.preloadStartupWindow(
-        warm.videos,
-        requestFocusOnStart: false,
+        '⚡ STARTUP: Feed metadata ready (${warm.videos.length} videos, '
+        'no pre-runApp video warm-up)',
       );
     }
   } catch (e) {
-    debugPrint('⚠️ STARTUP: Feed preload failed (non-fatal): $e');
+    debugPrint('⚠️ STARTUP: Feed metadata preload failed (non-fatal): $e');
   }
 }
 
 Future<void> _initializeFirebaseForStartup() async {
-  if (Firebase.apps.isNotEmpty) {
-    debugPrint('✅ FIREBASE: Already initialized before startup warmup');
+  if (FirebaseBootstrap.isReady) {
+    debugPrint('✅ FIREBASE: Already initialized');
     return;
   }
 
   debugPrint(
-      '🔥 FIREBASE: Initializing before first route at ${DateTime.now()}');
+    '🔥 FIREBASE: Initializing after runApp at ${DateTime.now()}',
+  );
   try {
-    var firebaseTimedOut = false;
-    await FirebaseIOSService.initialize().timeout(
+    final bool ready = await FirebaseBootstrap.ensureInitialized().timeout(
       const Duration(seconds: 8),
-      onTimeout: () {
-        firebaseTimedOut = true;
-        debugPrint(
-          '⚠️ FIREBASE: Initialization timed out - continuing startup in degraded mode',
-        );
-      },
+      onTimeout: () => FirebaseBootstrap.isReady,
     );
-    if (!firebaseTimedOut) {
-      await activateAppCheckIfEnabled();
+    if (ready) {
       debugPrint(
         '✅ FIREBASE: Firebase initialized successfully at ${DateTime.now()}',
+      );
+    } else {
+      debugPrint(
+        '⚠️ FIREBASE: Initialization incomplete — degraded mode enabled',
       );
     }
   } catch (e) {
@@ -176,7 +245,7 @@ Future<void> _initializeAllServices() async {
 
   try {
     // PHASE 1: only cheap, local startup guards. Firebase, auth/feed cache,
-    // and playback warmup already ran before/inside runApp.
+    // and playback warmup run in parallel after runApp.
     debugPrint('📡 Initializing Phase 1 startup services...');
     debugPrint('⏰ NetworkConfigService: Start time: ${DateTime.now()}');
     NetworkConfigService.initialize();
@@ -190,8 +259,7 @@ Future<void> _initializeAllServices() async {
     PerformanceEmergencyService().initialize();
     debugPrint('✅ PerformanceEmergencyService: Completed at ${DateTime.now()}');
 
-    // 🔥 FIREBASE: Already initialized in main() before runApp()
-    // Just verify it's ready
+    // 🔥 FIREBASE: Initialized in post-runApp warmup; retry if still pending.
     if (Firebase.apps.isEmpty) {
       debugPrint('⚠️ FIREBASE: Not initialized, initializing now...');
       await FirebaseIOSService.initialize();
@@ -217,15 +285,16 @@ Future<void> _initializeAllServices() async {
 }
 
 void _scheduleDeferredServicePhases() {
-  unawaited(Future<void>.delayed(const Duration(seconds: 5), () async {
+  unawaited(Future<void>.delayed(const Duration(seconds: 15), () async {
     await _initializePhase2Services();
   }));
-  unawaited(Future<void>.delayed(const Duration(seconds: 20), () async {
+  unawaited(Future<void>.delayed(const Duration(seconds: 45), () async {
     await _initializeBackgroundServices();
   }));
 }
 
 Future<void> _initializePhase2Services() async {
+  await _waitForPlaybackBeforeBackgroundServices(phase: 'Phase 2');
   debugPrint('🚀 ServiceManager: Starting Phase 2 service initialization...');
   final Duration serviceTimeout = QaRuntime.isMobileFeedE2e
       ? const Duration(seconds: 15)
@@ -236,27 +305,8 @@ Future<void> _initializePhase2Services() async {
   }, timeout: serviceTimeout);
   await _yieldBetweenDeferredServices();
 
-  await _initializeServiceSafely('AnalyticsService', () async {
-    await AnalyticsService.instance.initialize();
-  }, timeout: serviceTimeout);
-  await _yieldBetweenDeferredServices();
-
-  await _initializeServiceSafely('IapBillingCoordinator', () async {
-    if (kIsWeb) {
-      return;
-    }
-    await IapBillingCoordinator.instance.warmStart();
-  }, timeout: serviceTimeout);
-  await _yieldBetweenDeferredServices();
-
-  await _initializeServiceSafely('AudioEnhancementService', () async {
-    await AudioEnhancementService().initialize();
-  }, timeout: serviceTimeout);
-  await _yieldBetweenDeferredServices();
-
   await _initializeServiceSafely('StreamersTipLikeService', () async {
-    final String? userId =
-        firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    final String? userId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
     await StreamersTipLikeService().initialize(userId: userId);
   }, timeout: serviceTimeout);
   await _yieldBetweenDeferredServices();
@@ -276,12 +326,21 @@ Future<void> _yieldBetweenDeferredServices() {
 
 /// Initialize remaining services in background to avoid blocking startup
 Future<void> _initializeBackgroundServices() async {
+  await _waitForPlaybackBeforeBackgroundServices();
   debugPrint(
       '🚀 ServiceManager: Starting Phase 3 background service initialization...');
 
   final Duration serviceTimeout = QaRuntime.isMobileFeedE2e
       ? const Duration(seconds: 25)
       : const Duration(minutes: 2);
+
+  Future<void> initAnalytics() async {
+    await AnalyticsService.instance.initialize();
+  }
+
+  Future<void> initAudioEnhancement() async {
+    await AudioEnhancementService().initialize();
+  }
 
   Future<void> initFirestoreOptimization() async {
     await FirestoreOptimizationService.initialize();
@@ -331,11 +390,28 @@ Future<void> _initializeBackgroundServices() async {
   }
 
   await _initializeServiceSafely(
+    'AnalyticsService',
+    initAnalytics,
+    timeout: serviceTimeout,
+  );
+  await _yieldBetweenDeferredServices();
+  await _waitForPlaybackBeforeBackgroundServices();
+
+  await _initializeServiceSafely(
+    'AudioEnhancementService',
+    initAudioEnhancement,
+    timeout: serviceTimeout,
+  );
+  await _yieldBetweenDeferredServices();
+  await _waitForPlaybackBeforeBackgroundServices();
+
+  await _initializeServiceSafely(
     'FirestoreOptimizationService',
     initFirestoreOptimization,
     timeout: serviceTimeout,
   );
   await _yieldBetweenDeferredServices();
+  await _waitForPlaybackBeforeBackgroundServices();
 
   await _initializeServiceSafely(
     'FirestoreCacheService',
@@ -343,11 +419,13 @@ Future<void> _initializeBackgroundServices() async {
     timeout: serviceTimeout,
   );
   await _yieldBetweenDeferredServices();
+  await _waitForPlaybackBeforeBackgroundServices();
 
   _initializeServiceSafelyAsync('PushNotificationService', () async {
     await PushNotificationService().initialize();
   });
   await _yieldBetweenDeferredServices();
+  await _waitForPlaybackBeforeBackgroundServices();
 
   await _initializeServiceSafely(
     'GoogleServicesFix',
@@ -360,6 +438,36 @@ Future<void> _initializeBackgroundServices() async {
   });
 
   debugPrint('✅ ServiceManager: Phase 3 background services initialized');
+}
+
+Future<void> _waitForPlaybackBeforeBackgroundServices({
+  String phase = 'Phase 3',
+}) async {
+  final DateTime deadline = DateTime.now().add(const Duration(seconds: 30));
+  bool logged = false;
+  while (DateTime.now().isBefore(deadline)) {
+    final bool scrolling =
+        GlobalPlaybackManager.instance.isHomeFeedUserScrolling;
+    final bool firstFrameStarted =
+        HomeFirstFrameGate.instance.isFirstFramePlaybackStarted;
+    final bool textureVisible =
+        HomeStartupPlaybackCoordinator.isTextureVisible;
+    if (!scrolling && firstFrameStarted && textureVisible) {
+      return;
+    }
+    if (!logged) {
+      debugPrint(
+        '⏳ ServiceManager: Deferring $phase background service work '
+        'until home playback is warm',
+      );
+      logged = true;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+  }
+  debugPrint(
+    '⚠️ ServiceManager: $phase playback gate timed out; keeping startup path '
+    'best-effort',
+  );
 }
 
 /// 🔒 SAFETY: Initialize a single service with individual error handling
@@ -473,7 +581,7 @@ class MyApp extends ConsumerWidget {
     // CRITICAL: Check if Firebase is ready before accessing EventTriggerService
     // This prevents the red error screen when Firebase isn't initialized yet
     try {
-      if (Firebase.apps.isNotEmpty) {
+      if (FirebaseBootstrap.isReady) {
         // Only initialize EventTriggerService if Firebase is ready
         ref.read(eventTriggerServiceProvider);
       }
@@ -483,6 +591,7 @@ class MyApp extends ConsumerWidget {
     }
 
     final AppThemeMode appTheme = ref.watch(appThemeModeProvider);
+    final bool firebaseReady = ref.watch(firebaseBootstrapReadyProvider);
     return MaterialApp(
       title: 'StreamersTip',
       theme: StAppTheme.light,
@@ -490,7 +599,7 @@ class MyApp extends ConsumerWidget {
       themeMode: appTheme.themeMode,
       scrollBehavior: const STScrollBehavior(),
       navigatorKey: nav.NavigationService.navigatorKey,
-      navigatorObservers: [AppNavigationObserver()],
+      navigatorObservers: [AppNavigationObserver.instance],
       onGenerateRoute: AppRoutes.onGenerateRoute,
       initialRoute: AppRoutes.root,
       builder: (context, child) {
@@ -500,6 +609,9 @@ class MyApp extends ConsumerWidget {
           data: mq.copyWith(textScaler: TextScaler.linear(1.0)),
           child: Consumer(
             builder: (BuildContext context, WidgetRef ref, Widget? _) {
+              if (!firebaseReady) {
+                return navigatorChild;
+              }
               final (
                 String userId,
                 String? username,
@@ -522,7 +634,9 @@ class MyApp extends ConsumerWidget {
               return GamificationCelebrationOverlay(
                 child: OnboardingGate(
                   userId: userId,
-                  email: firebase_auth.FirebaseAuth.instance.currentUser?.email,
+                  email: Firebase.apps.isNotEmpty
+                      ? firebase_auth.FirebaseAuth.instance.currentUser?.email
+                      : null,
                   username: username,
                   displayName: displayName,
                   child: navigatorChild,

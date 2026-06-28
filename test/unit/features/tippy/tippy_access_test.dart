@@ -4,6 +4,7 @@ import 'package:streamers_tip/features/gamification/models/subscription_plan.dar
 import 'package:streamers_tip/features/gamification/models/user_entitlements_model.dart';
 import 'package:streamers_tip/features/gamification/models/user_progress_bundle.dart';
 import 'package:streamers_tip/features/gamification/models/user_subscription_model.dart';
+import 'package:streamers_tip/features/billing/models/subscription_snapshot.dart';
 import 'package:streamers_tip/features/tippy/tippy_access.dart';
 
 void main() {
@@ -65,7 +66,7 @@ void main() {
       expect(resolveTippyEnabled(bundle), isTrue);
     });
 
-    test('false for Starter active without entitlement', () {
+    test('true for Starter active without entitlement flag', () {
       final UserProgressBundle bundle = UserProgressBundle(
         progress: const GamificationSummaryModel(
           level: 1,
@@ -81,10 +82,10 @@ void main() {
         entitlements: const UserEntitlementsModel(tippyAi: false),
         missions: const [],
       );
-      expect(resolveTippyEnabled(bundle), isFalse);
+      expect(resolveTippyEnabled(bundle), isTrue);
     });
 
-    test('false when subscription inactive', () {
+    test('true when paid subscription inactive (starter Tippy access)', () {
       final UserProgressBundle bundle = UserProgressBundle(
         progress: const GamificationSummaryModel(
           level: 1,
@@ -100,7 +101,25 @@ void main() {
         entitlements: const UserEntitlementsModel(tippyAi: false),
         missions: const [],
       );
-      expect(resolveTippyEnabled(bundle), isFalse);
+      expect(resolveTippyEnabled(bundle), isTrue);
+    });
+  });
+
+  group('resolveTippyEnabledFromSnapshot', () {
+    test('true for starter when canUseTippy is set', () {
+      final SubscriptionSnapshot snapshot = SubscriptionSnapshot.fromResponseJson(
+        <String, dynamic>{
+          'tier': 'starter',
+          'tippyAi': <String, dynamic>{'enabled': true, 'monthlyCredits': 25},
+          'limits': <String, dynamic>{
+            'contentPlans': 1,
+            'aiCreditsPerMonth': 25,
+          },
+          'features': <String, dynamic>{'tippyPremium': false},
+        },
+      );
+      expect(resolveTippyEnabledFromSnapshot(snapshot), isTrue);
+      expect(snapshot.tippyAi.enabled, isTrue);
     });
   });
 }

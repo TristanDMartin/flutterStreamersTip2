@@ -5,13 +5,13 @@ import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:flutter/material.dart';
 
 import '../../widgets/profile/profile_platforms_update_helper.dart';
+import '../../utils/auth_post_login_navigation.dart';
 import 'onboarding_models.dart';
 import 'onboarding_service.dart';
 import 'onboarding_style.dart';
 import 'screens/onboarding_creator_card_screen.dart';
-import 'screens/onboarding_goals_screen.dart';
 import 'screens/onboarding_level_unlock_screen.dart';
-import 'screens/onboarding_platforms_screen.dart';
+import 'screens/onboarding_personalize_screen.dart';
 import 'screens/onboarding_welcome_screen.dart';
 
 class OnboardingView extends StatefulWidget {
@@ -42,7 +42,7 @@ class _OnboardingViewState extends State<OnboardingView> {
   late List<String> _platforms;
   bool _isCompleting = false;
   Map<String, dynamic>? _profileSeed;
-  bool _isProfileSeedReady = false;
+  bool _emailBannerDismissed = false;
 
   @override
   void initState() {
@@ -51,19 +51,41 @@ class _OnboardingViewState extends State<OnboardingView> {
     _step = _resolveInitialStep(widget.initialState);
     _goals = List<String>.from(widget.initialState.creatorGoals);
     _platforms = List<String>.from(widget.initialState.platforms);
+    _emailBannerDismissed = widget.initialState.emailBannerDismissed;
+    _profileSeed = _buildFallbackProfileSeed();
     _pageController = PageController(initialPage: _step);
     unawaited(_loadProfileSeedOnce());
   }
 
+  Map<String, dynamic> _buildFallbackProfileSeed() {
+    final fa.User? authUser = fa.FirebaseAuth.instance.currentUser;
+    return <String, dynamic>{
+      'id': widget.userId,
+      'uid': widget.userId,
+      'displayName': authUser?.displayName?.trim() ?? '',
+      'username': '',
+      'bio': '',
+      'categoryId': '',
+      'platforms': const <Map<String, dynamic>>[],
+      'avatarURL': authUser?.photoURL,
+      'photoURL': authUser?.photoURL,
+    };
+  }
+
   Future<void> _loadProfileSeedOnce() async {
-    final Map<String, dynamic> seed = await _loadProfileSeed();
-    if (!mounted) {
-      return;
+    try {
+      final Map<String, dynamic> seed = await _loadProfileSeed().timeout(
+        const Duration(seconds: 8),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _profileSeed = seed;
+      });
+    } catch (error) {
+      debugPrint('OnboardingView: profile seed load failed: $error');
     }
-    setState(() {
-      _profileSeed = seed;
-      _isProfileSeedReady = true;
-    });
   }
 
   @override
@@ -73,9 +95,6 @@ class _OnboardingViewState extends State<OnboardingView> {
   }
 
   int _resolveInitialStep(OnboardingState state) {
-    if (state.currentStep >= 4) {
-      return 4;
-    }
     if (state.currentStep >= 3) {
       return 3;
     }
@@ -105,8 +124,9 @@ class _OnboardingViewState extends State<OnboardingView> {
     if (!widget.showTesterSkip) {
       return const SizedBox.shrink();
     }
-    return SafeArea(
-      bottom: false,
+    final double topInset = MediaQuery.paddingOf(context).top;
+    return Padding(
+      padding: EdgeInsets.only(top: topInset),
       child: Align(
         alignment: Alignment.centerRight,
         child: TextButton(
@@ -167,17 +187,10 @@ class _OnboardingViewState extends State<OnboardingView> {
   }
 
   Widget _buildCreatorCardStep() {
-    if (!_isProfileSeedReady) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF9248D2),
-        ),
-      );
-    }
     return OnboardingCreatorCardScreen(
       key: const ValueKey<String>('onboarding-creator-card'),
-      initialUser: _profileSeed ?? <String, dynamic>{},
-      onBack: () => _goToStep(2),
+      initialUser: _profileSeed ?? _buildFallbackProfileSeed(),
+      onBack: () => _goToStep(1),
       onContinue: (Map<String, dynamic> user) async {
         await _service.saveCreatorCard(
           userId: widget.userId,
@@ -188,101 +201,125 @@ class _OnboardingViewState extends State<OnboardingView> {
           avatarUrl: (user['avatarURL'] as String?)?.trim(),
           platforms: ProfilePlatformsUpdateHelper.readPlatforms(user),
         );
-        await _goToStep(4);
+        setState(() {
+          _profileSeed = user;
+        });
+        await _goToStep(3);
       },
     );
   }
 
+  String get _displayNameForUnlock {
+    return (_profileSeed?['displayName'] as String?)?.trim() ?? 'Creator';
+  }
+
+  bool get _shouldShowEmailBanner {
+    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
+    return user != null && firebaseUserNeedsEmailVerification(user);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: OnboardingStyle.background,
-      child: DefaultTextStyle(
+    return Scaffold(
+      backgroundColor: OnboardingStyle.background,
+      resizeToAvoidBottomInset: true,
+      body: DefaultTextStyle(
         style: OnboardingStyle.plainTextStyle(
           Theme.of(context).textTheme.bodyMedium ??
               const TextStyle(fontSize: 14),
         ),
         child: PopScope(
-      canPop: false,
-      child: Column(
-        children: <Widget>[
-          _buildTesterSkipBar(),
-          Expanded(
-            child: AnimatedBuilder(
-        animation: _pageController,
-        builder: (BuildContext context, Widget? child) {
-          final double page = _pageController.hasClients
-              ? (_pageController.page ?? _step.toDouble())
-              : _step.toDouble();
-          final double delta = (page - _step).abs().clamp(0.0, 1.0);
-          final double opacity = 1 - (delta * 0.18);
-          final double scale = 1 - (delta * 0.02);
-          return Transform.scale(
-            scale: scale,
-            child: Opacity(
-              opacity: opacity,
-              child: child,
+          canPop: false,
+          child: Column(
+            children: <Widget>[
+              _buildTesterSkipBar(),
+              Expanded(
+                child: AnimatedBuilder(
+                  animation: _pageController,
+                  builder: (BuildContext context, Widget? child) {
+                    final double page = _pageController.hasClients
+                        ? (_pageController.page ?? _step.toDouble())
+                        : _step.toDouble();
+                    final double delta = (page - _step).abs().clamp(0.0, 1.0);
+                    final double opacity = 1 - (delta * 0.18);
+                    final double scale = 1 - (delta * 0.02);
+                    return Transform.scale(
+                      scale: scale,
+                      child: Opacity(
+                        opacity: opacity,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onPageChanged: (int index) {
+                    setState(() {
+                      _step = index;
+                    });
+                  },
+                  children: <Widget>[
+                    OnboardingWelcomeScreen(
+                      userId: widget.userId,
+                      emailBannerDismissed: _emailBannerDismissed,
+                      showEmailBanner: _shouldShowEmailBanner,
+                      email:
+                          fa.FirebaseAuth.instance.currentUser?.email ?? '',
+                      onGetStarted: () async {
+                        await _service.advanceToStep(widget.userId, 1);
+                        await _goToStep(1);
+                      },
+                    ),
+                    OnboardingPersonalizeScreen(
+                      initialGoals: _goals,
+                      initialPlatforms: _platforms,
+                      onBack: () => _goToStep(0),
+                      onContinue: (({
+                        List<String> goals,
+                        List<String> platforms,
+                      }) data) async {
+                        _goals = data.goals;
+                        _platforms = data.platforms;
+                        await _service.savePersonalize(
+                          userId: widget.userId,
+                          goals: data.goals,
+                          platforms: data.platforms,
+                        );
+                        await _goToStep(2);
+                      },
+                      onSkip: () async {
+                        await _service.advanceToStep(widget.userId, 2);
+                        await _goToStep(2);
+                      },
+                    ),
+                    _buildCreatorCardStep(),
+                    OnboardingLevelUnlockScreen(
+                      userId: widget.userId,
+                      displayName: _displayNameForUnlock,
+                      isLoading: _isCompleting,
+                      onBack: () => _goToStep(2),
+                      onEnterApp: () async {
+                        if (_isCompleting) {
+                          return;
+                        }
+                        setState(() {
+                          _isCompleting = true;
+                        });
+                        await _service.completeOnboarding(widget.userId);
+                        if (mounted) {
+                          widget.onCompleted();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
-          );
-        },
-        child: PageView(
-          controller: _pageController,
-          physics: const NeverScrollableScrollPhysics(),
-          onPageChanged: (int index) {
-            setState(() {
-              _step = index;
-            });
-          },
-          children: <Widget>[
-          OnboardingWelcomeScreen(
-            onGetStarted: () async {
-              await _service.advanceToStep(widget.userId, 1);
-              await _goToStep(1);
-            },
-          ),
-          OnboardingGoalsScreen(
-            initialGoals: _goals,
-            onBack: () => _goToStep(0),
-            onContinue: (List<String> goals) async {
-              _goals = goals;
-              await _service.saveCreatorGoals(widget.userId, goals);
-              await _goToStep(2);
-            },
-          ),
-          OnboardingPlatformsScreen(
-            initialPlatforms: _platforms,
-            onBack: () => _goToStep(1),
-            onContinue: (List<String> platforms) async {
-              _platforms = platforms;
-              await _service.savePlatforms(widget.userId, platforms);
-              await _goToStep(3);
-            },
-          ),
-          _buildCreatorCardStep(),
-          OnboardingLevelUnlockScreen(
-            isLoading: _isCompleting,
-            onBack: () => _goToStep(3),
-            onEnterApp: () async {
-              if (_isCompleting) {
-                return;
-              }
-              setState(() {
-                _isCompleting = true;
-              });
-              await _service.completeOnboarding(widget.userId);
-              if (mounted) {
-                widget.onCompleted();
-              }
-            },
-          ),
           ],
         ),
-            ),
-          ),
-        ],
       ),
-        ),
-      ),
+    ),
     );
   }
 }

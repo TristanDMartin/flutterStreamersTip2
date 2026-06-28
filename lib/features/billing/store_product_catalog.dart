@@ -18,14 +18,17 @@ SubscriptionPlan subscriptionPlanForStoreProductId(String productId) {
 String storeProductIdForPlanAndPeriod({
   required SubscriptionPlan plan,
   required bool isYearly,
+  BillingStorePlatform? platform,
 }) {
   switch (plan) {
     case SubscriptionPlan.pro:
-      return isYearly ? kStreamersTipProYearlyId : kStreamersTipProMonthlyId;
+      return isYearly
+          ? storeProYearlyId(platform: platform)
+          : storeProMonthlyId(platform: platform);
     case SubscriptionPlan.studio:
       return isYearly
-          ? kStreamersTipStudioYearlyId
-          : kStreamersTipStudioMonthlyId;
+          ? storeStudioYearlyId(platform: platform)
+          : storeStudioMonthlyId(platform: platform);
     case SubscriptionPlan.starter:
     case SubscriptionPlan.unknown:
       throw ArgumentError('Starter has no store product.');

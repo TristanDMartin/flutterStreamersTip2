@@ -166,11 +166,16 @@ function resolveCreditsForUser(userData, access) {
   }
   if (Number.isFinite(directLimit) && directLimit > 0 &&
       Number.isFinite(directRemaining) && directRemaining >= 0) {
-    const remaining = Math.min(directRemaining, effectiveLimit);
+    const trustedLimit = effectiveLimit;
+    let remaining = directRemaining;
+    if (remaining > directLimit) {
+      remaining = directLimit;
+    }
+    remaining = Math.min(remaining, trustedLimit);
     return {
       remaining,
-      used: Math.max(0, effectiveLimit - remaining),
-      limit: effectiveLimit,
+      used: Math.max(0, trustedLimit - remaining),
+      limit: trustedLimit,
       tier: access.tier,
       resetAt: directReset,
       needsReset: false,

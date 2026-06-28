@@ -1,3 +1,5 @@
+import '../billing/models/billing_tier.dart';
+import '../billing/models/subscription_snapshot.dart';
 import '../gamification/models/subscription_plan.dart';
 import '../gamification/models/user_progress_bundle.dart';
 import 'tippy_identity.dart';
@@ -8,6 +10,19 @@ export 'tippy_identity.dart'
         TippyIdentity,
         buildTippyCreatorContextBlock,
         buildTippySystemPrompt;
+
+TippyFeatureTier resolveTippyFeatureTierFromSnapshot(
+  SubscriptionSnapshot snapshot,
+) {
+  switch (snapshot.effectiveTier) {
+    case BillingTier.studio:
+      return TippyFeatureTier.studio;
+    case BillingTier.pro:
+      return TippyFeatureTier.pro;
+    case BillingTier.starter:
+      return TippyFeatureTier.starter;
+  }
+}
 
 TippyFeatureTier resolveTippyFeatureTier(UserProgressBundle bundle) {
   final SubscriptionPlan plan =
@@ -20,27 +35,5 @@ TippyFeatureTier resolveTippyFeatureTier(UserProgressBundle bundle) {
     case SubscriptionPlan.starter:
     case SubscriptionPlan.unknown:
       return TippyFeatureTier.starter;
-  }
-}
-
-String openAiModelForTier(TippyFeatureTier tier) {
-  switch (tier) {
-    case TippyFeatureTier.studio:
-      return 'gpt-4o';
-    case TippyFeatureTier.pro:
-      return 'gpt-4o-mini';
-    case TippyFeatureTier.starter:
-      return 'gpt-4o-mini';
-  }
-}
-
-int maxReplyTokensForTier(TippyFeatureTier tier) {
-  switch (tier) {
-    case TippyFeatureTier.studio:
-      return 2048;
-    case TippyFeatureTier.pro:
-      return 1536;
-    case TippyFeatureTier.starter:
-      return 1024;
   }
 }

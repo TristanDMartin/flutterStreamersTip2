@@ -13,7 +13,6 @@ import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
 import '../services/firestore_scheduled_post_service.dart';
 import '../services/scheduled_post_publisher_service.dart';
-import '../services/scheduled_post_service.dart';
 import '../services/video_analytics_service.dart';
 // import 'edit_post_view.dart'; // Removed - unused
 // import 'post_progress_view.dart'; // Removed - unused
@@ -53,7 +52,6 @@ class _ManagePostsViewState extends State<ManagePostsView>
     with TickerProviderStateMixin {
   final FirestoreScheduledPostService _postService =
       FirestoreScheduledPostService();
-  final ScheduledPostService _scheduledPostService = ScheduledPostService();
   final VideoAnalyticsService _videoAnalyticsService = VideoAnalyticsService();
   List<ScheduledPost> _posts = [];
   bool _isLoading = true;
@@ -1509,16 +1507,11 @@ class _ManagePostsViewState extends State<ManagePostsView>
         (post.analyticsHints['publishingHistory'] as List<dynamic>? ?? const [])
             .map((entry) => Map<String, dynamic>.from(entry as Map))
             .toList();
-    try {
-      final remoteHistory =
-          await _scheduledPostService.getPublishingHistory(post.id);
-      if (remoteHistory.isNotEmpty) {
-        return remoteHistory;
-      }
-      return localHistory;
-    } catch (_) {
-      return localHistory;
+    final remoteHistory = await _postService.getPublishingHistory(post.id);
+    if (remoteHistory.isNotEmpty) {
+      return remoteHistory;
     }
+    return localHistory;
   }
 
   void _showPostAnalytics(ScheduledPost post) {

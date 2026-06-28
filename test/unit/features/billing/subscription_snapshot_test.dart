@@ -41,6 +41,52 @@ void main() {
       expect(snap.aiCreditCosts.costFor('contentPlan'), 5);
     });
 
+    test('parses legacy CF body with limits and aiCreditCosts', () {
+      final SubscriptionSnapshot snap =
+          SubscriptionSnapshot.fromResponseJson(<String, dynamic>{
+        'success': true,
+        'data': <String, dynamic>{
+          'tier': 'starter',
+          'effectiveTier': 'starter',
+          'subscriptionStatus': 'active',
+          'tippyAi': <String, dynamic>{
+            'enabled': true,
+            'monthlyCredits': 25,
+            'usedCredits': 3,
+            'remainingCredits': 22,
+          },
+          'entitlements': <String, dynamic>{
+            'maxPlatforms': 1,
+            'monthlyAiCredits': 25,
+            'contentPlansLimit': 1,
+            'canUseContentPlanner': true,
+          },
+          'aiCreditCosts': <String, dynamic>{
+            'contentPlan': 5,
+            'growthAnalysis': 10,
+          },
+          'usage': <String, dynamic>{
+            'monthlyCreditsUsed': 3,
+            'monthlyCreditsRemaining': 22,
+          },
+        },
+      });
+      expect(snap.tier, BillingTier.starter);
+      expect(snap.entitlements.contentPlansLimit, 1);
+      expect(snap.aiCreditCosts.costFor('contentPlan'), 5);
+      expect(snap.aiCreditCosts.costFor('growthAnalysis'), 10);
+      expect(snap.usage.monthlyCreditsRemaining, 22);
+    });
+
+    test('falls back to canonical aiCreditCosts when omitted', () {
+      final SubscriptionSnapshot snap =
+          SubscriptionSnapshot.fromResponseJson(<String, dynamic>{
+        'tier': 'starter',
+      });
+      expect(snap.aiCreditCosts.costFor('contentPlan'), 5);
+      expect(snap.aiCreditCosts.costFor('growthAnalysis'), 10);
+    });
+
     test('unknown tier falls back to starter', () {
       final SubscriptionSnapshot snap =
           SubscriptionSnapshot.fromResponseJson(<String, dynamic>{

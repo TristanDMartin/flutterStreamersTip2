@@ -6,7 +6,11 @@ import 'package:streamers_tip/utils/secure_log.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/app_check_http_headers.dart';
 import '../../core/backend/firebase_https_function_url.dart';
+import '../../services/production_monitoring_service.dart';
+import '../../services/performance_monitoring_service.dart';
+import 'models/tippy_ui_payload.dart';
 
 typedef TippyTokenProvider = Future<String?> Function();
 
@@ -43,10 +47,15 @@ class TippyChatService {
     'INVALID_ARGUMENT',
     'INSUFFICIENT_CREDITS',
     'UPGRADE_REQUIRED',
+    'CONTENT_PLAN_LIMIT',
     'RATE_LIMITED',
     'AI_PROVIDER_ERROR',
     'INTERNAL_ERROR',
     'SERVICE_UNAVAILABLE',
+    'TIPPY_DISABLED',
+    'CONSENT_REQUIRED',
+    'APP_CHECK_REQUIRED',
+    'APP_CHECK_INVALID',
   };
 
   final String _apiBase;
@@ -73,6 +82,7 @@ class TippyChatService {
       creditsRemaining: envelope.credits?.remaining,
       tier: envelope.credits?.tier,
       nudge: _readString(envelope.data['nudge']),
+      memoryReady: envelope.data['memoryReady'] == true,
     );
     _creditsCache = info;
     return info;
@@ -111,6 +121,11 @@ class TippyChatService {
       'ai_complete requestId=${envelope.requestId} elapsedMs=${stopwatch.elapsedMilliseconds}',
       name: 'TippyLatency',
     );
+    PerformanceMonitoringService().trackNetworkRequest(
+      '/tippy/chat',
+      stopwatch.elapsed,
+      statusCode: 200,
+    );
     final String? assistantText = _readString(
       envelope.data['message'] ?? envelope.data['assistantMessage'],
     );
@@ -125,6 +140,109 @@ class TippyChatService {
     return TippyChatResult(
       message: cleanedAssistantText,
       creditsRemaining: envelope.credits?.remaining,
+      ui: TippyUiPayload.fromJson(envelope.data['ui']),
+    );
+  }
+
+  Future<TippyContextSnapshot> fetchContext() async {
+    final TippySuccessEnvelope envelope = await _authedGet('/tippy/context');
+    return TippyContextSnapshot.fromMap(envelope.data);
+  }
+
+  Future<Map<String, dynamic>> saveCreatorGoal(
+    Map<String, dynamic> payload,
+  ) async {
+    final TippySuccessEnvelope envelope = await _authedPost(
+      '/tippy/goals',
+      payload,
+    );
+    return envelope.data;
+  }
+
+  Future<TippyHookIdeasResult> fetchHookIdeas({required String prompt}) async {
+    final TippySuccessEnvelope envelope = await _authedPost(
+      '/tippy/hook-ideas',
+      <String, dynamic>{
+        'prompt': prompt,
+        'messages': <Map<String, String>>[
+          <String, String>{'role': 'user', 'content': prompt},
+        ],
+      },
+    );
+    return TippyHookIdeasResult(
+      hooks: _readStringList(envelope.data['hooks']),
+      message: _readString(envelope.data['message']),
+      creditsRemaining: envelope.credits?.remaining,
+    );
+  }
+
+  Future<TippyMissionResult> generateDailyMission() async {
+    final TippySuccessEnvelope envelope = await _authedPost(
+      '/tippy/generate-mission',
+      <String, dynamic>{},
+    );
+    final Map<String, dynamic>? mission =
+        envelope.data['mission'] is Map<String, dynamic>
+            ? envelope.data['mission'] as Map<String, dynamic>
+            : null;
+    return TippyMissionResult(
+      title: _readString(mission?['title']) ??
+          _readString(envelope.data['message']) ??
+          'Complete today\'s creator mission',
+      description: _readString(mission?['description']),
+      actionSurface: _readString(mission?['actionSurface']),
+      creditsRemaining: envelope.credits?.remaining,
+    );
+  }
+
+  Future<TippyScheduleProposalResult> proposeSchedule({
+    required String prompt,
+  }) async {
+    final TippySuccessEnvelope envelope = await _authedPost(
+      '/tippy/propose-schedule',
+      <String, dynamic>{'prompt': prompt},
+    );
+    final List<Map<String, dynamic>> proposals = <Map<String, dynamic>>[];
+    if (envelope.data['proposals'] is List) {
+      for (final Object? item in envelope.data['proposals'] as List<Object?>) {
+        if (item is Map<String, dynamic>) {
+          proposals.add(item);
+        } else if (item is Map) {
+          proposals.add(Map<String, dynamic>.from(item));
+        }
+      }
+    }
+    return TippyScheduleProposalResult(
+      proposals: proposals,
+      message: _readString(envelope.data['message']),
+      ui: TippyUiPayload.fromJson(envelope.data['ui']),
+      creditsRemaining: envelope.credits?.remaining,
+    );
+  }
+
+  Future<void> approveScheduleProposal({required String proposalId}) async {
+    await _authedPost(
+      '/tippy/approve-schedule',
+      <String, dynamic>{'proposalId': proposalId},
+    );
+  }
+
+  Future<TippyPlanResult> startGrowthProgram() async {
+    final TippySuccessEnvelope envelope = await _authedPost(
+      '/tippy/growth-program',
+      <String, dynamic>{},
+    );
+    _creditsCache = _creditsCache?.copyWith(
+      creditsRemaining: envelope.credits?.remaining,
+      tier: envelope.credits?.tier,
+    );
+    return TippyPlanResult(
+      planId: _readString(envelope.data['planId']),
+      itemCount: _readInt(envelope.data['itemCount']),
+      message: _readString(envelope.data['message']),
+      programId: _readString(envelope.data['programId']),
+      creditsRemaining: envelope.credits?.remaining,
+      ui: TippyUiPayload.fromJson(envelope.data['ui']),
     );
   }
 
@@ -188,6 +306,10 @@ class TippyChatService {
     );
   }
 
+  Future<void> deletePromptHistory() async {
+    await _authedPost('/tippy/delete-history', <String, dynamic>{});
+  }
+
   Future<TippyAnalyzeContentResult> analyzeContent({
     required String content,
   }) async {
@@ -200,6 +322,7 @@ class TippyChatService {
       summary: _readString(envelope.data['summary']) ?? '',
       actionItems: _readStringList(envelope.data['actionItems']),
       creditsRemaining: envelope.credits?.remaining,
+      ui: TippyUiPayload.fromJson(envelope.data['ui']),
     );
   }
 
@@ -240,11 +363,10 @@ class TippyChatService {
     if (idToken == null || idToken.isEmpty) {
       throw const TippyAuthException('Authentication required.');
     }
-    final Map<String, String> headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $idToken',
-    };
-    return headers;
+    return buildAuthenticatedHttpHeaders(
+      idToken: idToken,
+      extra: const <String, String>{'Content-Type': 'application/json'},
+    );
   }
 
   Future<String?> _resolveIdToken() async {
@@ -291,6 +413,9 @@ class TippyChatService {
       );
     }
     if (status == 401) {
+      if (code == 'APP_CHECK_REQUIRED' || code == 'APP_CHECK_INVALID') {
+        ProductionMonitoringService.instance.recordAppCheckBlocked('tippy_http');
+      }
       throw TippyAuthException(
         message,
         code: code,
@@ -344,14 +469,35 @@ class TippyChatService {
   }
 
   Future<http.Response> _executeRequest(
-    Future<http.Response> Function() request,
-  ) async {
-    try {
-      return await request().timeout(_requestTimeout);
-    } on SocketException {
-      throw const TippyNetworkException();
-    } on TimeoutException {
-      throw const TippyNetworkException(message: 'Request timed out.');
+    Future<http.Response> Function() request, {
+    int maxAttempts = 3,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        final http.Response response =
+            await request().timeout(_requestTimeout);
+        final bool isRetryableStatus =
+            response.statusCode == 502 || response.statusCode == 503;
+        if (isRetryableStatus && attempt < maxAttempts) {
+          await Future<void>.delayed(
+            Duration(milliseconds: 400 * attempt),
+          );
+          continue;
+        }
+        return response;
+      } on SocketException {
+        if (attempt >= maxAttempts) {
+          throw const TippyNetworkException();
+        }
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+      } on TimeoutException {
+        if (attempt >= maxAttempts) {
+          throw const TippyNetworkException(message: 'Request timed out.');
+        }
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+      }
     }
   }
 }
@@ -370,9 +516,72 @@ class TippyChatResult {
   const TippyChatResult({
     required this.message,
     this.creditsRemaining,
+    this.ui = TippyUiPayload.empty,
   });
 
   final String message;
+  final int? creditsRemaining;
+  final TippyUiPayload ui;
+}
+
+class TippyContextSnapshot {
+  const TippyContextSnapshot({
+    required this.memoryReady,
+    required this.greeting,
+    required this.ui,
+  });
+
+  final bool memoryReady;
+  final String greeting;
+  final TippyUiPayload ui;
+
+  factory TippyContextSnapshot.fromMap(Map<String, dynamic> data) {
+    return TippyContextSnapshot(
+      memoryReady: data['memoryReady'] == true,
+      greeting: _readString(data['greeting']) ??
+          'Hey creator, what are we building today?',
+      ui: TippyUiPayload.fromJson(data['ui']),
+    );
+  }
+}
+
+class TippyHookIdeasResult {
+  const TippyHookIdeasResult({
+    required this.hooks,
+    this.message,
+    this.creditsRemaining,
+  });
+
+  final List<String> hooks;
+  final String? message;
+  final int? creditsRemaining;
+}
+
+class TippyMissionResult {
+  const TippyMissionResult({
+    required this.title,
+    this.description,
+    this.actionSurface,
+    this.creditsRemaining,
+  });
+
+  final String title;
+  final String? description;
+  final String? actionSurface;
+  final int? creditsRemaining;
+}
+
+class TippyScheduleProposalResult {
+  const TippyScheduleProposalResult({
+    required this.proposals,
+    this.message,
+    this.ui = TippyUiPayload.empty,
+    this.creditsRemaining,
+  });
+
+  final List<Map<String, dynamic>> proposals;
+  final String? message;
+  final TippyUiPayload ui;
   final int? creditsRemaining;
 }
 
@@ -382,23 +591,28 @@ class TippyCreditsInfo {
     this.creditsRemaining,
     this.tier,
     this.nudge,
+    this.memoryReady = false,
   });
 
   final String greeting;
   final int? creditsRemaining;
   final String? tier;
   final String? nudge;
+  final bool memoryReady;
 
   TippyCreditsInfo copyWith({
+    String? greeting,
     int? creditsRemaining,
     String? tier,
     String? nudge,
+    bool? memoryReady,
   }) {
     return TippyCreditsInfo(
-      greeting: greeting,
+      greeting: greeting ?? this.greeting,
       creditsRemaining: creditsRemaining ?? this.creditsRemaining,
       tier: tier ?? this.tier,
       nudge: nudge ?? this.nudge,
+      memoryReady: memoryReady ?? this.memoryReady,
     );
   }
 }
@@ -408,12 +622,16 @@ class TippyPlanResult {
     this.planId,
     this.itemCount,
     this.message,
+    this.programId,
     this.creditsRemaining,
+    this.ui = TippyUiPayload.empty,
   });
   final String? planId;
   final int? itemCount;
   final String? message;
+  final String? programId;
   final int? creditsRemaining;
+  final TippyUiPayload ui;
 }
 
 class TippyCaptionResult {
@@ -435,11 +653,13 @@ class TippyAnalyzeContentResult {
     required this.summary,
     required this.actionItems,
     this.creditsRemaining,
+    this.ui = TippyUiPayload.empty,
   });
 
   final String summary;
   final List<String> actionItems;
   final int? creditsRemaining;
+  final TippyUiPayload ui;
 }
 
 class TippySuccessEnvelope {

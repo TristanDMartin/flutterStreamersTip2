@@ -268,6 +268,26 @@ class CreatorIntelligenceAnalyticsService {
       },
     );
   }
+
+  Future<void> trackPersonalizationCtaTapped({
+    required String uiSurface,
+    required String ctaSurface,
+    required List<String> creatorGoals,
+    required List<String> platforms,
+  }) {
+    return trackEvent(
+      eventType: AnalyticsEventTypes.personalizationCtaTapped,
+      targetType: AnalyticsTargetTypes.personalization,
+      targetId: ctaSurface,
+      metadata: <String, dynamic>{
+        'uiSurface': uiSurface,
+        'ctaSurface': ctaSurface,
+        'creatorGoals': creatorGoals,
+        'platforms': platforms,
+        if (creatorGoals.isNotEmpty) 'primaryGoal': creatorGoals.first,
+      },
+    );
+  }
 }
 
 final Provider<CreatorIntelligenceAnalyticsService>

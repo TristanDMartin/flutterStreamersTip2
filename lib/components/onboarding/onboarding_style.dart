@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/design/st_radius.dart';
 
@@ -12,6 +13,15 @@ class OnboardingStyle {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: <Color>[Color(0xFF9248D2), Color(0xFF4897D2)],
+  );
+
+  static const SystemUiOverlayStyle immersiveSystemUi = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarContrastEnforced: false,
   );
 
   static bool isLight(BuildContext context) =>
@@ -171,19 +181,37 @@ class GradientPillButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.icon,
+    this.useSolidPurple = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
+  final bool useSolidPurple;
 
   @override
   Widget build(BuildContext context) {
+    final bool isEnabled = onPressed != null;
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: onPressed == null ? null : OnboardingStyle.primaryGradient,
-        color: onPressed == null ? Colors.white12 : null,
+        gradient: isEnabled && !useSolidPurple
+            ? OnboardingStyle.primaryGradient
+            : null,
+        color: !isEnabled
+            ? Colors.white12
+            : useSolidPurple
+                ? const Color(0xFF9248D2)
+                : null,
         borderRadius: BorderRadius.circular(999),
+        boxShadow: isEnabled && useSolidPurple
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: const Color(0xFF9248D2).withValues(alpha: 0.35),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
