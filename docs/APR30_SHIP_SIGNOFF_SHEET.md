@@ -32,6 +32,14 @@ Use this block as paste-in evidence for the release record; it does **not** repl
 - **Feed eligibility tests:** `flutter test test/unit/utils/feed_candidate_rules_test.dart test/utils/video_url_resolver_test.dart test/unit/utils/video_url_resolver_owner_test.dart test/unit/utils/discover_video_eligibility_test.dart` — **24 passed**.
 - **Production note:** video metadata backfill is no longer blocking current safe public/playable videos from Home/Discover. Remaining production blockers are mandatory iOS/Android device smokes, push notification validation, OAuth/billing real-flow checks, and controlled beta soak.
 
+## Automated evidence (2026-06-30, production CI/QA pass)
+
+- **Git push:** `flutterStreamersTip2` pushed through commit `a2d4a940` (`Run Linux QA harness headlessly`).
+- **CI:** GitHub Actions run `28416233503` — **passed** Flutter analyze, Firestore rules + follows emulator tests, counter reconciliation, playback coordinator unit tests, and Flutter tests.
+- **QA:** GitHub Actions run `28416233505` — **passed** Cloud Functions lint, Firestore rules regressions for likes/interactions/FCM tokens, Flutter analyze, Flutter unit tests, and the Linux `integration_test` harness under `xvfb-run`.
+- **Configured skips:** web e2e skipped because `E2E_BASE_URL` is not configured; Android/iOS feed e2e skipped because the workflow was not manually dispatched with `mobile_feed_e2e=true`.
+- **Production status:** code and automated checks are in a controlled-beta candidate state. Full production/public beta remains **NO-GO** until the real-device iOS/Android smoke matrix, APNs/FCM delivery test, OAuth/billing real-flow validation, and 24-48 hour controlled beta soak are completed.
+
 ## Automated evidence (2026-04-29, dev / agent)
 
 - **Unit + widget (Tippy):** `flutter test test/unit/features/tippy test/widgets/tippy_chat_page_test.dart` — **17 passed**.
