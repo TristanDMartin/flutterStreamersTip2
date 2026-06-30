@@ -4,6 +4,7 @@
  * Routes:
  *   POST /mux/direct-upload — Allocate videoId, pending Firestore doc, Mux URL
  *   POST /videos/delete — Soft-delete video (same contract as Firebase deleteVideo)
+ *   GET /api/profile-videos — Canonical website profile videos from videos
  *   POST /webhooks/mux — Mux webhook handler
  *   POST /gamification/events — Trusted gamification events
  */
@@ -370,6 +371,70 @@ function isPublicVideoDoc(data = {}) {
     privacy === 'public' ||
     (visibility == null && privacy == null)
   );
+}
+
+function canonicalVideoIdFromName(data = {}) {
+  return String(data.id || data.__id || '').trim();
+}
+
+function readVideoOwnerId(data = {}) {
+  return String(
+    data.ownerId ||
+      data.userId ||
+      data.user_id ||
+      data.authorId ||
+      data.uid ||
+      data.creatorId ||
+      data.creator_id ||
+      data.videoOwnerId ||
+      ''
+  ).trim();
+}
+
+function videoDateMillis(data = {}) {
+  const candidates = [
+    data.createdAt,
+    data.publishedAt,
+    data.updatedAt,
+    data.transcodedAt,
+  ];
+  for (const value of candidates) {
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+  }
+  return 0;
+}
+
+function canShowProfileVideoToViewer(data = {}, viewerId = '', profileUserId = '') {
+  if (isVideoDeleted(data)) return false;
+  const status = String(data.status || 'processing').toLowerCase();
+  const isOwner = viewerId && viewerId === profileUserId;
+  if (isOwner) {
+    return ['processing', 'ready', 'failed', 'published', 'active'].includes(status);
+  }
+  const visibility = String(data.visibility || '').trim().toLowerCase();
+  return visibility === 'public' &&
+    ['processing', 'ready', 'published', 'active'].includes(status);
+}
+
+function publicProfileVideoPayload(data = {}) {
+  const id = canonicalVideoIdFromName(data);
+  return {
+    ...data,
+    id,
+    videoId: id,
+    playbackUrl:
+      data.canonicalPlaybackUrl ||
+      data.hlsUrl ||
+      data.mp4Url ||
+      data.videoUrl ||
+      data.playbackUrl ||
+      '',
+    thumbnailUrl: data.thumbnailUrl || data.thumbnailURL || '',
+  };
 }
 
 function normalizeMuxFeedHlsUrl(url) {
@@ -1692,6 +1757,9 @@ export default {
       if (path === '/health' && request.method === 'GET') {
         return await handleHealth(request, env, cors);
       }
+      if (path === '/api/profile-videos' && request.method === 'GET') {
+        return await handleProfileVideos(request, env, cors);
+      }
       if (path === '/mux/direct-upload' && request.method === 'POST') {
         return await handleDirectUpload(request, env, cors);
       }
@@ -2228,6 +2296,74 @@ async function handleHealth(request, env, cors) {
   return jsonResponse(checks, 200, {}, cors);
 }
 
+async function handleProfileVideos(request, env, cors) {
+  const url = new URL(request.url);
+  const profileUserId = String(url.searchParams.get('userId') || '').trim();
+  if (!profileUserId) {
+    return jsonResponse({ error: 'userId is required' }, 400, {}, cors);
+  }
+
+  let viewerId = '';
+  const auth = request.headers.get('Authorization');
+  if (auth?.startsWith('Bearer ')) {
+    try {
+      const idToken = auth.slice(7).trim();
+      const verified = await verifyFirebaseToken(idToken, env.FIREBASE_WEB_API_KEY);
+      viewerId = verified.uid || '';
+    } catch (e) {
+      return jsonResponse({ error: 'Invalid Authorization token' }, 401, {}, cors);
+    }
+  }
+
+  const ownerFields = [
+    'ownerId',
+    'userId',
+    'user_id',
+    'authorId',
+    'uid',
+    'creatorId',
+    'creator_id',
+    'videoOwnerId',
+  ];
+  const byId = new Map();
+  for (const ownerField of ownerFields) {
+    const rows = await firestoreRunQuery(env, {
+      from: [{ collectionId: 'videos' }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: ownerField },
+          op: 'EQUAL',
+          value: { stringValue: profileUserId },
+        },
+      },
+      limit: 100,
+    });
+    for (const row of rows) {
+      const data = row.data || {};
+      const id = canonicalVideoIdFromName(data);
+      if (!id) continue;
+      byId.set(id, data);
+    }
+  }
+
+  const videos = Array.from(byId.values())
+    .filter((data) => readVideoOwnerId(data) === profileUserId)
+    .filter((data) => canShowProfileVideoToViewer(data, viewerId, profileUserId))
+    .sort((a, b) => videoDateMillis(b) - videoDateMillis(a))
+    .map(publicProfileVideoPayload);
+
+  console.log(
+    'WEB_PROFILE_VIDEO_IDS',
+    JSON.stringify({
+      profileUserId,
+      viewerId: viewerId || null,
+      ids: videos.map((video) => video.id),
+    })
+  );
+
+  return jsonResponse({ items: videos }, 200, {}, cors);
+}
+
 async function firestoreCreateVideoDoc(env, videoId, fields) {
   await firestoreWrite(env, 'POST', `videos?documentId=${videoId}`, fields);
 }
@@ -2343,6 +2479,8 @@ async function handleDirectUpload(request, env, cors) {
     return jsonResponse(
       {
         videoId,
+        canonicalVideoId: videoId,
+        clientVideoId: clientVideoId || null,
         uploadUrl,
         uploadId,
         replacedClientId,

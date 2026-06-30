@@ -31,6 +31,8 @@ Single backend-owned flow. Clients must not create `videos/{id}` before Mux uplo
 ```json
 {
   "videoId": "video_<ts>_<rand>",
+  "canonicalVideoId": "video_<ts>_<rand>",
+  "clientVideoId": "client-hint-id",
   "uploadUrl": "...",
   "uploadId": "...",
   "replacedClientId": true
@@ -38,6 +40,24 @@ Single backend-owned flow. Clients must not create `videos/{id}` before Mux uplo
 ```
 
 **App:** `OptimisticVideoService.createOptimisticVideo(..., persistToFirestore: false)` then bind `bindServerVideoId` after Worker returns canonical `videoId`.
+
+**Website:** after `POST /mux/direct-upload`, discard any locally generated/client-hint ID for display and persistence. Use `canonicalVideoId || videoId` returned by the Worker for profile links, upload state, optimistic cards, and Firestore reads.
+
+## Website profile videos
+
+Website profile sections must read canonical uploaded videos through:
+
+```http
+GET /api/profile-videos?userId=<profileUserId>
+Authorization: Bearer <Firebase ID token> # optional, required to see owner-only processing/failed/private state
+```
+
+The endpoint reads only `videos`, applies the same owner/public rules as the app, and returns:
+
+- owner: non-deleted `processing`, `ready`, `failed`, `published`, `active`
+- other viewers: non-deleted public `processing`, `ready`, `published`, `active`
+
+Do not render profile uploads from upload-session caches, local optimistic IDs, `users/{uid}/videos`, or `user_videos/{uid}/posts` unless the item resolves back to an existing canonical `videos/{videoId}` doc.
 
 ## Delete (global soft delete)
 
