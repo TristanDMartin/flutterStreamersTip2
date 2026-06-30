@@ -147,8 +147,14 @@ void main() {
       );
     });
 
-    test('allows public processing and ready videos for other viewers', () {
-      for (final String status in <String>['processing', 'ready']) {
+    test('allows public processing and ready-like videos for other viewers',
+        () {
+      for (final String status in <String>[
+        'processing',
+        'ready',
+        'published',
+        'active',
+      ]) {
         expect(
           rejectProfileListCandidate(
             <String, dynamic>{
@@ -158,6 +164,23 @@ void main() {
             },
             owner,
             viewerUserId: otherViewer,
+          ),
+          isNull,
+        );
+      }
+    });
+
+    test('allows legacy ready-like statuses for owner profile', () {
+      for (final String status in <String>['published', 'active']) {
+        expect(
+          rejectProfileListCandidate(
+            <String, dynamic>{
+              'status': status,
+              'visibility': 'public',
+              'ownerId': owner,
+            },
+            owner,
+            viewerUserId: owner,
           ),
           isNull,
         );

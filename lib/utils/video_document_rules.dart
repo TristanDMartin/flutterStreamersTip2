@@ -15,6 +15,8 @@ const Set<String> kVideoVisibleInFeedStatuses = {
 const Set<String> kOwnerProfileVideoStatuses = {
   'processing',
   'ready',
+  'published',
+  'active',
   'failed',
 };
 
@@ -22,6 +24,8 @@ const Set<String> kOwnerProfileVideoStatuses = {
 const Set<String> kPublicProfileVideoStatuses = {
   'processing',
   'ready',
+  'published',
+  'active',
 };
 
 const String kVideoTraceTargetId =
@@ -325,7 +329,8 @@ void logDiscoverVideoSkip({
   );
 }
 
-/// Profile grid display — aligned with website (show processing + ready).
+/// Profile grid display — aligned with website (show processing + ready docs,
+/// including legacy published/active status values).
 String? rejectProfileListCandidate(
   Map<String, dynamic> data,
   String profileUserId, {
