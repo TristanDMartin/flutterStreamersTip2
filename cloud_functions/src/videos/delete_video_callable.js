@@ -11,9 +11,14 @@ function resolveOwnerId(data) {
     return null;
   }
   return (
+    data.ownerId ||
     data.userId ||
+    data.user_id ||
+    data.authorId ||
+    data.uid ||
     data.creatorId ||
     data.creator_id ||
+    data.videoOwnerId ||
     null
   );
 }
@@ -246,6 +251,13 @@ async function handleDeleteVideo(request) {
     source: request.data?.source || 'app',
     bulkDelete: false,
   });
+  if (!result.ok) {
+    const code = result.reason === 'not_found' ? 'not-found' : 'failed-precondition';
+    throw new HttpsError(
+      code,
+      `Video could not be deleted: ${result.reason || 'unknown_reason'}.`,
+    );
+  }
   return {success: true, results: [result]};
 }
 

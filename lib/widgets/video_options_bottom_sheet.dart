@@ -8,6 +8,7 @@ import '../models/user.dart';
 import '../core/feature_flags.dart';
 import '../services/creator_cache_service.dart';
 import '../services/video_actions_service.dart';
+import '../services/video_deletion_service.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'streamer_card_view.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
@@ -359,8 +360,12 @@ class _VideoOptionsBottomSheetState
     if (confirmed != true) return;
     setState(() => _isProcessing = true);
     try {
-      final videoActionsService = ref.read(videoActionsServiceProvider);
-      await videoActionsService.deleteVideo(widget.video.id);
+      final videoDeletionService = ref.read(videoDeletionServiceProvider);
+      await videoDeletionService.deleteVideoWithOptimisticUi(
+        videoId: widget.video.id,
+        rollbackVideos: <HomeVideo>[widget.video],
+        profileUserId: widget.video.creator.id,
+      );
       if (mounted) {
         Navigator.of(context).pop();
         widget.onVideoDeleted?.call();
