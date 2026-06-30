@@ -920,28 +920,24 @@ async function deleteQueryBatch(query, batchSize = 200) {
 
 async function deleteCollectionDocs(collectionRef, batchSize = 200) {
   let deleted = 0;
-  while (true) {
-    const count = await deleteQueryBatch(collectionRef, batchSize);
-    if (count === 0) {
-      break;
-    }
+  let count;
+  do {
+    count = await deleteQueryBatch(collectionRef, batchSize);
     deleted += count;
-  }
+  } while (count > 0);
   return deleted;
 }
 
 async function deleteUserTippyAudit(uid) {
   let deleted = 0;
-  while (true) {
-    const count = await deleteQueryBatch(
+  let count;
+  do {
+    count = await deleteQueryBatch(
       firestore.collection('tippy_ai_audit').where('uid', '==', uid),
       200,
     );
-    if (count === 0) {
-      break;
-    }
     deleted += count;
-  }
+  } while (count > 0);
   return deleted;
 }
 
