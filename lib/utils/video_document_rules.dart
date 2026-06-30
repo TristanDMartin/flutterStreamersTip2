@@ -24,6 +24,9 @@ const Set<String> kPublicProfileVideoStatuses = {
   'ready',
 };
 
+const String kVideoTraceTargetId =
+    'THJcEgeHF9efuNNUWmPRw9xa7SMQG3kKJzoaj2SblSA';
+
 /// Profile grid / owner list — kept for existing callers.
 const Set<String> kVideoProfileListStatuses = kOwnerProfileVideoStatuses;
 
@@ -95,6 +98,36 @@ void logProfileVideoCheck({
     'visibility=$visibility '
     'isDeleted=$isDeleted '
     'canShow=$canShow',
+  );
+}
+
+void logTargetVideoTrace({
+  required String videoId,
+  required bool found,
+  required String viewName,
+  Map<String, dynamic>? data,
+  String? rejectReason,
+}) {
+  if (!kDebugMode || videoId != kVideoTraceTargetId) {
+    return;
+  }
+  final Map<String, dynamic> fields = data ?? const <String, dynamic>{};
+  debugPrint(
+    'VIDEO_TRACE target=$kVideoTraceTargetId '
+    'view=$viewName '
+    'found=$found '
+    'reject=${rejectReason ?? 'none'} '
+    'status=${fields['status']} '
+    'visibility=${fields['visibility']} '
+    'isDeleted=${fields['isDeleted']} '
+    'ownerId=${fields['ownerId']} '
+    'createdAt=${fields['createdAt']} '
+    'playbackUrl=${fields['playbackUrl']} '
+    'hlsUrl=${fields['hlsUrl']} '
+    'mp4Url=${fields['mp4Url']} '
+    'canonicalPlaybackUrl=${fields['canonicalPlaybackUrl']} '
+    'thumbnailUrl=${fields['thumbnailUrl']} '
+    'processingError=${fields['processingError']}',
   );
 }
 
@@ -300,13 +333,34 @@ String? rejectProfileListCandidate(
   String viewName = 'ProfileView',
 }) {
   if (isVideoDeletedFromFirestore(data)) {
+    logTargetVideoTrace(
+      videoId: (data['id'] ?? data['videoId'] ?? '').toString(),
+      found: true,
+      viewName: viewName,
+      data: data,
+      rejectReason: 'deleted',
+    );
     return 'deleted';
   }
   final String? owner = (data['ownerId'] as String?)?.trim();
   if (owner == null || owner.isEmpty || owner != profileUserId) {
+    logTargetVideoTrace(
+      videoId: (data['id'] ?? data['videoId'] ?? '').toString(),
+      found: true,
+      viewName: viewName,
+      data: data,
+      rejectReason: 'owner_mismatch',
+    );
     return 'owner_mismatch';
   }
   if (data['isDraft'] == true) {
+    logTargetVideoTrace(
+      videoId: (data['id'] ?? data['videoId'] ?? '').toString(),
+      found: true,
+      viewName: viewName,
+      data: data,
+      rejectReason: 'isDraft',
+    );
     return 'isDraft';
   }
   final String viewerId = viewerUserId ?? '';
@@ -327,6 +381,13 @@ String? rejectProfileListCandidate(
         data['deleted'] == true ||
         data['deletedAt'] != null,
     canShow: show,
+  );
+  logTargetVideoTrace(
+    videoId: (data['id'] ?? data['videoId'] ?? '').toString(),
+    found: true,
+    viewName: viewName,
+    data: data,
+    rejectReason: show ? null : 'visibility_or_status',
   );
   if (!show) {
     final String status =

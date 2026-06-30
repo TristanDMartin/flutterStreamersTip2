@@ -38,6 +38,24 @@ void main() {
       expect(url, 'https://cdn.example.com/ready/master.m3u8');
     });
 
+    test('prefers shared playback fields before synthesized mux URL', () {
+      final String? url = resolvePlaybackUrl(<String, dynamic>{
+        'hlsUrl': 'https://cdn.example.com/ready/master.m3u8',
+        'mp4Url': 'https://cdn.example.com/ready/video.mp4',
+        'playbackUrl': 'https://cdn.example.com/ready/fallback.mp4',
+        'muxPlaybackId': 'abc123',
+      });
+      expect(url, 'https://cdn.example.com/ready/master.m3u8');
+    });
+
+    test('uses mp4Url before playbackUrl', () {
+      final String? url = resolvePlaybackUrl(<String, dynamic>{
+        'mp4Url': 'https://cdn.example.com/ready/video.mp4',
+        'playbackUrl': 'https://cdn.example.com/ready/fallback.mp4',
+      });
+      expect(url, 'https://cdn.example.com/ready/video.mp4');
+    });
+
     test('uses videoUrl when no mux or hls', () {
       final String? url = resolvePlaybackUrl(<String, dynamic>{
         'videoUrl': 'https://cdn.example.com/v.mp4',
@@ -88,6 +106,18 @@ void main() {
           'hlsUrl': 'https://stream.mux.com/abc.m3u8',
         }),
         'https://stream.mux.com/abc.m3u8',
+      );
+    });
+
+    test('uses mp4Url before playbackUrl for ready videos', () {
+      expect(
+        resolveReadyPlaybackUrl(<String, dynamic>{
+          'status': 'ready',
+          'isReadyForFeed': true,
+          'mp4Url': 'https://cdn.example.com/ready/video.mp4',
+          'playbackUrl': 'https://cdn.example.com/ready/fallback.mp4',
+        }),
+        'https://cdn.example.com/ready/video.mp4',
       );
     });
   });

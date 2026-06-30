@@ -40,8 +40,9 @@ String? resolveReadyPlaybackUrl(Map<String, dynamic> video) {
   final String? url = firstNonEmpty(<dynamic>[
     video['canonicalPlaybackUrl'],
     video['hlsUrl'],
-    video['hls_url'],
+    video['mp4Url'],
     video['playbackUrl'],
+    video['hls_url'],
     video['videoUrl'],
     video['videoURL'],
   ]);
@@ -235,18 +236,25 @@ String? resolvePlaybackUrl(Map<String, dynamic> video) {
     return normalizeMuxHlsUrl(canonical);
   }
 
+  final sharedPlaybackUrl = firstValidString(
+    const [
+      'hlsUrl',
+      'mp4Url',
+      'playbackUrl',
+      'streamUrl',
+      'hls_url',
+      'playbackURL',
+    ],
+  );
+  if (sharedPlaybackUrl.isNotEmpty) {
+    return normalizeMuxHlsUrl(sharedPlaybackUrl);
+  }
+
   final muxPlaybackId = firstValidString(
     const ['muxPlaybackId', 'playbackId', 'mux_playback_id'],
   );
   if (muxPlaybackId.isNotEmpty) {
     return normalizeMuxHlsUrl('https://stream.mux.com/$muxPlaybackId.m3u8');
-  }
-
-  final hlsUrl = firstValidString(
-    const ['hlsUrl', 'playbackUrl', 'streamUrl', 'hls_url', 'playbackURL'],
-  );
-  if (hlsUrl.isNotEmpty) {
-    return normalizeMuxHlsUrl(hlsUrl);
   }
 
   final videoUrl = firstValidString(

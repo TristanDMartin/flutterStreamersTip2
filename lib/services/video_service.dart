@@ -593,7 +593,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     final List<HomeVideo> built = <HomeVideo>[];
     for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
         in snapshot.docs) {
-      final Map<String, dynamic> data = doc.data();
+      final Map<String, dynamic> data = <String, dynamic>{
+        ...doc.data(),
+        'id': doc.id,
+      };
       final String? reject = rejectProfileListCandidate(
         data,
         profileUserId,
@@ -1221,11 +1224,47 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           in snapshot.docs) {
         docMap[doc.id] = doc;
       }
+      if (kDebugMode) {
+        try {
+          final DocumentSnapshot<Map<String, dynamic>> traceDoc =
+              await _firestore
+                  .collection('videos')
+                  .doc(kVideoTraceTargetId)
+                  .get(
+                    GetOptions(
+                      source:
+                          forceServer ? Source.server : Source.serverAndCache,
+                    ),
+                  );
+          logTargetVideoTrace(
+            videoId: kVideoTraceTargetId,
+            found: traceDoc.exists,
+            viewName: '${viewName}DirectDoc',
+            data: traceDoc.data(),
+          );
+        } catch (e) {
+          debugPrint(
+            'VIDEO_TRACE target=$kVideoTraceTargetId '
+            'view=${viewName}DirectDoc found=false error=$e',
+          );
+        }
+      }
+      if (!docMap.containsKey(kVideoTraceTargetId)) {
+        logTargetVideoTrace(
+          videoId: kVideoTraceTargetId,
+          found: false,
+          viewName: viewName,
+          rejectReason: 'not_in_profile_owner_query',
+        );
+      }
       final String viewerUserId = user.uid;
       final List<HomeVideo> built = <HomeVideo>[];
       for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
           in docMap.values) {
-        final Map<String, dynamic> data = doc.data();
+        final Map<String, dynamic> data = <String, dynamic>{
+          ...doc.data(),
+          'id': doc.id,
+        };
         logVideoEligibility(
           videoId: doc.id,
           data: data,

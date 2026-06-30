@@ -523,6 +523,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
           // Watch user videos from centralized VideoService
           final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
+          if (kDebugMode) {
+            debugPrint(
+              'APP_PROFILE_VIDEO_IDS view=${widget.viewName} '
+              'profileUserId=${widget.userId} '
+              '${userVideos.map((v) => v.id).toList()}',
+            );
+          }
           final List<OptimisticVideo> optimisticVideos = _isViewingOwnProfile
               ? (OptimisticVideoService()
                   .getOptimisticVideosForUser(widget.userId ?? '')
