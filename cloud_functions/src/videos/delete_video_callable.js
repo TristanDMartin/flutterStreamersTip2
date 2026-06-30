@@ -74,43 +74,76 @@ async function deleteFeedIndexDoc(path, batch, affectedIndexes) {
 }
 
 async function deleteBookmarksForVideo(videoId, batch, affectedIndexes) {
+  const bookmarkedUserIds = new Set();
   const bookmarksSnap = await firestore
     .collection('videos')
     .doc(videoId)
     .collection('bookmarks')
     .get();
   for (const doc of bookmarksSnap.docs) {
+    const data = doc.data() || {};
+    const bookmarkUserId = data.userId || doc.id;
+    if (bookmarkUserId) {
+      bookmarkedUserIds.add(String(bookmarkUserId));
+    }
     batch.delete(doc.ref);
     affectedIndexes.push(doc.ref.path);
+  }
+  return bookmarkedUserIds;
+}
+
+async function deleteFavoritesByVideoIdField(videoId, batch, affectedIndexes) {
+  try {
+    const userFavoritesSnap = await firestore
+      .collectionGroup('favorites')
+      .where('videoId', '==', videoId)
+      .get();
+    for (const doc of userFavoritesSnap.docs) {
+      const parts = doc.ref.path.split('/');
+      if (parts.length !== 4 || parts[0] !== 'users' || parts[2] !== 'favorites') {
+        continue;
+      }
+      batch.delete(doc.ref);
+      affectedIndexes.push(doc.ref.path);
+    }
+  } catch (err) {
+    console.warn(
+      `deleteVideo favorite field cleanup skipped for ${videoId}:`,
+      err?.message || err,
+    );
+  }
+
+  try {
+    const favoritesSnap = await firestore
+      .collectionGroup('videos')
+      .where('videoId', '==', videoId)
+      .get();
+    for (const doc of favoritesSnap.docs) {
+      const path = doc.ref.path;
+      if (!path.includes('/user_favorites/')) {
+        continue;
+      }
+      batch.delete(doc.ref);
+      affectedIndexes.push(path);
+    }
+  } catch (err) {
+    console.warn(
+      `deleteVideo user_favorites field cleanup skipped for ${videoId}:`,
+      err?.message || err,
+    );
   }
 }
 
-async function deleteFavoritesForVideo(videoId, batch, affectedIndexes) {
-  const userFavoritesSnap = await firestore
-    .collectionGroup('favorites')
-    .where(admin.firestore.FieldPath.documentId(), '==', videoId)
-    .get();
-  for (const doc of userFavoritesSnap.docs) {
-    const parts = doc.ref.path.split('/');
-    if (parts.length !== 4 || parts[0] !== 'users' || parts[2] !== 'favorites') {
-      continue;
-    }
-    batch.delete(doc.ref);
-    affectedIndexes.push(doc.ref.path);
+async function deleteFavoritesForVideo(videoId, userIds, batch, affectedIndexes) {
+  const favoriteUserIds = new Set(userIds.filter(Boolean).map(String));
+  for (const userId of favoriteUserIds) {
+    const favoritePath = `users/${userId}/favorites/${videoId}`;
+    const userFavoritePath = `user_favorites/${userId}/videos/${videoId}`;
+    batch.delete(firestore.doc(favoritePath));
+    batch.delete(firestore.doc(userFavoritePath));
+    affectedIndexes.push(favoritePath, userFavoritePath);
   }
-
-  const favoritesSnap = await firestore
-    .collectionGroup('videos')
-    .where(admin.firestore.FieldPath.documentId(), '==', videoId)
-    .get();
-  for (const doc of favoritesSnap.docs) {
-    const path = doc.ref.path;
-    if (!path.includes('/user_favorites/')) {
-      continue;
-    }
-    batch.delete(doc.ref);
-    affectedIndexes.push(path);
-  }
+  await deleteFavoritesByVideoIdField(videoId, batch, affectedIndexes);
 }
 
 async function cancelScheduledPostsForVideo(videoId, ownerId, batch, affectedIndexes) {
@@ -196,8 +229,17 @@ async function softDeleteOneVideo({
   for (const path of indexPaths) {
     await deleteFeedIndexDoc(path, batch, affectedIndexes);
   }
-  await deleteBookmarksForVideo(videoId, batch, affectedIndexes);
-  await deleteFavoritesForVideo(videoId, batch, affectedIndexes);
+  const bookmarkedUserIds = await deleteBookmarksForVideo(
+    videoId,
+    batch,
+    affectedIndexes,
+  );
+  await deleteFavoritesForVideo(
+    videoId,
+    Array.from(bookmarkedUserIds),
+    batch,
+    affectedIndexes,
+  );
   await cancelScheduledPostsForVideo(videoId, ownerId, batch, affectedIndexes);
   await softDeleteForumPostsForVideo(videoId, batch, affectedIndexes);
 

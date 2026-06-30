@@ -271,6 +271,65 @@ class UnifiedBookmarkService extends ChangeNotifier {
     );
   }
 
+  Future<void> pruneBookmarksForMissingVideoIds(Set<String> videoIds) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || videoIds.isEmpty) {
+      return;
+    }
+
+    final Set<String> staleVideoIds = videoIds
+        .map((String videoId) => videoId.trim())
+        .where((String videoId) => videoId.isNotEmpty)
+        .toSet();
+    if (staleVideoIds.isEmpty) {
+      return;
+    }
+
+    for (final String videoId in staleVideoIds) {
+      _bookmarkStates.remove(videoId);
+      _pendingOperations.remove(videoId);
+    }
+
+    final List<String> staleList = staleVideoIds.toList();
+    const int staleDeleteChunkSize = 150;
+    for (int i = 0; i < staleList.length; i += staleDeleteChunkSize) {
+      final WriteBatch writeBatch = _firestore.batch();
+      for (final String videoId
+          in staleList.skip(i).take(staleDeleteChunkSize)) {
+        writeBatch.delete(
+          _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('favorites')
+              .doc(videoId),
+        );
+        writeBatch.delete(
+          _firestore
+              .collection('videos')
+              .doc(videoId)
+              .collection('bookmarks')
+              .doc(currentUser.uid),
+        );
+        writeBatch.delete(
+          _firestore
+              .collection('user_favorites')
+              .doc(currentUser.uid)
+              .collection('videos')
+              .doc(videoId),
+        );
+      }
+      await writeBatch.commit();
+    }
+
+    notifyListeners();
+    for (final String videoId in staleVideoIds) {
+      _eventController.add(VideoBookmarkStreamEvent.success(videoId, false));
+    }
+    debugPrint(
+      '🧹 UnifiedBookmarkService: Pruned ${staleVideoIds.length} stale profile favorite video bookmarks',
+    );
+  }
+
   /// Atomic bookmark toggle operation
   Future<BookmarkResult> toggleBookmark(String videoId) async {
     final currentUser = _auth.currentUser;

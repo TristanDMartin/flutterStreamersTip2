@@ -2033,6 +2033,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       if (videoIds.isEmpty) return [];
 
       final List<Map<String, dynamic>> videos = [];
+      final Set<String> staleVideoIds = <String>{};
 
       // Fetch videos in batches to avoid Firestore limits
       const batchSize = 10;
@@ -2044,9 +2045,18 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             .where(FieldPath.documentId, whereIn: batch)
             .get();
 
+        final Set<String> foundIds =
+            querySnapshot.docs.map((doc) => doc.id).toSet();
+        for (final String videoId in batch) {
+          if (!foundIds.contains(videoId)) {
+            staleVideoIds.add(videoId);
+          }
+        }
+
         for (final doc in querySnapshot.docs) {
           final data = doc.data();
           if (!isVideoVisibleInFeed(data)) {
+            staleVideoIds.add(doc.id);
             continue;
           }
           videos.add({
@@ -2066,6 +2076,18 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             'createdAt': data['createdAt'],
           });
         }
+      }
+
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      final bool isViewingOwnFavorites =
+          widget.feedType == ProfileVideoFeedType.favorites &&
+              currentUser != null &&
+              (widget.userId == null || widget.userId == currentUser.uid);
+      if (staleVideoIds.isNotEmpty && isViewingOwnFavorites) {
+        unawaited(
+          UnifiedBookmarkService.instance
+              .pruneBookmarksForMissingVideoIds(staleVideoIds),
+        );
       }
 
       if (kDebugMode) {
