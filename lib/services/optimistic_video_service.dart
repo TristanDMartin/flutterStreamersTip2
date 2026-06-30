@@ -208,6 +208,7 @@ class OptimisticVideoService extends ChangeNotifier {
     );
     final Map<String, dynamic> videoData = <String, dynamic>{
       'userId': video.ownerId,
+      'ownerId': video.ownerId,
       'creatorId': video.ownerId,
       'creator_id': video.ownerId,
       'caption': resolvedCaption,

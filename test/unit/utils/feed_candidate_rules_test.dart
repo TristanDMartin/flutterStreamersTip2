@@ -87,6 +87,7 @@ void main() {
 
   group('rejectProfileListCandidate', () {
     const String owner = 'abc123owner0000000000000001';
+    const String otherViewer = 'other_viewer_00000000000001';
 
     test('allows processing uploads for owner profile', () {
       expect(
@@ -94,12 +95,39 @@ void main() {
           <String, dynamic>{
             'status': 'processing',
             'visibility': 'public',
-            'userId': owner,
+            'ownerId': owner,
           },
           owner,
           viewerUserId: owner,
         ),
         isNull,
+      );
+    });
+
+    test('allows failed videos only for the owner', () {
+      expect(
+        rejectProfileListCandidate(
+          <String, dynamic>{
+            'status': 'failed',
+            'visibility': 'public',
+            'ownerId': owner,
+          },
+          owner,
+          viewerUserId: owner,
+        ),
+        isNull,
+      );
+      expect(
+        rejectProfileListCandidate(
+          <String, dynamic>{
+            'status': 'failed',
+            'visibility': 'public',
+            'ownerId': owner,
+          },
+          owner,
+          viewerUserId: otherViewer,
+        ),
+        'status:failed',
       );
     });
 
@@ -110,12 +138,44 @@ void main() {
           <String, dynamic>{
             'status': 'processing',
             'visibility': 'private',
+            'ownerId': owner,
+          },
+          owner,
+          viewerUserId: otherViewer,
+        ),
+        'visibility',
+      );
+    });
+
+    test('allows public processing and ready videos for other viewers', () {
+      for (final String status in <String>['processing', 'ready']) {
+        expect(
+          rejectProfileListCandidate(
+            <String, dynamic>{
+              'status': status,
+              'visibility': 'public',
+              'ownerId': owner,
+            },
+            owner,
+            viewerUserId: otherViewer,
+          ),
+          isNull,
+        );
+      }
+    });
+
+    test('requires canonical ownerId to match the profile user', () {
+      expect(
+        rejectProfileListCandidate(
+          <String, dynamic>{
+            'status': 'ready',
+            'visibility': 'public',
             'userId': owner,
           },
           owner,
-          viewerUserId: 'other_viewer_00000000000001',
+          viewerUserId: owner,
         ),
-        'visibility',
+        'owner_mismatch',
       );
     });
 
@@ -125,7 +185,7 @@ void main() {
           <String, dynamic>{
             'status': 'ready',
             'isDeleted': true,
-            'userId': owner,
+            'ownerId': owner,
           },
           owner,
           viewerUserId: owner,

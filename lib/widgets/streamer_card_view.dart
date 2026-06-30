@@ -219,9 +219,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       docEvents,
       _contentPlanCalendarEvents,
     );
-    final String uid =
-        (_userData?['id'] ?? _userData?['uid'] ?? _resolvedUserDocId ?? widget.userId)
-            .toString();
+    final String uid = (_userData?['id'] ??
+            _userData?['uid'] ??
+            _resolvedUserDocId ??
+            widget.userId)
+        .toString();
     if (uid.isNotEmpty) {
       UserProfileFirestore.logPlatformRead(
         uid: uid,
@@ -255,8 +257,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         if (!mounted) {
           return;
         }
-        final List<Map<String, dynamic>> docs = snapshot.docs
-            .map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
+        final List<Map<String, dynamic>> docs =
+            snapshot.docs.map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
           return <String, dynamic>{...d.data(), 'id': d.id};
         }).toList(growable: false);
         setState(() {
@@ -2075,6 +2077,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     return ProfileVideoFeedView(
       userId: _effectiveUserId,
       feedType: _getSelectedFeedType(),
+      viewName: 'StreamerCardView',
       // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
       // It will open the real PlayerScreen with actual videos
       onVideoTap: null,

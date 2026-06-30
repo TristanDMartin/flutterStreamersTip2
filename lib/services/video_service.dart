@@ -530,7 +530,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   Query<Map<String, dynamic>> _ownerProfileVideosQuery(String userId) {
     return _firestore
         .collection('videos')
-        .where('userId', isEqualTo: userId)
+        .where('ownerId', isEqualTo: userId)
         .where('isDeleted', isEqualTo: false)
         .orderBy('createdAt', descending: true);
   }
@@ -598,6 +598,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         data,
         profileUserId,
         viewerUserId: authUser.uid,
+        viewName: 'ProfileViewRealtime',
       );
       if (reject != null) {
         logVideoEligibility(
@@ -1156,6 +1157,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   Future<bool> mergeProfileVideosForUser(
     String profileUserId, {
     bool forceServer = true,
+    String viewName = 'ProfileView',
   }) async {
     if (LikeInteractionBoundary.isActive) {
       LikeInteractionBoundary.reportVideoServiceReload(
@@ -1173,8 +1175,11 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       }
       return inFlight;
     }
-    final Future<bool> run =
-        _runMergeProfileVideosForUser(profileUserId, forceServer: forceServer);
+    final Future<bool> run = _runMergeProfileVideosForUser(
+      profileUserId,
+      forceServer: forceServer,
+      viewName: viewName,
+    );
     _mergeProfileVideosInFlight[profileUserId] = run;
     try {
       return await run;
@@ -1186,6 +1191,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   Future<bool> _runMergeProfileVideosForUser(
     String profileUserId, {
     bool forceServer = true,
+    String viewName = 'ProfileView',
   }) async {
     isMergingProfileVideos = true;
     try {
@@ -1206,21 +1212,14 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       );
       final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
           <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-      for (final String field in <String>[
-        'ownerId',
-        'userId',
-        'user_id',
-        'creatorId',
-        'creator_id',
-      ]) {
-        final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
-            .collection('videos')
-            .where(field, isEqualTo: profileUserId)
-            .get(fetchOptions);
-        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-            in snapshot.docs) {
-          docMap[doc.id] = doc;
-        }
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+          .collection('videos')
+          .where('ownerId', isEqualTo: profileUserId)
+          .orderBy('createdAt', descending: true)
+          .get(fetchOptions);
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in snapshot.docs) {
+        docMap[doc.id] = doc;
       }
       final String viewerUserId = user.uid;
       final List<HomeVideo> built = <HomeVideo>[];
@@ -1236,6 +1235,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           data,
           profileUserId,
           viewerUserId: viewerUserId,
+          viewName: viewName,
         );
         if (syncReject != null) {
           logVideoEligibility(
@@ -1331,6 +1331,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         a.createdAt == b.createdAt &&
         a.visibility == b.visibility &&
         a.status == b.status &&
+        a.isDeleted == b.isDeleted &&
+        a.deletedAt == b.deletedAt &&
         a.isPinned == b.isPinned &&
         listEquals(a.tags, b.tags) &&
         listEquals(a.playlistIds, b.playlistIds);
@@ -2016,10 +2018,16 @@ final userVideosProvider =
     Provider.family<List<HomeVideo>, String>((ref, userId) {
   ref.watch(_userVideosGridSignatureProvider(userId));
   final allVideos = ref.read(videoServiceStateProvider);
+  final String viewerId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   final userVideos = allVideos.where((video) {
     final bool matchesUser = video.creator.id == userId;
-    return matchesUser && isHomeVideoEligibleForProfileList(video);
+    return matchesUser &&
+        canShowHomeVideo(
+          video: video,
+          viewerId: viewerId,
+          ownerId: userId,
+        );
   }).toList();
 
   return orderProfileGridVideos(userVideos);
@@ -2027,11 +2035,16 @@ final userVideosProvider =
 
 final _userVideosGridSignatureProvider =
     Provider.family<String, String>((ref, userId) {
+  final String viewerId = FirebaseAuth.instance.currentUser?.uid ?? '';
   return ref.watch(videoServiceStateProvider.select((videos) {
     final StringBuffer buffer = StringBuffer();
     for (final HomeVideo video in videos) {
       if (video.creator.id != userId ||
-          !isHomeVideoEligibleForProfileList(video)) {
+          !canShowHomeVideo(
+            video: video,
+            viewerId: viewerId,
+            ownerId: userId,
+          )) {
         continue;
       }
       buffer
@@ -2054,6 +2067,10 @@ final _userVideosGridSignatureProvider =
         ..write(video.visibility)
         ..write('|')
         ..write(video.status)
+        ..write('|')
+        ..write(video.isDeleted)
+        ..write('|')
+        ..write(video.deletedAt?.millisecondsSinceEpoch ?? 0)
         ..write('|')
         ..write(video.isPinned)
         ..write('|')

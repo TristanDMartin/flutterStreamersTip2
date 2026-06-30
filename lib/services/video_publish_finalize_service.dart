@@ -164,6 +164,9 @@ class VideoPublishFinalizeService {
         '🔧 VideoPublishFinalizeService: repaired owner on videos/$videoId',
       );
     }
+    if ((data['ownerId'] as String?)?.trim() != userId) {
+      patch['ownerId'] = userId;
+    }
     if (data['privacy'] == null && privacy.isNotEmpty) {
       patch['privacy'] = privacy;
     }

@@ -11,20 +11,91 @@ const Set<String> kVideoVisibleInFeedStatuses = {
   'active',
 };
 
-/// Profile grid / owner list — matches website (processing + ready).
-const Set<String> kVideoProfileListStatuses = {
+/// Owner profile grid/status visibility.
+const Set<String> kOwnerProfileVideoStatuses = {
   'processing',
-  'uploading',
   'ready',
-  'published',
-  'active',
   'failed',
-  'upload_failed',
 };
+
+/// Public profile/card video visibility for non-owner viewers.
+const Set<String> kPublicProfileVideoStatuses = {
+  'processing',
+  'ready',
+};
+
+/// Profile grid / owner list — kept for existing callers.
+const Set<String> kVideoProfileListStatuses = kOwnerProfileVideoStatuses;
 
 bool isVideoProfileListStatus(String? rawStatus) {
   final String status = (rawStatus ?? 'processing').toLowerCase();
   return kVideoProfileListStatuses.contains(status);
+}
+
+bool canShowVideo({
+  required Map<String, dynamic> video,
+  required String viewerId,
+  required String ownerId,
+}) {
+  if (isVideoDeletedFromFirestore(video)) {
+    return false;
+  }
+
+  final String status =
+      (video['status'] as String? ?? 'processing').toLowerCase();
+  final bool isOwner = viewerId.isNotEmpty && viewerId == ownerId;
+  if (isOwner) {
+    return kOwnerProfileVideoStatuses.contains(status);
+  }
+
+  final String visibility =
+      (video['visibility'] as String? ?? '').trim().toLowerCase();
+  return visibility == 'public' && kPublicProfileVideoStatuses.contains(status);
+}
+
+bool canShowHomeVideo({
+  required HomeVideo video,
+  required String viewerId,
+  required String ownerId,
+}) {
+  return canShowVideo(
+    video: <String, dynamic>{
+      'status': video.status,
+      'visibility': video.visibility,
+      'isDeleted': video.isDeleted,
+      'deletedAt': video.deletedAt,
+    },
+    viewerId: viewerId,
+    ownerId: ownerId,
+  );
+}
+
+void logProfileVideoCheck({
+  required String viewName,
+  required String viewerId,
+  required String profileUserId,
+  required String videoId,
+  required String ownerId,
+  required String status,
+  required String visibility,
+  required bool isDeleted,
+  required bool canShow,
+}) {
+  if (!kDebugMode) {
+    return;
+  }
+  debugPrint(
+    'PROFILE_VIDEO_CHECK '
+    'view=$viewName '
+    'viewerId=$viewerId '
+    'profileUserId=$profileUserId '
+    'videoId=$videoId '
+    'ownerId=$ownerId '
+    'status=$status '
+    'visibility=$visibility '
+    'isDeleted=$isDeleted '
+    'canShow=$canShow',
+  );
 }
 
 /// Autoplay / controller init — ready docs with a playback URL only.
@@ -226,26 +297,53 @@ String? rejectProfileListCandidate(
   Map<String, dynamic> data,
   String profileUserId, {
   String? viewerUserId,
+  String viewName = 'ProfileView',
 }) {
   if (isVideoDeletedFromFirestore(data)) {
     return 'deleted';
   }
-  final String? owner = getOwnerId(data);
-  if (owner == null || owner != profileUserId) {
+  final String? owner = (data['ownerId'] as String?)?.trim();
+  if (owner == null || owner.isEmpty || owner != profileUserId) {
     return 'owner_mismatch';
   }
   if (data['isDraft'] == true) {
     return 'isDraft';
   }
-  final String status =
-      (data['status'] as String? ?? 'processing').toLowerCase();
-  if (!isVideoProfileListStatus(status)) {
+  final String viewerId = viewerUserId ?? '';
+  final bool show = canShowVideo(
+    video: data,
+    viewerId: viewerId,
+    ownerId: profileUserId,
+  );
+  logProfileVideoCheck(
+    viewName: viewName,
+    viewerId: viewerId,
+    profileUserId: profileUserId,
+    videoId: (data['id'] ?? data['videoId'] ?? '').toString(),
+    ownerId: owner,
+    status: (data['status'] as String? ?? 'processing').toLowerCase(),
+    visibility: (data['visibility'] ?? data['privacy'] ?? '').toString(),
+    isDeleted: data['isDeleted'] == true ||
+        data['deleted'] == true ||
+        data['deletedAt'] != null,
+    canShow: show,
+  );
+  if (!show) {
+    final String status =
+        (data['status'] as String? ?? 'processing').toLowerCase();
+    final bool isOwnerViewing = viewerId == profileUserId;
+    if (isOwnerViewing && !kOwnerProfileVideoStatuses.contains(status)) {
+      return 'status:$status';
+    }
+    if (!isOwnerViewing && !kPublicProfileVideoStatuses.contains(status)) {
+      return 'status:$status';
+    }
+    final String visibility =
+        (data['visibility'] as String? ?? '').trim().toLowerCase();
+    if (visibility != 'public' && viewerId != profileUserId) {
+      return 'visibility';
+    }
     return 'status:$status';
-  }
-  final bool isOwnerViewing =
-      viewerUserId != null && viewerUserId == profileUserId;
-  if (!isPublicFeedVisibility(data) && !isOwnerViewing) {
-    return 'visibility';
   }
   return null;
 }

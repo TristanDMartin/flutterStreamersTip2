@@ -155,6 +155,7 @@ Map<String, dynamic> homeVideoToFirestoreShape(HomeVideo video) {
   final String rawCategory = video.categoryId.trim();
   final Map<String, dynamic> data = <String, dynamic>{
     'id': video.id,
+    'ownerId': video.creator.id,
     'userId': video.creator.id,
     'creatorId': video.creator.id,
     'creator_id': video.creator.id,

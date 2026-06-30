@@ -43,12 +43,14 @@ class ProfileVideoFeedView extends ConsumerStatefulWidget {
   final ProfileVideoFeedType feedType;
   final String? userId;
   final VoidCallback? onVideoTap;
+  final String viewName;
 
   const ProfileVideoFeedView({
     super.key,
     required this.feedType,
     this.userId,
     this.onVideoTap,
+    this.viewName = 'ProfileView',
   });
 
   @override
@@ -108,7 +110,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       if (uid != null && uid.isNotEmpty) {
         ref
             .read(providers.videoServiceStateProvider.notifier)
-            .mergeProfileVideosForUser(uid, forceServer: true)
+            .mergeProfileVideosForUser(
+              uid,
+              forceServer: true,
+              viewName: widget.viewName,
+            )
             .then((bool changed) async {
           if (!mounted) {
             return;
@@ -256,7 +262,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       try {
         final bool changed = await ref
             .read(providers.videoServiceStateProvider.notifier)
-            .mergeProfileVideosForUser(uid, forceServer: true);
+            .mergeProfileVideosForUser(
+              uid,
+              forceServer: true,
+              viewName: widget.viewName,
+            );
         if (mounted && _isViewingOwnProfile) {
           await ProfilePostCountReconcile.afterProfileVideoMerge(
             uid,
@@ -324,7 +334,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           final bool changed = await ref
               .read(providers.videoServiceStateProvider.notifier)
               .mergeProfileVideosForUser(widget.userId ?? '',
-                  forceServer: true);
+                  forceServer: true, viewName: widget.viewName);
           if (mounted) {
             await ProfilePostCountReconcile.afterProfileVideoMerge(
               widget.userId ?? '',
