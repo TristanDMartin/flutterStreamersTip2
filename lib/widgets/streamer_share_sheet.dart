@@ -184,6 +184,7 @@ class StreamerShareSheet extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 itemCount: visibleConnections.length,
+                // ignore: deprecated_member_use
                 cacheExtent: 200,
                 itemBuilder: (context, index) {
                   final contact = visibleConnections[index];

@@ -71,6 +71,7 @@ class PerformanceUtils {
     return ListView.builder(
       controller: controller,
       shrinkWrap: shrinkWrap,
+      // ignore: deprecated_member_use
       cacheExtent: cacheExtent ?? 250.0, // Cache 250px ahead
       itemCount: itemCount,
       itemBuilder: (context, index) {
@@ -92,6 +93,7 @@ class PerformanceUtils {
     return GridView.builder(
       controller: controller,
       shrinkWrap: shrinkWrap,
+      // ignore: deprecated_member_use
       cacheExtent: 250.0,
       itemCount: itemCount,
       gridDelegate: gridDelegate,

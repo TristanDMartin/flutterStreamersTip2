@@ -150,6 +150,7 @@ class _OptimizedListViewState extends State<OptimizedListView> {
     return ListView.builder(
       controller: _controller,
       shrinkWrap: widget.shrinkWrap,
+      // ignore: deprecated_member_use
       cacheExtent: widget.cacheExtent ?? 250.0,
       itemCount: widget.itemCount,
       scrollDirection: widget.scrollDirection,
@@ -220,6 +221,7 @@ class _OptimizedGridViewState extends State<OptimizedGridView> {
     return GridView.builder(
       controller: _controller,
       shrinkWrap: widget.shrinkWrap,
+      // ignore: deprecated_member_use
       cacheExtent: widget.cacheExtent ?? 250.0,
       itemCount: widget.itemCount,
       gridDelegate: widget.gridDelegate,
