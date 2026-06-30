@@ -43,6 +43,29 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   final RealUserDataService _userDataService = RealUserDataService();
   final Map<String, String?> _legacyOwnerCache = {};
 
+  app_user.User _withCanonicalUserId(app_user.User user, String ownerId) {
+    if (user.id == ownerId) {
+      return user;
+    }
+    return app_user.User(
+      id: ownerId,
+      username: user.username,
+      displayName: user.displayName,
+      bio: user.bio,
+      avatarURL: user.avatarURL,
+      onlineStatus: user.onlineStatus,
+      hashtags: user.hashtags,
+      aiSelf: user.aiSelf,
+      postCount: user.postCount,
+      followerCount: user.followerCount,
+      followingCount: user.followingCount,
+      calendarEvents: user.calendarEvents,
+      privacy: user.privacy,
+      pinnedVideoIds: user.pinnedVideoIds,
+      role: user.role,
+    );
+  }
+
   bool _looksLikeFirebaseUid(String value) {
     final trimmed = value.trim();
     if (trimmed.length < 20 || trimmed.length > 40) return false;
@@ -466,15 +489,17 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     String videoId,
     String userId,
   ) async {
-    final app_user.User creator = await _userDataService.getUserById(userId) ??
-        app_user.User(
-          id: userId,
-          username: 'creator',
-          displayName: 'Creator',
-          avatarURL: null,
-          bio: null,
-          hashtags: const <String>[],
-        );
+    final app_user.User loadedCreator =
+        await _userDataService.getUserById(userId) ??
+            app_user.User(
+              id: userId,
+              username: 'creator',
+              displayName: 'Creator',
+              avatarURL: null,
+              bio: null,
+              hashtags: const <String>[],
+            );
+    final app_user.User creator = _withCanonicalUserId(loadedCreator, userId);
     return HomeVideo(
       id: videoId,
       creator: creator,
@@ -633,8 +658,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   }) async {
     final app_user.User? loadedCreator =
         await _userDataService.getUserById(userId);
-    final app_user.User creator =
-        loadedCreator ?? _appUserFromVideoDocCreator(data, userId);
+    final app_user.User creator = _withCanonicalUserId(
+      loadedCreator ?? _appUserFromVideoDocCreator(data, userId),
+      userId,
+    );
     final String? thumbnailUrl =
         (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
     VideoThumbnails? thumbnails;
@@ -882,8 +909,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
         final app_user.User? loadedCreator =
             await _userDataService.getUserById(userId);
-        final app_user.User creator =
-            loadedCreator ?? _appUserFromVideoDocCreator(data, userId);
+        final app_user.User creator = _withCanonicalUserId(
+          loadedCreator ?? _appUserFromVideoDocCreator(data, userId),
+          userId,
+        );
         if (loadedCreator != null) {
           debugPrint(
               '🎬 VideoService: ✅ Creator found for ${doc.id} - ${creator.displayName} (@${creator.username})');
@@ -1416,18 +1445,23 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       generatedAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       aspectRatio: 0.5625,
     );
-    final app_user.User? creator = await _userDataService.getUserById(ownerId);
-    final app_user.User resolvedCreator = creator ??
-        app_user.User(
-          id: ownerId,
-          username: (data['creatorUsername'] ?? data['username'] ?? 'creator')
-              .toString(),
-          displayName: (data['displayName'] ?? data['creatorName'] ?? 'Creator')
-              .toString(),
-          avatarURL: null,
-          bio: null,
-          hashtags: const <String>[],
-        );
+    final app_user.User? loadedCreator =
+        await _userDataService.getUserById(ownerId);
+    final app_user.User resolvedCreator = _withCanonicalUserId(
+      loadedCreator ??
+          app_user.User(
+            id: ownerId,
+            username: (data['creatorUsername'] ?? data['username'] ?? 'creator')
+                .toString(),
+            displayName:
+                (data['displayName'] ?? data['creatorName'] ?? 'Creator')
+                    .toString(),
+            avatarURL: null,
+            bio: null,
+            hashtags: const <String>[],
+          ),
+      ownerId,
+    );
     return HomeVideo(
       id: doc.id,
       creator: resolvedCreator,
@@ -1487,8 +1521,9 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       return null;
     }
     final String playableUrl = playableResult.url;
-    final app_user.User? creator = await _userDataService.getUserById(ownerId);
-    if (creator == null) {
+    final app_user.User? loadedCreator =
+        await _userDataService.getUserById(ownerId);
+    if (loadedCreator == null) {
       final app_user.User placeholderCreator = app_user.User(
         id: ownerId,
         username:
@@ -1532,6 +1567,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         deletedAt: data['deletedAt'] as Timestamp?,
       );
     }
+    final app_user.User creator = _withCanonicalUserId(loadedCreator, ownerId);
     if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
       thumbnails = VideoThumbnails(
         urls: <int, String>{
@@ -1636,8 +1672,9 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   /// Get videos for a specific user
   /// 🚀 NEWEST FIRST: Returns videos sorted by creation date (newest first)
   List<HomeVideo> getUserVideos(String userId) {
-    final userVideos =
-        state.where((video) => video.creator.id == userId).toList();
+    final userVideos = state
+        .where((video) => _homeVideoBelongsToProfile(video, userId))
+        .toList();
     // 🚀 NEWEST FIRST: Sort by creation date (newest first)
     userVideos.sort((a, b) {
       final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
@@ -2060,8 +2097,7 @@ final userVideosProvider =
   final String viewerId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   final userVideos = allVideos.where((video) {
-    final bool matchesUser = video.creator.id == userId;
-    return matchesUser &&
+    return _homeVideoBelongsToProfile(video, userId) &&
         canShowHomeVideo(
           video: video,
           viewerId: viewerId,
@@ -2072,13 +2108,17 @@ final userVideosProvider =
   return orderProfileGridVideos(userVideos);
 });
 
+bool _homeVideoBelongsToProfile(HomeVideo video, String userId) {
+  return userId.isNotEmpty && video.creator.id == userId;
+}
+
 final _userVideosGridSignatureProvider =
     Provider.family<String, String>((ref, userId) {
   final String viewerId = FirebaseAuth.instance.currentUser?.uid ?? '';
   return ref.watch(videoServiceStateProvider.select((videos) {
     final StringBuffer buffer = StringBuffer();
     for (final HomeVideo video in videos) {
-      if (video.creator.id != userId ||
+      if (!_homeVideoBelongsToProfile(video, userId) ||
           !canShowHomeVideo(
             video: video,
             viewerId: viewerId,

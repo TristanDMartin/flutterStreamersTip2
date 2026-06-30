@@ -303,15 +303,16 @@ class RealUserDataService {
     DateTime sevenDaysAgo,
   ) async {
     try {
-      final QuerySnapshot<Map<String, dynamic>> recentSnapshot = await _firestore
-          .collection('videos')
-          .where(
-            'createdAt',
-            isGreaterThan: Timestamp.fromDate(sevenDaysAgo),
-          )
-          .orderBy('createdAt', descending: true)
-          .limit(100)
-          .get();
+      final QuerySnapshot<Map<String, dynamic>> recentSnapshot =
+          await _firestore
+              .collection('videos')
+              .where(
+                'createdAt',
+                isGreaterThan: Timestamp.fromDate(sevenDaysAgo),
+              )
+              .orderBy('createdAt', descending: true)
+              .limit(100)
+              .get();
       if (recentSnapshot.docs.isNotEmpty) {
         return recentSnapshot;
       }
@@ -432,7 +433,7 @@ class RealUserDataService {
   }
 
   /// Get user's videos
-  /// Uses canonical owner: queries both userId and user_id, merges, then
+  /// Uses canonical owner: queries ownerId first, then legacy owner fields, and
   /// builds with getOwnerId so both paths match VideoService filtering.
   /// 🚀 NEWEST FIRST: Returns videos sorted by creation date (newest first)
   Future<List<HomeVideo>> getUserVideos(String userId, {int limit = 20}) async {
@@ -452,11 +453,18 @@ class RealUserDataService {
         }
       }
 
-      await addFromQuery('userId');
-      try {
-        await addFromQuery('user_id');
-      } catch (_) {
-        // user_id composite index may not exist; userId query is enough
+      await addFromQuery('ownerId');
+      for (final legacyField in const <String>[
+        'userId',
+        'user_id',
+        'creatorId',
+        'creator_id',
+      ]) {
+        try {
+          await addFromQuery(legacyField);
+        } catch (_) {
+          // Legacy composite indexes may not exist; ownerId is canonical.
+        }
       }
 
       final videos = <HomeVideo>[];
@@ -464,7 +472,7 @@ class RealUserDataService {
       for (final doc in docMap.values) {
         final data = doc.data();
         final ownerId = getOwnerId(data);
-        if (ownerId == null) continue;
+        if (ownerId == null || ownerId != userId) continue;
 
         final creator = await getUserById(ownerId);
         if (creator == null) continue;

@@ -562,7 +562,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             debugPrint(
               '🎬 ProfileView: Found ${userVideos.length} user videos for '
               'userId: ${widget.userId} (canonical: videos collection, '
-              'filtered by creator.id + feed visibility)',
+              'filtered by owner visibility rules)',
             );
             debugPrint(
               '🎬 ProfileView: Total videos in VideoService: '
