@@ -81,6 +81,19 @@ async function deleteBookmarksForVideo(videoId, batch, affectedIndexes) {
 }
 
 async function deleteFavoritesForVideo(videoId, batch, affectedIndexes) {
+  const userFavoritesSnap = await firestore
+    .collectionGroup('favorites')
+    .where(admin.firestore.FieldPath.documentId(), '==', videoId)
+    .get();
+  for (const doc of userFavoritesSnap.docs) {
+    const parts = doc.ref.path.split('/');
+    if (parts.length !== 4 || parts[0] !== 'users' || parts[2] !== 'favorites') {
+      continue;
+    }
+    batch.delete(doc.ref);
+    affectedIndexes.push(doc.ref.path);
+  }
+
   const favoritesSnap = await firestore
     .collectionGroup('videos')
     .where(admin.firestore.FieldPath.documentId(), '==', videoId)

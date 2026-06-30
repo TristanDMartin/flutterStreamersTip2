@@ -347,7 +347,7 @@ String? rejectProfileListCandidate(
     );
     return 'deleted';
   }
-  final String? owner = (data['ownerId'] as String?)?.trim();
+  final String? owner = getOwnerId(data);
   if (owner == null || owner.isEmpty || owner != profileUserId) {
     logTargetVideoTrace(
       videoId: (data['id'] ?? data['videoId'] ?? '').toString(),

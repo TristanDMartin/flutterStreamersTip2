@@ -8,6 +8,7 @@ import '../models/bookmark_event.dart' as calendar;
 import 'creator_intelligence_analytics_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
+import '../utils/video_document_rules.dart';
 import 'progression_service.dart';
 
 /// Unified Bookmark Service - Single source of truth for bookmark operations
@@ -167,6 +168,8 @@ class UnifiedBookmarkService extends ChangeNotifier {
         favoritedAtByVideoId[videoId] = at ?? favoritedAtByVideoId[videoId];
       }
 
+      await _pruneDeletedVideoBookmarks(userId, favoritedAtByVideoId);
+
       for (final MapEntry<String, DateTime?> e
           in favoritedAtByVideoId.entries) {
         _bookmarkStates[e.key] = BookmarkState(
@@ -185,6 +188,87 @@ class UnifiedBookmarkService extends ChangeNotifier {
       debugPrint('❌ UnifiedBookmarkService: Error loading bookmarks: $e');
       rethrow;
     }
+  }
+
+  Future<void> _pruneDeletedVideoBookmarks(
+    String userId,
+    Map<String, DateTime?> favoritedAtByVideoId,
+  ) async {
+    if (favoritedAtByVideoId.isEmpty) {
+      return;
+    }
+
+    final Set<String> staleVideoIds = <String>{};
+    const int batchSize = 10;
+    final List<String> videoIds = favoritedAtByVideoId.keys.toList();
+
+    for (int i = 0; i < videoIds.length; i += batchSize) {
+      final List<String> batchIds = videoIds.skip(i).take(batchSize).toList();
+      final QuerySnapshot<Map<String, dynamic>> videosSnapshot =
+          await _firestore
+              .collection('videos')
+              .where(FieldPath.documentId, whereIn: batchIds)
+              .get();
+      final Set<String> foundIds = videosSnapshot.docs
+          .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.id)
+          .toSet();
+
+      for (final String videoId in batchIds) {
+        if (!foundIds.contains(videoId)) {
+          staleVideoIds.add(videoId);
+        }
+      }
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in videosSnapshot.docs) {
+        final Map<String, dynamic> data = doc.data();
+        if (isVideoDeletedFromFirestore(data)) {
+          staleVideoIds.add(doc.id);
+        }
+      }
+    }
+
+    if (staleVideoIds.isEmpty) {
+      return;
+    }
+
+    for (final String videoId in staleVideoIds) {
+      favoritedAtByVideoId.remove(videoId);
+    }
+
+    final List<String> staleList = staleVideoIds.toList();
+    const int staleDeleteChunkSize = 150;
+    for (int i = 0; i < staleList.length; i += staleDeleteChunkSize) {
+      final WriteBatch writeBatch = _firestore.batch();
+      for (final String videoId
+          in staleList.skip(i).take(staleDeleteChunkSize)) {
+        writeBatch.delete(
+          _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('favorites')
+              .doc(videoId),
+        );
+        writeBatch.delete(
+          _firestore
+              .collection('videos')
+              .doc(videoId)
+              .collection('bookmarks')
+              .doc(userId),
+        );
+        writeBatch.delete(
+          _firestore
+              .collection('user_favorites')
+              .doc(userId)
+              .collection('videos')
+              .doc(videoId),
+        );
+      }
+      await writeBatch.commit();
+    }
+
+    debugPrint(
+      '🧹 UnifiedBookmarkService: Pruned ${staleVideoIds.length} deleted/missing video bookmarks',
+    );
   }
 
   /// Atomic bookmark toggle operation

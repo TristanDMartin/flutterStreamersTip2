@@ -187,7 +187,7 @@ void main() {
       }
     });
 
-    test('requires canonical ownerId to match the profile user', () {
+    test('allows legacy owner fields to match the profile user', () {
       expect(
         rejectProfileListCandidate(
           <String, dynamic>{
@@ -198,7 +198,7 @@ void main() {
           owner,
           viewerUserId: owner,
         ),
-        'owner_mismatch',
+        isNull,
       );
     });
 

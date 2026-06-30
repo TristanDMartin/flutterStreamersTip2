@@ -1286,6 +1286,33 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       );
       final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
           <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      Future<void> mergeProfileOwnerFieldQuery(String fieldName) async {
+        try {
+          final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+              .collection('videos')
+              .where(fieldName, isEqualTo: profileUserId)
+              .get(fetchOptions);
+          for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+              in snapshot.docs) {
+            docMap[doc.id] = doc;
+          }
+          if (kDebugMode) {
+            debugPrint(
+              '🎬 VideoService: profile owner legacy query '
+              '$fieldName=$profileUserId -> ${snapshot.docs.length} docs '
+              '(merged ${docMap.length})',
+            );
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint(
+              '🎬 VideoService: profile owner legacy query failed '
+              '$fieldName=$profileUserId: $e',
+            );
+          }
+        }
+      }
+
       try {
         final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
             .collection('videos')
@@ -1333,6 +1360,17 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             'for $profileUserId: $e',
           );
         }
+      }
+      for (final String ownerField in const <String>[
+        'userId',
+        'user_id',
+        'authorId',
+        'uid',
+        'creatorId',
+        'creator_id',
+        'videoOwnerId',
+      ]) {
+        await mergeProfileOwnerFieldQuery(ownerField);
       }
       if (kDebugMode) {
         try {
