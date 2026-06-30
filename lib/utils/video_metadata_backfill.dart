@@ -14,11 +14,6 @@ const Set<String> kClientVideoMetadataBackfillFields = <String>{
   'privacy',
   'visibility',
   'caption',
-  'category',
-  'categoryId',
-  'category_id',
-  'categoryName',
-  'categories',
   'updatedAt',
 };
 
@@ -103,9 +98,8 @@ Map<String, dynamic> buildVideoMetadataBackfillPatch(
     patch['privacy'] = kDefaultVideoPrivacy;
   }
   if (data['visibility'] == null) {
-    final String privacy = (patch['privacy'] ?? data['privacy'] ?? '')
-        .toString()
-        .toLowerCase();
+    final String privacy =
+        (patch['privacy'] ?? data['privacy'] ?? '').toString().toLowerCase();
     patch['visibility'] = switch (privacy) {
       'followers' || 'followers_only' => 'followers_only',
       'private' => 'private',
@@ -161,7 +155,7 @@ Future<bool> persistVideoMetadataBackfillIfNeeded({
       (String key, Object? value) =>
           !kClientVideoMetadataBackfillFields.contains(key),
     );
-    if (patch.isEmpty) {
+    if (patch.isEmpty || patch.keys.every((String key) => key == 'updatedAt')) {
       return false;
     }
     await firestore.collection('videos').doc(videoId).set(
