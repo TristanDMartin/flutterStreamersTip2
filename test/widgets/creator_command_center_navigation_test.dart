@@ -10,7 +10,13 @@ import 'package:streamers_tip/routing/app_routes.dart';
 import 'package:streamers_tip/providers/creator_command_provider.dart';
 import 'package:streamers_tip/widgets/creator_command_center_overlay.dart';
 
+import '../test_support/firebase_test_setup.dart';
+
 void main() {
+  setUpAll(() async {
+    await setupFirebaseForTests();
+  });
+
   final CreatorCommandSnapshot unlockedSnapshot = CreatorCommandSnapshot(
     userId: 'user-1',
     username: 'technqs',

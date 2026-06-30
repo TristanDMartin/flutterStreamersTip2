@@ -129,6 +129,7 @@ class FollowsService {
   }) {
     _firestoreOverride = firestore;
     _authOverride = auth;
+    _instance.invalidateFollowIdSetsCache();
   }
 
   void invalidateFollowIdSetsCache() {
@@ -648,12 +649,9 @@ class FollowsService {
         resolvedFollowers.difference(resolvedFollowing);
     final Set<String> followingTabIds =
         resolvedFollowing.difference(resolvedFollowers);
-    final List<user_model.User> connections =
-        await _usersForIds(connectionIds);
-    final List<user_model.User> followers =
-        await _usersForIds(followerTabIds);
-    final List<user_model.User> following =
-        await _usersForIds(followingTabIds);
+    final List<user_model.User> connections = await _usersForIds(connectionIds);
+    final List<user_model.User> followers = await _usersForIds(followerTabIds);
+    final List<user_model.User> following = await _usersForIds(followingTabIds);
     final FollowCounts computedCounts = FollowCounts(
       followersCount: resolvedFollowers.length,
       followingCount: resolvedFollowing.length,
@@ -682,9 +680,7 @@ class FollowsService {
       final int followersCount = UserCountFields.readFollowersCount(data);
       final int followingCount = UserCountFields.readFollowingCount(data);
       int connectionsCount = UserCountFields.readConnectionsCount(data);
-      if (connectionsCount <= 0 &&
-          followersCount > 0 &&
-          followingCount > 0) {
+      if (connectionsCount <= 0 && followersCount > 0 && followingCount > 0) {
         connectionsCount = math.min(followersCount, followingCount);
       }
       return FollowCounts(
@@ -693,7 +689,8 @@ class FollowsService {
         connectionsCount: connectionsCount,
       );
     } catch (e) {
-      debugPrint('⚠️ FollowsService: Unable to read doc counts for $userId: $e');
+      debugPrint(
+          '⚠️ FollowsService: Unable to read doc counts for $userId: $e');
       return null;
     }
   }
@@ -708,14 +705,12 @@ class FollowsService {
       return <user_model.User>[];
     }
     final List<user_model.User> users = <user_model.User>[];
-    final List<List<String>> chunks =
-        _chunkList(existingUserIds.toList(), 30);
+    final List<List<String>> chunks = _chunkList(existingUserIds.toList(), 30);
     for (final List<String> chunk in chunks) {
-      final QuerySnapshot<Map<String, dynamic>> usersQuery =
-          await _firestore
-              .collection('users')
-              .where(FieldPath.documentId, whereIn: chunk)
-              .get();
+      final QuerySnapshot<Map<String, dynamic>> usersQuery = await _firestore
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
       users.addAll(usersQuery.docs.map(_userFromDoc));
     }
     return users;

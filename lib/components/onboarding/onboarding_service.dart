@@ -90,7 +90,8 @@ class OnboardingService {
         'onboarding': _completedMigrationPayload()['onboarding'],
       });
     }
-    await _safeUserSet(userId, _newUserOnboardingPayload(step: current.currentStep));
+    await _safeUserSet(
+        userId, _newUserOnboardingPayload(step: current.currentStep));
     return fetchOnboarding(userId);
   }
 
@@ -346,6 +347,19 @@ class OnboardingService {
           if (skippedByTester) 'skippedSteps': <String>['all'],
         },
       },
+    );
+    AppSessionCache.instance.putOnboarding(
+      userId,
+      const OnboardingState(
+        version: OnboardingV1Constants.version,
+        completed: true,
+        status: OnboardingStatus.completed,
+        currentStep: OnboardingV1Constants.completedStepMarker,
+        hasSeenIntro: true,
+        creatorGoals: <String>[],
+        platforms: <String>[],
+        premiumOfferDismissed: false,
+      ),
     );
     _scheduleOnboardingGamificationEvent(
       type: GamificationEventTypes.userOnboardingCompleted,
