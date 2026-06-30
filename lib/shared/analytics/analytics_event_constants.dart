@@ -23,6 +23,7 @@ class AnalyticsEventTypes {
   static const String subscriptionGateSeen = 'subscription_gate_seen';
   static const String subscriptionStarted = 'subscription_started';
   static const String subscriptionCancelled = 'subscription_cancelled';
+  static const String personalizationCtaTapped = 'personalization_cta_tapped';
 }
 
 class AnalyticsSources {
@@ -40,6 +41,7 @@ class AnalyticsTargetTypes {
   static const String guide = 'guide';
   static const String profile = 'profile';
   static const String course = 'course';
+  static const String personalization = 'personalization';
 }
 
 const String kAnalyticsProfileDocId = 'profile';

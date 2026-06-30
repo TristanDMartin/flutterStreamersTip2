@@ -571,26 +571,26 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 onVerified: (bool verified) async {
                   if (verified && mounted) {
                     Navigator.of(context).pop();
-                    await authService.completeTwoFactorAuth();
-                    WidgetsBinding.instance.addPostFrameCallback((_) async {
-                      if (!mounted) return;
-                      await navigateAfterAuthenticated(context);
-                    });
-                  }
+	                    await authService.completeTwoFactorAuth();
+	                    WidgetsBinding.instance.addPostFrameCallback((_) async {
+	                      if (!mounted || !context.mounted) return;
+	                      await navigateAfterAuthenticated(context);
+	                    });
+	                  }
                 },
-                onCancel: () async {
-                  await authService.cancelTwoFactorAuth();
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
+	                onCancel: () async {
+	                  await authService.cancelTwoFactorAuth();
+	                  if (mounted && context.mounted) {
+	                    Navigator.of(context).pop();
+	                  }
+	                },
               ),
             ),
           );
         }
-      } else if (result.success && mounted) {
-        await navigateAfterAuthenticated(context);
-      }
+	      } else if (result.success && mounted && context.mounted) {
+	        await navigateAfterAuthenticated(context);
+	      }
     } catch (e) {
       debugPrint("❌ Sign-in error: $e");
       if (mounted) {

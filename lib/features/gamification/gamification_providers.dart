@@ -17,9 +17,32 @@ final Provider<GamificationEventService> gamificationEventServiceProvider =
   (Ref ref) => GamificationEventService(),
 );
 
+class ProgressionSubscriptionsActiveNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setActive(bool value) {
+    if (state == value) {
+      return;
+    }
+    state = value;
+  }
+}
+
+final NotifierProvider<ProgressionSubscriptionsActiveNotifier, bool>
+    progressionSubscriptionsActiveProvider =
+    NotifierProvider<ProgressionSubscriptionsActiveNotifier, bool>(
+  ProgressionSubscriptionsActiveNotifier.new,
+);
+
 /// Live progression + missions + tier snapshot for the signed-in user.
 final StreamProvider<UserProgressBundle> userProgressBundleProvider =
     StreamProvider<UserProgressBundle>((Ref ref) {
+  final bool subscriptionsActive =
+      ref.watch(progressionSubscriptionsActiveProvider);
+  if (!subscriptionsActive) {
+    return Stream<UserProgressBundle>.value(UserProgressBundle.fallback());
+  }
   final User? user = FirebaseAuth.instance.currentUser;
   if (user == null) {
     return Stream<UserProgressBundle>.value(UserProgressBundle.fallback());

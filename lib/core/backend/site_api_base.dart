@@ -44,3 +44,6 @@ String siteGrowthRefreshUrl({
   final String root = resolveSiteApiBase(explicitOverride: base);
   return '$root/api/growth/refresh?userId=${Uri.encodeQueryComponent(userId)}';
 }
+
+String siteRetentionTrackUrl({String? base}) =>
+    siteApiPath('/api/track', base: base);

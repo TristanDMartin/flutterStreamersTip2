@@ -28,6 +28,14 @@ abstract final class PlaybackRoutePolicies {
         routeName == '/share_sheet';
   }
 
+  static bool isKeepPlayingOverlayRoute(String routeName) {
+    return routeName == AppRoutes.contextualTip ||
+        routeName.contains('contextual_tip') ||
+        routeName.contains('contextualtip') ||
+        routeName.contains('soft_rating') ||
+        routeName.contains('mission_banner');
+  }
+
   static bool isNonVideoScreenRoute(String routeName) {
     if (isShellRoute(routeName) || isVideoPlaybackRoute(routeName)) {
       return false;

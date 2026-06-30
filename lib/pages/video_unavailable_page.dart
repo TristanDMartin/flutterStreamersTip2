@@ -17,9 +17,15 @@ class VideoUnavailablePage extends ConsumerStatefulWidget {
   const VideoUnavailablePage({
     super.key,
     required this.videoId,
+    this.creatorId,
+    this.creatorName,
+    this.creatorUsername,
   });
 
   final String videoId;
+  final String? creatorId;
+  final String? creatorName;
+  final String? creatorUsername;
 
   @override
   ConsumerState<VideoUnavailablePage> createState() =>

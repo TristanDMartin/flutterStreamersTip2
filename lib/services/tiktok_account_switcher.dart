@@ -398,6 +398,17 @@ class TikTokAccountSwitcher extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remove a saved account by Firebase uid.
+  Future<void> removeAccountByUid(String uid) async {
+    for (final SavedAccount account
+        in List<SavedAccount>.from(_savedAccounts)) {
+      if (account.uid == uid) {
+        await removeAccount(account);
+        return;
+      }
+    }
+  }
+
   /// Clear all saved accounts
   Future<void> clearAllAccounts() async {
     _savedAccounts.clear();
@@ -407,7 +418,7 @@ class TikTokAccountSwitcher extends ChangeNotifier {
   }
 
   /// Perform Google Sign-In for adding new accounts or switching
-  Future<bool> performGoogleSignIn() async {
+  Future<bool> performGoogleSignIn({bool addOnly = false}) async {
     try {
       debugPrint('🔄 Starting Google Sign-In flow for TikTok account switcher');
 

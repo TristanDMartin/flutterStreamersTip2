@@ -44,6 +44,87 @@ abstract final class PlatformRules {
     }
   }
 
+  static String displayUrlPrefix(String type) {
+    final String normalized = normalizePlatformType(type);
+    switch (normalized) {
+      case 'twitch':
+        return 'twitch.tv/';
+      case 'youtube':
+        return 'youtube.com/@';
+      case 'kick':
+        return 'kick.com/';
+      case 'tiktok':
+        return 'tiktok.com/@';
+      case 'instagram':
+        return 'instagram.com/';
+      case 'x':
+        return 'x.com/';
+      case 'discord':
+        return 'discord.com/';
+      case 'patreon':
+        return 'patreon.com/';
+      case 'onlyfans':
+        return 'onlyfans.com/';
+      case 'other':
+        return 'https://';
+      default:
+        return '';
+    }
+  }
+
+  static String? previewPlatformUrl(String type, String handle) {
+    final String trimmed = handle.trim().replaceAll('@', '');
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    final String normalized = normalizePlatformType(type);
+    switch (normalized) {
+      case 'twitch':
+        return 'https://twitch.tv/$trimmed';
+      case 'youtube':
+        return 'https://youtube.com/@$trimmed';
+      case 'kick':
+        return 'https://kick.com/$trimmed';
+      case 'tiktok':
+        return 'https://tiktok.com/@$trimmed';
+      case 'instagram':
+        return 'https://instagram.com/$trimmed';
+      case 'x':
+        return 'https://x.com/$trimmed';
+      case 'discord':
+        return 'https://discord.com';
+      case 'patreon':
+        return 'https://patreon.com/$trimmed';
+      case 'onlyfans':
+        return 'https://onlyfans.com/$trimmed';
+      case 'other':
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+          return trimmed;
+        }
+        return 'https://$trimmed';
+      default:
+        return null;
+    }
+  }
+
+  static String handleHintForType(String type) {
+    final String normalized = normalizePlatformType(type);
+    switch (normalized) {
+      case 'youtube':
+      case 'tiktok':
+        return 'username (without @)';
+      case 'discord':
+        return 'Invite or server URL';
+      case 'other':
+        return 'Full URL';
+      case 'patreon':
+      case 'onlyfans':
+        return 'username or URL';
+      default:
+        return 'username';
+    }
+  }
+
   static String displayNameForType(String type) {
     switch (normalizePlatformType(type)) {
       case 'twitch':

@@ -3015,6 +3015,7 @@ async function handleMuxWebhook(request, env, cors) {
     fields.userId = ownerId;
     fields.creatorId = ownerId;
     fields.creator_id = ownerId;
+    fields.ownerId = ownerId;
   }
   fields.privacy = privacy;
   fields.visibility = visibility;
@@ -3171,6 +3172,10 @@ async function handleBackfillAssets(request, env, cors) {
           generatedAt: { __timestamp: true },
         },
         status: 'ready',
+        isReadyForFeed: true,
+        playbackReady: true,
+        visibility: 'public',
+        migratedToCanonicalFeedAt: { __timestamp: true },
         transcodingStatus: 'completed',
         muxAssetId: String(assetId),
         muxPlaybackId: playbackId,

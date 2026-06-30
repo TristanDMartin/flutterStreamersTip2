@@ -17,6 +17,7 @@ import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
 import '../services/profile_link_service.dart';
+import '../utils/post_count_rules.dart';
 import '../providers/follows_provider.dart';
 import '../providers/follow_refresh_provider.dart';
 import '../utils/avatar_url_resolver.dart';
@@ -889,10 +890,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         ref.watch(video_providers.videoServiceLoadingProvider);
     final visibleProfilePosts =
         ref.watch(video_providers.userVideosProvider(_effectiveUserId));
-    final int? postsCountOverride = visibleProfilePosts.isNotEmpty ||
-            (!isVideoServiceLoading && videoServiceState.isNotEmpty)
-        ? visibleProfilePosts.length
-        : null;
+    final int? postsCountOverride = resolvePostsCountOverride(
+      userVideos: visibleProfilePosts,
+      allVideos: videoServiceState,
+      isVideoServiceLoading: isVideoServiceLoading,
+    );
 
     return StreamerCardFrontSection(
       onDismiss: _handleDismiss,

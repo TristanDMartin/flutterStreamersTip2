@@ -22,6 +22,7 @@ import '../routing/app_navigator.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/video_caption_resolver.dart';
 import '../utils/video_document_rules.dart';
+import '../utils/home_video_playback.dart';
 import '../utils/profile_grid_video_order.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
@@ -107,7 +108,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       if (uid != null && uid.isNotEmpty) {
         ref
             .read(providers.videoServiceStateProvider.notifier)
-            .mergeProfileVideosForUser(uid)
+            .mergeProfileVideosForUser(uid, forceServer: true)
             .then((bool changed) async {
           if (!mounted) {
             return;
@@ -119,6 +120,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         });
       }
     });
+    if (widget.feedType == ProfileVideoFeedType.videos) {
+      final String? uid = widget.userId;
+      if (uid != null && uid.isNotEmpty) {
+        ref
+            .read(providers.videoServiceStateProvider.notifier)
+            .startOwnerVideosListener(uid);
+      }
+    }
   }
 
   @override
@@ -133,6 +142,18 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       _profileGridMergeAttempts = 0;
       _profileGridMergeScheduled = false;
       _lastSyncedListenerVideoIds = const <String>{};
+      if (widget.feedType == ProfileVideoFeedType.videos) {
+        final String? uid = widget.userId;
+        if (uid != null && uid.isNotEmpty) {
+          ref
+              .read(providers.videoServiceStateProvider.notifier)
+              .startOwnerVideosListener(uid);
+        }
+      } else {
+        ref
+            .read(providers.videoServiceStateProvider.notifier)
+            .stopOwnerVideosListener();
+      }
       _primeProfileVideoTab();
     }
   }
@@ -140,6 +161,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   void dispose() {
     _optimisticFeedRefreshSubscription?.cancel();
+    ref.read(providers.videoServiceStateProvider.notifier).stopOwnerVideosListener();
     // Cancel all video deletion listeners
     for (final subscription in _videoListeners.values) {
       subscription.cancel();
@@ -233,7 +255,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       try {
         final bool changed = await ref
             .read(providers.videoServiceStateProvider.notifier)
-            .mergeProfileVideosForUser(uid);
+            .mergeProfileVideosForUser(uid, forceServer: true);
         if (mounted && _isViewingOwnProfile) {
           await ProfilePostCountReconcile.afterProfileVideoMerge(
             uid,
@@ -300,7 +322,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         if (mounted && _isViewingOwnProfile) {
           final bool changed = await ref
               .read(providers.videoServiceStateProvider.notifier)
-              .mergeProfileVideosForUser(widget.userId ?? '');
+              .mergeProfileVideosForUser(widget.userId ?? '', forceServer: true);
           if (mounted) {
             await ProfilePostCountReconcile.afterProfileVideoMerge(
               widget.userId ?? '',
@@ -834,9 +856,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
-            await ref
-                .read(providers.videoServiceStateProvider.notifier)
-                .loadAllVideos(source: 'profile_refresh');
+            final VideoService videoService =
+                ref.read(providers.videoServiceStateProvider.notifier);
+            await videoService.loadAllVideos(source: 'profile_refresh');
+            if (widget.feedType == ProfileVideoFeedType.videos) {
+              await videoService.mergeProfileVideosForUser(
+                widget.userId ?? '',
+                forceServer: true,
+              );
+            }
             break;
         }
       },
@@ -1161,9 +1189,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
-            await ref
-                .read(providers.videoServiceStateProvider.notifier)
-                .loadAllVideos(source: 'profile_refresh');
+            final VideoService videoService =
+                ref.read(providers.videoServiceStateProvider.notifier);
+            await videoService.loadAllVideos(source: 'profile_refresh');
+            if (widget.feedType == ProfileVideoFeedType.videos) {
+              await videoService.mergeProfileVideosForUser(
+                widget.userId ?? '',
+                forceServer: true,
+              );
+            }
             break;
         }
       },
@@ -1239,9 +1273,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
-            await ref
-                .read(providers.videoServiceStateProvider.notifier)
-                .loadAllVideos(source: 'profile_refresh');
+            final VideoService videoService =
+                ref.read(providers.videoServiceStateProvider.notifier);
+            await videoService.loadAllVideos(source: 'profile_refresh');
+            if (widget.feedType == ProfileVideoFeedType.videos) {
+              await videoService.mergeProfileVideosForUser(
+                widget.userId ?? '',
+                forceServer: true,
+              );
+            }
             break;
         }
       },
@@ -1412,6 +1452,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     final bool selectionActive = _isSelectionMode &&
         _isViewingOwnProfile &&
         widget.feedType == ProfileVideoFeedType.videos;
+    final bool isProcessing = isHomeVideoProcessing(video);
     return GestureDetector(
       onLongPress:
           _isViewingOwnProfile && widget.feedType == ProfileVideoFeedType.videos
@@ -1419,21 +1460,49 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
               : null,
       child: Stack(
         children: <Widget>[
-          GridThumbnail(
-            key: ValueKey<String>('profile-grid-thumbnail-${video.id}'),
-            video: video,
-            aspectRatio: _resolveAspectRatioFromHomeVideo(video),
-            onTap: () {
-              if (selectionActive) {
-                _toggleVideoSelection(video.id);
-                return;
-              }
-              widget.onVideoTap?.call();
-              _openVideoPlayer(video, index, allVideos);
-            },
-            showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
-            showDurationBadge: true,
+          Opacity(
+            opacity: isProcessing ? 0.92 : 1,
+            child: GridThumbnail(
+              key: ValueKey<String>('profile-grid-thumbnail-${video.id}'),
+              video: video,
+              aspectRatio: _resolveAspectRatioFromHomeVideo(video),
+              onTap: () {
+                if (selectionActive) {
+                  _toggleVideoSelection(video.id);
+                  return;
+                }
+                if (isProcessing) {
+                  return;
+                }
+                widget.onVideoTap?.call();
+                _openVideoPlayer(video, index, allVideos);
+              },
+              showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
+              showDurationBadge: !isProcessing,
+            ),
           ),
+          if (isProcessing)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.black.withValues(alpha: 0.45),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'Processing your video...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (selectionActive)
             Positioned.fill(
               child: IgnorePointer(
@@ -1998,14 +2067,25 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   void _openVideoPlayer(HomeVideo video, int index, List<HomeVideo> videos) {
-    final videoIds = videos.map((v) => v.id).toList();
+    final List<HomeVideo> playableVideos =
+        videos.where(isHomeVideoPlayable).toList(growable: false);
+    if (!isHomeVideoPlayable(video)) {
+      return;
+    }
+    final int playableIndex =
+        playableVideos.indexWhere((HomeVideo v) => v.id == video.id);
+    if (playableIndex < 0) {
+      return;
+    }
+    final List<String> videoIds =
+        playableVideos.map((HomeVideo v) => v.id).toList();
 
     AppNavigator.openPlayer(
       context,
       mode: PlayerMode.homeFeed,
-      initialIndex: index,
+      initialIndex: playableIndex,
       videoIds: videoIds,
-      videos: videos,
+      videos: playableVideos,
     );
   }
 

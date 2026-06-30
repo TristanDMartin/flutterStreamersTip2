@@ -106,13 +106,16 @@ class VideoLikeNotifier extends StateNotifier<VideoLikeState> {
     required int likeCount,
   }) {
     final int safeCount = likeCount < 0 ? 0 : likeCount;
+    final int resolvedCount = safeCount > state.likeCount
+        ? safeCount
+        : state.likeCount;
     if (state.isLiked && !isLiked) {
       state = state.copyWith(
-        likeCount: state.likeCount > 0 ? state.likeCount : safeCount,
+        likeCount: resolvedCount > 0 ? resolvedCount : safeCount,
       );
       return;
     }
-    state = VideoLikeState(isLiked: isLiked, likeCount: safeCount);
+    state = VideoLikeState(isLiked: isLiked, likeCount: resolvedCount);
   }
 
   void restoreState(VideoLikeState previous) {

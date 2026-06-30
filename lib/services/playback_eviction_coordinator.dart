@@ -16,7 +16,7 @@ class PlaybackEvictionCoordinator {
 
   static const int poolRadius = 1;
   static const int maxControllerPoolSize =
-      PlaybackPoolPolicy.maxControllerPoolSize;
+      PlaybackPoolPolicy.defaultMaxControllerPoolSize;
 
   void preloadAround({
     required int index,

@@ -6,11 +6,15 @@ import 'package:camera/camera.dart';
 class ImagePickerWidget extends StatefulWidget {
   final Function(File) onImageSelected;
   final VoidCallback? onCancel;
+  final VoidCallback? onRemovePhoto;
+  final bool hasExistingPhoto;
 
   const ImagePickerWidget({
     super.key,
     required this.onImageSelected,
     this.onCancel,
+    this.onRemovePhoto,
+    this.hasExistingPhoto = false,
   });
 
   @override
@@ -194,6 +198,19 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                     subtitle: 'Take a new photo with camera',
                     onTap: _pickImageFromCamera,
                   ),
+                  if (widget.hasExistingPhoto &&
+                      widget.onRemovePhoto != null) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _buildOption(
+                      icon: Icons.delete_outline,
+                      title: 'Remove Photo',
+                      subtitle: 'Clear your current profile photo',
+                      onTap: () {
+                        widget.onRemovePhoto?.call();
+                        widget.onCancel?.call();
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 20),
                 ],
               ),

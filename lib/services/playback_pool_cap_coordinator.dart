@@ -3,7 +3,6 @@ import 'package:video_player/video_player.dart';
 import '../constants/playback_owners.dart';
 import 'playback_controller_pool.dart';
 import 'playback_feed_index_tracker.dart';
-import 'playback_pool_policy.dart';
 import 'playback_warm_window_policy.dart';
 
 /// Hard-enforces the global controller pool cap when soft eviction stalls.
@@ -73,7 +72,7 @@ class PlaybackPoolCapCoordinator {
     required void Function(String action, String videoId, {String? reason})
         onPoolAudit,
     Set<String> protectedVideoIds = const <String>{},
-    int maxSize = PlaybackPoolPolicy.maxControllerPoolSize,
+    int maxSize = PlaybackWarmWindowPolicy.maxControllerPoolSize,
     String reason = 'cap',
   }) {
     int evicted = 0;

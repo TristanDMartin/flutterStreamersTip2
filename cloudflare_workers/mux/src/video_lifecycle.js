@@ -116,6 +116,7 @@ export function pendingVideoFields({
     userId: uid,
     creatorId: uid,
     creator_id: uid,
+    ownerId: uid,
     status: 'uploading',
     processingState: 'uploading',
     isReadyForFeed: false,

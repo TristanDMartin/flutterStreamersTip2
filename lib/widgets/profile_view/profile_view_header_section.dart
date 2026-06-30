@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
+import '../../models/home_video.dart';
+import '../../providers/video_service_provider.dart';
+import '../../utils/post_count_rules.dart';
 import '../../core/theme/support_shell_style.dart';
 import '../../features/creator_score/creator_score_widgets.dart';
 import '../../models/user_status.dart' show UserPresence, UserStatus;
@@ -192,7 +195,7 @@ class _ProfileNameAndHandle extends StatelessWidget {
   }
 }
 
-class _ProfileStatsSystemCard extends StatelessWidget {
+class _ProfileStatsSystemCard extends ConsumerWidget {
   const _ProfileStatsSystemCard({
     required this.userData,
     required this.profileUserId,
@@ -204,8 +207,19 @@ class _ProfileStatsSystemCard extends StatelessWidget {
   final bool isCurrentUser;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
+    final List<HomeVideo> allVideos =
+        ref.watch(videoServiceStateProvider);
+    final bool isVideoServiceLoading =
+        ref.watch(videoServiceLoadingProvider);
+    final List<HomeVideo> userVideos =
+        ref.watch(userVideosProvider(profileUserId));
+    final int? postsCountOverride = resolvePostsCountOverride(
+      userVideos: userVideos,
+      allVideos: allVideos,
+      isVideoServiceLoading: isVideoServiceLoading,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Stack(
@@ -232,6 +246,7 @@ class _ProfileStatsSystemCard extends StatelessWidget {
               children: <Widget>[
                 UserStatsRow(
                   userId: profileUserId,
+                  postsCountOverride: postsCountOverride,
                   spacing: 28,
                   valueTextStyle: TextStyle(
                     color: scheme.onSurface,

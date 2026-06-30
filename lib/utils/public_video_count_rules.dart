@@ -1,30 +1,14 @@
+import 'post_count_rules.dart';
 import 'video_document_rules.dart';
 import 'video_health_gate.dart';
 import 'video_url_resolver.dart';
 
-/// Same “public + active + feed-ready” gates as [VideoService] when building
-/// the home feed. Unplayable URLs are handled separately via
-/// [videoIsPlayableForProfileCount].
+/// Same rules as website `users.postCount` (see [videoCountsAsUserPost]).
 bool videoCountsAsPublicPostForStats(Map<String, dynamic> data) {
-  if (!isVideoVisibleInFeed(data)) {
-    return false;
-  }
-  if (data['visible'] == false) {
-    return false;
-  }
   if (data['isDraft'] == true) {
     return false;
   }
-  if (data['isReadyForFeed'] != true) {
-    return false;
-  }
-  final String? visibility = data['visibility'] as String?;
-  final String? privacy = data['privacy'] as String?;
-  final bool isPublic = visibility == 'public' ||
-      privacy == 'Everyone' ||
-      privacy == 'Public' ||
-      (visibility == null && privacy == null);
-  return isPublic;
+  return videoCountsAsUserPost(data);
 }
 
 bool videoIsPublicFeedVisible(Map<String, dynamic> data) {

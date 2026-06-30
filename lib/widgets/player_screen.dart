@@ -28,6 +28,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final int initialIndex;
   final List<String> videoIds;
   final List<HomeVideo>? videos; // For home feed mode
+  final String? focusCommentId;
 
   const PlayerScreen({
     super.key,
@@ -35,6 +36,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     required this.initialIndex,
     required this.videoIds,
     this.videos,
+    this.focusCommentId,
   });
 
   @override

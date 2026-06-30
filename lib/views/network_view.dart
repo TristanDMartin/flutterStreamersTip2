@@ -13,6 +13,7 @@ import '../models/user_model.dart' as user_model;
 import '../models/network_models.dart' as network_models;
 import '../models/user_count_fields.dart';
 import '../models/user_status.dart';
+import '../utils/post_count_rules.dart';
 import '../services/follows_service.dart';
 import '../services/migration_service.dart';
 import '../services/performance_monitoring_service.dart';
@@ -2309,10 +2310,11 @@ class _NetworkUserPostsStatLine extends ConsumerWidget {
         ref.watch(video_providers.videoServiceLoadingProvider);
     final List<HomeVideo> userVideos =
         ref.watch(video_providers.userVideosProvider(user.id));
-    final int? postsCountOverride = userVideos.isNotEmpty ||
-            (!isVideoServiceLoading && allVideos.isNotEmpty)
-        ? userVideos.length
-        : null;
+    final int? postsCountOverride = resolvePostsCountOverride(
+      userVideos: userVideos,
+      allVideos: allVideos,
+      isVideoServiceLoading: isVideoServiceLoading,
+    );
     final int count = postsCountOverride ?? user.postCount;
     return Text(
       '$count posts',

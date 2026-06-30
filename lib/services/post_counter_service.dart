@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../utils/post_count_rules.dart';
 import '../utils/public_video_count_rules.dart';
 
 /// Post Counter Service - Single source of truth for user post counts
@@ -16,20 +17,12 @@ class PostCounterService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Matches [VideoService] feed: active | published | ready.
-  bool _shouldCountPost(String status) {
-    final String s = status.toLowerCase();
-    return s == 'active' || s == 'published' || s == 'ready';
-  }
-
-  /// Public feed visibility (same strings as feed / web).
-  bool _shouldCountPrivacy(String privacy) {
-    final String p = privacy.trim();
-    if (p.isEmpty) {
-      return false;
-    }
-    final String lower = p.toLowerCase();
-    return lower == 'everyone' || lower == 'public';
+  Map<String, dynamic> _postCountDelta(int delta) {
+    return <String, dynamic>{
+      'postCount': FieldValue.increment(delta),
+      'stats.postCount': FieldValue.increment(delta),
+      'lastPostCountUpdate': FieldValue.serverTimestamp(),
+    };
   }
 
   /// Increment post count when a post is published
@@ -40,11 +33,7 @@ class PostCounterService {
             '📊 PostCounterService: Incrementing post count for user: $userId');
       }
 
-      // Use atomic increment to prevent race conditions
-      await _firestore.collection('users').doc(userId).update({
-        'postCount': FieldValue.increment(1),
-        'lastPostCountUpdate': FieldValue.serverTimestamp(),
-      });
+      await _firestore.collection('users').doc(userId).update(_postCountDelta(1));
 
       if (kDebugMode) {
         debugPrint(
@@ -68,11 +57,7 @@ class PostCounterService {
             '📊 PostCounterService: Decrementing post count for user: $userId');
       }
 
-      // Use atomic decrement with minimum value of 0
-      await _firestore.collection('users').doc(userId).update({
-        'postCount': FieldValue.increment(-1),
-        'lastPostCountUpdate': FieldValue.serverTimestamp(),
-      });
+      await _firestore.collection('users').doc(userId).update(_postCountDelta(-1));
 
       // Ensure count doesn't go below 0
       await _ensureNonNegativeCount(userId);
@@ -99,8 +84,14 @@ class PostCounterService {
     String? postId,
   }) async {
     try {
-      final oldCounts = _shouldCountPost(oldStatus);
-      final newCounts = _shouldCountPost(newStatus);
+      final bool oldCounts = videoCountsAsUserPost(<String, dynamic>{
+        'status': oldStatus,
+        'privacy': 'everyone',
+      });
+      final bool newCounts = videoCountsAsUserPost(<String, dynamic>{
+        'status': newStatus,
+        'privacy': 'everyone',
+      });
 
       if (oldCounts && !newCounts) {
         // Post was countable, now it's not - decrement
@@ -128,8 +119,14 @@ class PostCounterService {
     String? postId,
   }) async {
     try {
-      final oldCounts = _shouldCountPrivacy(oldPrivacy);
-      final newCounts = _shouldCountPrivacy(newPrivacy);
+      final bool oldCounts = videoCountsAsUserPost(<String, dynamic>{
+        'status': 'published',
+        'privacy': oldPrivacy,
+      });
+      final bool newCounts = videoCountsAsUserPost(<String, dynamic>{
+        'status': 'published',
+        'privacy': newPrivacy,
+      });
 
       if (oldCounts && !newCounts) {
         // Post was countable, now it's not - decrement
@@ -205,19 +202,12 @@ class PostCounterService {
         if (!videoCountsAsPublicPostForStats(data)) {
           continue;
         }
-        try {
-          if (!await videoIsPlayableForProfileCount(doc.id, data)) {
-            continue;
-          }
-        } catch (_) {
-          continue;
-        }
         actualCount++;
       }
 
-      // Update the counter with the actual count
       await _firestore.collection('users').doc(userId).update({
         'postCount': actualCount,
+        'stats.postCount': actualCount,
         'lastPostCountReconciliation': FieldValue.serverTimestamp(),
       });
 
@@ -265,6 +255,7 @@ class PostCounterService {
         if (currentCount < 0) {
           await _firestore.collection('users').doc(userId).update({
             'postCount': 0,
+            'stats.postCount': 0,
             'postCountCorrected': FieldValue.serverTimestamp(),
           });
         }

@@ -319,7 +319,7 @@ class VideoPublishFinalizeService {
             .loadAllVideos(source: 'publish_finalize');
         await ref
             .read(videoServiceStateProvider.notifier)
-            .mergeProfileVideosForUser(userId);
+            .mergeProfileVideosForUser(userId, forceServer: true);
         ref.invalidate(userVideosProvider(userId));
         await ref.read(homeProvider.notifier).refreshFeed();
       } catch (e) {

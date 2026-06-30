@@ -71,6 +71,12 @@ class DeviceCapabilityService {
     return _cachedRecommendedResolution!;
   }
 
+  /// True when estimated heap is at or below the low-memory threshold.
+  Future<bool> isLowMemoryDevice() async {
+    final int heapSize = await getDeviceHeapSizeMB();
+    return heapSize <= 256;
+  }
+
   /// Clear cached values (useful for testing)
   void clearCache() {
     _cachedHeapSizeMB = null;

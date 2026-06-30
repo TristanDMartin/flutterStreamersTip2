@@ -65,7 +65,7 @@ StartupShell resolveStartupShell({
 }
 
 class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
-  bool _firebaseStartupGracePeriodElapsed = true;
+  final bool _firebaseStartupGracePeriodElapsed = true;
   bool _calendarCleanupStarted = false;
   Timer? _firebaseReadyPollTimer;
   Widget? _cachedHomeShell;

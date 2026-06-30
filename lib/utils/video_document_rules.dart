@@ -11,6 +11,38 @@ const Set<String> kVideoVisibleInFeedStatuses = {
   'active',
 };
 
+/// Profile grid / owner list — matches website (processing + ready).
+const Set<String> kVideoProfileListStatuses = {
+  'processing',
+  'uploading',
+  'ready',
+  'published',
+  'active',
+  'failed',
+  'upload_failed',
+};
+
+bool isVideoProfileListStatus(String? rawStatus) {
+  final String status = (rawStatus ?? 'processing').toLowerCase();
+  return kVideoProfileListStatuses.contains(status);
+}
+
+/// Autoplay / controller init — ready docs with a playback URL only.
+bool isVideoEligibleForAutoplay(Map<String, dynamic> data) {
+  final String status = (data['status'] as String? ?? '').toLowerCase();
+  if (!kVideoVisibleInFeedStatuses.contains(status)) {
+    return false;
+  }
+  return hasReadyPlaybackSource(data);
+}
+
+bool isHomeVideoEligibleForProfileList(HomeVideo video) {
+  if (video.isDraft == true) {
+    return false;
+  }
+  return isVideoProfileListStatus(video.status);
+}
+
 /// True when the doc has fields [FollowsService]/legacy resolution might use.
 bool hasLegacyOwnerResolutionHints(Map<String, dynamic> data) {
   const hintKeys = <String>[
@@ -183,6 +215,106 @@ void logDiscoverVideoSkip({
     'category_id=${data['category_id']} categories=${data['categories']} '
     'status=${data['status']} visibility=${data['visibility']} '
     'privacy=${data['privacy']}',
+  );
+}
+
+/// Profile grid display — aligned with website (show processing + ready).
+String? rejectProfileListCandidate(
+  Map<String, dynamic> data,
+  String profileUserId, {
+  String? viewerUserId,
+}) {
+  if (isVideoDeletedFromFirestore(data)) {
+    return 'deleted';
+  }
+  final String? owner = getOwnerId(data);
+  if (owner == null || owner != profileUserId) {
+    return 'owner_mismatch';
+  }
+  if (data['isDraft'] == true) {
+    return 'isDraft';
+  }
+  final String status = (data['status'] as String? ?? 'processing').toLowerCase();
+  if (!isVideoProfileListStatus(status)) {
+    return 'status:$status';
+  }
+  final bool isOwnerViewing =
+      viewerUserId != null && viewerUserId == profileUserId;
+  if (!isPublicFeedVisibility(data) && !isOwnerViewing) {
+    return 'visibility';
+  }
+  return null;
+}
+
+/// Post-count / stats — strict feed-ready gate (unchanged).
+String? rejectProfileGridCandidate(
+  Map<String, dynamic> data,
+  String profileUserId,
+) {
+  final String? owner = getOwnerId(data);
+  if (owner == null || owner != profileUserId) {
+    return 'owner_mismatch';
+  }
+  if (!isVideoVisibleInFeed(data)) {
+    return 'status:${data['status']}';
+  }
+  if (data['visible'] == false) {
+    return 'visible:false';
+  }
+  if (data['isDraft'] == true) {
+    return 'isDraft';
+  }
+  if (data['isReadyForFeed'] != true) {
+    return 'isReadyForFeed:not_true';
+  }
+  if (!isPublicFeedVisibility(data)) {
+    return 'visibility';
+  }
+  return null;
+}
+
+void logVideoEligibility({
+  required String videoId,
+  required Map<String, dynamic> data,
+  String? excludedReason,
+  String context = 'profile',
+}) {
+  if (!kDebugMode) {
+    return;
+  }
+  final String? ownerId = getOwnerId(data);
+  final String? playbackUrl = resolveReadyPlaybackUrl(data);
+  final String? thumbnailUrl =
+      (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
+  debugPrint(
+    'VIDEO_ELIGIBILITY context=$context id=$videoId '
+    'ownerId=$ownerId '
+    'status=${data['status']} '
+    'visibility=${data['visibility']} '
+    'isDeleted=${data['isDeleted']} '
+    'hasPlayback=${playbackUrl != null} '
+    'hasThumbnail=${thumbnailUrl != null && thumbnailUrl.isNotEmpty} '
+    'excludedReason=${excludedReason ?? 'none'}',
+  );
+}
+
+/// Debug log for app vs website feed parity (profile + home hydration).
+void logFeedVideoCandidate({
+  required String context,
+  required String videoId,
+  required Map<String, dynamic> data,
+  String? rejectReason,
+}) {
+  if (!kDebugMode) {
+    return;
+  }
+  debugPrint(
+    'FEED_VIDEO context=$context id=$videoId '
+    'reject=${rejectReason ?? 'none'} '
+    'status=${data['status']} visibility=${data['visibility']} '
+    'privacy=${data['privacy']} isReadyForFeed=${data['isReadyForFeed']} '
+    'playbackUrl=${data['playbackUrl']} muxPlaybackId=${data['muxPlaybackId']} '
+    'createdAt=${data['createdAt']}',
   );
 }
 

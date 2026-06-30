@@ -216,7 +216,7 @@ class GlobalPlaybackManager {
   static const int poolRadius = 1;
   static const int recoveryTimeoutMs = 5000;
   static const int maxControllerPoolSize =
-      PlaybackPoolPolicy.maxControllerPoolSize;
+      PlaybackPoolPolicy.defaultMaxControllerPoolSize;
 
   // ============================================
   // STREAMS
@@ -275,6 +275,10 @@ class GlobalPlaybackManager {
 
   /// Check if playback is blocked
   bool get isPlaybackBlocked => _focus.blockLevel > 0;
+
+  /// True while sign-out teardown has blocked playback.
+  bool get isSuppressedForSignOut =>
+      isPlaybackBlocked && _focus.blockReason == 'auth_sign_out';
 
   /// Get current block level
   int get blockLevel => _focus.blockLevel;
@@ -899,11 +903,12 @@ class GlobalPlaybackManager {
   /// playbackManager.unblock();                // Level 1 (still blocked)
   /// playbackManager.unblock();                // Level 0 (unblocked, playback can resume)
   /// ```
-  void unblock() {
+  void unblock({String? reason}) {
     _blockingCoordinator.unblock(
       focus: _focus,
       onTelemetry: logTelemetry,
       log: secureLog,
+      reason: reason,
     );
   }
 

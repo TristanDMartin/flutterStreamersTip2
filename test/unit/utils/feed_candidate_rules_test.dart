@@ -65,4 +65,54 @@ void main() {
       );
     });
   });
+
+  group('rejectProfileListCandidate', () {
+    const String owner = 'abc123owner0000000000000001';
+
+    test('allows processing uploads for owner profile', () {
+      expect(
+        rejectProfileListCandidate(
+          <String, dynamic>{
+            'status': 'processing',
+            'visibility': 'public',
+            'userId': owner,
+          },
+          owner,
+          viewerUserId: owner,
+        ),
+        isNull,
+      );
+    });
+
+    test('rejects processing when viewer is not owner and video is private',
+        () {
+      expect(
+        rejectProfileListCandidate(
+          <String, dynamic>{
+            'status': 'processing',
+            'visibility': 'private',
+            'userId': owner,
+          },
+          owner,
+          viewerUserId: 'other_viewer_00000000000001',
+        ),
+        'visibility',
+      );
+    });
+
+    test('rejects deleted docs', () {
+      expect(
+        rejectProfileListCandidate(
+          <String, dynamic>{
+            'status': 'ready',
+            'isDeleted': true,
+            'userId': owner,
+          },
+          owner,
+          viewerUserId: owner,
+        ),
+        'deleted',
+      );
+    });
+  });
 }

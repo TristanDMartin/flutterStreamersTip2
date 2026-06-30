@@ -9,10 +9,12 @@ class PlaybackPoolPolicy {
   const PlaybackPoolPolicy._();
 
   /// Maximum live Home feed controllers: previous + current + next.
+  static const int defaultMaxControllerPoolSize =
+      PlaybackHomeFeedConfig.maxPoolSize;
+
   static int get maxControllerPoolSize => _configuredMaxControllerPoolSize;
 
-  static int _configuredMaxControllerPoolSize =
-      PlaybackHomeFeedConfig.maxPoolSize;
+  static int _configuredMaxControllerPoolSize = defaultMaxControllerPoolSize;
 
   /// Backward warm radius around the visible index.
   static const int poolRadius = 1;

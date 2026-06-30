@@ -29,7 +29,21 @@ class HomeFirstFrameGate {
         '⚠️ HomeFirstFrameGate: fallback timer elapsed without playback frame '
         '(${delay.inSeconds}s)',
       );
+      _drainPendingTasksOnFallback();
     });
+  }
+
+  void _drainPendingTasksOnFallback() {
+    if (_pendingTasks.isEmpty) {
+      return;
+    }
+    secureLog(
+      '⚠️ HomeFirstFrameGate: draining ${_pendingTasks.length} deferred '
+      'tasks without playback frame',
+    );
+    final List<VoidCallback> tasks = List<VoidCallback>.from(_pendingTasks);
+    _pendingTasks.clear();
+    unawaited(_drainTasks(tasks));
   }
 
   void markStartupPlaybackReady({

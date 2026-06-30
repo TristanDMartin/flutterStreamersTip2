@@ -22,6 +22,7 @@ const ANALYTICS_EVENT_TYPES = Object.freeze({
   SUBSCRIPTION_GATE_SEEN: 'subscription_gate_seen',
   SUBSCRIPTION_STARTED: 'subscription_started',
   SUBSCRIPTION_CANCELLED: 'subscription_cancelled',
+  PERSONALIZATION_CTA_TAPPED: 'personalization_cta_tapped',
 });
 
 const ANALYTICS_SOURCES = Object.freeze({
@@ -35,6 +36,7 @@ const ANALYTICS_TARGET_TYPES = Object.freeze({
   GUIDE: 'guide',
   PROFILE: 'profile',
   COURSE: 'course',
+  PERSONALIZATION: 'personalization',
 });
 
 const ANALYTICS_PROFILE_DOC_ID = 'profile';

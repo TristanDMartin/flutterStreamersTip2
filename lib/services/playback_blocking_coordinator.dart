@@ -24,11 +24,12 @@ class PlaybackBlockingCoordinator {
     required PlaybackFocusCoordinator focus,
     required void Function(String event, {String? reason}) onTelemetry,
     void Function(String message)? log,
+    String? reason,
   }) {
     if (focus.blockLevel > 0) {
       final bool fullyUnblocked = focus.decrementBlock();
       log?.call('✅ PlaybackManager: UNBLOCKED (level: ${focus.blockLevel})');
-      onTelemetry('unblock');
+      onTelemetry('unblock', reason: reason);
       if (fullyUnblocked) {
         log?.call('🎯 PlaybackManager: FULLY UNBLOCKED - ready for playback');
       }

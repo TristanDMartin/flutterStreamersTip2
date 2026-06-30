@@ -141,13 +141,13 @@ class _HomeViewState extends ConsumerState<HomeView>
       if (ref.read(hp.homeProvider).forYouVideos.isNotEmpty) {
         _setDesiredFocusForCurrentIndex();
       }
+      _startHomeServicesWhenFirebaseReady();
       HomeFirstFrameGate.instance.armFallbackUnblock();
       HomeFirstFrameGate.instance.runAfterFirstFrame(() {
         if (!mounted) return;
         OfflineDataService();
         EngagementAnalyticsService().initialize();
         _startUnifiedAlgorithmSession();
-        _startHomeServicesWhenFirebaseReady();
       });
     });
   }

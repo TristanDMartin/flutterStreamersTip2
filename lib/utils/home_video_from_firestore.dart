@@ -189,15 +189,9 @@ Future<HomeVideo> _buildHomeVideoFromDoc(
     videoURL: readyPlaybackUrl ?? '',
     thumbnailURL:
         data['thumbnailUrl'] as String? ?? data['thumbnailURL'] as String?,
-    likes: (data['likeCount'] as num?)?.toInt() ??
-        (data['likes'] as num?)?.toInt() ??
-        0,
-    comments: (data['commentCount'] as num?)?.toInt() ??
-        (data['comments'] as num?)?.toInt() ??
-        0,
-    views: (data['viewCount'] as num?)?.toInt() ??
-        (data['views'] as num?)?.toInt() ??
-        0,
+    likes: readVideoLikeCountFromFirestore(data),
+    comments: readVideoCommentCountFromFirestore(data),
+    views: readVideoViewCountFromFirestore(data),
     caption: resolveVideoCaptionFromFirestoreData(data),
     overlayCaption: resolveVideoOverlayCaptionFromFirestoreData(data),
     categoryId: categoryIdFromVideoDocument(data),
