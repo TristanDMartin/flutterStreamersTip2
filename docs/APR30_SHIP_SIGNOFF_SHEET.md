@@ -25,6 +25,13 @@ Use this block as paste-in evidence for the release record; it does **not** repl
 - **iOS CI matrix:** pre-build `flutter build ios --simulator --debug` added to QA workflow and integration runner to fix VM service discovery hang.
 - **Blocked (needs founder auth / devices):** Firebase CLI reauth for staging deploy + backfill; mandatory iOS/Android smoke rows; FCM/APNs physical device pass; public beta hold remains **NO-GO**.
 
+## Automated evidence (2026-06-29, production feed visibility pass)
+
+- **Production feed metadata:** `node scripts/video_feed_visibility_backfill.js --apply --verbose` — **13 safe Firestore video metadata patches applied** in `streamerstip-6cfdb`.
+- **Post-backfill verification:** `node scripts/video_feed_visibility_backfill.js` — `eligibleBefore: 15`, `plannedPatches: 0`; remaining rejects are deleted/failed/removed, missing-owner, or no-playback docs.
+- **Feed eligibility tests:** `flutter test test/unit/utils/feed_candidate_rules_test.dart test/utils/video_url_resolver_test.dart test/unit/utils/video_url_resolver_owner_test.dart test/unit/utils/discover_video_eligibility_test.dart` — **24 passed**.
+- **Production note:** video metadata backfill is no longer blocking current safe public/playable videos from Home/Discover. Remaining production blockers are mandatory iOS/Android device smokes, push notification validation, OAuth/billing real-flow checks, and controlled beta soak.
+
 ## Automated evidence (2026-04-29, dev / agent)
 
 - **Unit + widget (Tippy):** `flutter test test/unit/features/tippy test/widgets/tippy_chat_page_test.dart` — **17 passed**.
