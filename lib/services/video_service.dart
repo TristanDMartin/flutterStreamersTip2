@@ -1244,14 +1244,53 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       );
       final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
           <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
-          .collection('videos')
-          .where('ownerId', isEqualTo: profileUserId)
-          .orderBy('createdAt', descending: true)
-          .get(fetchOptions);
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-          in snapshot.docs) {
-        docMap[doc.id] = doc;
+      try {
+        final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+            .collection('videos')
+            .where('ownerId', isEqualTo: profileUserId)
+            .orderBy('createdAt', descending: true)
+            .get(fetchOptions);
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
+          docMap[doc.id] = doc;
+        }
+        if (kDebugMode) {
+          debugPrint(
+            '🎬 VideoService: profile owner ordered query '
+            '$profileUserId -> ${snapshot.docs.length} docs',
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            '🎬 VideoService: profile owner ordered query failed '
+            'for $profileUserId: $e',
+          );
+        }
+      }
+      try {
+        final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+            .collection('videos')
+            .where('ownerId', isEqualTo: profileUserId)
+            .get(fetchOptions);
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
+          docMap[doc.id] = doc;
+        }
+        if (kDebugMode) {
+          debugPrint(
+            '🎬 VideoService: profile owner unordered fallback '
+            '$profileUserId -> ${snapshot.docs.length} docs '
+            '(merged ${docMap.length})',
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            '🎬 VideoService: profile owner unordered fallback failed '
+            'for $profileUserId: $e',
+          );
+        }
       }
       if (kDebugMode) {
         try {
@@ -1329,6 +1368,11 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         }
         built.add(video);
       }
+      built.sort((HomeVideo a, HomeVideo b) {
+        final int aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final int bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime);
+      });
       final bool changed = _mergeProfileVideosIntoState(built);
       if (kDebugMode) {
         debugPrint(
