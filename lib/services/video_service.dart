@@ -1071,12 +1071,15 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         ranked: diversifiedVideos.length,
       ).logTo(debugPrint);
 
-      state = diversifiedVideos;
+      final List<HomeVideo> mergedState =
+          _mergeFeedRefreshPreservingProfileVisibleVideos(diversifiedVideos);
+      state = mergedState;
       VideoFeedDiagnostics.logVideoLoadDone(
-        videoCount: diversifiedVideos.length,
+        videoCount: mergedState.length,
       );
       debugPrint(
-          '✅ VideoService: Loaded ${diversifiedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
+          '✅ VideoService: Loaded ${diversifiedVideos.length} unique feed videos '
+          '(state ${mergedState.length}, removed ${videos.length - deduplicatedVideos.length} duplicates)');
 
       // 🔍 DIAGNOSTIC: Log summary of loaded videos and statistics
       if (diversifiedVideos.isEmpty) {
@@ -1180,6 +1183,45 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     } finally {
       isHydratingFeed = false;
     }
+  }
+
+  List<HomeVideo> _mergeFeedRefreshPreservingProfileVisibleVideos(
+    List<HomeVideo> incomingFeedVideos,
+  ) {
+    final String viewerId = _auth.currentUser?.uid ?? '';
+    final List<HomeVideo> next = List<HomeVideo>.of(incomingFeedVideos);
+    final Set<String> incomingIds =
+        next.map((HomeVideo video) => video.id).toSet();
+    int preservedCount = 0;
+
+    for (final HomeVideo existing in state) {
+      if (incomingIds.contains(existing.id)) {
+        continue;
+      }
+      final String ownerId = existing.creator.id;
+      if (ownerId.isEmpty) {
+        continue;
+      }
+      if (!canShowHomeVideo(
+        video: existing,
+        viewerId: viewerId,
+        ownerId: ownerId,
+      )) {
+        continue;
+      }
+      next.add(existing);
+      incomingIds.add(existing.id);
+      preservedCount++;
+    }
+
+    if (kDebugMode && preservedCount > 0) {
+      debugPrint(
+        '🎬 VideoService: preserved $preservedCount profile-visible videos '
+        'outside refreshed home feed slice',
+      );
+    }
+
+    return next;
   }
 
   /// Fetches all of [profileUserId]'s public feed-eligible videos and merges them
