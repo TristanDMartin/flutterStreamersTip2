@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:streamers_tip/models/home_video.dart';
+import 'package:streamers_tip/models/user.dart';
 import 'package:streamers_tip/utils/video_document_rules.dart';
 import 'package:streamers_tip/utils/video_url_resolver.dart';
 
@@ -48,6 +50,23 @@ void main() {
           readOwnerId: getOwnerId,
         ),
         isNull,
+      );
+    });
+
+    test('rejects deleted HomeVideo rows even when status remains ready', () {
+      expect(
+        isHomeVideoVisibleInFeed(HomeVideo(
+          id: 'deleted-ready',
+          creator: const User(
+            id: 'abc123owner0000000000000001',
+            username: 'creator',
+            displayName: 'Creator',
+          ),
+          videoURL: 'https://stream.mux.com/abc.m3u8',
+          status: 'ready',
+          isDeleted: true,
+        )),
+        isFalse,
       );
     });
 

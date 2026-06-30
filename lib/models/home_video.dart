@@ -30,6 +30,8 @@ sealed class HomeVideo with _$HomeVideo {
     @Default('public') String visibility, // public, followers, private
     @Default('published')
     String status, // draft, processing, published, blocked, deleted
+    @Default(false) bool isDeleted,
+    Timestamp? deletedAt,
     @Default(false) bool isPinned, // Pinned to profile
     @Default([]) List<String> tags, // Video tags
     @Default([]) List<String> playlistIds, // Series/playlists

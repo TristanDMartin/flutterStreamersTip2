@@ -38,6 +38,14 @@ void main() {
       );
     });
 
+    test('rejects cached deleted video even with playable url', () {
+      expect(
+        isDiscoverEligibleHomeVideo(
+          _video(id: 'deleted').copyWith(isDeleted: true),
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('homeVideoMatchesDiscoverCategory', () {

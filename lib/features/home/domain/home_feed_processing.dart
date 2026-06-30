@@ -1,6 +1,7 @@
 import '../../../models/home_video.dart';
 import '../../../services/optimistic_video_service.dart';
 import '../../../utils/home_video_playback.dart';
+import '../../../utils/video_document_rules.dart';
 import 'home_feed_pending_upload_merge.dart';
 
 /// Removes duplicate videos by id (first occurrence wins).
@@ -36,7 +37,10 @@ List<HomeVideo> rankHomeVideosForFeed(List<HomeVideo> videos) {
 
 /// Keeps only items that can play in the home feed.
 List<HomeVideo> filterPlayableHomeVideos(List<HomeVideo> feed) {
-  return feed.where(isHomeVideoPlayable).toList(growable: false);
+  return feed
+      .where(isHomeVideoVisibleInFeed)
+      .where(isHomeVideoPlayable)
+      .toList(growable: false);
 }
 
 /// Rank, merge pending uploads, and dedupe for For You display.
@@ -55,5 +59,5 @@ List<HomeVideo> prepareForYouFeedDisplayList({
       currentUserDisplayName: currentUserDisplayName,
       currentUserPhotoUrl: currentUserPhotoUrl,
     ),
-  );
+  ).where(isHomeVideoVisibleInFeed).toList(growable: false);
 }

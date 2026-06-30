@@ -35,6 +35,8 @@ mixin _$HomeVideo {
   bool get allowRemix; // Can viewers remix/duet/stitch
   String get visibility; // public, followers, private
   String get status; // draft, processing, published, blocked, deleted
+  bool get isDeleted;
+  Timestamp? get deletedAt;
   bool get isPinned; // Pinned to profile
   List<String> get tags; // Video tags
   List<String> get playlistIds;
@@ -84,6 +86,10 @@ mixin _$HomeVideo {
             (identical(other.visibility, visibility) ||
                 other.visibility == visibility) &&
             (identical(other.status, status) || other.status == status) &&
+            (identical(other.isDeleted, isDeleted) ||
+                other.isDeleted == isDeleted) &&
+            (identical(other.deletedAt, deletedAt) ||
+                other.deletedAt == deletedAt) &&
             (identical(other.isPinned, isPinned) ||
                 other.isPinned == isPinned) &&
             const DeepCollectionEquality().equals(other.tags, tags) &&
@@ -115,6 +121,8 @@ mixin _$HomeVideo {
         allowRemix,
         visibility,
         status,
+        isDeleted,
+        deletedAt,
         isPinned,
         const DeepCollectionEquality().hash(tags),
         const DeepCollectionEquality().hash(playlistIds)
@@ -122,7 +130,7 @@ mixin _$HomeVideo {
 
   @override
   String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, overlayCaption: $overlayCaption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, overlayCaption: $overlayCaption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isDeleted: $isDeleted, deletedAt: $deletedAt, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
   }
 }
 
@@ -153,6 +161,8 @@ abstract mixin class $HomeVideoCopyWith<$Res> {
       bool allowRemix,
       String visibility,
       String status,
+      bool isDeleted,
+      Timestamp? deletedAt,
       bool isPinned,
       List<String> tags,
       List<String> playlistIds});
@@ -193,6 +203,8 @@ class _$HomeVideoCopyWithImpl<$Res> implements $HomeVideoCopyWith<$Res> {
     Object? allowRemix = null,
     Object? visibility = null,
     Object? status = null,
+    Object? isDeleted = null,
+    Object? deletedAt = freezed,
     Object? isPinned = null,
     Object? tags = null,
     Object? playlistIds = null,
@@ -282,6 +294,14 @@ class _$HomeVideoCopyWithImpl<$Res> implements $HomeVideoCopyWith<$Res> {
           ? _self.status
           : status // ignore: cast_nullable_to_non_nullable
               as String,
+      isDeleted: null == isDeleted
+          ? _self.isDeleted
+          : isDeleted // ignore: cast_nullable_to_non_nullable
+              as bool,
+      deletedAt: freezed == deletedAt
+          ? _self.deletedAt
+          : deletedAt // ignore: cast_nullable_to_non_nullable
+              as Timestamp?,
       isPinned: null == isPinned
           ? _self.isPinned
           : isPinned // ignore: cast_nullable_to_non_nullable
@@ -425,6 +445,8 @@ extension HomeVideoPatterns on HomeVideo {
             bool allowRemix,
             String visibility,
             String status,
+            bool isDeleted,
+            Timestamp? deletedAt,
             bool isPinned,
             List<String> tags,
             List<String> playlistIds)?
@@ -456,6 +478,8 @@ extension HomeVideoPatterns on HomeVideo {
             _that.allowRemix,
             _that.visibility,
             _that.status,
+            _that.isDeleted,
+            _that.deletedAt,
             _that.isPinned,
             _that.tags,
             _that.playlistIds);
@@ -501,6 +525,8 @@ extension HomeVideoPatterns on HomeVideo {
             bool allowRemix,
             String visibility,
             String status,
+            bool isDeleted,
+            Timestamp? deletedAt,
             bool isPinned,
             List<String> tags,
             List<String> playlistIds)
@@ -531,6 +557,8 @@ extension HomeVideoPatterns on HomeVideo {
             _that.allowRemix,
             _that.visibility,
             _that.status,
+            _that.isDeleted,
+            _that.deletedAt,
             _that.isPinned,
             _that.tags,
             _that.playlistIds);
@@ -573,6 +601,8 @@ extension HomeVideoPatterns on HomeVideo {
             bool allowRemix,
             String visibility,
             String status,
+            bool isDeleted,
+            Timestamp? deletedAt,
             bool isPinned,
             List<String> tags,
             List<String> playlistIds)?
@@ -603,6 +633,8 @@ extension HomeVideoPatterns on HomeVideo {
             _that.allowRemix,
             _that.visibility,
             _that.status,
+            _that.isDeleted,
+            _that.deletedAt,
             _that.isPinned,
             _that.tags,
             _that.playlistIds);
@@ -637,6 +669,8 @@ class _HomeVideo implements HomeVideo {
       this.allowRemix = true,
       this.visibility = 'public',
       this.status = 'published',
+      this.isDeleted = false,
+      this.deletedAt,
       this.isPinned = false,
       final List<String> tags = const [],
       final List<String> playlistIds = const []})
@@ -710,6 +744,11 @@ class _HomeVideo implements HomeVideo {
 // draft, processing, published, blocked, deleted
   @override
   @JsonKey()
+  final bool isDeleted;
+  @override
+  final Timestamp? deletedAt;
+  @override
+  @JsonKey()
   final bool isPinned;
 // Pinned to profile
   final List<String> _tags;
@@ -779,6 +818,10 @@ class _HomeVideo implements HomeVideo {
             (identical(other.visibility, visibility) ||
                 other.visibility == visibility) &&
             (identical(other.status, status) || other.status == status) &&
+            (identical(other.isDeleted, isDeleted) ||
+                other.isDeleted == isDeleted) &&
+            (identical(other.deletedAt, deletedAt) ||
+                other.deletedAt == deletedAt) &&
             (identical(other.isPinned, isPinned) ||
                 other.isPinned == isPinned) &&
             const DeepCollectionEquality().equals(other._tags, _tags) &&
@@ -810,6 +853,8 @@ class _HomeVideo implements HomeVideo {
         allowRemix,
         visibility,
         status,
+        isDeleted,
+        deletedAt,
         isPinned,
         const DeepCollectionEquality().hash(_tags),
         const DeepCollectionEquality().hash(_playlistIds)
@@ -817,7 +862,7 @@ class _HomeVideo implements HomeVideo {
 
   @override
   String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, overlayCaption: $overlayCaption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, overlayCaption: $overlayCaption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isDeleted: $isDeleted, deletedAt: $deletedAt, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
   }
 }
 
@@ -851,6 +896,8 @@ abstract mixin class _$HomeVideoCopyWith<$Res>
       bool allowRemix,
       String visibility,
       String status,
+      bool isDeleted,
+      Timestamp? deletedAt,
       bool isPinned,
       List<String> tags,
       List<String> playlistIds});
@@ -892,6 +939,8 @@ class __$HomeVideoCopyWithImpl<$Res> implements _$HomeVideoCopyWith<$Res> {
     Object? allowRemix = null,
     Object? visibility = null,
     Object? status = null,
+    Object? isDeleted = null,
+    Object? deletedAt = freezed,
     Object? isPinned = null,
     Object? tags = null,
     Object? playlistIds = null,
@@ -981,6 +1030,14 @@ class __$HomeVideoCopyWithImpl<$Res> implements _$HomeVideoCopyWith<$Res> {
           ? _self.status
           : status // ignore: cast_nullable_to_non_nullable
               as String,
+      isDeleted: null == isDeleted
+          ? _self.isDeleted
+          : isDeleted // ignore: cast_nullable_to_non_nullable
+              as bool,
+      deletedAt: freezed == deletedAt
+          ? _self.deletedAt
+          : deletedAt // ignore: cast_nullable_to_non_nullable
+              as Timestamp?,
       isPinned: null == isPinned
           ? _self.isPinned
           : isPinned // ignore: cast_nullable_to_non_nullable

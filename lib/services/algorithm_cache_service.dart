@@ -465,6 +465,9 @@ class AlgorithmCacheService {
       'allowRemix': video.allowRemix,
       'visibility': video.visibility,
       'status': video.status,
+      'isDeleted': video.isDeleted,
+      'deleted': video.isDeleted,
+      'deletedAt': video.deletedAt?.millisecondsSinceEpoch,
       'isPinned': video.isPinned,
       'tags': video.tags,
       'playlistIds': video.playlistIds,
@@ -481,6 +484,8 @@ class AlgorithmCacheService {
         (thumbnailsData?['urls'] as Map?)?.cast<String, dynamic>();
     final int? createdAtMs =
         data['createdAt'] is int ? data['createdAt'] as int : null;
+    final int? deletedAtMs =
+        data['deletedAt'] is int ? data['deletedAt'] as int : null;
     final int? generatedAtMs = thumbnailsData?['generatedAt'] is int
         ? thumbnailsData!['generatedAt'] as int
         : null;
@@ -533,6 +538,10 @@ class AlgorithmCacheService {
       allowRemix: data['allowRemix'] != false,
       visibility: data['visibility'] ?? 'public',
       status: data['status'] ?? 'published',
+      isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+      deletedAt: deletedAtMs == null
+          ? null
+          : Timestamp.fromMillisecondsSinceEpoch(deletedAtMs),
       isPinned: data['isPinned'] == true,
       tags: (data['tags'] as List?)?.map((e) => e.toString()).toList() ??
           const <String>[],

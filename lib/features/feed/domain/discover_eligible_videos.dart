@@ -82,7 +82,8 @@ class DiscoverEligibleVideosResolver {
     required List<HomeVideo> matching,
   }) {
     final int homeCount = ref.read(hp.homeProvider).forYouVideos.length;
-    final int serviceCount = ref.read(videoServiceProvider).getAllVideos().length;
+    final int serviceCount =
+        ref.read(videoServiceProvider).getAllVideos().length;
     if (kDebugMode) {
       debugPrint(
         'DISCOVER_SOURCE_AUDIT '
@@ -167,7 +168,8 @@ Map<String, dynamic> homeVideoToFirestoreShape(HomeVideo video) {
     'hlsUrl': video.videoURL,
     'status': video.status,
     'visibility': video.visibility,
-    'isDeleted': false,
+    'isDeleted': video.isDeleted,
+    'deletedAt': video.deletedAt,
   };
   final String categoryId = categoryIdFromVideoDocument(data);
   data['categoryId'] = categoryId;

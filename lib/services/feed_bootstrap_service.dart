@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/video_url_resolver.dart';
+import '../utils/video_document_rules.dart';
 import '../models/home_video.dart';
 import '../models/user.dart' as app_user;
 import 'video_cache_service.dart';
@@ -147,7 +148,9 @@ class FeedBootstrapService {
 
       final snapshot = await query.get();
 
-      final videos = snapshot.docs.map((doc) {
+      final videos = snapshot.docs.where((doc) {
+        return isVideoVisibleInFeed(doc.data());
+      }).map((doc) {
         final data = doc.data();
         return HomeVideo(
           id: doc.id,
@@ -168,6 +171,10 @@ class FeedBootstrapService {
           isDraft: data['isDraft'] ?? false,
           mlScore: (data['mlScore'] ?? 0.0).toDouble(),
           categoryId: data['categoryId'] ?? '',
+          status: data['status'] as String? ?? 'ready',
+          visibility: data['visibility'] as String? ?? 'public',
+          isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+          deletedAt: data['deletedAt'] as Timestamp?,
         );
       }).toList();
 

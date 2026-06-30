@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/video_caption_resolver.dart';
+import '../utils/video_document_rules.dart';
 import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
@@ -252,6 +253,7 @@ class FollowingFeedService {
     Map<String, dynamic> data,
     List<String> authorIds,
   ) {
+    if (isVideoDeletedFromFirestore(data)) return false;
     if (data['isReadyForFeed'] != true) return false;
 
     final String status =
@@ -413,6 +415,9 @@ class FollowingFeedService {
           _parseDuration(data['metadata']?['duration'] ?? data['duration']),
       createdAt: data['createdAt'] as Timestamp?,
       status: data['status'] as String? ?? 'ready',
+      visibility: data['visibility'] as String? ?? 'public',
+      isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+      deletedAt: data['deletedAt'] as Timestamp?,
     );
   }
 

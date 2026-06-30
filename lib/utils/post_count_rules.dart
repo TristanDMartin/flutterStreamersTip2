@@ -57,8 +57,9 @@ bool homeVideoCountsAsUserPost(HomeVideo video) {
     'status': video.status,
     'privacy': _privacyFromHomeVideoVisibility(video.visibility),
     'visible': true,
-    'isDeleted': video.status.toLowerCase() == 'deleted',
-    'deleted': video.status.toLowerCase() == 'deleted',
+    'isDeleted': video.isDeleted || video.status.toLowerCase() == 'deleted',
+    'deleted': video.isDeleted || video.status.toLowerCase() == 'deleted',
+    'deletedAt': video.deletedAt,
   });
 }
 
@@ -95,8 +96,7 @@ int? resolvePostsCountOverride({
   required List<HomeVideo> allVideos,
   required bool isVideoServiceLoading,
 }) {
-  if (userVideos.isEmpty &&
-      (isVideoServiceLoading || allVideos.isEmpty)) {
+  if (userVideos.isEmpty && (isVideoServiceLoading || allVideos.isEmpty)) {
     return null;
   }
   return userVideos.where(homeVideoCountsAsUserPost).length;

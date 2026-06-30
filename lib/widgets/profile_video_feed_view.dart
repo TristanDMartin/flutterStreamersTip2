@@ -161,7 +161,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   void dispose() {
     _optimisticFeedRefreshSubscription?.cancel();
-    ref.read(providers.videoServiceStateProvider.notifier).stopOwnerVideosListener();
+    ref
+        .read(providers.videoServiceStateProvider.notifier)
+        .stopOwnerVideosListener();
     // Cancel all video deletion listeners
     for (final subscription in _videoListeners.values) {
       subscription.cancel();
@@ -229,8 +231,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       return;
     }
     if (_mergedProfileVideosForUserId == uid) {
-      final int loadedCount =
-          ref.read(userVideosProvider(uid)).length;
+      final int loadedCount = ref.read(userVideosProvider(uid)).length;
       if (loadedCount > 0) {
         _profileGridHydrationComplete = true;
         return;
@@ -322,7 +323,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         if (mounted && _isViewingOwnProfile) {
           final bool changed = await ref
               .read(providers.videoServiceStateProvider.notifier)
-              .mergeProfileVideosForUser(widget.userId ?? '', forceServer: true);
+              .mergeProfileVideosForUser(widget.userId ?? '',
+                  forceServer: true);
           if (mounted) {
             await ProfilePostCountReconcile.afterProfileVideoMerge(
               widget.userId ?? '',
@@ -842,8 +844,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       videos: videos,
     );
     final int draftSlotCount = drafts.isNotEmpty ? 1 : 0;
-    final itemCount =
-        draftSlotCount + optimisticVideos.length + videos.length;
+    final itemCount = draftSlotCount + optimisticVideos.length + videos.length;
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return RefreshIndicator(
       onRefresh: () async {
@@ -897,8 +898,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                 child: _buildOptimisticProcessingCard(optimisticVideo),
               );
             }
-            if (drafts.isNotEmpty &&
-                afterVideos == optimisticVideos.length) {
+            if (drafts.isNotEmpty && afterVideos == optimisticVideos.length) {
               return _buildDraftGridTile(drafts);
             }
             return const SizedBox.shrink();
@@ -950,8 +950,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     final draftVideo = HomeVideo(
       id: 'all_drafts',
       videoURL: firstDraft['videoPath'] ?? firstDraft['videoUrl'] ?? '',
-      thumbnailURL:
-          firstDraft['thumbnailPath'] ?? firstDraft['thumbnailUrl'],
+      thumbnailURL: firstDraft['thumbnailPath'] ?? firstDraft['thumbnailUrl'],
       creator: User(
         id: 'current_user',
         displayName: 'You',
@@ -2224,9 +2223,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       _selectedVideoIds
         ..clear()
         ..addAll(
-          videos
-              .where((HomeVideo v) => v.status != 'deleted')
-              .map((HomeVideo v) => v.id),
+          videos.where(isHomeVideoVisibleInFeed).map((HomeVideo v) => v.id),
         );
     });
   }

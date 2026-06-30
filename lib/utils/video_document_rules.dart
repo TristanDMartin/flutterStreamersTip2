@@ -131,9 +131,12 @@ bool isVideoVisibleInFeed(Map<String, dynamic>? data) {
   return kVideoVisibleInFeedStatuses.contains(status);
 }
 
-/// [HomeVideo] rows built in-memory (no `deletedAt` on model; `status` is set).
 bool isHomeVideoVisibleInFeed(HomeVideo video) {
-  return isVideoVisibleInFeed(<String, dynamic>{'status': video.status});
+  return isVideoVisibleInFeed(<String, dynamic>{
+    'status': video.status,
+    'isDeleted': video.isDeleted,
+    'deletedAt': video.deletedAt,
+  });
 }
 
 bool isVideoDeletedFromFirestore(Map<String, dynamic> data) {
@@ -234,7 +237,8 @@ String? rejectProfileListCandidate(
   if (data['isDraft'] == true) {
     return 'isDraft';
   }
-  final String status = (data['status'] as String? ?? 'processing').toLowerCase();
+  final String status =
+      (data['status'] as String? ?? 'processing').toLowerCase();
   if (!isVideoProfileListStatus(status)) {
     return 'status:$status';
   }

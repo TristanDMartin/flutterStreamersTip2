@@ -198,5 +198,7 @@ Future<HomeVideo> _buildHomeVideoFromDoc(
     createdAt:
         data['timestamp'] as Timestamp? ?? data['createdAt'] as Timestamp?,
     status: data['status'] as String? ?? 'processing',
+    isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+    deletedAt: data['deletedAt'] as Timestamp?,
   );
 }

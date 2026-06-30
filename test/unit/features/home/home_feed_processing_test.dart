@@ -9,6 +9,7 @@ void main() {
     required String id,
     String url = 'https://cdn.example/v.mp4',
     Timestamp? createdAt,
+    bool isDeleted = false,
   }) {
     return HomeVideo(
       id: id,
@@ -21,6 +22,7 @@ void main() {
       ),
       videoURL: url,
       createdAt: createdAt,
+      isDeleted: isDeleted,
     );
   }
 
@@ -38,13 +40,24 @@ void main() {
 
   group('rankHomeVideosForFeed', () {
     test('playable videos sort before non-playable', () {
-      final HomeVideo playable = video(id: 'p', url: 'https://cdn.example/p.mp4');
+      final HomeVideo playable =
+          video(id: 'p', url: 'https://cdn.example/p.mp4');
       final HomeVideo pending = video(id: 'n', url: '');
       final List<HomeVideo> actual = rankHomeVideosForFeed(<HomeVideo>[
         pending,
         playable,
       ]);
       expect(actual.first.id, 'p');
+    });
+  });
+
+  group('filterPlayableHomeVideos', () {
+    test('drops stale cached deleted videos', () {
+      final List<HomeVideo> actual = filterPlayableHomeVideos(<HomeVideo>[
+        video(id: 'deleted', isDeleted: true),
+        video(id: 'visible'),
+      ]);
+      expect(actual.map((HomeVideo v) => v.id), <String>['visible']);
     });
   });
 }

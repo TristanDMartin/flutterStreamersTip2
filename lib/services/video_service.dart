@@ -492,6 +492,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       status: (data['status'] as String?) ?? 'processing',
       visibility: (data['visibility'] as String?) ?? 'public',
+      isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+      deletedAt: data['deletedAt'] as Timestamp?,
     );
   }
 
@@ -660,6 +662,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       status: (data['status'] as String?) ?? 'ready',
       visibility: (data['visibility'] as String?) ?? 'public',
+      isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+      deletedAt: data['deletedAt'] as Timestamp?,
     );
   }
 
@@ -967,6 +971,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           status: (data['status'] as String?) ?? 'ready',
           visibility:
               (data['visibility'] as String?) ?? kDefaultVideoVisibility,
+          isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+          deletedAt: data['deletedAt'] as Timestamp?,
         );
 
         debugPrint(
@@ -1400,6 +1406,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       status: (data['status'] as String?) ?? 'ready',
       visibility: (data['visibility'] as String?) ?? 'public',
+      isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+      deletedAt: data['deletedAt'] as Timestamp?,
       tags: const <String>['promo_fixture'],
     );
   }
@@ -1478,6 +1486,9 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         isDraft: false,
         createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
         status: (data['status'] as String?) ?? 'ready',
+        visibility: (data['visibility'] as String?) ?? 'public',
+        isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+        deletedAt: data['deletedAt'] as Timestamp?,
       );
     }
     if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
@@ -1530,6 +1541,9 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       isDraft: false,
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       status: (data['status'] as String?) ?? 'ready',
+      visibility: (data['visibility'] as String?) ?? 'public',
+      isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+      deletedAt: data['deletedAt'] as Timestamp?,
     );
   }
 

@@ -310,6 +310,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               ((data['score'] ?? data['mlScore'] ?? 0.0) as num).toDouble(),
           categoryId: (data['category_id'] ?? '').toString(),
           status: (data['status'] as String?) ?? 'ready',
+          visibility: (data['visibility'] as String?) ?? 'public',
+          isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+          deletedAt: data['deletedAt'] as Timestamp?,
         );
       }).toList();
 
@@ -646,6 +649,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .timeout(timeout);
           for (final d in qs1.docs) {
             final data = d.data();
+            if (!isVideoVisibleInFeed(data)) continue;
             results.add(SearchResult(
               id: d.id,
               title: (data['title'] ?? 'Video').toString(),
@@ -673,6 +677,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .timeout(timeout);
           for (final d in qs2.docs) {
             final data = d.data();
+            if (!isVideoVisibleInFeed(data)) continue;
             results.add(SearchResult(
               id: d.id,
               title: (data['title'] ?? 'Video').toString(),
@@ -752,6 +757,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .get();
           for (final d in qs2.docs) {
             final data = d.data();
+            if (!isVideoVisibleInFeed(data)) continue;
             final hashtags =
                 List<String>.from((data['hashtags'] as List?) ?? []);
             final matchingHashtags = hashtags
