@@ -370,66 +370,80 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
     final String? action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: true,
       builder: (BuildContext context) {
         final StSupportShellStyle shell = StSupportShellStyle.of(context);
-        return Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          decoration: BoxDecoration(
-            color: shell.panelSurface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: shell.panelBorder),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const SizedBox(height: 10),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: shell.mutedStrong.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        final double maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+        return SafeArea(
+          top: false,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            decoration: BoxDecoration(
+              color: shell.panelSurface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: shell.panelBorder),
+            ),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(context).bottom,
               ),
-              if (message.text.trim().isNotEmpty && !message.deletedForEveryone)
-                _messageActionTile(
-                  context,
-                  icon: Icons.copy_rounded,
-                  label: 'Copy',
-                  value: 'copy',
-                ),
-              if (isMe && !message.deletedForEveryone)
-                _messageActionTile(
-                  context,
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Delete',
-                  value: 'delete',
-                  destructive: true,
-                ),
-              if (!isMe)
-                _messageActionTile(
-                  context,
-                  icon: Icons.flag_outlined,
-                  label: 'Report',
-                  value: 'report',
-                ),
-              if (FeatureFlags.chatReplies)
-                _messageActionTile(
-                  context,
-                  icon: Icons.reply_rounded,
-                  label: 'Reply',
-                  value: 'reply',
-                  enabled: false,
-                ),
-              if (isMe)
-                _messageActionTile(
-                  context,
-                  icon: Icons.checklist_rounded,
-                  label: 'Select messages',
-                  value: 'select',
-                ),
-              const SizedBox(height: 8),
-            ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: shell.mutedStrong.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (message.text.trim().isNotEmpty &&
+                      !message.deletedForEveryone)
+                    _messageActionTile(
+                      context,
+                      icon: Icons.copy_rounded,
+                      label: 'Copy',
+                      value: 'copy',
+                    ),
+                  if (FeatureFlags.chatReplies && !message.deletedForEveryone)
+                    _messageActionTile(
+                      context,
+                      icon: Icons.reply_rounded,
+                      label: 'Reply',
+                      value: 'reply',
+                      enabled: false,
+                    ),
+                  if (isMe && !message.deletedForEveryone)
+                    _messageActionTile(
+                      context,
+                      icon: Icons.delete_outline_rounded,
+                      label: 'Delete',
+                      value: 'delete',
+                      destructive: true,
+                    ),
+                  if (!isMe)
+                    _messageActionTile(
+                      context,
+                      icon: Icons.flag_outlined,
+                      label: 'Report',
+                      value: 'report',
+                    ),
+                  if (isMe)
+                    _messageActionTile(
+                      context,
+                      icon: Icons.checklist_rounded,
+                      label: 'Select messages',
+                      value: 'select',
+                    ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
           ),
         );
       },
