@@ -6,7 +6,7 @@ class FeatureFlags {
   static const bool videoDownload = false;
   static const bool watermarkExport = false;
   static const bool discoverFilters = false;
-  static const bool chatReplies = false;
+  static const bool chatReplies = true;
   static const bool trendingInvite = false;
   static const bool advancedShare = false;
   static const bool linkedPlatforms = true;

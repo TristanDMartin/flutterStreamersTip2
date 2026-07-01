@@ -402,6 +402,13 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                     ),
                   ),
                   const SizedBox(height: 6),
+                  if (FeatureFlags.chatReplies && !message.deletedForEveryone)
+                    _messageActionTile(
+                      context,
+                      icon: Icons.reply_rounded,
+                      label: 'Reply',
+                      value: 'reply',
+                    ),
                   if (message.text.trim().isNotEmpty &&
                       !message.deletedForEveryone)
                     _messageActionTile(
@@ -409,13 +416,6 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                       icon: Icons.copy_rounded,
                       label: 'Copy',
                       value: 'copy',
-                    ),
-                  if (FeatureFlags.chatReplies && !message.deletedForEveryone)
-                    _messageActionTile(
-                      context,
-                      icon: Icons.reply_rounded,
-                      label: 'Reply',
-                      value: 'reply',
                     ),
                   if (isMe && !message.deletedForEveryone)
                     _messageActionTile(
