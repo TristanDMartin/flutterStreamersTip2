@@ -360,6 +360,68 @@ class ChatServiceOptimized {
     }
   }
 
+  /// Send a text reply with quoted-message metadata.
+  Future<bool> sendReplyMessage(
+    String chatId,
+    String text,
+    app_message.Message replyTo,
+    String replySenderName,
+  ) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return false;
+    final String? replyToMessageId = replyTo.id;
+    if (replyToMessageId == null || replyToMessageId.isEmpty) return false;
+
+    try {
+      final String previewText = _replyPreviewText(replyTo);
+      final messageData = {
+        'senderId': currentUser.uid,
+        'text': text,
+        'timestamp': FieldValue.serverTimestamp(),
+        'type': 'reply',
+        'isRead': false,
+        'replyTo': {
+          'messageId': replyToMessageId,
+          'senderId': replyTo.from,
+          'senderName': replySenderName,
+          'type': replyTo.messageType,
+          'previewText': previewText,
+          if ((replyTo.videoThumbnailUrl ?? '').isNotEmpty)
+            'thumbnailUrl': replyTo.videoThumbnailUrl,
+          if ((replyTo.videoId ?? '').isNotEmpty) 'videoId': replyTo.videoId,
+        },
+      };
+
+      await _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .add(messageData);
+
+      await _firestore.collection('chats').doc(chatId).update({
+        'lastMessage': text,
+        'lastTimestamp': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  String _replyPreviewText(app_message.Message message) {
+    if (message.deletedForEveryone) return 'Deleted message';
+    if (message.text.trim().isNotEmpty) return message.text.trim();
+    if ((message.videoTitle ?? '').trim().isNotEmpty) {
+      return message.videoTitle!.trim();
+    }
+    if ((message.gifUrl ?? '').trim().isNotEmpty) return 'GIF';
+    if (message.messageType == 'video_share' ||
+        message.messageType == 'content_share') {
+      return 'Shared video';
+    }
+    return 'Message';
+  }
+
   /// Get unread count for a chat
   Future<int> getUnreadCount(String chatId) async {
     try {

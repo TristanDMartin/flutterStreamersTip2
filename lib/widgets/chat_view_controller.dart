@@ -29,6 +29,7 @@ class ChatViewUiState {
     this.isSending = false,
     this.isOtherUserTyping = false,
     this.optimisticOutgoingGifBytes,
+    this.replyingTo,
   });
 
   final List<app_message.Message> messages;
@@ -40,6 +41,7 @@ class ChatViewUiState {
   final bool isSending;
   final bool isOtherUserTyping;
   final Uint8List? optimisticOutgoingGifBytes;
+  final app_message.Message? replyingTo;
 
   ChatViewUiState copyWith({
     List<app_message.Message>? messages,
@@ -51,6 +53,7 @@ class ChatViewUiState {
     bool? isSending,
     bool? isOtherUserTyping,
     Object? optimisticOutgoingGifBytes = _sentinel,
+    Object? replyingTo = _sentinel,
   }) {
     return ChatViewUiState(
       messages: messages ?? this.messages,
@@ -70,6 +73,9 @@ class ChatViewUiState {
           identical(optimisticOutgoingGifBytes, _sentinel)
               ? this.optimisticOutgoingGifBytes
               : optimisticOutgoingGifBytes as Uint8List?,
+      replyingTo: identical(replyingTo, _sentinel)
+          ? this.replyingTo
+          : replyingTo as app_message.Message?,
     );
   }
 }
@@ -151,6 +157,12 @@ abstract class ChatViewService {
   Future<bool> markMessagesAsRead(String chatId);
   Future<Map<String, dynamic>?> getUserInfo(String userId);
   Future<bool> sendMessage(String chatId, String text);
+  Future<bool> sendReplyMessage(
+    String chatId,
+    String text,
+    app_message.Message replyTo,
+    String replySenderName,
+  );
   Future<bool> sendGifMessage(String chatId, String gifUrl);
   Future<bool> sendPastedImageBytes(String chatId, Uint8List bytes);
   Future<bool> deleteMessage(String chatId, String messageId);
@@ -206,6 +218,15 @@ class ChatViewServiceAdapter implements ChatViewService {
   @override
   Future<bool> sendMessage(String chatId, String text) =>
       _chatService.sendMessage(chatId, text);
+
+  @override
+  Future<bool> sendReplyMessage(
+    String chatId,
+    String text,
+    app_message.Message replyTo,
+    String replySenderName,
+  ) =>
+      _chatService.sendReplyMessage(chatId, text, replyTo, replySenderName);
 
   @override
   Future<bool> sendGifMessage(String chatId, String gifUrl) =>
@@ -356,6 +377,7 @@ class ChatViewController extends ChangeNotifier {
         isLoading: true,
         error: null,
         optimisticOutgoingGifBytes: null,
+        replyingTo: null,
       ),
     );
     await initialize();
@@ -377,14 +399,40 @@ class ChatViewController extends ChangeNotifier {
     try {
       final bool success = shouldSendComposerInputAsRemoteGifUrl(trimmed)
           ? await _chatService.sendGifMessage(_chat.id ?? '', trimmed)
-          : await _chatService.sendMessage(_chat.id ?? '', trimmed);
+          : _state.replyingTo == null
+              ? await _chatService.sendMessage(_chat.id ?? '', trimmed)
+              : await _chatService.sendReplyMessage(
+                  _chat.id ?? '',
+                  trimmed,
+                  _state.replyingTo!,
+                  _replySenderName(_state.replyingTo!),
+                );
       if (success) {
         unawaited(_chatService.setTypingStatus(_chat.id ?? '', false));
+        _updateState(_state.copyWith(replyingTo: null));
       }
       return success ? ChatComposerResult.sent : ChatComposerResult.failed;
     } finally {
       _updateState(_state.copyWith(isSending: false));
     }
+  }
+
+  void startReplyTo(app_message.Message message) {
+    if ((message.id ?? '').isEmpty || message.deletedForEveryone) {
+      return;
+    }
+    _updateState(_state.copyWith(replyingTo: message));
+  }
+
+  void cancelReply() {
+    if (_state.replyingTo == null) {
+      return;
+    }
+    _updateState(_state.copyWith(replyingTo: null));
+  }
+
+  String _replySenderName(app_message.Message message) {
+    return message.from == currentUserId ? 'You' : _otherUserName;
   }
 
   Future<ChatComposerResult> submitPastedImageBytes(Uint8List bytes) async {

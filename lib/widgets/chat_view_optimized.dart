@@ -416,7 +416,6 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                       icon: Icons.reply_rounded,
                       label: 'Reply',
                       value: 'reply',
-                      enabled: false,
                     ),
                   if (isMe && !message.deletedForEveryone)
                     _messageActionTile(
@@ -478,6 +477,8 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
           _showSnackBar(feedback.message, isError: feedback.isError);
         }
       case 'reply':
+        _controller.startReplyTo(message);
+        _composerFocusNode.requestFocus();
         return;
       case 'select':
         _toggleMessageSelection(message);
@@ -688,6 +689,13 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
               if (state.isOtherUserTyping)
                 _TypingIndicatorBanner(
                   userName: _controller.otherUserName,
+                ),
+              if (state.replyingTo != null)
+                _ComposerReplyBanner(
+                  message: state.replyingTo!,
+                  currentUserId: _controller.currentUserId,
+                  otherUserName: _controller.otherUserName,
+                  onCancel: _controller.cancelReply,
                 ),
               _KeyboardComposerPadding(
                 child: _ChatComposer(
@@ -2012,6 +2020,110 @@ class _KeyboardComposerPadding extends StatelessWidget {
       padding: EdgeInsets.only(bottom: bottomPad),
       child: child,
     );
+  }
+}
+
+class _ComposerReplyBanner extends StatelessWidget {
+  const _ComposerReplyBanner({
+    required this.message,
+    required this.currentUserId,
+    required this.otherUserName,
+    required this.onCancel,
+  });
+
+  final app_message.Message message;
+  final String? currentUserId;
+  final String otherUserName;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final String senderName =
+        message.from == currentUserId ? 'yourself' : otherUserName;
+    final String preview = _replyPreviewText(message);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: shell.panelSurface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: shell.panelBorder),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 3,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  gradient: const LinearGradient(
+                    colors: <Color>[Color(0xFF9248D2), Color(0xFF4897D2)],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'Replying to $senderName',
+                      style: TextStyle(
+                        color: shell.onChrome,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      preview,
+                      style: TextStyle(
+                        color: shell.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Cancel reply',
+                onPressed: onCancel,
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: scheme.onSurface.withValues(alpha: 0.72),
+                  size: 18,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _replyPreviewText(app_message.Message message) {
+    if (message.deletedForEveryone) return 'Deleted message';
+    if (message.text.trim().isNotEmpty) return message.text.trim();
+    if ((message.videoTitle ?? '').trim().isNotEmpty) {
+      return message.videoTitle!.trim();
+    }
+    if ((message.gifUrl ?? '').trim().isNotEmpty) return 'GIF';
+    if (message.messageType == 'video_share' ||
+        message.messageType == 'content_share') {
+      return 'Shared video';
+    }
+    return 'Message';
   }
 }
 

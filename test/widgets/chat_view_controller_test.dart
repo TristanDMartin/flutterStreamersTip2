@@ -14,6 +14,7 @@ class _FakeChatViewService implements ChatViewService {
   final Map<String, Map<String, dynamic>> userInfoById;
   final List<String> markedReadChatIds = <String>[];
   final List<String> sentMessages = <String>[];
+  final List<String> sentReplies = <String>[];
   final List<String> sentGifUrls = <String>[];
   int pastedImageSendCount = 0;
   final List<String> mutedChatIds = <String>[];
@@ -56,6 +57,17 @@ class _FakeChatViewService implements ChatViewService {
   @override
   Future<bool> sendMessage(String chatId, String text) async {
     sentMessages.add('$chatId::$text');
+    return sendShouldSucceed;
+  }
+
+  @override
+  Future<bool> sendReplyMessage(
+    String chatId,
+    String text,
+    app_message.Message replyTo,
+    String replySenderName,
+  ) async {
+    sentReplies.add('$chatId::$text::${replyTo.id}::$replySenderName');
     return sendShouldSucceed;
   }
 
@@ -189,6 +201,31 @@ void main() {
       expect(result, ChatComposerResult.sent);
       expect(service.sentGifUrls, contains('chat-1::$gifUrl'));
       expect(service.sentMessages, isEmpty);
+    });
+
+    test('reply target sends next text message as reply and clears state',
+        () async {
+      final replyTo = app_message.Message(
+        id: 'm1',
+        chatId: 'chat-1',
+        text: 'original',
+        from: 'other-user',
+        to: 'current-user',
+        timestamp: DateTime(2026, 4, 4, 8, 0),
+      );
+
+      controller.startReplyTo(replyTo);
+      expect(controller.state.replyingTo?.id, 'm1');
+
+      final result = await controller.submitComposerText('  replying back  ');
+
+      expect(result, ChatComposerResult.sent);
+      expect(
+        service.sentReplies,
+        contains('chat-1::replying back::m1::Other User'),
+      );
+      expect(service.sentMessages, isEmpty);
+      expect(controller.state.replyingTo, isNull);
     });
 
     test('settings actions execute real service intents', () async {
