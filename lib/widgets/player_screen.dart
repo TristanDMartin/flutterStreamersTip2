@@ -49,6 +49,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   int _currentIndex = 0;
   final Map<String, bool> _likeStates = {}; // Cache like states
   final Map<String, bool> _bookmarkStates = {}; // Cache bookmark states
+  bool _isExiting = false;
+
+  void _pauseForExit(String reason) {
+    final manager = GlobalPlaybackManager.instance;
+    manager.pauseAll();
+    manager.clearDesiredFocusForOwner(PlaybackOwners.player);
+    debugPrint('🎬 PlayerScreen: Paused playback for exit ($reason)');
+  }
+
+  void _exitPlayer(String reason) {
+    if (_isExiting) {
+      return;
+    }
+    _isExiting = true;
+    _pauseForExit(reason);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
 
   void _restoreCurrentVideoFocus({String reason = 'player_restore'}) {
     if (_videos.isEmpty ||
@@ -86,9 +105,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   void dispose() {
-    GlobalPlaybackManager.instance.clearDesiredFocusForOwner(
-      PlaybackOwners.player,
-    );
+    _pauseForExit('dispose');
     _pageController?.dispose();
     // Video controllers are disposed by their respective VideoPlayerViewSimple widgets
     super.dispose();
@@ -238,7 +255,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           top: safeTop + 16,
           left: 16,
           child: IconButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => _exitPlayer('empty_back_button'),
             icon: const Icon(
               Icons.arrow_back,
               color: Colors.white,
@@ -258,7 +275,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         top: safeTop + 16,
         left: 16,
         child: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => _exitPlayer('back_button'),
           icon: const Icon(
             Icons.arrow_back,
             color: Colors.white,
@@ -806,85 +823,104 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     if (_videos.isEmpty) {
       debugPrint('⚠️ PlayerScreen: No videos available - showing empty state');
-      return Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.of(context).pop(),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? result) {
+          if (didPop || !mounted) {
+            return;
+          }
+          _exitPlayer('system_back_empty');
+        },
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => _exitPlayer('empty_appbar_back'),
+            ),
           ),
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'No videos available',
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Mode: ${widget.mode}',
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              Text(
-                'Video IDs: ${widget.videoIds}',
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              Text(
-                'Provided videos: ${widget.videos?.length ?? 0}',
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-            ],
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'No videos available',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Mode: ${widget.mode}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                Text(
+                  'Video IDs: ${widget.videoIds}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                Text(
+                  'Provided videos: ${widget.videos?.length ?? 0}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // Video player with vertical swiping (like HomeView)
-          if (_pageController != null && _videos.isNotEmpty)
-            PageView.builder(
-              controller: _pageController!,
-              scrollDirection:
-                  Axis.vertical, // ✅ Enable vertical swiping like HomeView
-              physics:
-                  const ClampingScrollPhysics(), // Better physics for mobile
-              onPageChanged: _onVideoChanged,
-              itemCount: _videos.length,
-              itemBuilder: (context, index) {
-                final video = _videos[index];
-                // ✅ FIX: Get real like and bookmark states from cache
-                final isLiked = _likeStates[video.id] ?? false;
-                final isBookmarked = _bookmarkStates[video.id] ?? false;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop || !mounted) {
+          return;
+        }
+        _exitPlayer('system_back');
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // Video player with vertical swiping (like HomeView)
+            if (_pageController != null && _videos.isNotEmpty)
+              PageView.builder(
+                controller: _pageController!,
+                scrollDirection:
+                    Axis.vertical, // ✅ Enable vertical swiping like HomeView
+                physics:
+                    const ClampingScrollPhysics(), // Better physics for mobile
+                onPageChanged: _onVideoChanged,
+                itemCount: _videos.length,
+                itemBuilder: (context, index) {
+                  final video = _videos[index];
+                  // ✅ FIX: Get real like and bookmark states from cache
+                  final isLiked = _likeStates[video.id] ?? false;
+                  final isBookmarked = _bookmarkStates[video.id] ?? false;
 
-                return VideoPlayerViewOptimized(
-                  key: ValueKey(
-                      video.id), // Stable key to prevent audio bleeding
-                  video: video,
-                  isCurrentVideo: _currentIndex == index,
-                  isFirstVideo: index == 0,
-                  tabId: 'playerScreen', // Generic tab ID for standalone player
-                  ownerKey: PlaybackOwners.player,
-                  homeViewModel: ref.read(hp.homeProvider.notifier),
-                  showSheet: false,
-                  sheetType: '',
-                  // Callbacks are null - will use internal methods (comments, share, etc.)
-                  isLiked: isLiked, // ✅ Real like state from service
-                  isBookmarked:
-                      isBookmarked, // ✅ Real bookmark state from service
-                  showHUD:
-                      true, // Enable HUD - Use VideoPlayerViewOptimized's full functionality like HomeView
-                );
-              },
-            ),
-          // Custom overlays for ProfileView-specific features
-          ..._buildProfileViewOverlays(context),
-        ],
+                  return VideoPlayerViewOptimized(
+                    key: ValueKey(
+                        video.id), // Stable key to prevent audio bleeding
+                    video: video,
+                    isCurrentVideo: _currentIndex == index,
+                    isFirstVideo: index == 0,
+                    tabId:
+                        'playerScreen', // Generic tab ID for standalone player
+                    ownerKey: PlaybackOwners.player,
+                    homeViewModel: ref.read(hp.homeProvider.notifier),
+                    showSheet: false,
+                    sheetType: '',
+                    // Callbacks are null - will use internal methods (comments, share, etc.)
+                    isLiked: isLiked, // ✅ Real like state from service
+                    isBookmarked:
+                        isBookmarked, // ✅ Real bookmark state from service
+                    showHUD:
+                        true, // Enable HUD - Use VideoPlayerViewOptimized's full functionality like HomeView
+                  );
+                },
+              ),
+            // Custom overlays for ProfileView-specific features
+            ..._buildProfileViewOverlays(context),
+          ],
+        ),
       ),
     );
   }
