@@ -2,45 +2,83 @@ import 'package:flutter/material.dart';
 
 import '../../publish/publish_flow_tokens.dart';
 
+enum TippyPublishAssistBusyKind {
+  idle,
+  improving,
+  suggesting,
+}
+
 /// Compact Tippy actions on the New Post screen (caption + hashtags).
 class TippyPublishAssistRow extends StatelessWidget {
   const TippyPublishAssistRow({
     super.key,
     required this.enabled,
-    required this.busy,
+    required this.busyKind,
     required this.onImproveCaption,
     required this.onSuggestHashtags,
     this.onOpenTippy,
+    this.creditsRemaining,
   });
 
   final bool enabled;
-  final bool busy;
+  final TippyPublishAssistBusyKind busyKind;
   final VoidCallback? onImproveCaption;
   final VoidCallback? onSuggestHashtags;
   final VoidCallback? onOpenTippy;
+  final int? creditsRemaining;
+
+  bool get _isBusy => busyKind != TippyPublishAssistBusyKind.idle;
 
   @override
   Widget build(BuildContext context) {
     if (!enabled) {
       return _LockedHint(onUnlock: onOpenTippy);
     }
-    return Row(
+    final String improveLabel =
+        busyKind == TippyPublishAssistBusyKind.improving
+            ? 'Improving…'
+            : 'Improve caption';
+    final String hashtagLabel =
+        busyKind == TippyPublishAssistBusyKind.suggesting
+            ? 'Suggesting…'
+            : 'Suggest hashtags';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Expanded(
-          child: _AssistChip(
-            icon: Icons.auto_awesome_rounded,
-            label: busy ? 'Tippy…' : 'Improve caption',
-            onTap: busy ? null : onImproveCaption,
-          ),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: _AssistChip(
+                icon: Icons.auto_awesome_rounded,
+                label: improveLabel,
+                showProgress:
+                    busyKind == TippyPublishAssistBusyKind.improving,
+                onTap: _isBusy ? null : onImproveCaption,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _AssistChip(
+                icon: Icons.tag_rounded,
+                label: hashtagLabel,
+                showProgress:
+                    busyKind == TippyPublishAssistBusyKind.suggesting,
+                onTap: _isBusy ? null : onSuggestHashtags,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _AssistChip(
-            icon: Icons.tag_rounded,
-            label: 'Suggest hashtags',
-            onTap: busy ? null : onSuggestHashtags,
+        if (creditsRemaining != null) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            '$creditsRemaining Tippy credits left',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.45),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -72,7 +110,7 @@ class _LockedHint extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Sign in to use Tippy for caption and hashtag help',
+                'Unlock Tippy on Pro for caption and hashtag help',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.62),
                   fontSize: 12,
@@ -101,11 +139,13 @@ class _AssistChip extends StatelessWidget {
     required this.icon,
     required this.label,
     this.onTap,
+    this.showProgress = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
+  final bool showProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +164,17 @@ class _AssistChip extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon, size: 16, color: const Color(0xFF93C5FD)),
+              if (showProgress)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF93C5FD),
+                  ),
+                )
+              else
+                Icon(icon, size: 16, color: const Color(0xFF93C5FD)),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
