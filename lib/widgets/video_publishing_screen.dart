@@ -48,7 +48,10 @@ import '../features/billing/models/subscription_snapshot.dart';
 import '../features/billing/subscription_provider.dart';
 import '../features/tippy/tippy_access.dart';
 import '../features/tippy/tippy_chat_service.dart';
+import '../features/tippy/tippy_publish_caption_helpers.dart';
+import '../features/tippy/widgets/tippy_caption_accept_bar.dart';
 import '../features/tippy/widgets/tippy_publish_assist_row.dart';
+import '../features/tippy/widgets/tippy_suggest_hashtags_sheet.dart';
 import '../utils/category_schema.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -250,7 +253,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   final OptimisticVideoService _optimisticVideoService =
       OptimisticVideoService();
   final TippyChatService _tippyService = TippyChatService();
-  bool _tippyAssistBusy = false;
+  TippyPublishAssistBusyKind _tippyAssistBusyKind =
+      TippyPublishAssistBusyKind.idle;
+  String? _tippyCaptionBeforeAssist;
+  int? _tippyAssistCreditsRemaining;
   VoidCallback? _iapVerifiedHandler;
   // Text controllers
   late TextEditingController _captionController;
@@ -829,10 +835,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Future<void> _runTippyCaptionAssist({required bool hashtagsOnly}) async {
-    if (_tippyAssistBusy) {
+    if (_tippyAssistBusyKind != TippyPublishAssistBusyKind.idle) {
       return;
     }
-    setState(() => _tippyAssistBusy = true);
+    setState(() {
+      _tippyAssistBusyKind = hashtagsOnly
+          ? TippyPublishAssistBusyKind.suggesting
+          : TippyPublishAssistBusyKind.improving;
+    });
     try {
       final TippyCaptionResult result = await _tippyService.createCaption(
         prompt: _buildTippyCaptionPrompt(hashtagsOnly: hashtagsOnly),
@@ -840,41 +850,130 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       if (!mounted) {
         return;
       }
-      if (!hashtagsOnly && result.caption.trim().isNotEmpty) {
-        _captionController.text = result.caption.trim();
-        _caption = result.caption.trim();
-      }
-      for (final String tag in result.hashtags) {
-        final String normalized =
-            tag.trim().startsWith('#') ? tag.trim() : '#${tag.trim()}';
-        if (normalized.length > 1) {
-          _addHashtagToCaption(normalized);
-        }
-      }
-      if (hashtagsOnly &&
-          result.hashtags.isEmpty &&
-          result.caption.contains('#')) {
-        for (final String part in result.caption.split(RegExp(r'\s+'))) {
-          if (part.startsWith('#')) {
-            _addHashtagToCaption(part);
-          }
-        }
+      final int? credits = result.creditsRemaining ??
+          _tippyService.cachedCredits?.creditsRemaining;
+      setState(() {
+        _tippyAssistCreditsRemaining = credits;
+      });
+      if (hashtagsOnly) {
+        await _handleTippyHashtagSuggestions(result);
+      } else {
+        _handleTippyCaptionSuggestion(result);
       }
     } on TippyChatException catch (e) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message),
-          behavior: SnackBarBehavior.floating,
-        ),
+      _showTippyAssistError(
+        error: e,
+        hashtagsOnly: hashtagsOnly,
       );
     } finally {
       if (mounted) {
-        setState(() => _tippyAssistBusy = false);
+        setState(() {
+          _tippyAssistBusyKind = TippyPublishAssistBusyKind.idle;
+        });
       }
     }
+  }
+
+  void _handleTippyCaptionSuggestion(TippyCaptionResult result) {
+    final String proposed = result.caption.trim();
+    if (proposed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tippy returned an empty caption. Try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final String previous = _captionController.text;
+    _tippyCaptionBeforeAssist = previous;
+    _applyCaptionText(proposed);
+    setState(() {});
+  }
+
+  Future<void> _handleTippyHashtagSuggestions(
+    TippyCaptionResult result,
+  ) async {
+    List<String> tags = normalizeTippyHashtags(result.hashtags);
+    if (tags.isEmpty && result.caption.contains('#')) {
+      tags = extractHashtagsFromText(result.caption);
+    }
+    if (tags.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tippy returned no hashtags. Try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final TippySuggestHashtagsResult? choice =
+        await TippySuggestHashtagsSheet.show(
+      context,
+      hashtags: tags,
+      creditsRemaining: _tippyAssistCreditsRemaining,
+    );
+    if (!mounted || choice == null) {
+      return;
+    }
+    final String nextCaption = applyTippyHashtags(
+      caption: _captionController.text,
+      allHashtags: choice.allHashtags,
+      selectedHashtags: choice.selectedHashtags,
+      mode: choice.mode,
+    );
+    _applyCaptionText(nextCaption);
+    setState(() {});
+  }
+
+  void _applyCaptionText(String value) {
+    _captionController.text = value;
+    _caption = value;
+    _captionController.selection = TextSelection.fromPosition(
+      TextPosition(offset: value.length),
+    );
+  }
+
+  void _acceptTippyCaption() {
+    setState(() {
+      _tippyCaptionBeforeAssist = null;
+    });
+  }
+
+  void _undoTippyCaption() {
+    final String? previous = _tippyCaptionBeforeAssist;
+    if (previous == null) {
+      return;
+    }
+    _applyCaptionText(previous);
+    setState(() {
+      _tippyCaptionBeforeAssist = null;
+    });
+  }
+
+  void _showTippyAssistError({
+    required TippyChatException error,
+    required bool hashtagsOnly,
+  }) {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(error.message),
+        behavior: SnackBarBehavior.floating,
+        action: error.retryable
+            ? SnackBarAction(
+                label: 'Retry',
+                onPressed: () {
+                  _runTippyCaptionAssist(hashtagsOnly: hashtagsOnly);
+                },
+              )
+            : null,
+      ),
+    );
   }
 
   void _togglePlayPause() {
@@ -1867,7 +1966,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           const SizedBox(height: 10),
           TippyPublishAssistRow(
             enabled: tippyEnabled,
-            busy: _tippyAssistBusy,
+            busyKind: _tippyAssistBusyKind,
+            creditsRemaining: _tippyAssistCreditsRemaining,
             onImproveCaption: () => _runTippyCaptionAssist(hashtagsOnly: false),
             onSuggestHashtags: () => _runTippyCaptionAssist(hashtagsOnly: true),
             onOpenTippy: () {
@@ -1878,6 +1978,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               }
             },
           ),
+          if (_tippyCaptionBeforeAssist != null) ...[
+            const SizedBox(height: 10),
+            TippyCaptionAcceptBar(
+              creditsRemaining: _tippyAssistCreditsRemaining,
+              onAccept: _acceptTippyCaption,
+              onUndo: _undoTippyCaption,
+            ),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [

@@ -66,6 +66,7 @@ class TippyChatService {
 
   bool get hasApiBase => _apiBase.trim().isNotEmpty;
   bool get isStagingMode => _apiBase.toLowerCase().contains('staging');
+  TippyCreditsInfo? get cachedCredits => _creditsCache;
 
   Future<TippyCreditsInfo> fetchCreditsInfo() async {
     if (_creditsCache != null) {
