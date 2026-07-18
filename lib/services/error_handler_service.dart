@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'analytics_service.dart';
+import '../utils/auth_transition_flutter_errors.dart';
 import '../utils/sensitive_data_redactor.dart';
 import 'network_error_handler.dart';
 
@@ -44,6 +45,13 @@ class ErrorHandlerService {
     if (_isIgnorableFirestorePermissionDenied(details.exception)) {
       debugPrint(
         'ℹ️ Firestore permission-denied (no global snackbar): '
+        '${details.exception}',
+      );
+      return;
+    }
+    if (isIgnorableAuthTransitionFlutterError(details.exception)) {
+      debugPrint(
+        'ℹ️ Auth/lifecycle Flutter error suppressed (no snackbar): '
         '${details.exception}',
       );
       return;

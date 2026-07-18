@@ -65,7 +65,6 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentIndex = widget.initialTabIndex;
-    ref.read(mainTabActiveIndexProvider.notifier).setIndex(_currentIndex);
     _networkViewModel = NetworkViewModelAdvanced();
     _authService = ref.read(robustAuthServiceProvider);
     ref.listenManual<int?>(
@@ -77,6 +76,8 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     _startDataSync();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Riverpod forbids provider writes during initState/build — defer.
+      ref.read(mainTabActiveIndexProvider.notifier).setIndex(_currentIndex);
       _syncPlaybackForCurrentTab();
       unawaited(_maybeShowFirstStepsAchievementToast());
       if (!QaRuntime.isMobileFeedE2e) {
@@ -106,11 +107,18 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     if (state != AppLifecycleState.resumed || !mounted) {
       return;
     }
-    invalidateSubscriptionEntitlements(ref);
-    _cameraNavTimer?.cancel();
-    if (_currentIndex != 0) {
-      _syncPlaybackForCurrentTab();
-    }
+    // Google account picker pauses/resumes the app. MainTabView can be
+    // deactivated mid-auth transition — never touch WidgetRef synchronously.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      invalidateSubscriptionEntitlements(ref);
+      _cameraNavTimer?.cancel();
+      if (_currentIndex != 0) {
+        _syncPlaybackForCurrentTab();
+      }
+    });
   }
 
   void _startDataSync() {

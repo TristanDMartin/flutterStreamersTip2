@@ -229,6 +229,15 @@ void _initializeGlobalErrorHandler() {
     }
   };
 
+  // Avoid flashing the default red ErrorWidget during auth transitions.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    debugPrint('🚨 ErrorWidget suppressed: ${details.exception}');
+    return const ColoredBox(
+      color: Color(0xFF0B0B0F),
+      child: SizedBox.expand(),
+    );
+  };
+
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('🚨 Platform Error: $error');
     debugPrint('📍 Stack trace: $stack');

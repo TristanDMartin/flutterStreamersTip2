@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../utils/auth_transition_flutter_errors.dart';
 import 'models/subscription_snapshot.dart';
 import 'subscription_repository.dart';
 
@@ -47,8 +48,15 @@ Future<SubscriptionSnapshot> refreshSubscriptionEntitlements(
 }
 
 void invalidateSubscriptionEntitlements(WidgetRef ref) {
-  ref.read(subscriptionRepositoryProvider).invalidateCache();
-  ref.invalidate(subscriptionSnapshotProvider);
+  try {
+    ref.read(subscriptionRepositoryProvider).invalidateCache();
+    ref.invalidate(subscriptionSnapshotProvider);
+  } catch (error) {
+    if (isIgnorableAuthTransitionFlutterError(error)) {
+      return;
+    }
+    rethrow;
+  }
 }
 
 /// Sync read of last successful fetch (may be null before first load).
