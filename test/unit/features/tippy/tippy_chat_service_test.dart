@@ -12,7 +12,11 @@ void main() {
         httpClient: client,
         tokenProvider: () async => 'token_123',
         appCheckReadinessProvider: ({bool forceRefresh = false}) async =>
-            const AppCheckReadiness(isReady: true, detail: 'test'),
+            const AppCheckReadiness(
+          isReady: true,
+          detail: 'test',
+          appCheckToken: 'app_check_123',
+        ),
         requestTimeout: timeout ?? const Duration(seconds: 1),
       );
     }
@@ -285,6 +289,33 @@ void main() {
         tokenProvider: () async => 'token_123',
         appCheckReadinessProvider: ({bool forceRefresh = false}) async =>
             const AppCheckReadiness(isReady: false, detail: 'missing'),
+        requestTimeout: const Duration(seconds: 1),
+      );
+
+      try {
+        await service.sendMessage(
+          messages: const <TippyChatMessage>[
+            TippyChatMessage(role: 'user', content: 'hi'),
+          ],
+        );
+        fail('Expected TippyChatException');
+      } on TippyChatException catch (err) {
+        expect(err.code, 'APP_CHECK_REQUIRED');
+        expect(err.status, 401);
+        expect(err.retryable, isTrue);
+      }
+    });
+
+    test('blocks App Check skipped builds before HTTP request', () async {
+      final MockClient client = MockClient((http.Request request) async {
+        fail('Expected missing App Check token to block the request');
+      });
+      final TippyChatService service = TippyChatService(
+        apiBase: 'https://staging.example.com',
+        httpClient: client,
+        tokenProvider: () async => 'token_123',
+        appCheckReadinessProvider: ({bool forceRefresh = false}) async =>
+            AppCheckReadiness.skipped,
         requestTimeout: const Duration(seconds: 1),
       );
 

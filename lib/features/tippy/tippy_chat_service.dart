@@ -416,9 +416,18 @@ class TippyChatService {
         retryable: true,
       );
     }
-    final String appCheckDetail = appCheckReadiness.appCheckToken == null
-        ? 'missing'
-        : '${appCheckReadiness.appCheckToken!.length} chars';
+    if (appCheckReadiness.appCheckToken == null ||
+        appCheckReadiness.appCheckToken!.trim().isEmpty) {
+      throw TippyChatException(
+        'Tippy app verification is missing from this build. Reinstall the '
+        'latest App Check-enabled build and try again.',
+        code: 'APP_CHECK_REQUIRED',
+        status: 401,
+        retryable: true,
+      );
+    }
+    final String appCheckDetail =
+        '${appCheckReadiness.appCheckToken!.length} chars';
     secureLog(
       'Tippy App Check preflight ready; headerToken=$appCheckDetail',
       name: 'TippyChatService',
