@@ -329,11 +329,23 @@ class TippyChatService {
 
   Future<TippySuccessEnvelope> _authedGet(String endpoint) async {
     final Uri uri = _buildUri(endpoint);
-    final Map<String, String> headers = await _buildHeaders();
-    final http.Response response = await _executeRequest(
-      () => _client.get(uri, headers: headers),
-    );
-    return _parseEnvelope(response);
+    try {
+      final Map<String, String> headers = await _buildHeaders();
+      final http.Response response = await _executeRequest(
+        () => _client.get(uri, headers: headers),
+      );
+      return _parseEnvelope(response);
+    } on TippyAuthException catch (e) {
+      if (!_shouldRetryWithFreshToken(e)) {
+        rethrow;
+      }
+      final Map<String, String> headers =
+          await _buildHeaders(forceRefreshToken: true);
+      final http.Response response = await _executeRequest(
+        () => _client.get(uri, headers: headers),
+      );
+      return _parseEnvelope(response);
+    }
   }
 
   Future<TippySuccessEnvelope> _authedPost(
@@ -341,15 +353,31 @@ class TippyChatService {
     Map<String, dynamic> payload,
   ) async {
     final Uri uri = _buildUri(endpoint);
-    final Map<String, String> headers = await _buildHeaders();
-    final http.Response response = await _executeRequest(
-      () => _client.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(payload),
-      ),
-    );
-    return _parseEnvelope(response);
+    try {
+      final Map<String, String> headers = await _buildHeaders();
+      final http.Response response = await _executeRequest(
+        () => _client.post(
+          uri,
+          headers: headers,
+          body: jsonEncode(payload),
+        ),
+      );
+      return _parseEnvelope(response);
+    } on TippyAuthException catch (e) {
+      if (!_shouldRetryWithFreshToken(e)) {
+        rethrow;
+      }
+      final Map<String, String> headers =
+          await _buildHeaders(forceRefreshToken: true);
+      final http.Response response = await _executeRequest(
+        () => _client.post(
+          uri,
+          headers: headers,
+          body: jsonEncode(payload),
+        ),
+      );
+      return _parseEnvelope(response);
+    }
   }
 
   Uri _buildUri(String endpoint) {
@@ -359,8 +387,12 @@ class TippyChatService {
     return Uri.parse('$cleanBase$cleanEndpoint');
   }
 
-  Future<Map<String, String>> _buildHeaders() async {
-    final String? idToken = await _resolveIdToken();
+  Future<Map<String, String>> _buildHeaders({
+    bool forceRefreshToken = false,
+  }) async {
+    final String? idToken = await _resolveIdToken(
+      forceRefresh: forceRefreshToken,
+    );
     if (idToken == null || idToken.isEmpty) {
       throw const TippyAuthException('Authentication required.');
     }
@@ -370,12 +402,21 @@ class TippyChatService {
     );
   }
 
-  Future<String?> _resolveIdToken() async {
+  Future<String?> _resolveIdToken({bool forceRefresh = false}) async {
     if (_tokenProvider != null) {
       return _tokenProvider!.call();
     }
     final User? user = FirebaseAuth.instance.currentUser;
-    return user?.getIdToken(false);
+    return user?.getIdToken(forceRefresh);
+  }
+
+  bool _shouldRetryWithFreshToken(TippyAuthException error) {
+    if (_tokenProvider != null || FirebaseAuth.instance.currentUser == null) {
+      return false;
+    }
+    return error.code == 'AUTH_REQUIRED' ||
+        error.code == 'TOKEN_EXPIRED' ||
+        error.code == 'INVALID_TOKEN';
   }
 
   TippySuccessEnvelope _parseEnvelope(http.Response response) {
@@ -415,7 +456,8 @@ class TippyChatService {
     }
     if (status == 401) {
       if (code == 'APP_CHECK_REQUIRED' || code == 'APP_CHECK_INVALID') {
-        ProductionMonitoringService.instance.recordAppCheckBlocked('tippy_http');
+        ProductionMonitoringService.instance
+            .recordAppCheckBlocked('tippy_http');
       }
       throw TippyAuthException(
         message,
@@ -477,8 +519,7 @@ class TippyChatService {
     while (true) {
       attempt++;
       try {
-        final http.Response response =
-            await request().timeout(_requestTimeout);
+        final http.Response response = await request().timeout(_requestTimeout);
         final bool isRetryableStatus =
             response.statusCode == 502 || response.statusCode == 503;
         if (isRetryableStatus && attempt < maxAttempts) {

@@ -165,12 +165,12 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
 
   Future<void> _loadPersonalization() async {
     try {
-      final TippyContextSnapshot contextSnapshot = await _service.fetchContext();
+      final TippyContextSnapshot contextSnapshot =
+          await _service.fetchContext();
       final TippyCreditsInfo credits = await _service.fetchCreditsInfo();
       String? nudge = await _service.fetchNudge();
-      final AnalyticsProfile profile = await ref
-          .read(creatorIntelligenceAnalyticsProvider)
-          .loadProfile();
+      final AnalyticsProfile profile =
+          await ref.read(creatorIntelligenceAnalyticsProvider).loadProfile();
       if ((nudge == null || nudge.trim().isEmpty) &&
           profile.recommendedNextActions.isNotEmpty) {
         nudge = profile.recommendedNextActions.first;
@@ -186,8 +186,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         _creditsTier = credits.tier;
         _nudge = nudge;
         _uiPayload = contextSnapshot.ui;
-        _memoryReady =
-            contextSnapshot.memoryReady || credits.memoryReady;
+        _memoryReady = contextSnapshot.memoryReady || credits.memoryReady;
       });
       final String? prompt = widget.launchContext.prefilledPrompt ??
           widget.launchContext.insightPrompt;
@@ -230,8 +229,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       _scrollToEnd();
       return;
     }
-    final MeEntitlementsData? me =
-        ref.read(meEntitlementsProvider).valueOrNull;
+    final MeEntitlementsData? me = ref.read(meEntitlementsProvider).valueOrNull;
     final List<ContentPlan> plans =
         ref.read(contentPlansProvider).valueOrNull ?? const <ContentPlan>[];
     if (me != null && !canAffordAiAction(me, 'contentPlan')) {
@@ -239,8 +237,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         _lines.add(
           const _ChatLine(
             user: false,
-            text:
-                'Not enough AI credits for a content plan. '
+            text: 'Not enough AI credits for a content plan. '
                 'Upgrade or wait for your monthly reset.',
             isError: true,
           ),
@@ -254,8 +251,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         _lines.add(
           const _ChatLine(
             user: false,
-            text:
-                'Your Creator plan includes one active content plan. '
+            text: 'Your Creator plan includes one active content plan. '
                 'Upgrade to Pro for unlimited plans.',
             isError: true,
           ),
@@ -459,15 +455,13 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       _scrollToEnd();
       return;
     }
-    final MeEntitlementsData? me =
-        ref.read(meEntitlementsProvider).valueOrNull;
+    final MeEntitlementsData? me = ref.read(meEntitlementsProvider).valueOrNull;
     if (me != null && !canAffordAiAction(me, 'growthAnalysis')) {
       setState(() {
         _lines.add(
           const _ChatLine(
             user: false,
-            text:
-                'Not enough AI credits for content analysis. '
+            text: 'Not enough AI credits for content analysis. '
                 'Upgrade or wait for your monthly reset.',
             isError: true,
           ),
@@ -559,8 +553,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         _lines.add(
           _ChatLine(
             user: false,
-            text:
-                'Today\'s mission: ${result.title}'
+            text: 'Today\'s mission: ${result.title}'
                 '${result.description == null ? '' : '\n${result.description}'}',
           ),
         );
@@ -650,17 +643,14 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   }
 
   Future<void> _reviewScheduleProposal(TippyUiCardData card) async {
-    final String proposalId =
-        (card.ctaValue ?? card.planId ?? '').trim();
+    final String proposalId = (card.ctaValue ?? card.planId ?? '').trim();
     if (proposalId.isEmpty || _busy) {
       return;
     }
     final bool? approved = await TippyApprovalSheet.show(
       context,
       title: card.title,
-      subtitle: card.body.isEmpty
-          ? 'Approve this posting slot?'
-          : card.body,
+      subtitle: card.body.isEmpty ? 'Approve this posting slot?' : card.body,
     );
     if (approved != true || !mounted) {
       return;
@@ -919,6 +909,15 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
 
   _TippyErrorHandling _resolveErrorHandling(TippyChatException error) {
     if (error.status == 401 || error is TippyAuthException) {
+      final User? firebaseUser = FirebaseAuth.instance.currentUser;
+      if (firebaseUser != null) {
+        return const _TippyErrorHandling(
+          message:
+              'Tippy could not verify your session yet. Try again in a moment.',
+          showRetryButton: true,
+          shouldRestoreInput: true,
+        );
+      }
       return const _TippyErrorHandling(
         message: 'Your session expired. Please sign in again.',
         routeName: AppRoutes.auth,
@@ -926,9 +925,8 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     }
     if (error.status == 402 || error is TippyUpgradeRequiredException) {
       return _TippyErrorHandling(
-        message: error.code == 'CONTENT_PLAN_LIMIT'
-            ? error.message
-            : error.message,
+        message:
+            error.code == 'CONTENT_PLAN_LIMIT' ? error.message : error.message,
         routeName: AppRoutes.upgrade,
       );
     }
@@ -948,7 +946,8 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         message: 'Tippy AI is temporarily unavailable.',
       );
     }
-    if (error.code == 'APP_CHECK_REQUIRED' || error.code == 'APP_CHECK_INVALID') {
+    if (error.code == 'APP_CHECK_REQUIRED' ||
+        error.code == 'APP_CHECK_INVALID') {
       return const _TippyErrorHandling(
         message:
             'App verification failed. Restart the app or update to the latest build.',
@@ -1247,16 +1246,14 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
             CreatorPersonalizationProfile.empty;
     final TippyFeatureTier featureTier =
         resolveTippyFeatureTierFromSnapshot(me);
-    final List<String> quickPrompts =
-        _uiPayload.suggestedPrompts.isNotEmpty
-            ? _uiPayload.suggestedPrompts
-            : CreatorPersonalizationLogic.mergeQuickPrompts(
-                basePrompts: TippyPersonality.quickPromptsForSnapshot(me),
-                goalPrompts:
-                    CreatorPersonalizationLogic.tippyQuickPromptsForGoals(
-                  personalization.creatorGoals,
-                ),
-              );
+    final List<String> quickPrompts = _uiPayload.suggestedPrompts.isNotEmpty
+        ? _uiPayload.suggestedPrompts
+        : CreatorPersonalizationLogic.mergeQuickPrompts(
+            basePrompts: TippyPersonality.quickPromptsForSnapshot(me),
+            goalPrompts: CreatorPersonalizationLogic.tippyQuickPromptsForGoals(
+              personalization.creatorGoals,
+            ),
+          );
     return Scaffold(
       backgroundColor: const Color(0xFF050816),
       body: DecoratedBox(
@@ -1806,161 +1803,161 @@ class _TippyActionDock extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                ListTile(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onCreatePlan();
-                        },
-                  leading: const Icon(
-                    Icons.auto_awesome_motion_rounded,
-                    color: Color(0xFF93C5FD),
-                  ),
-                  title: const Text(
-                    'Create + Sync Plan',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                  ListTile(
+                    onTap: busy
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            onCreatePlan();
+                          },
+                    leading: const Icon(
+                      Icons.auto_awesome_motion_rounded,
+                      color: Color(0xFF93C5FD),
+                    ),
+                    title: const Text(
+                      'Create + Sync Plan',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Build a content plan and send it to your planner.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.58),
+                      ),
                     ),
                   ),
-                  subtitle: Text(
-                    'Build a content plan and send it to your planner.',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.58),
+                  ListTile(
+                    onTap: busy
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            onAnalyzeContent();
+                          },
+                    leading: const Icon(
+                      Icons.insights_rounded,
+                      color: Color(0xFF93C5FD),
+                    ),
+                    title: const Text(
+                      'Review my content',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                ListTile(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onAnalyzeContent();
-                        },
-                  leading: const Icon(
-                    Icons.insights_rounded,
-                    color: Color(0xFF93C5FD),
-                  ),
-                  title: const Text(
-                    'Review my content',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                  ListTile(
+                    onTap: busy
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            onHookIdeas();
+                          },
+                    leading: const Icon(
+                      Icons.bolt_rounded,
+                      color: Color(0xFF93C5FD),
+                    ),
+                    title: const Text(
+                      '5 hook ideas',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                ListTile(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onHookIdeas();
-                        },
-                  leading: const Icon(
-                    Icons.bolt_rounded,
-                    color: Color(0xFF93C5FD),
-                  ),
-                  title: const Text(
-                    '5 hook ideas',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                  ListTile(
+                    onTap: busy
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            onGenerateMission();
+                          },
+                    leading: const Icon(
+                      Icons.emoji_events_rounded,
+                      color: Color(0xFF93C5FD),
+                    ),
+                    title: const Text(
+                      'Today\'s mission',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                ListTile(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onGenerateMission();
-                        },
-                  leading: const Icon(
-                    Icons.emoji_events_rounded,
-                    color: Color(0xFF93C5FD),
-                  ),
-                  title: const Text(
-                    'Today\'s mission',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                  ListTile(
+                    onTap: busy
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            onProposeSchedule();
+                          },
+                    leading: const Icon(
+                      Icons.event_available_rounded,
+                      color: Color(0xFF93C5FD),
+                    ),
+                    title: const Text(
+                      'Propose posting schedule',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Draft slots for the week and approve what you want.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.58),
+                      ),
                     ),
                   ),
-                ),
-                ListTile(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onProposeSchedule();
-                        },
-                  leading: const Icon(
-                    Icons.event_available_rounded,
-                    color: Color(0xFF93C5FD),
-                  ),
-                  title: const Text(
-                    'Propose posting schedule',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                  ListTile(
+                    onTap: busy
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            onGrowthProgram();
+                          },
+                    leading: const Icon(
+                      Icons.timeline_rounded,
+                      color: Color(0xFF93C5FD),
+                    ),
+                    title: const Text(
+                      'Start 30-day growth program',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  subtitle: Text(
-                    'Draft slots for the week and approve what you want.',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.58),
+                  ListTile(
+                    onTap: busy
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            onGenerateCaption();
+                          },
+                    leading: const Icon(
+                      Icons.text_fields_rounded,
+                      color: Color(0xFF93C5FD),
+                    ),
+                    title: const Text(
+                      'AI Caption',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Turn the current prompt or idea into a caption.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.58),
+                      ),
                     ),
                   ),
-                ),
-                ListTile(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onGrowthProgram();
-                        },
-                  leading: const Icon(
-                    Icons.timeline_rounded,
-                    color: Color(0xFF93C5FD),
-                  ),
-                  title: const Text(
-                    'Start 30-day growth program',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                ListTile(
-                  onTap: busy
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          onGenerateCaption();
-                        },
-                  leading: const Icon(
-                    Icons.text_fields_rounded,
-                    color: Color(0xFF93C5FD),
-                  ),
-                  title: const Text(
-                    'AI Caption',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Turn the current prompt or idea into a caption.',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.58),
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
         );
       },
     );
