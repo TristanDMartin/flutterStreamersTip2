@@ -7,11 +7,13 @@ class AppCheckReadiness {
   const AppCheckReadiness({
     required this.isReady,
     required this.detail,
+    this.appCheckToken,
     this.debugToken,
   });
 
   final bool isReady;
   final String detail;
+  final String? appCheckToken;
   final String? debugToken;
 
   static const AppCheckReadiness skipped = AppCheckReadiness(
@@ -202,6 +204,7 @@ Future<AppCheckReadiness> _fetchAppCheckReadiness({
       return AppCheckReadiness(
         isReady: true,
         detail: 'Valid App Check token (${token.length} chars)',
+        appCheckToken: token,
         debugToken: kDebugMode ? token : null,
       );
     }

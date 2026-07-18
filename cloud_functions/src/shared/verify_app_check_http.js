@@ -24,6 +24,7 @@ async function verifyAppCheckHttp(req, {requestId = ''} = {}) {
   }
   const token = readAppCheckToken(req);
   if (!token) {
+    console.warn(`App Check HTTP reject code=APP_CHECK_REQUIRED requestId=${requestId}`);
     return {
       ok: false,
       status: 401,
@@ -36,6 +37,11 @@ async function verifyAppCheckHttp(req, {requestId = ''} = {}) {
     await admin.appCheck().verifyToken(token);
     return {ok: true, requestId};
   } catch (err) {
+    const message = err && err.message ? String(err.message) : String(err);
+    console.warn(
+        `App Check HTTP reject code=APP_CHECK_INVALID requestId=${requestId} ` +
+        `detail=${message.slice(0, 180)}`,
+    );
     return {
       ok: false,
       status: 401,

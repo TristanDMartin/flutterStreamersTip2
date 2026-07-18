@@ -416,8 +416,16 @@ class TippyChatService {
         retryable: true,
       );
     }
+    final String appCheckDetail = appCheckReadiness.appCheckToken == null
+        ? 'missing'
+        : '${appCheckReadiness.appCheckToken!.length} chars';
+    secureLog(
+      'Tippy App Check preflight ready; headerToken=$appCheckDetail',
+      name: 'TippyChatService',
+    );
     return buildAuthenticatedHttpHeaders(
       idToken: idToken,
+      appCheckToken: appCheckReadiness.appCheckToken,
       extra: const <String, String>{'Content-Type': 'application/json'},
     );
   }
