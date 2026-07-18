@@ -7,7 +7,11 @@ const {
   buildAnalyzeSystemPrompt,
   buildPlanSystemPrompt,
 } = require('./tippy_identity');
-const {resolveModelForPath} = require('./tippy_model_router');
+const {
+  DEFAULT_MODEL,
+  resolveFallbackModelsForPath,
+  resolveModelForPath,
+} = require('./tippy_model_router');
 const {
   buildKnowledgeBlock,
   selectKnowledgeChunks,
@@ -15,8 +19,6 @@ const {
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-
 function buildErrorPayload(code, message, status, requestId, retryable) {
   return {
     success: false,
@@ -182,27 +184,39 @@ function isModelSelectionError(result) {
 }
 
 async function postAnthropicWithModelFallback(params) {
-  const primaryModel = String(params.model || '').trim() || DEFAULT_MODEL;
-  const primary = await postAnthropic({
-    ...params,
-    model: primaryModel,
-  });
-  if (primary.ok || primaryModel === DEFAULT_MODEL || !isModelSelectionError(primary)) {
-    return {
-      ...primary,
-      attemptedModel: primaryModel,
+  const models = Array.isArray(params.models) && params.models.length > 0
+    ? params.models
+    : [String(params.model || '').trim() || DEFAULT_MODEL];
+  let lastResult = null;
+  for (let i = 0; i < models.length; i++) {
+    const attemptedModel = models[i];
+    const result = await postAnthropic({
+      ...params,
+      model: attemptedModel,
+    });
+    if (result.ok) {
+      return {
+        ...result,
+        attemptedModel,
+      };
+    }
+    lastResult = {
+      ...result,
+      attemptedModel,
     };
+    if (i >= models.length - 1 || !isModelSelectionError(result)) {
+      return lastResult;
+    }
+    console.warn(
+      'Anthropic model rejected, retrying with fallback model:',
+      attemptedModel,
+    );
   }
-  console.warn(
-    'Anthropic model rejected, retrying with default model:',
-    primaryModel,
-  );
-  const fallback = await postAnthropic({
-    ...params,
-    model: DEFAULT_MODEL,
-  });
-  return {
-    ...fallback,
+  return lastResult || {
+    ok: false,
+    status: 502,
+    parsed: null,
+    raw: '',
     attemptedModel: DEFAULT_MODEL,
   };
 }
@@ -244,6 +258,7 @@ function resolveTippyContext(tippyContext) {
 
 async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) {
   const model = resolveModel(path, body);
+  const models = resolveFallbackModelsForPath(path, body);
   const {tier, displayName, userData, extras} = resolveTippyContext(tippyContext);
   if (path === '/tippy/chat' || path === '/tippy/hook-ideas') {
     const raw = Array.isArray(body.messages) ? body.messages : [];
@@ -263,6 +278,7 @@ async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) 
     const result = await postAnthropicWithModelFallback({
       apiKey,
       model,
+      models,
       maxTokens,
       system: sys,
       messages,
@@ -306,6 +322,7 @@ async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) 
     const result = await postAnthropicWithModelFallback({
       apiKey,
       model,
+      models,
       maxTokens: 1024,
       system: 'Output valid JSON only.',
       messages,
@@ -345,6 +362,7 @@ async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) 
     const result = await postAnthropicWithModelFallback({
       apiKey,
       model,
+      models,
       maxTokens: 4096,
       system: buildPlanSystemPrompt({tier}),
       messages: [{role: 'user', content: user}],
@@ -393,6 +411,7 @@ async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) 
     const result = await postAnthropicWithModelFallback({
       apiKey,
       model,
+      models,
       maxTokens: 2048,
       system:
         'You write punchy social captions. Output valid JSON only.',
@@ -440,6 +459,7 @@ async function runAnthropicTippy({apiKey, path, body, requestId, tippyContext}) 
     const result = await postAnthropicWithModelFallback({
       apiKey,
       model,
+      models,
       maxTokens: 4096,
       system: buildAnalyzeSystemPrompt({
         tier,
