@@ -8,17 +8,22 @@ import 'package:http/http.dart' as http;
 
 import '../../core/app_check_http_headers.dart';
 import '../../core/backend/firebase_https_function_url.dart';
+import '../../core/firebase_app_check_startup.dart';
 import '../../services/production_monitoring_service.dart';
 import '../../services/performance_monitoring_service.dart';
 import 'models/tippy_ui_payload.dart';
 
 typedef TippyTokenProvider = Future<String?> Function();
+typedef TippyAppCheckReadinessProvider = Future<AppCheckReadiness> Function({
+  bool forceRefresh,
+});
 
 class TippyChatService {
   TippyChatService({
     String? apiBase,
     http.Client? httpClient,
     TippyTokenProvider? tokenProvider,
+    TippyAppCheckReadinessProvider? appCheckReadinessProvider,
     Duration requestTimeout = _defaultRequestTimeout,
   })  : _apiBase = resolveFirebaseHttpsFunctionUrl(
           explicitOverride: apiBase,
@@ -28,6 +33,8 @@ class TippyChatService {
         ),
         _client = httpClient ?? http.Client(),
         _tokenProvider = tokenProvider,
+        _appCheckReadinessProvider =
+            appCheckReadinessProvider ?? ensureAppCheckReadyForFirestore,
         _requestTimeout = requestTimeout {
     _validateConfiguration();
   }
@@ -61,6 +68,7 @@ class TippyChatService {
   final String _apiBase;
   final http.Client _client;
   final TippyTokenProvider? _tokenProvider;
+  final TippyAppCheckReadinessProvider _appCheckReadinessProvider;
   final Duration _requestTimeout;
   TippyCreditsInfo? _creditsCache;
 
@@ -395,6 +403,18 @@ class TippyChatService {
     );
     if (idToken == null || idToken.isEmpty) {
       throw const TippyAuthException('Authentication required.');
+    }
+    final AppCheckReadiness appCheckReadiness =
+        await _appCheckReadinessProvider(
+      forceRefresh: forceRefreshToken,
+    );
+    if (!appCheckReadiness.isReady) {
+      throw TippyChatException(
+        'Tippy app verification is not ready. Restart the app and try again.',
+        code: 'APP_CHECK_REQUIRED',
+        status: 401,
+        retryable: true,
+      );
     }
     return buildAuthenticatedHttpHeaders(
       idToken: idToken,

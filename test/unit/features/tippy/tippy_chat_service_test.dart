@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:streamers_tip/core/firebase_app_check_startup.dart';
 import 'package:streamers_tip/features/tippy/tippy_chat_service.dart';
 
 void main() {
@@ -10,6 +11,8 @@ void main() {
         apiBase: 'https://staging.example.com',
         httpClient: client,
         tokenProvider: () async => 'token_123',
+        appCheckReadinessProvider: ({bool forceRefresh = false}) async =>
+            const AppCheckReadiness(isReady: true, detail: 'test'),
         requestTimeout: timeout ?? const Duration(seconds: 1),
       );
     }
@@ -188,6 +191,34 @@ void main() {
         );
         fail('Expected TippyNetworkException');
       } on TippyNetworkException catch (err) {
+        expect(err.retryable, isTrue);
+      }
+    });
+
+    test('maps missing App Check readiness to retryable verification error',
+        () async {
+      final MockClient client = MockClient((http.Request request) async {
+        fail('Expected App Check preflight to block the request');
+      });
+      final TippyChatService service = TippyChatService(
+        apiBase: 'https://staging.example.com',
+        httpClient: client,
+        tokenProvider: () async => 'token_123',
+        appCheckReadinessProvider: ({bool forceRefresh = false}) async =>
+            const AppCheckReadiness(isReady: false, detail: 'missing'),
+        requestTimeout: const Duration(seconds: 1),
+      );
+
+      try {
+        await service.sendMessage(
+          messages: const <TippyChatMessage>[
+            TippyChatMessage(role: 'user', content: 'hi'),
+          ],
+        );
+        fail('Expected TippyChatException');
+      } on TippyChatException catch (err) {
+        expect(err.code, 'APP_CHECK_REQUIRED');
+        expect(err.status, 401);
         expect(err.retryable, isTrue);
       }
     });

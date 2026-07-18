@@ -35,6 +35,20 @@ bool isAppCheckEnabledForBuild() {
   return true;
 }
 
+const String _androidDebugToken = String.fromEnvironment(
+  'ST_ANDROID_APP_CHECK_DEBUG_TOKEN',
+  defaultValue: '',
+);
+const String _appleDebugToken = String.fromEnvironment(
+  'ST_APPLE_APP_CHECK_DEBUG_TOKEN',
+  defaultValue: '',
+);
+
+String? _nonEmptyDebugToken(String value) {
+  final String trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
 /// Activates App Check. Debug builds use debug providers; release/profile use
 /// Play Integrity / DeviceCheck by default.
 Future<void> activateAppCheckIfEnabled() async {
@@ -51,19 +65,54 @@ Future<void> activateAppCheckIfEnabled() async {
     }
     return;
   }
+  if (_activationCompleted) {
+    return;
+  }
+  final Future<void>? existingActivation = _activationInFlight;
+  if (existingActivation != null) {
+    return existingActivation;
+  }
+  late final Future<void> activationFuture;
+  activationFuture = _activateAppCheck().whenComplete(() {
+    if (identical(_activationInFlight, activationFuture)) {
+      _activationInFlight = null;
+    }
+  });
+  _activationInFlight = activationFuture;
+  return activationFuture;
+}
+
+Future<void> _activateAppCheck() async {
   try {
     await FirebaseAppCheck.instance.activate(
       providerAndroid: kDebugMode
-          ? const AndroidDebugProvider()
+          ? AndroidDebugProvider(
+              debugToken: _nonEmptyDebugToken(_androidDebugToken),
+            )
           : const AndroidPlayIntegrityProvider(),
       providerApple: kDebugMode
-          ? const AppleDebugProvider()
+          ? AppleDebugProvider(
+              debugToken: _nonEmptyDebugToken(_appleDebugToken),
+            )
           : const AppleDeviceCheckProvider(),
     );
     debugPrint(
       '✅ Firebase App Check activated '
       '(${kDebugMode ? 'debug' : 'play_integrity'} provider)',
     );
+    if (kDebugMode && _androidDebugToken.trim().isNotEmpty) {
+      debugPrint(
+        '🔐 Android App Check debug token supplied by '
+        'ST_ANDROID_APP_CHECK_DEBUG_TOKEN',
+      );
+    }
+    if (kDebugMode && _appleDebugToken.trim().isNotEmpty) {
+      debugPrint(
+        '🔐 Apple App Check debug token supplied by '
+        'ST_APPLE_APP_CHECK_DEBUG_TOKEN',
+      );
+    }
+    _activationCompleted = true;
     if (kDebugMode) {
       await _logDebugAppCheckToken();
     }
@@ -77,11 +126,10 @@ Future<void> activateAppCheckIfEnabled() async {
     if (message.toLowerCase().contains('app not registered') ||
         message.toLowerCase().contains('failed_precondition')) {
       debugPrint(
-        '⚠️ App Check iOS misconfiguration: register the app in Firebase '
-        'Console → App Check (bundle com.streamerstip.streamersTipApp, '
-        'app 1:161050969080:ios:0280d1b8f828f21004cc0d). '
+        '⚠️ App Check misconfiguration: register this Android/iOS app in '
+        'Firebase Console → App Check. '
         'Debug: flutter run --dart-define=ST_ENABLE_APP_CHECK_DEBUG=true '
-        'then ./scripts/setup_ios_app_check_debug.sh <token>',
+        '--dart-define=ST_ANDROID_APP_CHECK_DEBUG_TOKEN=<registered-token>',
       );
     }
     debugPrint('⚠️ Firebase App Check activation failed: $e');
@@ -89,6 +137,8 @@ Future<void> activateAppCheckIfEnabled() async {
 }
 
 Future<AppCheckReadiness>? _tokenFetchInFlight;
+Future<void>? _activationInFlight;
+bool _activationCompleted = false;
 DateTime? _lastAttestationFailureLoggedAt;
 DateTime? _attestationBackoffUntil;
 
@@ -117,6 +167,7 @@ Future<AppCheckReadiness> ensureAppCheckReadyForFirestore({
   if (!isAppCheckEnabledForBuild()) {
     return AppCheckReadiness.skipped;
   }
+  await activateAppCheckIfEnabled();
   final DateTime? backoffUntil = _attestationBackoffUntil;
   if (!forceRefresh &&
       backoffUntil != null &&
@@ -130,8 +181,8 @@ Future<AppCheckReadiness> ensureAppCheckReadyForFirestore({
     return _tokenFetchInFlight!;
   }
   late final Future<AppCheckReadiness> fetchFuture;
-  fetchFuture = _fetchAppCheckReadiness(forceRefresh: forceRefresh)
-      .whenComplete(() {
+  fetchFuture =
+      _fetchAppCheckReadiness(forceRefresh: forceRefresh).whenComplete(() {
     if (identical(_tokenFetchInFlight, fetchFuture)) {
       _tokenFetchInFlight = null;
     }

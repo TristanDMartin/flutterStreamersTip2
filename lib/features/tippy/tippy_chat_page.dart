@@ -908,6 +908,15 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   }
 
   _TippyErrorHandling _resolveErrorHandling(TippyChatException error) {
+    if (error.code == 'APP_CHECK_REQUIRED' ||
+        error.code == 'APP_CHECK_INVALID') {
+      return const _TippyErrorHandling(
+        message:
+            'App verification failed. Restart the app or update to the latest build.',
+        showRetryButton: true,
+        shouldRestoreInput: true,
+      );
+    }
     if (error.status == 401 || error is TippyAuthException) {
       final User? firebaseUser = FirebaseAuth.instance.currentUser;
       if (firebaseUser != null) {
@@ -944,15 +953,6 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       }
       return const _TippyErrorHandling(
         message: 'Tippy AI is temporarily unavailable.',
-      );
-    }
-    if (error.code == 'APP_CHECK_REQUIRED' ||
-        error.code == 'APP_CHECK_INVALID') {
-      return const _TippyErrorHandling(
-        message:
-            'App verification failed. Restart the app or update to the latest build.',
-        showRetryButton: true,
-        shouldRestoreInput: true,
       );
     }
     if (error.code == 'AI_PROVIDER_ERROR' ||
