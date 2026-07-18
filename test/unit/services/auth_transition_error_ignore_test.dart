@@ -31,6 +31,15 @@ void main() {
       );
     });
 
+    test('detects disposed WidgetRef usage', () {
+      expect(
+        isIgnorableAuthTransitionFlutterError(
+          'Bad state: Cannot use "ref" after the widget was disposed.',
+        ),
+        isTrue,
+      );
+    });
+
     test('rejects unrelated errors', () {
       expect(
         isIgnorableAuthTransitionFlutterError('Network error'),

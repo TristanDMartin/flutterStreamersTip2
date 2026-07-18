@@ -31,6 +31,7 @@ import '../services/global_playback_manager.dart';
 import '../routing/app_routes.dart';
 import '../constants/playback_owners.dart';
 import 'package:streamers_tip/qa/qa_runtime.dart';
+import 'package:streamers_tip/utils/auth_transition_flutter_errors.dart';
 import 'package:streamers_tip/utils/interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
@@ -50,6 +51,7 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   final MainTabBackgroundRefreshScheduler _tabRefreshScheduler =
       MainTabBackgroundRefreshScheduler();
   late RobustAuthenticationService _authService;
+  ProviderContainer? _providerContainer;
 
   // ⏱️ MEMORY FIX: Timers for proper cancellation
   Timer? _unblockTimer;
@@ -70,14 +72,24 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     ref.listenManual<int?>(
       mainTabIndexRequestProvider,
       (int? previous, int? next) {
+        if (!mounted) {
+          return;
+        }
         _handleMainTabIndexRequest(next, mainTabIndexRequestProvider);
       },
     );
     _startDataSync();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      // Riverpod forbids provider writes during initState/build — defer.
-      ref.read(mainTabActiveIndexProvider.notifier).setIndex(_currentIndex);
+      // Riverpod forbids provider writes during initState/build — defer, and
+      // use ProviderContainer so auth remounts cannot touch a disposed WidgetRef.
+      _withProviderContainer((ProviderContainer container) {
+        container
+            .read(mainTabActiveIndexProvider.notifier)
+            .setIndex(_currentIndex);
+      });
+      if (!mounted) {
+        return;
+      }
       _syncPlaybackForCurrentTab();
       unawaited(_maybeShowFirstStepsAchievementToast());
       if (!QaRuntime.isMobileFeedE2e) {
@@ -90,6 +102,12 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _providerContainer = ProviderScope.containerOf(context);
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     // ⏱️ MEMORY FIX: Cancel all timers to prevent memory leaks
@@ -98,7 +116,26 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     _dataSyncRetryTimer?.cancel();
     _tabRefreshScheduler.dispose();
     _networkViewModel.dispose();
+    _providerContainer = null;
     super.dispose();
+  }
+
+  bool _withProviderContainer(
+    void Function(ProviderContainer container) action,
+  ) {
+    final ProviderContainer? container = _providerContainer;
+    if (!mounted || container == null) {
+      return false;
+    }
+    try {
+      action(container);
+      return true;
+    } catch (error) {
+      if (isIgnorableAuthTransitionFlutterError(error)) {
+        return false;
+      }
+      rethrow;
+    }
   }
 
   @override
@@ -108,12 +145,20 @@ class _MainTabViewState extends ConsumerState<MainTabView>
       return;
     }
     // Google account picker pauses/resumes the app. MainTabView can be
-    // deactivated mid-auth transition — never touch WidgetRef synchronously.
+    // disposed mid-auth transition — never touch WidgetRef here.
+    final ProviderContainer? container = _providerContainer;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
+      if (!mounted || container == null) {
         return;
       }
-      invalidateSubscriptionEntitlements(ref);
+      try {
+        container.read(subscriptionRepositoryProvider).invalidateCache();
+        container.invalidate(subscriptionSnapshotProvider);
+      } catch (error) {
+        if (!isIgnorableAuthTransitionFlutterError(error)) {
+          rethrow;
+        }
+      }
       _cameraNavTimer?.cancel();
       if (_currentIndex != 0) {
         _syncPlaybackForCurrentTab();
@@ -265,19 +310,39 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   }
 
   Future<void> _runBackgroundRefreshForTab(int index) async {
-    switch (index) {
-      case 0:
-        final hp.HomeState homeState = ref.read(hp.homeProvider);
-        if (homeState.forYouVideos.isEmpty) {
-          return;
-        }
-        await ref.read(hp.homeProvider.notifier).runDeferredBackgroundRefresh();
-      case 1:
-        ref.read(networkTabBackgroundRefreshProvider.notifier).requestRefresh();
-      case 3:
-        ref.read(inboxTabBackgroundRefreshProvider.notifier).requestRefresh();
-      default:
-        break;
+    if (!mounted) {
+      return;
+    }
+    final ProviderContainer? container = _providerContainer;
+    if (container == null) {
+      return;
+    }
+    try {
+      switch (index) {
+        case 0:
+          final hp.HomeState homeState = container.read(hp.homeProvider);
+          if (homeState.forYouVideos.isEmpty) {
+            return;
+          }
+          await container
+              .read(hp.homeProvider.notifier)
+              .runDeferredBackgroundRefresh();
+        case 1:
+          container
+              .read(networkTabBackgroundRefreshProvider.notifier)
+              .requestRefresh();
+        case 3:
+          container
+              .read(inboxTabBackgroundRefreshProvider.notifier)
+              .requestRefresh();
+        default:
+          break;
+      }
+    } catch (error) {
+      if (isIgnorableAuthTransitionFlutterError(error)) {
+        return;
+      }
+      rethrow;
     }
   }
 
@@ -316,7 +381,11 @@ class _MainTabViewState extends ConsumerState<MainTabView>
       return;
     }
     if (_currentIndex == 0) {
-      ref.read(homeViewControllerProvider.notifier).resumeFromTabReturn();
+      _withProviderContainer((ProviderContainer container) {
+        container
+            .read(homeViewControllerProvider.notifier)
+            .resumeFromTabReturn();
+      });
       return;
     }
     playbackManager.setVisibleOwner(owner);

@@ -7,6 +7,7 @@ bool isIgnorableAuthTransitionFlutterError(Object? error) {
   final String text = error.toString();
   return text.contains('deactivated widget') ||
       text.contains('modify a provider while the widget tree was building') ||
+      text.contains('Cannot use "ref" after the widget was disposed') ||
       text.contains('AccountClientException') ||
       text.contains('not available in the current deployment');
 }

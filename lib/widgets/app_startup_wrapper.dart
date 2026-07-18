@@ -162,10 +162,17 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     }
     // AuthModalView shows its own overlay during OAuth; skip root rebuilds
     // that would remount the sign-in screen while the picker is opening.
-    if (loadingChanged &&
-        !loginChanged &&
-        ref.read(robustAuthServiceProvider).isOauthInProgress) {
-      return;
+    if (loadingChanged && !loginChanged) {
+      bool isOauthInProgress = false;
+      try {
+        isOauthInProgress =
+            ref.read(robustAuthServiceProvider).isOauthInProgress;
+      } catch (_) {
+        return;
+      }
+      if (isOauthInProgress) {
+        return;
+      }
     }
     if (GlobalPlaybackManager.instance.isStartupLocked &&
         !loginChanged &&
