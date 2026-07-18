@@ -439,12 +439,15 @@ class TippyChatService {
   }
 
   bool _shouldRetryWithFreshToken(TippyAuthException error) {
-    if (_tokenProvider != null || FirebaseAuth.instance.currentUser == null) {
-      return false;
+    if (error.code == 'APP_CHECK_REQUIRED' ||
+        error.code == 'APP_CHECK_INVALID') {
+      return true;
     }
-    return error.code == 'AUTH_REQUIRED' ||
-        error.code == 'TOKEN_EXPIRED' ||
-        error.code == 'INVALID_TOKEN';
+    return (error.code == 'AUTH_REQUIRED' ||
+            error.code == 'TOKEN_EXPIRED' ||
+            error.code == 'INVALID_TOKEN') &&
+        _tokenProvider == null &&
+        FirebaseAuth.instance.currentUser != null;
   }
 
   TippySuccessEnvelope _parseEnvelope(http.Response response) {

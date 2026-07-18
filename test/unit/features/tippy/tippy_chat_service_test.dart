@@ -35,6 +35,85 @@ void main() {
       expect(actual.creditsRemaining, 24);
     });
 
+    test('sends App Check header from readiness preflight', () async {
+      final MockClient client = MockClient((http.Request request) async {
+        expect(request.headers['X-Firebase-AppCheck'], 'app_check_123');
+        return http.Response(
+          '{"success":true,"data":{"message":"Hello"},"credits":{"remaining":24,"used":1,"limit":250,"tier":"pro"},"requestId":"req_1"}',
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final TippyChatService service = TippyChatService(
+        apiBase: 'https://staging.example.com',
+        httpClient: client,
+        tokenProvider: () async => 'token_123',
+        appCheckReadinessProvider: ({bool forceRefresh = false}) async =>
+            const AppCheckReadiness(
+          isReady: true,
+          detail: 'test',
+          appCheckToken: 'app_check_123',
+        ),
+        requestTimeout: const Duration(seconds: 1),
+      );
+
+      await service.sendMessage(
+        messages: const <TippyChatMessage>[
+          TippyChatMessage(role: 'user', content: 'hi'),
+        ],
+      );
+    });
+
+    test('refreshes App Check token after backend verification rejection',
+        () async {
+      final List<bool> forceRefreshCalls = <bool>[];
+      final List<String?> sentAppCheckHeaders = <String?>[];
+      var requestCount = 0;
+      final MockClient client = MockClient((http.Request request) async {
+        requestCount += 1;
+        sentAppCheckHeaders.add(request.headers['X-Firebase-AppCheck']);
+        if (requestCount == 1) {
+          return http.Response(
+            '{"success":false,"error":{"code":"APP_CHECK_INVALID","message":"App Check token is invalid.","status":401,"retryable":true},"requestId":"req_bad"}',
+            401,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          '{"success":true,"data":{"message":"Hello after refresh"},"credits":{"remaining":24,"used":1,"limit":250,"tier":"pro"},"requestId":"req_ok"}',
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final TippyChatService service = TippyChatService(
+        apiBase: 'https://staging.example.com',
+        httpClient: client,
+        tokenProvider: () async => 'token_123',
+        appCheckReadinessProvider: ({bool forceRefresh = false}) async {
+          forceRefreshCalls.add(forceRefresh);
+          return AppCheckReadiness(
+            isReady: true,
+            detail: 'test',
+            appCheckToken: forceRefresh ? 'fresh_app_check' : 'stale_app_check',
+          );
+        },
+        requestTimeout: const Duration(seconds: 1),
+      );
+
+      final TippyChatResult result = await service.sendMessage(
+        messages: const <TippyChatMessage>[
+          TippyChatMessage(role: 'user', content: 'hi'),
+        ],
+      );
+
+      expect(result.message, 'Hello after refresh');
+      expect(forceRefreshCalls, <bool>[false, true]);
+      expect(sentAppCheckHeaders, <String?>[
+        'stale_app_check',
+        'fresh_app_check',
+      ]);
+    });
+
     test('removes leaked provider metadata prefix from chat response',
         () async {
       final MockClient client = MockClient((http.Request request) async {
