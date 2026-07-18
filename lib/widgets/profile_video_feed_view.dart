@@ -80,6 +80,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   bool _isSelectionMode = false;
   final Set<String> _selectedVideoIds = <String>{};
   bool _isBulkDeleting = false;
+  VideoService? _videoServiceNotifier;
 
   bool get _isViewingOwnProfile {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
@@ -91,6 +92,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   void initState() {
     super.initState();
+    _videoServiceNotifier =
+        ref.read(providers.videoServiceStateProvider.notifier);
     _resetCachedFutures();
     _primeProfileVideoTab();
     _optimisticFeedRefreshSubscription =
@@ -167,9 +170,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   void dispose() {
     _optimisticFeedRefreshSubscription?.cancel();
-    ref
-        .read(providers.videoServiceStateProvider.notifier)
-        .stopOwnerVideosListener();
+    _videoServiceNotifier?.stopOwnerVideosListener();
     // Cancel all video deletion listeners
     for (final subscription in _videoListeners.values) {
       subscription.cancel();
