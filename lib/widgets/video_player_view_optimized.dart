@@ -2500,10 +2500,6 @@ class _VideoPlayerViewOptimizedState
       _consecutiveStallChecks =
           0; // 🔥 FIX: Reset stall counter on initialization
 
-      // 🔥 INSTANT PLAYBACK: Mark controller as initializing (prevents premature focus requests)
-      GlobalPlaybackManager.instance
-          .markControllerInitializing(widget.video.id);
-
       final String? playbackUrl = readyUrl;
       if (playbackUrl == null) {
         secureLog(
@@ -2686,9 +2682,6 @@ class _VideoPlayerViewOptimizedState
     } finally {
       _isInitializing = false;
       _initializingVideoIds.remove(widget.video.id);
-      GlobalPlaybackManager.instance.clearControllerInitializing(
-        widget.video.id,
-      );
     }
   }
 
