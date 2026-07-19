@@ -104,7 +104,7 @@ void main() {
       );
     });
 
-    test('allows failed videos only for the owner', () {
+    test('rejects failed videos for owner and public profile grids', () {
       expect(
         rejectProfileListCandidate(
           <String, dynamic>{
@@ -115,7 +115,7 @@ void main() {
           owner,
           viewerUserId: owner,
         ),
-        isNull,
+        'status:failed',
       );
       expect(
         rejectProfileListCandidate(

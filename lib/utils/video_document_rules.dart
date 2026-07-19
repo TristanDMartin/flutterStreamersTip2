@@ -17,7 +17,6 @@ const Set<String> kOwnerProfileVideoStatuses = {
   'ready',
   'published',
   'active',
-  'failed',
 };
 
 /// Public profile/card video visibility for non-owner viewers.

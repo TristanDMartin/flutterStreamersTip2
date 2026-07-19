@@ -421,10 +421,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
     final String status =
         ((data['status'] as String?) ?? 'processing').toLowerCase();
-    if (status == 'uploading' ||
-        status == 'processing' ||
-        status == 'failed' ||
-        status == 'upload_failed') {
+    if (status == 'failed' || status == 'upload_failed') {
+      return null;
+    }
+    if (status == 'uploading' || status == 'processing') {
       return _processingHomeVideoFromDoc(data, doc.id, userId);
     }
 
@@ -533,10 +533,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     }
     final String status =
         ((data['status'] as String?) ?? 'processing').toLowerCase();
-    if (status == 'uploading' ||
-        status == 'processing' ||
-        status == 'failed' ||
-        status == 'upload_failed') {
+    if (status == 'failed' || status == 'upload_failed') {
+      return null;
+    }
+    if (status == 'uploading' || status == 'processing') {
       return _processingHomeVideoFromDoc(data, doc.id, ownerId);
     }
     final HomeVideo? playable = await _homeVideoFromDocAfterPlayableGate(
