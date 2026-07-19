@@ -222,6 +222,31 @@ class HomeViewModel extends StateNotifier<HomeState> {
       '🔄 HomeProvider: Live feed snapshot applied '
       '(${mergedVideos.length} videos, reason=$reason)',
     );
+    _warmTopForYouPlaybackAfterLiveSnapshot(reason);
+  }
+
+  void _warmTopForYouPlaybackAfterLiveSnapshot(String reason) {
+    if (!mounted || state.activeFeed != FeedTab.forYou) {
+      return;
+    }
+    final GlobalPlaybackManager playbackManager =
+        GlobalPlaybackManager.instance;
+    final int? currentIndex = playbackManager.currentFeedIndex;
+    if (currentIndex != null && currentIndex > 0) {
+      return;
+    }
+    final List<HomeVideo> videos = _readyVideosFromFeed(state.forYouVideos);
+    if (videos.isEmpty) {
+      return;
+    }
+    playbackManager.preloadStartupWindow(videos);
+    unawaited(
+      playbackManager.onVisibleIndexChanged(0, videos.first),
+    );
+    secureLog(
+      'LIVE_FEED_PLAYBACK_KICK reason=$reason index=0 '
+      'videoId=${videos.first.id} count=${videos.length}',
+    );
   }
 
   void startForYouRealtimeFeed() {
