@@ -18,7 +18,7 @@ Console links:
 
 ---
 
-## Path A — Fastest for local dev (recommended first)
+## Path A - Fastest for local dev (recommended first)
 
 Unenforce App Check on Firestore while you test uploads.
 
@@ -41,17 +41,20 @@ flutter run
 
 ---
 
-## Path B — Register debug token (keep enforcement on)
+## Path B - Register debug token (keep enforcement on)
 
-1. Rebuild and run (required — old builds show `No AppCheckProvider installed`):
+1. Rebuild and run with the exact registered debug token. Use one line in zsh
+   to avoid `parse error near '\n'` from a bad trailing backslash:
 
 ```bash
 cd /Users/tristanmartin/Projects/flutterST
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-flutter run
+flutter run --dart-define=ST_ENABLE_APP_CHECK_DEBUG=true --dart-define=ST_ANDROID_APP_CHECK_DEBUG_TOKEN=YOUR_REGISTERED_DEBUG_TOKEN
 ```
 
-2. In another terminal, capture the debug token:
+2. If you do not already have a registered token, run once with only
+   `--dart-define=ST_ENABLE_APP_CHECK_DEBUG=true`, then capture the generated
+   debug token:
 
 ```bash
 export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
@@ -71,7 +74,14 @@ Also check the **flutter run** terminal for:
 
 4. Confirm debug SHA-256 is listed under [Project settings](https://console.firebase.google.com/project/streamerstip-6cfdb/settings/general) → Android app → SHA certificate fingerprints
 
-5. **Force-stop app**, run `flutter run` again (not hot reload `r`)
+5. **Force-stop app**, then run again with the registered token define:
+
+```bash
+flutter run --dart-define=ST_ENABLE_APP_CHECK_DEBUG=true --dart-define=ST_ANDROID_APP_CHECK_DEBUG_TOKEN=YOUR_REGISTERED_DEBUG_TOKEN
+```
+
+Do not use hot reload `r` for App Check changes; it must be a cold reinstall
+or a full app restart.
 
 ---
 
@@ -87,7 +97,7 @@ APIs as above — retries alone will not fix 403.
 |-----|---------|
 | `✅ Firebase App Check activated (debug provider)` | Provider installed |
 | `🔐 App Check DEBUG TOKEN` or `token refreshed` | Real token (good) |
-| `App attestation failed` / `placeholder token` | Still blocked — repeat Path A or B |
+| `App attestation failed` / `placeholder token` | Still blocked - register the exact debug token used by this build, then cold restart |
 | `✅ OptimisticVideoService: verified videos/...` | Firestore placeholder OK |
 | `❌ [App Check]` in upload logs | Upload blocked before Mux |
 | `❌ [Firestore rules]` | Rules issue (separate from App Check) |
