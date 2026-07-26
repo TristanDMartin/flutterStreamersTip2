@@ -67,5 +67,18 @@ void main() {
       );
       expect(results, isEmpty);
     });
+
+    test('empty query browses all guides', () {
+      final List<AcademySearchResult> results = service.search(
+        query: '',
+        guides: guides,
+        categoriesById: categories,
+      );
+      expect(results, hasLength(2));
+      expect(
+        results.map((AcademySearchResult r) => r.guide.id),
+        containsAll(<String>['g1', 'g2']),
+      );
+    });
   });
 }

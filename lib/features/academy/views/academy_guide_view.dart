@@ -13,6 +13,7 @@ import '../../tippy/models/tippy_launch_context.dart';
 import '../academy_providers.dart';
 import '../data/academy_repository.dart';
 import '../models/academy_models.dart';
+import '../services/academy_web_launcher.dart';
 import '../widgets/academy_widgets.dart';
 
 class AcademyGuideView extends ConsumerStatefulWidget {
@@ -146,10 +147,7 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
                   IconButton(
                     tooltip: 'Share guide',
                     onPressed: () {
-                      final String slug = guide.slug ?? guide.id;
-                      Share.share(
-                        'https://streamerstip.com/academy/guide/$slug',
-                      );
+                      Share.share(guide.shareUrl);
                     },
                     icon: const Icon(Icons.ios_share_rounded),
                   ),
@@ -198,6 +196,34 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 24),
                         child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (lessons.isEmpty && guide.isWebsiteBacked)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          Text(
+                            'This guide lives on StreamersTip and stays '
+                            'up to date when new pages are published.',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.72),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: () {
+                              unawaited(
+                                AcademyWebLauncher.openGuideUrl(
+                                  guide.webUrl ?? guide.shareUrl,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.menu_book_rounded),
+                            label: const Text('Read full guide'),
+                          ),
+                        ],
                       )
                     else if (lessons.isEmpty)
                       const Text('Lessons for this guide are coming soon.')

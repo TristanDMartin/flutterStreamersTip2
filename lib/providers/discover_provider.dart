@@ -15,7 +15,6 @@ import '../models/video_thumbnails.dart';
 import '../models/user.dart';
 import '../models/user_count_fields.dart';
 import '../services/creator_cache_service.dart';
-import '../services/creator_follower_count_service.dart';
 import '../services/follows_service.dart';
 import '../services/logging_service.dart';
 import '../utils/swallow_non_fatal.dart';
@@ -62,16 +61,17 @@ enum ResultType { creator, category, content }
 class DiscoverNotifier extends StateNotifier<DiscoverState> {
   final RealUserDataService _userDataService = RealUserDataService();
   final FollowsService _followsService = FollowsService();
-  final CreatorFollowerCountService _followerCountService =
-      CreatorFollowerCountService.instance;
   final Map<String, DocumentSnapshot<Map<String, dynamic>>?>
       _categoryVideoCursors = {};
   static List<TrendingCreator> _cachedTrendingCreators =
       const <TrendingCreator>[];
   static DateTime? _cachedTrendingCreatorsAt;
   static const Duration _trendingCacheTtl = Duration(minutes: 10);
+  // v2: followerCount must match users/{id} (profile UserStats), not edge aggregates.
+  static const int _trendingCacheSchema = 2;
+  static int _loadedTrendingCacheSchema = 0;
   static const String _trendingPrefsKey =
-      'streamerstip.discover.trending_creators.v1';
+      'streamerstip.discover.trending_creators.v2';
   static Future<void>? _trendingLoadInFlight;
 
   DiscoverNotifier()
@@ -87,6 +87,17 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
             clips: ClipExtension.samples,
           ),
         ) {
+    if (_loadedTrendingCacheSchema != _trendingCacheSchema) {
+      _cachedTrendingCreators = const <TrendingCreator>[];
+      _cachedTrendingCreatorsAt = null;
+      _loadedTrendingCacheSchema = _trendingCacheSchema;
+      if (state.trendingCreators.isNotEmpty) {
+        state = state.copyWith(
+          trendingCreators: const <TrendingCreator>[],
+          isLoadingTrendingCreators: true,
+        );
+      }
+    }
     unawaited(_bootstrapDiscover());
   }
 
@@ -108,21 +119,6 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       fallbackTimeout: const Duration(seconds: 20),
     );
     unawaited(loadRecommendedForYou());
-  }
-
-  bool _trendingListsEqual(
-    List<TrendingCreator> a,
-    List<TrendingCreator> b,
-  ) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (int i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) {
-        return false;
-      }
-    }
-    return true;
   }
 
   void _preloadTrendingCreatorAvatars(List<TrendingCreator> creators) {
@@ -433,18 +429,13 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       final List<TrendingCreator> enriched =
           await _enrichTrendingWithFollowState(trending, authUser?.uid);
 
-      if (!_trendingListsEqual(state.trendingCreators, enriched)) {
-        state = state.copyWith(
-          trendingCreators: enriched,
-          isLoadingTrendingCreators: false,
-          trendingCreatorsLoadFailed: false,
-        );
-      } else {
-        state = state.copyWith(
-          isLoadingTrendingCreators: false,
-          trendingCreatorsLoadFailed: false,
-        );
-      }
+      // Always apply enriched creators. Equality on IDs alone used to skip
+      // updates when followerCount / isFollowing / avatar changed.
+      state = state.copyWith(
+        trendingCreators: enriched,
+        isLoadingTrendingCreators: false,
+        trendingCreatorsLoadFailed: false,
+      );
       _cachedTrendingCreators = enriched;
       _cachedTrendingCreatorsAt = DateTime.now();
       CreatorCacheService.instance.preloadTrending(enriched);
@@ -502,8 +493,18 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     final TrendingCreator current = state.trendingCreators[idx];
     int nextCount = current.followerCount;
     try {
-      nextCount =
-          await _followerCountService.getCreatorFollowerCount(creatorId);
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(creatorId)
+              .get();
+      final Map<String, dynamic>? data = snap.data();
+      if (data != null) {
+        nextCount = UserCountFields.readFollowersCount(data);
+      } else {
+        final int delta = isFollowing ? 1 : -1;
+        nextCount = (current.followerCount + delta).clamp(0, 1 << 30).toInt();
+      }
     } catch (_) {
       final int delta = isFollowing ? 1 : -1;
       nextCount = (current.followerCount + delta).clamp(0, 1 << 30).toInt();

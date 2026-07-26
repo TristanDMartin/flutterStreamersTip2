@@ -7,10 +7,16 @@ import '../gamification/models/user_progress_bundle.dart';
 import 'data/academy_repository.dart';
 import 'models/academy_models.dart';
 import 'services/academy_search_service.dart';
+import 'services/academy_site_catalog_service.dart';
 import 'services/academy_xp_service.dart';
 
 final academyRepositoryProvider = Provider<AcademyRepository>((Ref ref) {
   return AcademyRepository();
+});
+
+final academySiteCatalogServiceProvider =
+    Provider<AcademySiteCatalogService>((Ref ref) {
+  return AcademySiteCatalogService();
 });
 
 final academyXpServiceProvider = Provider<AcademyXpService>((Ref ref) {
@@ -27,19 +33,47 @@ final academyXpRewardsProvider = FutureProvider<AcademyXpRewards>((Ref ref) {
   return ref.watch(academyRepositoryProvider).fetchXpRewards();
 });
 
-final academyCategoriesProvider =
-    FutureProvider<List<AcademyCategory>>((Ref ref) async {
-  return ref.watch(academyRepositoryProvider).fetchCategories();
-});
-
 final academyGuideSummariesProvider =
     FutureProvider<List<AcademyGuideSummary>>((Ref ref) async {
   final AcademyRepository repo = ref.watch(academyRepositoryProvider);
+  final AcademySiteCatalogService catalog =
+      ref.watch(academySiteCatalogServiceProvider);
+  List<AcademyGuideSummary> firestoreGuides = const <AcademyGuideSummary>[];
   try {
-    return await repo.fetchGuideSummaries();
+    firestoreGuides = await repo.fetchGuideSummaries(limit: 200);
   } catch (_) {
-    return repo.fetchCachedGuideSummaries();
+    firestoreGuides = await repo.fetchCachedGuideSummaries();
   }
+  final List<List<AcademyGuideSummary>> extras =
+      await Future.wait(<Future<List<AcademyGuideSummary>>>[
+    catalog.fetchRemoteCatalogGuides(),
+    catalog.fetchSitemapGuides(),
+    catalog.loadBundledGuides(),
+  ]);
+  return catalog.mergeGuides(
+    firestoreGuides: firestoreGuides,
+    remoteCatalog: extras[0],
+    sitemapGuides: extras[1],
+    bundledGuides: extras[2],
+  );
+});
+
+final academyCategoriesProvider =
+    FutureProvider<List<AcademyCategory>>((Ref ref) async {
+  final AcademyRepository repo = ref.watch(academyRepositoryProvider);
+  final AcademySiteCatalogService catalog =
+      ref.watch(academySiteCatalogServiceProvider);
+  List<AcademyCategory> firestoreCategories = const <AcademyCategory>[];
+  try {
+    firestoreCategories = await repo.fetchCategories();
+  } catch (_) {
+    firestoreCategories = const <AcademyCategory>[];
+  }
+  final List<AcademyCategory> bundled = await catalog.loadBundledCategories();
+  return catalog.mergeCategories(
+    firestoreCategories: firestoreCategories,
+    bundledCategories: bundled,
+  );
 });
 
 final academyPathsProvider = FutureProvider<List<AcademyPath>>((Ref ref) async {
@@ -122,8 +156,8 @@ final academyHomeSnapshotProvider =
     FutureProvider<AcademyHomeSnapshot>((Ref ref) async {
   final AcademyRepository repo = ref.watch(academyRepositoryProvider);
   final List<Object?> results = await Future.wait(<Future<Object?>>[
-    repo.fetchCategories(),
-    repo.fetchGuideSummaries(),
+    ref.watch(academyCategoriesProvider.future),
+    ref.watch(academyGuideSummariesProvider.future),
     repo.fetchPaths(),
     repo.fetchXpRewards(),
   ]);
@@ -202,8 +236,20 @@ Map<String, AcademyCategory> academyCategoriesById(
 }
 
 final academyGuideProvider =
-    FutureProvider.family<AcademyGuideSummary?, String>((Ref ref, String id) {
-  return ref.watch(academyRepositoryProvider).fetchGuideById(id);
+    FutureProvider.family<AcademyGuideSummary?, String>((Ref ref, String id) async {
+  final AcademyRepository repo = ref.watch(academyRepositoryProvider);
+  final AcademyGuideSummary? fromFirestore = await repo.fetchGuideById(id);
+  if (fromFirestore != null) {
+    return fromFirestore;
+  }
+  final List<AcademyGuideSummary> guides =
+      await ref.watch(academyGuideSummariesProvider.future);
+  for (final AcademyGuideSummary guide in guides) {
+    if (guide.id == id || guide.slug == id || guide.sitePath == '/$id') {
+      return guide;
+    }
+  }
+  return null;
 });
 
 final academyGuideLessonsProvider =

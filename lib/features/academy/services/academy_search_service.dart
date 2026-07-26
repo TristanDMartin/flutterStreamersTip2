@@ -10,7 +10,20 @@ class AcademySearchService {
   }) {
     final String normalized = query.trim().toLowerCase();
     if (normalized.isEmpty) {
-      return const <AcademySearchResult>[];
+      final List<AcademySearchResult> browse = guides
+          .map(
+            (AcademyGuideSummary guide) => AcademySearchResult(
+              guide: guide,
+              categoryName: categoriesById[guide.categoryId]?.name,
+              matchedFields: const <String>['browse'],
+            ),
+          )
+          .toList(growable: true)
+        ..sort(
+          (AcademySearchResult a, AcademySearchResult b) =>
+              a.guide.sortOrder.compareTo(b.guide.sortOrder),
+        );
+      return browse;
     }
     final List<AcademySearchResult> results = <AcademySearchResult>[];
     for (final AcademyGuideSummary guide in guides) {
@@ -44,7 +57,9 @@ class AcademySearchService {
       }
       final List<AcademyLessonSummary> lessons =
           lessonsByGuideId[guide.id] ?? const <AcademyLessonSummary>[];
-      if (lessons.any((AcademyLessonSummary l) => _contains(l.title, normalized))) {
+      if (lessons.any(
+        (AcademyLessonSummary l) => _contains(l.title, normalized),
+      )) {
         matched.add('lesson');
       }
       if (matched.isNotEmpty) {

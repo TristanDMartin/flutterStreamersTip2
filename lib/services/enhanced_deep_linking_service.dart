@@ -77,6 +77,12 @@ class EnhancedDeepLinkingService {
         await _handleChatLink(path, queryParams, context);
       } else if (path.startsWith('/discover')) {
         await _handleDiscoverLink(path, queryParams, context);
+      } else if (path.startsWith('/academy') ||
+          path == '/streamer-academy' ||
+          path.startsWith('/streamer-academy/')) {
+        await _handleAcademyLink(path, queryParams, context);
+      } else if (await _tryOpenWebsiteAcademyGuide(path, context)) {
+        return;
       } else {
         LoggingService.instance.warning(
           'Unknown deep link pattern: $path',
@@ -467,6 +473,161 @@ class EnhancedDeepLinkingService {
         await _showDeepLinkError(context, 'Failed to open discover');
       }
     }
+  }
+
+  Future<void> _handleAcademyLink(
+    String path,
+    Map<String, String> queryParams,
+    BuildContext context,
+  ) async {
+    try {
+      if (!context.mounted) {
+        return;
+      }
+      final List<String> segments =
+          path.split('/').where((String s) => s.isNotEmpty).toList();
+      if (segments.isEmpty ||
+          (segments.first == 'streamer-academy' && segments.length == 1)) {
+        await AppNavigator.openAcademy(context);
+        return;
+      }
+      if (segments.first == 'streamer-academy') {
+        await AppNavigator.openAcademy(context);
+        return;
+      }
+      if (segments.length <= 1) {
+        await AppNavigator.openAcademy(context);
+        return;
+      }
+      final String section = segments[1];
+      final String? resourceId =
+          segments.length > 2 ? segments[2] : queryParams['id'];
+      switch (section) {
+        case 'search':
+          await AppNavigator.openAcademySearch(context);
+        case 'saved':
+          await AppNavigator.openAcademySaved(context);
+        case 'progress':
+          await AppNavigator.openAcademyProgress(context);
+        case 'category':
+          if (resourceId != null && resourceId.isNotEmpty) {
+            await AppNavigator.openAcademyCategory(
+              context,
+              categoryId: resourceId,
+            );
+          } else {
+            await AppNavigator.openAcademy(context);
+          }
+        case 'path':
+          if (resourceId != null && resourceId.isNotEmpty) {
+            await AppNavigator.openAcademyPath(context, pathId: resourceId);
+          } else {
+            await AppNavigator.openAcademy(context);
+          }
+        case 'guide':
+          if (resourceId != null && resourceId.isNotEmpty) {
+            await AppNavigator.openAcademyGuide(context, guideId: resourceId);
+          } else {
+            await AppNavigator.openAcademy(context);
+          }
+        case 'lesson':
+          if (resourceId != null && resourceId.isNotEmpty) {
+            await AppNavigator.openAcademyLesson(
+              context,
+              lessonId: resourceId,
+              guideId: queryParams['guideId'],
+            );
+          } else {
+            await AppNavigator.openAcademy(context);
+          }
+        default:
+          await AppNavigator.openAcademy(context);
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling academy link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'Failed to open Streamer Academy');
+      }
+    }
+  }
+
+  /// Flat website Academy URLs like `/obs-setup` or `/twitch/growth`.
+  Future<bool> _tryOpenWebsiteAcademyGuide(
+    String path,
+    BuildContext context,
+  ) async {
+    final List<String> segments =
+        path.split('/').where((String s) => s.isNotEmpty).toList();
+    if (segments.isEmpty || segments.length > 2) {
+      return false;
+    }
+    const Set<String> excluded = <String>{
+      'about',
+      'pricing',
+      'ask-tippy',
+      'discover',
+      'creator-tools',
+      'tools',
+      'terms',
+      'privacy',
+      'dmca',
+      'cookie-policy',
+      'guidelines',
+      'contact-support',
+      'invite',
+      'user',
+      'video',
+      'hashtag',
+      'profile',
+      'chat',
+      'login',
+      'signup',
+      'dashboard',
+      'api',
+    };
+    if (excluded.contains(segments.first)) {
+      return false;
+    }
+    final String guideId = segments.join('-');
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
+          .collection('academyGuides')
+          .doc(guideId)
+          .get();
+      if (doc.exists) {
+        if (!context.mounted) {
+          return true;
+        }
+        await AppNavigator.openAcademyGuide(context, guideId: guideId);
+        return true;
+      }
+      final QuerySnapshot<Map<String, dynamic>> bySlug = await _firestore
+          .collection('academyGuides')
+          .where('slug', isEqualTo: segments.join('/'))
+          .limit(1)
+          .get();
+      if (bySlug.docs.isNotEmpty) {
+        if (!context.mounted) {
+          return true;
+        }
+        await AppNavigator.openAcademyGuide(
+          context,
+          guideId: bySlug.docs.first.id,
+        );
+        return true;
+      }
+    } catch (e) {
+      LoggingService.instance.debug(
+        'Academy flat-path lookup failed for $path: $e',
+        tag: 'EnhancedDeepLinkingService',
+      );
+    }
+    return false;
   }
 
   /// Handle unknown deep link patterns

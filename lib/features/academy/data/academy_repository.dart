@@ -69,7 +69,7 @@ class AcademyRepository {
 
   Future<List<AcademyGuideSummary>> fetchGuideSummaries({
     String? categoryId,
-    int limit = 40,
+    int limit = 200,
     DocumentSnapshot<Map<String, dynamic>>? startAfter,
   }) async {
     QuerySnapshot<Map<String, dynamic>> snap;
@@ -147,6 +147,9 @@ class AcademyRepository {
               keywords: _readStringListCached(data['keywords']),
               lessonCount: data['lessonCount'] as int? ?? 0,
               slug: data['slug']?.toString(),
+              webUrl: data['webUrl']?.toString(),
+              sitePath: data['sitePath']?.toString(),
+              contentMode: data['contentMode']?.toString() ?? 'native',
             );
           })
           .toList(growable: false);
@@ -157,18 +160,34 @@ class AcademyRepository {
   }
 
   Future<AcademyGuideSummary?> fetchGuideById(String guideId) async {
+    final String trimmed = guideId.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
     final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
         .collection(guidesCollection)
-        .doc(guideId)
+        .doc(trimmed)
         .get();
-    if (!doc.exists) {
-      return null;
+    if (doc.exists) {
+      final AcademyGuideSummary guide = AcademyGuideSummary.fromFirestore(doc);
+      if (guide.isPublished) {
+        return guide;
+      }
     }
-    final AcademyGuideSummary guide = AcademyGuideSummary.fromFirestore(doc);
-    if (!guide.isPublished) {
-      return null;
+    // Website flat slugs may differ slightly from doc ids (nested hubs).
+    final QuerySnapshot<Map<String, dynamic>> bySlug = await _firestore
+        .collection(guidesCollection)
+        .where('slug', isEqualTo: trimmed)
+        .limit(1)
+        .get();
+    if (bySlug.docs.isNotEmpty) {
+      final AcademyGuideSummary guide =
+          AcademyGuideSummary.fromFirestore(bySlug.docs.first);
+      if (guide.isPublished) {
+        return guide;
+      }
     }
-    return guide;
+    return null;
   }
 
   Future<List<AcademyLessonSummary>> fetchLessonSummariesForGuide(
@@ -450,6 +469,9 @@ class AcademyRepository {
       'keywords': guide.keywords,
       'lessonCount': guide.lessonCount,
       'slug': guide.slug,
+      'webUrl': guide.webUrl,
+      'sitePath': guide.sitePath,
+      'contentMode': guide.contentMode,
     };
   }
 }

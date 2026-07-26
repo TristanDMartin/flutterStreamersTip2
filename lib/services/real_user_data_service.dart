@@ -9,7 +9,6 @@ import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/trending_creator.dart';
 import '../services/logging_service.dart';
-import 'creator_follower_count_service.dart';
 import 'follows_service.dart';
 
 /// Helper class to track trending scores for creators
@@ -65,29 +64,7 @@ class RealUserDataService {
   RealUserDataService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final CreatorFollowerCountService _followerCountService =
-      CreatorFollowerCountService.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
-
-  Future<List<TrendingCreator>> _mergeTrendingCreatorFollowerCounts(
-    List<TrendingCreator> creators,
-    Map<String, Map<String, dynamic>> userDataByCreatorId,
-  ) async {
-    if (creators.isEmpty) {
-      return creators;
-    }
-    final List<TrendingCreator> merged = await Future.wait(
-      creators.map((TrendingCreator c) async {
-        final Map<String, dynamic>? fallback = userDataByCreatorId[c.id];
-        final int n = await _followerCountService.resolveCreatorFollowerCount(
-          c.id,
-          fallback,
-        );
-        return c.copyWith(followerCount: n);
-      }),
-    );
-    return merged;
-  }
 
   int _readTrendingCreatorLevel(Map<String, dynamic> data) {
     const List<String> keys = <String>[
@@ -240,7 +217,6 @@ class RealUserDataService {
         ..sort((a, b) => b.getFinalScore().compareTo(a.getFinalScore()));
 
       final List<TrendingCreator> trendingCreators = [];
-      final Map<String, Map<String, dynamic>> userDataByCreatorId = {};
       final List<TrendingCreator?> candidates = await Future.wait(
         sortedScores.take(limit * 2).map((TrendingCreatorScore score) async {
           try {
@@ -251,7 +227,6 @@ class RealUserDataService {
 
             final creatorData = creatorDoc.data()!;
 
-            userDataByCreatorId[score.creatorId] = creatorData;
             return TrendingCreator(
               id: score.creatorId,
               username: creatorData['username'] ?? 'Unknown',
@@ -280,10 +255,9 @@ class RealUserDataService {
       LoggingService.instance.debug(
           '✅ Loaded ${trendingCreators.length} trending creators based on video performance',
           tag: 'RealUserDataService');
-      return await _mergeTrendingCreatorFollowerCounts(
-        trendingCreators,
-        userDataByCreatorId,
-      );
+      // followerCount already set from users/{id} via UserCountFields — same
+      // source as StreamerCard UserStatsRow / profile.
+      return trendingCreators;
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error getting trending creators',
           tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
@@ -399,11 +373,6 @@ class RealUserDataService {
           .limit(limit)
           .get();
 
-      final Map<String, Map<String, dynamic>> userDataByCreatorId = {
-        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-            in snapshot.docs)
-          doc.id: doc.data(),
-      };
       final List<TrendingCreator> creators = snapshot.docs.map((doc) {
         final data = doc.data();
         return TrendingCreator(
@@ -421,10 +390,7 @@ class RealUserDataService {
       LoggingService.instance.debug(
           '✅ Loaded ${creators.length} fallback trending creators',
           tag: 'RealUserDataService');
-      return await _mergeTrendingCreatorFollowerCounts(
-        creators,
-        userDataByCreatorId,
-      );
+      return creators;
     } catch (e) {
       LoggingService.instance.error('Error getting fallback trending creators',
           tag: 'RealUserDataService', error: e);

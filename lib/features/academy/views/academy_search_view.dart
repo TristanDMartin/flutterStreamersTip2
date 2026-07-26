@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/support_shell_style.dart';
 import '../../../routing/app_navigator.dart';
 import '../academy_providers.dart';
 import '../models/academy_models.dart';
@@ -20,12 +21,16 @@ class _AcademySearchViewState extends ConsumerState<AcademySearchView> {
   final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
   List<AcademySearchResult> _results = const <AcademySearchResult>[];
-  bool _isSearching = false;
+  bool _isSearching = true;
+  bool _hasLoadedBrowse = false;
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onQueryChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_runSearch(''));
+    });
   }
 
   @override
@@ -38,7 +43,7 @@ class _AcademySearchViewState extends ConsumerState<AcademySearchView> {
   void _onQueryChanged() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), () {
-      _runSearch(_controller.text);
+      unawaited(_runSearch(_controller.text));
     });
   }
 
@@ -64,11 +69,14 @@ class _AcademySearchViewState extends ConsumerState<AcademySearchView> {
     setState(() {
       _results = results;
       _isSearching = false;
+      _hasLoadedBrowse = true;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool hasQuery = _controller.text.trim().isNotEmpty;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Search Academy')),
       body: Column(
@@ -79,15 +87,15 @@ class _AcademySearchViewState extends ConsumerState<AcademySearchView> {
             onChanged: (_) {},
           ),
           Expanded(
-            child: _isSearching
-                ? const AcademySkeletonList(itemCount: 3)
-                : _controller.text.trim().isEmpty
+            child: _isSearching && !_hasLoadedBrowse
+                ? const AcademySkeletonList(itemCount: 6)
+                : !hasQuery && _results.isEmpty && !_isSearching
                     ? const AcademyEmptyState(
-                        title: 'Find your next lesson',
+                        title: 'Academy pages are loading',
                         message:
-                            'Search guides, platforms, tools, and strategies.',
+                            'Guides from Streamer Academy will appear here.',
                       )
-                    : _results.isEmpty
+                    : hasQuery && _results.isEmpty && !_isSearching
                         ? const AcademyEmptyState(
                             title: 'No matches yet',
                             message:
@@ -98,12 +106,26 @@ class _AcademySearchViewState extends ConsumerState<AcademySearchView> {
                             padding: const EdgeInsets.all(
                               AcademyTokens.pagePadding,
                             ),
-                            itemCount: _results.length,
+                            itemCount: _results.length + 1,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 12),
                             itemBuilder: (BuildContext context, int index) {
+                              if (index == 0) {
+                                final String label = hasQuery
+                                    ? '${_results.length} result'
+                                        '${_results.length == 1 ? '' : 's'}'
+                                    : 'All Academy pages';
+                                return Text(
+                                  label,
+                                  style: TextStyle(
+                                    color: shell.muted,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                );
+                              }
                               final AcademySearchResult result =
-                                  _results[index];
+                                  _results[index - 1];
                               return AcademyGuideCard(
                                 title: result.guide.title,
                                 description: result.guide.description,

@@ -12,6 +12,24 @@
 | `academyPaths` | Quest-style learning paths |
 | `academyUserProgress` | Per-user reading/completion/saved state |
 | `academyConfig/xpRewards` | Configurable XP reward values |
+| `academyConfig/siteCatalog` | Synced website page index for auto-updating browse |
+
+**Website → app sync (auto-update):**
+
+```bash
+# Generate bundled catalog + write Firestore from website pageRegistry
+node scripts/sync_academy_from_website.js
+
+# Catalog JSON only (no Firebase credentials needed)
+node scripts/sync_academy_from_website.js --catalog-only
+```
+
+Sources:
+- `../streamerstipReact/lib/seo/pageRegistry.ts`
+- `../streamerstipReact/config/academyPaths.ts`
+- Output: Firestore guides/categories/paths + `assets/academy/site_catalog.json`
+
+The app also merges the live website sitemap at runtime, so newly published guide URLs can appear in Academy before the next sync.
 
 **Website API parity:** `https://streamerstip.com/api/academy/*` is not deployed yet (404). The app reads Firestore directly; when the website API is live, both platforms should continue using the same collections (or the API should proxy Firestore).
 

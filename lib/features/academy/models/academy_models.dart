@@ -83,6 +83,9 @@ class AcademyGuideSummary {
     this.keywords = const <String>[],
     this.lessonCount = 0,
     this.slug,
+    this.webUrl,
+    this.sitePath,
+    this.contentMode = 'native',
     this.updatedAt,
   });
 
@@ -102,16 +105,45 @@ class AcademyGuideSummary {
   final List<String> keywords;
   final int lessonCount;
   final String? slug;
+  final String? webUrl;
+  final String? sitePath;
+  final String contentMode;
   final DateTime? updatedAt;
 
   String get imageUrl => thumbnailUrl ?? coverImageUrl ?? '';
+
+  bool get isWebsiteBacked =>
+      contentMode == 'website' ||
+      (webUrl != null && webUrl!.trim().isNotEmpty && lessonCount <= 0);
+
+  String get shareUrl {
+    final String? site = webUrl?.trim();
+    if (site != null && site.isNotEmpty) {
+      return site;
+    }
+    final String pathSlug = (slug ?? id).trim();
+    if (pathSlug.isEmpty) {
+      return 'https://streamerstip.com/streamer-academy';
+    }
+    return 'https://streamerstip.com/$pathSlug';
+  }
 
   factory AcademyGuideSummary.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
+    return AcademyGuideSummary.fromMap(doc.id, data);
+  }
+
+  factory AcademyGuideSummary.fromMap(
+    String id,
+    Map<String, dynamic> data,
+  ) {
+    final String? resolvedWebUrl = _readString(data['webUrl']) ??
+        _readString(data['url']) ??
+        _webUrlFromSitePath(_readString(data['sitePath']));
     return AcademyGuideSummary(
-      id: doc.id,
+      id: id,
       title: _readString(data['title']) ?? 'Guide',
       description: _readString(data['description']) ?? '',
       categoryId: _readString(data['categoryId']) ?? '',
@@ -127,6 +159,10 @@ class AcademyGuideSummary {
       keywords: _readStringList(data['keywords']),
       lessonCount: _readInt(data['lessonCount']),
       slug: _readString(data['slug']),
+      webUrl: resolvedWebUrl,
+      sitePath: _readString(data['sitePath']),
+      contentMode: _readString(data['contentMode']) ??
+          (resolvedWebUrl != null ? 'website' : 'native'),
       updatedAt: _readTimestamp(data['updatedAt']),
     );
   }
@@ -512,6 +548,18 @@ String? _readString(dynamic value) {
   }
   final String s = value.toString().trim();
   return s.isEmpty ? null : s;
+}
+
+String? _webUrlFromSitePath(String? sitePath) {
+  if (sitePath == null || sitePath.isEmpty) {
+    return null;
+  }
+  if (sitePath.startsWith('http://') || sitePath.startsWith('https://')) {
+    return sitePath;
+  }
+  final String normalized =
+      sitePath.startsWith('/') ? sitePath : '/$sitePath';
+  return 'https://streamerstip.com$normalized';
 }
 
 int _readInt(dynamic value, {int fallback = 0}) {

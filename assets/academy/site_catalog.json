@@ -1,0 +1,2417 @@
+{
+  "version": 1,
+  "origin": "https://streamerstip.com",
+  "generatedAt": "2026-07-26T01:34:50.390Z",
+  "guideCount": 71,
+  "categories": [
+    {
+      "id": "beginner",
+      "name": "Beginner",
+      "description": "Launch your channel and run your first streams with confidence.",
+      "iconKey": "rocket",
+      "sortOrder": 10,
+      "keywords": [
+        "beginner",
+        "first stream",
+        "setup"
+      ],
+      "guideCount": 16,
+      "slug": "beginner",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "intermediate",
+      "name": "Intermediate",
+      "description": "Level up overlays, audio, alerts, and channel branding.",
+      "iconKey": "settings",
+      "sortOrder": 20,
+      "keywords": [
+        "overlays",
+        "alerts",
+        "audio"
+      ],
+      "guideCount": 7,
+      "slug": "intermediate",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "advanced",
+      "name": "Advanced",
+      "description": "Dual PC, NDI, automation, and pro audio workflows.",
+      "iconKey": "trending",
+      "sortOrder": 30,
+      "keywords": [
+        "dual pc",
+        "ndi",
+        "automation"
+      ],
+      "guideCount": 7,
+      "slug": "advanced",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch",
+      "name": "Twitch",
+      "description": "Twitch setup, growth, monetization, and channel tools.",
+      "iconKey": "twitch",
+      "sortOrder": 40,
+      "keywords": [
+        "twitch"
+      ],
+      "guideCount": 11,
+      "slug": "twitch",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "description": "YouTube Live, Shorts, analytics, and memberships.",
+      "iconKey": "youtube",
+      "sortOrder": 50,
+      "keywords": [
+        "youtube"
+      ],
+      "guideCount": 4,
+      "slug": "youtube",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick",
+      "name": "Kick",
+      "description": "Kick setup, growth, chat, and monetization.",
+      "iconKey": "kick",
+      "sortOrder": 60,
+      "keywords": [
+        "kick"
+      ],
+      "guideCount": 7,
+      "slug": "kick",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "tiktok",
+      "name": "TikTok",
+      "description": "TikTok Live, clips, gifts, and cross-platform promotion.",
+      "iconKey": "tiktok",
+      "sortOrder": 70,
+      "keywords": [
+        "tiktok"
+      ],
+      "guideCount": 6,
+      "slug": "tiktok",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "obs-and-setup",
+      "name": "OBS & Setup",
+      "description": "OBS, scenes, bitrate, cameras, and stream quality.",
+      "iconKey": "obs",
+      "sortOrder": 80,
+      "keywords": [
+        "obs",
+        "bitrate",
+        "webcam"
+      ],
+      "guideCount": 1,
+      "slug": "obs-and-setup",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "growth",
+      "name": "Growth & Strategy",
+      "description": "Content strategy, calendars, and audience growth.",
+      "iconKey": "growth",
+      "sortOrder": 90,
+      "keywords": [
+        "growth",
+        "content strategy"
+      ],
+      "guideCount": 8,
+      "slug": "growth",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "equipment",
+      "name": "Equipment",
+      "description": "Mics, cameras, Stream Deck, and creator gear.",
+      "iconKey": "mic",
+      "sortOrder": 100,
+      "keywords": [
+        "microphone",
+        "camera",
+        "peripherals"
+      ],
+      "guideCount": 4,
+      "slug": "equipment",
+      "isPublished": true,
+      "status": "published"
+    }
+  ],
+  "guides": [
+    {
+      "id": "featured-guides",
+      "title": "Featured Creator Guides",
+      "description": "Curated 7-day learning paths for new and growing creators.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 10,
+      "tags": [
+        "hub",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "featured guides"
+      ],
+      "lessonCount": 0,
+      "slug": "featured-guides",
+      "webUrl": "https://streamerstip.com/featured-guides",
+      "sitePath": "/featured-guides",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "new-to-streaming",
+      "title": "Complete Beginner Streaming Guide",
+      "description": "Everything you need to launch your first stream with the right setup and habits.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 20,
+      "tags": [
+        "hub",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "new to streaming"
+      ],
+      "lessonCount": 0,
+      "slug": "new-to-streaming",
+      "webUrl": "https://streamerstip.com/new-to-streaming",
+      "sitePath": "/new-to-streaming",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "peripherals",
+      "title": "Best Streaming Equipment",
+      "description": "Microphones, cameras, capture cards, and gear recommendations for streamers.",
+      "categoryId": "equipment",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 30,
+      "tags": [
+        "hub",
+        "equipment"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "peripherals"
+      ],
+      "lessonCount": 0,
+      "slug": "peripherals",
+      "webUrl": "https://streamerstip.com/peripherals",
+      "sitePath": "/peripherals",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "obs-setup",
+      "title": "Best OBS Settings for Streaming",
+      "description": "Optimize OBS Studio for stable streams with the right bitrate, encoder, and scene setup.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 40,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "obs setup"
+      ],
+      "lessonCount": 0,
+      "slug": "obs-setup",
+      "webUrl": "https://streamerstip.com/obs-setup",
+      "sitePath": "/obs-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "microphone-setup",
+      "title": "Best Streaming Microphone Setup",
+      "description": "Choose and configure the best microphone for clear, professional stream audio.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 50,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "microphone setup"
+      ],
+      "lessonCount": 0,
+      "slug": "microphone-setup",
+      "webUrl": "https://streamerstip.com/microphone-setup",
+      "sitePath": "/microphone-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "webcam-configuration",
+      "title": "Best Streaming Camera Setup",
+      "description": "Webcam and camera settings for a sharp, well-lit face cam on stream.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 60,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "webcam configuration"
+      ],
+      "lessonCount": 0,
+      "slug": "webcam-configuration",
+      "webUrl": "https://streamerstip.com/webcam-configuration",
+      "sitePath": "/webcam-configuration",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-account-setup",
+      "title": "How to Start Streaming on Twitch",
+      "description": "Set up your Twitch account, channel branding, and first broadcast the right way.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 70,
+      "tags": [
+        "guide",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch account setup"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch-account-setup",
+      "webUrl": "https://streamerstip.com/twitch-account-setup",
+      "sitePath": "/twitch-account-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "youtube-live-setup",
+      "title": "YouTube Live Streaming Setup Guide",
+      "description": "Configure YouTube Live for gaming streams, shorts repurposing, and channel growth.",
+      "categoryId": "youtube",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 80,
+      "tags": [
+        "guide",
+        "youtube"
+      ],
+      "platforms": [
+        "YouTube"
+      ],
+      "keywords": [
+        "youtube live setup"
+      ],
+      "lessonCount": 0,
+      "slug": "youtube-live-setup",
+      "webUrl": "https://streamerstip.com/youtube-live-setup",
+      "sitePath": "/youtube-live-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick-account-setup",
+      "title": "How to Start Streaming on Kick",
+      "description": "Create and configure your Kick channel for growth from day one.",
+      "categoryId": "kick",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 90,
+      "tags": [
+        "guide",
+        "kick"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "kick account setup"
+      ],
+      "lessonCount": 0,
+      "slug": "kick-account-setup",
+      "webUrl": "https://streamerstip.com/kick-account-setup",
+      "sitePath": "/kick-account-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "tiktok-live-setup",
+      "title": "TikTok Live Setup Guide",
+      "description": "Go live on TikTok with the right settings, engagement tactics, and clip strategy.",
+      "categoryId": "tiktok",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 100,
+      "tags": [
+        "guide",
+        "tiktok"
+      ],
+      "platforms": [
+        "TikTok"
+      ],
+      "keywords": [
+        "tiktok live setup"
+      ],
+      "lessonCount": 0,
+      "slug": "tiktok-live-setup",
+      "webUrl": "https://streamerstip.com/tiktok-live-setup",
+      "sitePath": "/tiktok-live-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "facebook-account-setup",
+      "title": "Facebook Gaming Setup Guide",
+      "description": "Set up Facebook Gaming for live streams and community building.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 110,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "facebook account setup"
+      ],
+      "lessonCount": 0,
+      "slug": "facebook-account-setup",
+      "webUrl": "https://streamerstip.com/facebook-account-setup",
+      "sitePath": "/facebook-account-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "content-strategy",
+      "title": "Content Strategy for Streamers",
+      "description": "Build a repeatable content system across live streams, shorts, and social clips.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 120,
+      "tags": [
+        "guide",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "content strategy"
+      ],
+      "lessonCount": 0,
+      "slug": "content-strategy",
+      "webUrl": "https://streamerstip.com/content-strategy",
+      "sitePath": "/content-strategy",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "stream-optimization",
+      "title": "Stream Optimization Guide",
+      "description": "Improve stream quality, engagement, and discoverability with proven optimizations.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 130,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "stream optimization"
+      ],
+      "lessonCount": 0,
+      "slug": "stream-optimization",
+      "webUrl": "https://streamerstip.com/stream-optimization",
+      "sitePath": "/stream-optimization",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "streaming-etiquette",
+      "title": "Streaming Etiquette Guide",
+      "description": "Community standards and best practices for professional, welcoming streams.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 140,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "streaming etiquette"
+      ],
+      "lessonCount": 0,
+      "slug": "streaming-etiquette",
+      "webUrl": "https://streamerstip.com/streaming-etiquette",
+      "sitePath": "/streaming-etiquette",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "cross-platform-promotion",
+      "title": "Cross-Platform Promotion for Creators",
+      "description": "Repurpose streams into TikTok, YouTube Shorts, and social clips that drive growth.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 150,
+      "tags": [
+        "guide",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "cross platform promotion"
+      ],
+      "lessonCount": 0,
+      "slug": "cross-platform-promotion",
+      "webUrl": "https://streamerstip.com/cross-platform-promotion",
+      "sitePath": "/cross-platform-promotion",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "creating-accounts",
+      "title": "Creating Creator Accounts",
+      "description": "Set up accounts across Twitch, YouTube, TikTok, and Kick in the right order.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 160,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "creating accounts"
+      ],
+      "lessonCount": 0,
+      "slug": "creating-accounts",
+      "webUrl": "https://streamerstip.com/creating-accounts",
+      "sitePath": "/creating-accounts",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "affiliate-partner-requirements",
+      "title": "Twitch Affiliate & Partner Requirements",
+      "description": "Exact requirements and timelines for Twitch Affiliate and Partner status in 2026.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 170,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "affiliate partner requirements"
+      ],
+      "lessonCount": 0,
+      "slug": "affiliate-partner-requirements",
+      "webUrl": "https://streamerstip.com/affiliate-partner-requirements",
+      "sitePath": "/affiliate-partner-requirements",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "audio-mixing-basics",
+      "title": "Audio Mixing Basics for Streamers",
+      "description": "Balance game, voice, and music audio for a professional stream sound.",
+      "categoryId": "intermediate",
+      "difficulty": "intermediate",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 180,
+      "tags": [
+        "guide",
+        "intermediate"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "audio mixing basics"
+      ],
+      "lessonCount": 0,
+      "slug": "audio-mixing-basics",
+      "webUrl": "https://streamerstip.com/audio-mixing-basics",
+      "sitePath": "/audio-mixing-basics",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "audio-routing",
+      "title": "Audio Routing for Streamers",
+      "description": "Route audio between OBS, interfaces, and apps without echo or drift.",
+      "categoryId": "advanced",
+      "difficulty": "advanced",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 190,
+      "tags": [
+        "guide",
+        "advanced"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "audio routing"
+      ],
+      "lessonCount": 0,
+      "slug": "audio-routing",
+      "webUrl": "https://streamerstip.com/audio-routing",
+      "sitePath": "/audio-routing",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "audio-routing-wave-link",
+      "title": "Elgato Wave Link Audio Routing",
+      "description": "Configure Wave Link for clean mic and game audio on stream.",
+      "categoryId": "advanced",
+      "difficulty": "advanced",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 200,
+      "tags": [
+        "guide",
+        "advanced"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "audio routing wave link"
+      ],
+      "lessonCount": 0,
+      "slug": "audio-routing-wave-link",
+      "webUrl": "https://streamerstip.com/audio-routing-wave-link",
+      "sitePath": "/audio-routing-wave-link",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "bitrate-optimization",
+      "title": "Bitrate Optimization for Streaming",
+      "description": "Pick the right bitrate and encoder settings for Twitch, Kick, and YouTube.",
+      "categoryId": "intermediate",
+      "difficulty": "intermediate",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 210,
+      "tags": [
+        "guide",
+        "intermediate"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "bitrate optimization"
+      ],
+      "lessonCount": 0,
+      "slug": "bitrate-optimization",
+      "webUrl": "https://streamerstip.com/bitrate-optimization",
+      "sitePath": "/bitrate-optimization",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "channel-points-setup",
+      "title": "Twitch Channel Points Setup",
+      "description": "Create rewards and channel point redemptions that boost engagement.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 220,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "channel points setup"
+      ],
+      "lessonCount": 0,
+      "slug": "channel-points-setup",
+      "webUrl": "https://streamerstip.com/channel-points-setup",
+      "sitePath": "/channel-points-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "chatbot-integration",
+      "title": "Stream Chatbot Integration Guide",
+      "description": "Set up chatbots for moderation, commands, and engagement automation.",
+      "categoryId": "intermediate",
+      "difficulty": "intermediate",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 230,
+      "tags": [
+        "guide",
+        "intermediate"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "chatbot integration"
+      ],
+      "lessonCount": 0,
+      "slug": "chatbot-integration",
+      "webUrl": "https://streamerstip.com/chatbot-integration",
+      "sitePath": "/chatbot-integration",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "custom-overlays",
+      "title": "Custom Stream Overlays Guide",
+      "description": "Design overlays that look professional without overwhelming your gameplay.",
+      "categoryId": "intermediate",
+      "difficulty": "intermediate",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 240,
+      "tags": [
+        "guide",
+        "intermediate"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "custom overlays"
+      ],
+      "lessonCount": 0,
+      "slug": "custom-overlays",
+      "webUrl": "https://streamerstip.com/custom-overlays",
+      "sitePath": "/custom-overlays",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "dual-pc-streaming-setup",
+      "title": "Dual PC Streaming Setup",
+      "description": "Configure a dedicated streaming PC for maximum quality and stability.",
+      "categoryId": "advanced",
+      "difficulty": "advanced",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 250,
+      "tags": [
+        "guide",
+        "advanced"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "dual pc streaming setup"
+      ],
+      "lessonCount": 0,
+      "slug": "dual-pc-streaming-setup",
+      "webUrl": "https://streamerstip.com/dual-pc-streaming-setup",
+      "sitePath": "/dual-pc-streaming-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "membership-setup",
+      "title": "Channel Membership Setup",
+      "description": "Launch memberships and subscriber perks across streaming platforms.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 260,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "membership setup"
+      ],
+      "lessonCount": 0,
+      "slug": "membership-setup",
+      "webUrl": "https://streamerstip.com/membership-setup",
+      "sitePath": "/membership-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "ndi-configuration",
+      "title": "NDI Configuration for Streaming",
+      "description": "Use NDI to send video and audio between PCs with low latency.",
+      "categoryId": "advanced",
+      "difficulty": "advanced",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 270,
+      "tags": [
+        "guide",
+        "advanced"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "ndi configuration"
+      ],
+      "lessonCount": 0,
+      "slug": "ndi-configuration",
+      "webUrl": "https://streamerstip.com/ndi-configuration",
+      "sitePath": "/ndi-configuration",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "overlay-setup",
+      "title": "Stream Overlay Setup Guide",
+      "description": "Add alerts, overlays, and widgets to OBS without hurting performance.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 280,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "overlay setup"
+      ],
+      "lessonCount": 0,
+      "slug": "overlay-setup",
+      "webUrl": "https://streamerstip.com/overlay-setup",
+      "sitePath": "/overlay-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "professional-audio-processing",
+      "title": "Professional Audio Processing for Streams",
+      "description": "Compressors, noise gates, and EQ settings for broadcast-quality voice.",
+      "categoryId": "advanced",
+      "difficulty": "advanced",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 290,
+      "tags": [
+        "guide",
+        "advanced"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "professional audio processing"
+      ],
+      "lessonCount": 0,
+      "slug": "professional-audio-processing",
+      "webUrl": "https://streamerstip.com/professional-audio-processing",
+      "sitePath": "/professional-audio-processing",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "scene-transitions",
+      "title": "OBS Scene Transitions Guide",
+      "description": "Smooth scene changes that keep viewers engaged between segments.",
+      "categoryId": "intermediate",
+      "difficulty": "intermediate",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 300,
+      "tags": [
+        "guide",
+        "intermediate"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "scene transitions"
+      ],
+      "lessonCount": 0,
+      "slug": "scene-transitions",
+      "webUrl": "https://streamerstip.com/scene-transitions",
+      "sitePath": "/scene-transitions",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "stream-alerts-setup",
+      "title": "Stream Alerts Setup Guide",
+      "description": "Configure follow, sub, and donation alerts that fit your brand.",
+      "categoryId": "intermediate",
+      "difficulty": "intermediate",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 310,
+      "tags": [
+        "guide",
+        "intermediate"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "stream alerts setup"
+      ],
+      "lessonCount": 0,
+      "slug": "stream-alerts-setup",
+      "webUrl": "https://streamerstip.com/stream-alerts-setup",
+      "sitePath": "/stream-alerts-setup",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "stream-automation",
+      "title": "Stream Automation Guide",
+      "description": "Automate scenes, titles, and workflows to save time every broadcast.",
+      "categoryId": "advanced",
+      "difficulty": "advanced",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 320,
+      "tags": [
+        "guide",
+        "advanced"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "stream automation"
+      ],
+      "lessonCount": 0,
+      "slug": "stream-automation",
+      "webUrl": "https://streamerstip.com/stream-automation",
+      "sitePath": "/stream-automation",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "super-chat-features",
+      "title": "YouTube Super Chat Features",
+      "description": "Use Super Chat and memberships to monetize live YouTube streams.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 330,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "super chat features"
+      ],
+      "lessonCount": 0,
+      "slug": "super-chat-features",
+      "webUrl": "https://streamerstip.com/super-chat-features",
+      "sitePath": "/super-chat-features",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "tiktok-content-creation",
+      "title": "TikTok Gaming Growth Guide",
+      "description": "Create gaming clips and live content that grows on TikTok in 2026.",
+      "categoryId": "tiktok",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 340,
+      "tags": [
+        "guide",
+        "tiktok"
+      ],
+      "platforms": [
+        "TikTok"
+      ],
+      "keywords": [
+        "tiktok content creation"
+      ],
+      "lessonCount": 0,
+      "slug": "tiktok-content-creation",
+      "webUrl": "https://streamerstip.com/tiktok-content-creation",
+      "sitePath": "/tiktok-content-creation",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "tiktok-gift-system",
+      "title": "TikTok Gift System Guide",
+      "description": "Understand TikTok gifts and live monetization for gaming creators.",
+      "categoryId": "tiktok",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 350,
+      "tags": [
+        "guide",
+        "tiktok"
+      ],
+      "platforms": [
+        "TikTok"
+      ],
+      "keywords": [
+        "tiktok gift system"
+      ],
+      "lessonCount": 0,
+      "slug": "tiktok-gift-system",
+      "webUrl": "https://streamerstip.com/tiktok-gift-system",
+      "sitePath": "/tiktok-gift-system",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "tiktok-live-engagement",
+      "title": "TikTok Live Engagement Guide",
+      "description": "Keep viewers watching and interacting during TikTok live streams.",
+      "categoryId": "tiktok",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 360,
+      "tags": [
+        "guide",
+        "tiktok"
+      ],
+      "platforms": [
+        "TikTok"
+      ],
+      "keywords": [
+        "tiktok live engagement"
+      ],
+      "lessonCount": 0,
+      "slug": "tiktok-live-engagement",
+      "webUrl": "https://streamerstip.com/tiktok-live-engagement",
+      "sitePath": "/tiktok-live-engagement",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "tiktok-mobile-streaming-tips",
+      "title": "TikTok Mobile Streaming Tips",
+      "description": "Stream from mobile with better quality, stability, and engagement.",
+      "categoryId": "tiktok",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 370,
+      "tags": [
+        "guide",
+        "tiktok"
+      ],
+      "platforms": [
+        "TikTok"
+      ],
+      "keywords": [
+        "tiktok mobile streaming tips"
+      ],
+      "lessonCount": 0,
+      "slug": "tiktok-mobile-streaming-tips",
+      "webUrl": "https://streamerstip.com/tiktok-mobile-streaming-tips",
+      "sitePath": "/tiktok-mobile-streaming-tips",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-analytics",
+      "title": "Twitch Analytics Guide",
+      "description": "Read Twitch stats to improve retention, growth, and stream scheduling.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 380,
+      "tags": [
+        "guide",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch analytics"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch-analytics",
+      "webUrl": "https://streamerstip.com/twitch-analytics",
+      "sitePath": "/twitch-analytics",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-chat-commands",
+      "title": "Twitch Chat Commands Guide",
+      "description": "Essential chat commands and bot setups for Twitch moderators.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 390,
+      "tags": [
+        "guide",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch chat commands"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch-chat-commands",
+      "webUrl": "https://streamerstip.com/twitch-chat-commands",
+      "sitePath": "/twitch-chat-commands",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-extensions",
+      "title": "Twitch Extensions Guide",
+      "description": "Extensions that boost engagement, loyalty, and channel growth.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 400,
+      "tags": [
+        "guide",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch extensions"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch-extensions",
+      "webUrl": "https://streamerstip.com/twitch-extensions",
+      "sitePath": "/twitch-extensions",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-inspector",
+      "title": "Twitch Inspector Tool Guide",
+      "description": "Diagnose dropped frames and connection issues before you go live.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 410,
+      "tags": [
+        "guide",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch inspector"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch-inspector",
+      "webUrl": "https://streamerstip.com/twitch-inspector",
+      "sitePath": "/twitch-inspector",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-panels-design",
+      "title": "Twitch Panels Design Guide",
+      "description": "Design channel panels that convert visitors into followers.",
+      "categoryId": "intermediate",
+      "difficulty": "intermediate",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 420,
+      "tags": [
+        "guide",
+        "intermediate"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch panels design"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch-panels-design",
+      "webUrl": "https://streamerstip.com/twitch-panels-design",
+      "sitePath": "/twitch-panels-design",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "youtube-analytics",
+      "title": "YouTube Analytics for Creators",
+      "description": "Use YouTube analytics to grow Shorts, live streams, and VOD content.",
+      "categoryId": "youtube",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 430,
+      "tags": [
+        "guide",
+        "youtube"
+      ],
+      "platforms": [
+        "YouTube"
+      ],
+      "keywords": [
+        "youtube analytics"
+      ],
+      "lessonCount": 0,
+      "slug": "youtube-analytics",
+      "webUrl": "https://streamerstip.com/youtube-analytics",
+      "sitePath": "/youtube-analytics",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick-chat-features",
+      "title": "Kick Chat Features Guide",
+      "description": "Master Kick chat tools for moderation and community building.",
+      "categoryId": "kick",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 440,
+      "tags": [
+        "guide",
+        "kick"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "kick chat features"
+      ],
+      "lessonCount": 0,
+      "slug": "kick-chat-features",
+      "webUrl": "https://streamerstip.com/kick-chat-features",
+      "sitePath": "/kick-chat-features",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick-community-building",
+      "title": "Kick Growth Guide",
+      "description": "Grow on Kick with consistent streams, networking, and clip strategy.",
+      "categoryId": "kick",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 450,
+      "tags": [
+        "guide",
+        "kick"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "kick community building"
+      ],
+      "lessonCount": 0,
+      "slug": "kick-community-building",
+      "webUrl": "https://streamerstip.com/kick-community-building",
+      "sitePath": "/kick-community-building",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick-monetization-options",
+      "title": "Kick Monetization Guide",
+      "description": "Monetize on Kick with subs, donations, and sponsorship-ready growth.",
+      "categoryId": "kick",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 460,
+      "tags": [
+        "guide",
+        "kick"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "kick monetization options"
+      ],
+      "lessonCount": 0,
+      "slug": "kick-monetization-options",
+      "webUrl": "https://streamerstip.com/kick-monetization-options",
+      "sitePath": "/kick-monetization-options",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick-platform-tools",
+      "title": "Kick Platform Tools Guide",
+      "description": "Platform features every Kick streamer should configure.",
+      "categoryId": "kick",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 470,
+      "tags": [
+        "guide",
+        "kick"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "kick platform tools"
+      ],
+      "lessonCount": 0,
+      "slug": "kick-platform-tools",
+      "webUrl": "https://streamerstip.com/kick-platform-tools",
+      "sitePath": "/kick-platform-tools",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick-stream-settings",
+      "title": "Kick Stream Settings Guide",
+      "description": "Optimal Kick stream settings for quality and low-latency broadcasts.",
+      "categoryId": "kick",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 480,
+      "tags": [
+        "guide",
+        "kick"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "kick stream settings"
+      ],
+      "lessonCount": 0,
+      "slug": "kick-stream-settings",
+      "webUrl": "https://streamerstip.com/kick-stream-settings",
+      "sitePath": "/kick-stream-settings",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "advanced-scene-management",
+      "title": "Advanced OBS Scene Management",
+      "description": "Organize complex OBS scenes for multicam, BRB, and event streams.",
+      "categoryId": "advanced",
+      "difficulty": "advanced",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 490,
+      "tags": [
+        "guide",
+        "advanced"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "advanced scene management"
+      ],
+      "lessonCount": 0,
+      "slug": "advanced-scene-management",
+      "webUrl": "https://streamerstip.com/advanced-scene-management",
+      "sitePath": "/advanced-scene-management",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "how-to-start-streaming-on-twitch",
+      "title": "How to Start Streaming on Twitch in 2026",
+      "description": "Step-by-step guide to your first Twitch stream — equipment, OBS, and growth basics.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 500,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "how to start streaming on twitch"
+      ],
+      "lessonCount": 0,
+      "slug": "how-to-start-streaming-on-twitch",
+      "webUrl": "https://streamerstip.com/how-to-start-streaming-on-twitch",
+      "sitePath": "/how-to-start-streaming-on-twitch",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "best-obs-settings-for-twitch",
+      "title": "Best OBS Settings for Twitch",
+      "description": "Recommended OBS bitrate, encoder, and output settings for stable Twitch streams.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 510,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "best obs settings for twitch"
+      ],
+      "lessonCount": 0,
+      "slug": "best-obs-settings-for-twitch",
+      "webUrl": "https://streamerstip.com/best-obs-settings-for-twitch",
+      "sitePath": "/best-obs-settings-for-twitch",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "best-obs-settings-for-kick",
+      "title": "Best OBS Settings for Kick",
+      "description": "Optimal OBS output and video settings for high-quality Kick streams.",
+      "categoryId": "beginner",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 520,
+      "tags": [
+        "guide",
+        "beginner"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "best obs settings for kick"
+      ],
+      "lessonCount": 0,
+      "slug": "best-obs-settings-for-kick",
+      "webUrl": "https://streamerstip.com/best-obs-settings-for-kick",
+      "sitePath": "/best-obs-settings-for-kick",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "how-to-grow-on-twitch",
+      "title": "How to Grow on Twitch in 2026",
+      "description": "Proven Twitch growth tactics: schedule, networking, clips, and retention.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 530,
+      "tags": [
+        "guide",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "how to grow on twitch"
+      ],
+      "lessonCount": 0,
+      "slug": "how-to-grow-on-twitch",
+      "webUrl": "https://streamerstip.com/how-to-grow-on-twitch",
+      "sitePath": "/how-to-grow-on-twitch",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "best-streaming-microphone",
+      "title": "Best Budget Microphone for Streamers",
+      "description": "Top USB and XLR mics for streamers at every budget in 2026.",
+      "categoryId": "equipment",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 540,
+      "tags": [
+        "guide",
+        "equipment"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "best streaming microphone"
+      ],
+      "lessonCount": 0,
+      "slug": "best-streaming-microphone",
+      "webUrl": "https://streamerstip.com/best-streaming-microphone",
+      "sitePath": "/best-streaming-microphone",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "best-streaming-camera",
+      "title": "Best Webcam for Streaming",
+      "description": "Best webcams and cameras for face cam quality on Twitch and YouTube.",
+      "categoryId": "equipment",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 550,
+      "tags": [
+        "guide",
+        "equipment"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "best streaming camera"
+      ],
+      "lessonCount": 0,
+      "slug": "best-streaming-camera",
+      "webUrl": "https://streamerstip.com/best-streaming-camera",
+      "sitePath": "/best-streaming-camera",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "stream-deck-guide",
+      "title": "Stream Deck Setup Guide",
+      "description": "Configure Elgato Stream Deck for faster scene switching and stream control.",
+      "categoryId": "equipment",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 560,
+      "tags": [
+        "guide",
+        "equipment"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "stream deck guide"
+      ],
+      "lessonCount": 0,
+      "slug": "stream-deck-guide",
+      "webUrl": "https://streamerstip.com/stream-deck-guide",
+      "sitePath": "/stream-deck-guide",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "best-time-to-stream",
+      "title": "Best Time to Stream on Twitch",
+      "description": "Find your optimal stream schedule based on audience, timezone, and niche.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 570,
+      "tags": [
+        "guide",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "best time to stream"
+      ],
+      "lessonCount": 0,
+      "slug": "best-time-to-stream",
+      "webUrl": "https://streamerstip.com/best-time-to-stream",
+      "sitePath": "/best-time-to-stream",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "content-calendar-for-streamers",
+      "title": "Content Calendar for Streamers",
+      "description": "Plan streams, shorts, and posts with a weekly creator content calendar.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 580,
+      "tags": [
+        "guide",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "content calendar for streamers"
+      ],
+      "lessonCount": 0,
+      "slug": "content-calendar-for-streamers",
+      "webUrl": "https://streamerstip.com/content-calendar-for-streamers",
+      "sitePath": "/content-calendar-for-streamers",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-growth-checklist",
+      "title": "Twitch Growth Checklist",
+      "description": "A 30-point checklist to audit and improve your Twitch channel growth.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 590,
+      "tags": [
+        "guide",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch growth checklist"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch-growth-checklist",
+      "webUrl": "https://streamerstip.com/twitch-growth-checklist",
+      "sitePath": "/twitch-growth-checklist",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "youtube-shorts-guide",
+      "title": "YouTube Shorts Guide for Streamers",
+      "description": "Turn stream highlights into YouTube Shorts that drive subscribers.",
+      "categoryId": "youtube",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 600,
+      "tags": [
+        "guide",
+        "youtube"
+      ],
+      "platforms": [
+        "YouTube"
+      ],
+      "keywords": [
+        "youtube shorts guide"
+      ],
+      "lessonCount": 0,
+      "slug": "youtube-shorts-guide",
+      "webUrl": "https://streamerstip.com/youtube-shorts-guide",
+      "sitePath": "/youtube-shorts-guide",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "creator-score-explained",
+      "title": "Creator Score Explained",
+      "description": "Learn how Creator Score measures your growth, consistency, and engagement.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 610,
+      "tags": [
+        "guide",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "creator score explained"
+      ],
+      "lessonCount": 0,
+      "slug": "creator-score-explained",
+      "webUrl": "https://streamerstip.com/creator-score-explained",
+      "sitePath": "/creator-score-explained",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "complete-beginner-streaming-guide",
+      "title": "Complete Beginner Streaming Guide",
+      "description": "From zero to your first 10 streams — setup, software, and growth habits.",
+      "categoryId": "growth",
+      "difficulty": "beginner",
+      "estimatedMinutes": 12,
+      "author": "StreamersTip",
+      "sortOrder": 620,
+      "tags": [
+        "guide",
+        "growth"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "complete beginner streaming guide"
+      ],
+      "lessonCount": 0,
+      "slug": "complete-beginner-streaming-guide",
+      "webUrl": "https://streamerstip.com/complete-beginner-streaming-guide",
+      "sitePath": "/complete-beginner-streaming-guide",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "guide",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch",
+      "title": "Twitch Hub - Guides, Tools & Growth",
+      "description": "Everything Twitch: setup, OBS settings, affiliate, partner, and growth strategies.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 630,
+      "tags": [
+        "hub",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch",
+      "webUrl": "https://streamerstip.com/twitch",
+      "sitePath": "/twitch",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-growth",
+      "title": "Twitch Growth Hub",
+      "description": "Guides and tools to get more viewers and grow your Twitch channel.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 640,
+      "tags": [
+        "hub",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch/growth"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch/growth",
+      "webUrl": "https://streamerstip.com/twitch/growth",
+      "sitePath": "/twitch/growth",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-monetization",
+      "title": "Twitch Monetization Hub",
+      "description": "Affiliate, Partner, subs, bits, and sponsorship strategies for Twitch.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 650,
+      "tags": [
+        "hub",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch/monetization"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch/monetization",
+      "webUrl": "https://streamerstip.com/twitch/monetization",
+      "sitePath": "/twitch/monetization",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-affiliate",
+      "title": "Twitch Affiliate Guide Hub",
+      "description": "Requirements, timeline, and tips to reach Twitch Affiliate faster.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 660,
+      "tags": [
+        "hub",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch/affiliate"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch/affiliate",
+      "webUrl": "https://streamerstip.com/twitch/affiliate",
+      "sitePath": "/twitch/affiliate",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "twitch-partner",
+      "title": "Twitch Partner Guide Hub",
+      "description": "Path to Partner, requirements, and long-term channel growth.",
+      "categoryId": "twitch",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 670,
+      "tags": [
+        "hub",
+        "twitch"
+      ],
+      "platforms": [
+        "Twitch"
+      ],
+      "keywords": [
+        "twitch/partner"
+      ],
+      "lessonCount": 0,
+      "slug": "twitch/partner",
+      "webUrl": "https://streamerstip.com/twitch/partner",
+      "sitePath": "/twitch/partner",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "youtube",
+      "title": "YouTube Hub for Creators",
+      "description": "YouTube Live, Shorts, analytics, and growth guides for streamers.",
+      "categoryId": "youtube",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 680,
+      "tags": [
+        "hub",
+        "youtube"
+      ],
+      "platforms": [
+        "YouTube"
+      ],
+      "keywords": [
+        "youtube"
+      ],
+      "lessonCount": 0,
+      "slug": "youtube",
+      "webUrl": "https://streamerstip.com/youtube",
+      "sitePath": "/youtube",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "tiktok",
+      "title": "TikTok Hub for Gaming Creators",
+      "description": "TikTok live, clips, growth, and best posting times for gaming content.",
+      "categoryId": "tiktok",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 690,
+      "tags": [
+        "hub",
+        "tiktok"
+      ],
+      "platforms": [
+        "TikTok"
+      ],
+      "keywords": [
+        "tiktok"
+      ],
+      "lessonCount": 0,
+      "slug": "tiktok",
+      "webUrl": "https://streamerstip.com/tiktok",
+      "sitePath": "/tiktok",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "kick",
+      "title": "Kick Hub for Streamers",
+      "description": "Kick setup, growth, monetization, and OBS settings in one place.",
+      "categoryId": "kick",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 700,
+      "tags": [
+        "hub",
+        "kick"
+      ],
+      "platforms": [
+        "Kick"
+      ],
+      "keywords": [
+        "kick"
+      ],
+      "lessonCount": 0,
+      "slug": "kick",
+      "webUrl": "https://streamerstip.com/kick",
+      "sitePath": "/kick",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "obs",
+      "title": "OBS Hub - Settings & Setup Guides",
+      "description": "OBS Studio setup, scenes, bitrate, and platform-specific settings.",
+      "categoryId": "obs-and-setup",
+      "difficulty": "beginner",
+      "estimatedMinutes": 8,
+      "author": "StreamersTip",
+      "sortOrder": 710,
+      "tags": [
+        "hub",
+        "obs-and-setup"
+      ],
+      "platforms": [
+        "Twitch",
+        "YouTube",
+        "Kick",
+        "TikTok"
+      ],
+      "keywords": [
+        "obs"
+      ],
+      "lessonCount": 0,
+      "slug": "obs",
+      "webUrl": "https://streamerstip.com/obs",
+      "sitePath": "/obs",
+      "contentMode": "website",
+      "source": "website_page_registry",
+      "pageType": "hub",
+      "isPublished": true,
+      "status": "published"
+    }
+  ],
+  "paths": [
+    {
+      "id": "beginner",
+      "title": "Beginner Creator Path",
+      "description": "Structured beginner lessons from Streamer Academy.",
+      "sortOrder": 10,
+      "unlockLevel": 0,
+      "guideIds": [
+        "new-to-streaming",
+        "obs-setup",
+        "creating-accounts",
+        "overlay-setup",
+        "streaming-etiquette",
+        "microphone-setup",
+        "webcam-configuration"
+      ],
+      "lessonIds": [
+        "new-to-streaming__web",
+        "obs-setup__web",
+        "creating-accounts__web",
+        "overlay-setup__web",
+        "streaming-etiquette__web",
+        "microphone-setup__web",
+        "webcam-configuration__web"
+      ],
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "intermediate",
+      "title": "Intermediate Creator Path",
+      "description": "Structured intermediate lessons from Streamer Academy.",
+      "sortOrder": 20,
+      "unlockLevel": 3,
+      "guideIds": [
+        "bitrate-optimization",
+        "scene-transitions",
+        "chatbot-integration",
+        "custom-overlays",
+        "twitch-panels-design",
+        "stream-alerts-setup",
+        "audio-mixing-basics"
+      ],
+      "lessonIds": [
+        "bitrate-optimization__web",
+        "scene-transitions__web",
+        "chatbot-integration__web",
+        "custom-overlays__web",
+        "twitch-panels-design__web",
+        "stream-alerts-setup__web",
+        "audio-mixing-basics__web"
+      ],
+      "isPublished": true,
+      "status": "published"
+    },
+    {
+      "id": "advanced",
+      "title": "Advanced Creator Path",
+      "description": "Structured advanced lessons from Streamer Academy.",
+      "sortOrder": 30,
+      "unlockLevel": 8,
+      "guideIds": [
+        "dual-pc-streaming-setup",
+        "ndi-configuration",
+        "audio-routing",
+        "audio-routing-wave-link",
+        "stream-automation",
+        "advanced-scene-management",
+        "professional-audio-processing"
+      ],
+      "lessonIds": [
+        "dual-pc-streaming-setup__web",
+        "ndi-configuration__web",
+        "audio-routing__web",
+        "audio-routing-wave-link__web",
+        "stream-automation__web",
+        "advanced-scene-management__web",
+        "professional-audio-processing__web"
+      ],
+      "isPublished": true,
+      "status": "published"
+    }
+  ]
+}
