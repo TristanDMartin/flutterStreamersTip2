@@ -44,7 +44,7 @@
 | **Camera** (`TikTokCameraView`) | **6/10** | Alpha | Device-specific camera reliability + lifecycle; good: blocks playback + locks orientation |
 | **Video Edit** (`VideoEditView`) | **6/10** | Alpha | Complex editor surface area; needs perf/memory hardening + better crash-proofing |
 | **Video Publish** (`VideoPublishingScreen`) | **6/10** | Alpha | Very complex; needs rigorous validation, retry/resume, and better error surfaces |
-| **Insights** (`InsightsView`) | **5/10** | Alpha | Uses mock fallback; analytics pipeline needs production verification and permission rules alignment |
+| **Insights** (`InsightsView`) | **7/10** | Beta | Firebase aggregation + empty/early-signal states (no mock fill). Audience breakdowns only when server data exists. |
 | **Activity** (`ActivityView`) | **6/10** | Alpha | Uses providers + better error state; needs full navigation coverage + performance pass |
 
 ## Playback modularization (2026-06)
@@ -169,10 +169,10 @@
 - Add memory/perf caps for editing pipeline.
 
 ### Insights — from 5/10 → 8/10
-- Remove mock fallback for production builds.
-- Make analytics pipeline deterministic:
-  - server aggregation job → client reads from one document/collection with proper indexes/rules.
-  - show “not enough data yet” state instead of mock numbers.
+- ✅ No mock fill in production UI; empty = “Not enough data yet”.
+- ✅ Early-signal banner when views < reliable threshold.
+- ✅ Client aggregates `video_analytics` → `videoAnalytics`; demographics only when present.
+- Remaining: server-side scheduled aggregation job + rules/index verification in staging.
 
 ## Notes
 - This scorecard is based on current code, Pixel 6 logs, and `docs/COMPREHENSIVE_APP_AUDIT.md`.

@@ -390,7 +390,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         return;
       }
       _followsDebounceTimer?.cancel();
-      _followsDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _followsDebounceTimer = Timer(const Duration(milliseconds: 800), () {
         if (!mounted ||
             !isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
           return;

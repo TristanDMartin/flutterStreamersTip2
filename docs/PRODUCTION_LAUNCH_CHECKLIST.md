@@ -136,6 +136,10 @@ Open work:
 - Cloud Functions deployed to match client contracts.
 - Store assets ready: icons, privacy policy, data safety, review notes for video/social app.
 - Monitoring ready: Crashlytics, first-frame timing, feed error rate, Android `BAD_INDEX` rate.
+  - Ops runbook: `docs/LAUNCH_SLOS.md`
+  - Hold week: `docs/HOLD_SLOS_WEEK.md`
+  - Preflight: `bash scripts/release_preflight.sh`
+  - Tracker sections 8–11 in `docs/RELEASE_TRACKER.md`
 
 ## Home Feed Production Gate
 

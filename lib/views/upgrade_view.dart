@@ -271,6 +271,37 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
               if (entitlements != null) ...<Widget>[
                 const SizedBox(height: 12),
                 _buildBillingChannelCard(entitlements),
+                if (_isGraceOrPastDue(entitlements)) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _buildGracePeriodBanner(entitlements),
+                ],
+              ],
+              const SizedBox(height: 16),
+              _buildRestorePurchasesRow(),
+              if (_iap.lastError != null &&
+                  _iap.lastError!.trim().isNotEmpty) ...<Widget>[
+                const SizedBox(height: 12),
+                SelectableText.rich(
+                  TextSpan(
+                    text: _iap.lastError!,
+                    style: TextStyle(
+                      color: Colors.red.shade300,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ] else if (_iap.lastRecoverableHint != null &&
+                  _iap.lastRecoverableHint!.trim().isNotEmpty) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  _iap.lastRecoverableHint!,
+                  style: TextStyle(
+                    color: _on.withValues(alpha: 0.7),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
               const SizedBox(height: 24),
               _buildTierCard(
@@ -348,6 +379,105 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
         ),
       ),
     );
+  }
+
+  bool _isGraceOrPastDue(SubscriptionSnapshot snap) {
+    final String status = snap.subscriptionStatus.trim().toLowerCase();
+    return status == 'grace_period' || status == 'past_due';
+  }
+
+  Widget _buildGracePeriodBanner(SubscriptionSnapshot snap) {
+    final bool isGrace =
+        snap.subscriptionStatus.trim().toLowerCase() == 'grace_period';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            isGrace ? 'Billing grace period' : 'Payment past due',
+            style: TextStyle(
+              color: _on,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isGrace
+                ? 'Your ${snap.tierDisplayName} benefits stay active while '
+                    'the store retries payment. Update your payment method '
+                    'in ${_manageService.manageDestinationHint(snap)}'
+                : 'Update payment in the store to keep ${snap.tierDisplayName}. '
+                    '${_manageService.manageDestinationHint(snap)}',
+            style: TextStyle(
+              color: _on.withValues(alpha: 0.75),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestorePurchasesRow() {
+    final bool busy = _iap.purchaseBusy;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: busy || kIsWeb
+            ? null
+            : () {
+                unawaited(_restorePurchases());
+              },
+        icon: busy
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _on,
+                ),
+              )
+            : Icon(Icons.restore, color: _on),
+        label: Text(
+          busy ? 'Restoring…' : 'Restore purchases',
+          style: TextStyle(
+            color: _on,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _restorePurchases() async {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _iap.lastError = null;
+    });
+    await _iap.restorePurchases();
+    if (!mounted) {
+      return;
+    }
+    invalidateSubscriptionEntitlements(ref);
+    try {
+      await refreshSubscriptionEntitlements(ref, forceRefresh: true);
+    } catch (e) {
+      debugPrint('UpgradeView: restore entitlements refresh failed: $e');
+    }
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Widget _buildBillingChannelCard(SubscriptionSnapshot snap) {

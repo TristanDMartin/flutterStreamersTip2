@@ -6,7 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../core/theme/support_shell_style.dart';
 import '../models/bookmark_event.dart';
 import '../services/unified_bookmark_service.dart';
+import '../utils/user_facing_error.dart';
 import '../widgets/profile_video_feed_view.dart';
+import '../widgets/screen_feedback_state.dart';
 
 class BookmarkView extends StatefulWidget {
   const BookmarkView({super.key});
@@ -25,6 +27,7 @@ class _BookmarkViewState extends State<BookmarkView>
   List<BookmarkEvent> _bookmarks = [];
   bool _isLoading = true;
   String? _error;
+  String? _actionError;
   StreamSubscription<List<BookmarkEvent>>? _bookmarkSubscription;
 
   @override
@@ -61,7 +64,7 @@ class _BookmarkViewState extends State<BookmarkView>
         onError: (Object error) {
           if (mounted) {
             setState(() {
-              _error = 'Failed to load bookmarks: $error';
+              _error = UserFacingError.message(error);
               _isLoading = false;
             });
           }
@@ -70,7 +73,7 @@ class _BookmarkViewState extends State<BookmarkView>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Failed to initialize bookmarks: $e';
+          _error = UserFacingError.message(e);
           _isLoading = false;
         });
       }
@@ -146,9 +149,15 @@ class _BookmarkViewState extends State<BookmarkView>
             _EventsTab(
               isLoading: _isLoading,
               error: _error,
+              actionError: _actionError,
               bookmarksByStatus: _getBookmarksByStatus(),
               tabController: _eventTabController,
               onRetry: _initializeBookmarks,
+              onDismissActionError: () {
+                if (mounted) {
+                  setState(() => _actionError = null);
+                }
+              },
               onDelete: _deleteBookmark,
               onToggleNotification: _toggleNotification,
             ),
@@ -160,35 +169,46 @@ class _BookmarkViewState extends State<BookmarkView>
 
   Future<void> _deleteBookmark(BookmarkEvent bookmark) async {
     HapticFeedback.lightImpact();
-    setState(
-        () => _bookmarks.removeWhere((b) => b.eventId == bookmark.eventId));
-    final success = await _bookmarkService.deleteCalendarEventBookmark(
+    setState(() {
+      _actionError = null;
+      _bookmarks.removeWhere((b) => b.eventId == bookmark.eventId);
+    });
+    final bool success = await _bookmarkService.deleteCalendarEventBookmark(
       eventId: bookmark.eventId,
     );
     if (!success && mounted) {
       setState(() {
         _bookmarks.add(bookmark);
         _bookmarks.sort((a, b) => a.notifyAt.compareTo(b.notifyAt));
+        _actionError = 'Could not remove bookmark. Please try again.';
       });
     }
   }
 
   Future<void> _toggleNotification(BookmarkEvent bookmark) async {
     HapticFeedback.lightImpact();
-    final newNotify = !bookmark.notify;
+    final bool newNotify = !bookmark.notify;
     setState(() {
-      final index = _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
-      if (index != -1) _bookmarks[index] = bookmark.copyWith(notify: newNotify);
+      _actionError = null;
+      final int index =
+          _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
+      if (index != -1) {
+        _bookmarks[index] = bookmark.copyWith(notify: newNotify);
+      }
     });
-    final success = await _bookmarkService.toggleCalendarEventNotification(
+    final bool success =
+        await _bookmarkService.toggleCalendarEventNotification(
       eventId: bookmark.eventId,
       notify: newNotify,
     );
     if (!success && mounted) {
       setState(() {
-        final index =
+        final int index =
             _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
-        if (index != -1) _bookmarks[index] = bookmark;
+        if (index != -1) {
+          _bookmarks[index] = bookmark;
+        }
+        _actionError = 'Could not update notification. Please try again.';
       });
     }
   }
@@ -224,18 +244,22 @@ class _SavedVideosTab extends StatelessWidget {
 class _EventsTab extends StatelessWidget {
   final bool isLoading;
   final String? error;
+  final String? actionError;
   final Map<EventStatus, List<BookmarkEvent>> bookmarksByStatus;
   final TabController tabController;
   final VoidCallback onRetry;
+  final VoidCallback onDismissActionError;
   final Future<void> Function(BookmarkEvent) onDelete;
   final Future<void> Function(BookmarkEvent) onToggleNotification;
 
   const _EventsTab({
     required this.isLoading,
     required this.error,
+    required this.actionError,
     required this.bookmarksByStatus,
     required this.tabController,
     required this.onRetry,
+    required this.onDismissActionError,
     required this.onDelete,
     required this.onToggleNotification,
   });
@@ -250,10 +274,22 @@ class _EventsTab extends StatelessWidget {
       );
     }
     if (error != null) {
-      return _ErrorState(error: error!, onRetry: onRetry);
+      return ScreenErrorState(
+        title: 'Couldn’t load bookmarks',
+        message: error!,
+        onRetry: onRetry,
+      );
     }
     return Column(
       children: <Widget>[
+        if (actionError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: ScreenInlineErrorBanner(
+              message: actionError!,
+              onDismiss: onDismissActionError,
+            ),
+          ),
         _buildEventTabBar(context),
         Expanded(
           child: TabBarView(
@@ -311,48 +347,6 @@ class _EventsTab extends StatelessWidget {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-
-  const _ErrorState({required this.error, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: shell.surfaceCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: shell.surfaceCardBorder),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.error_outline_rounded, color: cs.error, size: 44),
-            const SizedBox(height: 14),
-            Text(
-              error,
-              style: TextStyle(color: shell.muted),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.tonalIcon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _EventList extends StatelessWidget {
   final List<BookmarkEvent> bookmarks;
   final IconData emptyIcon;
@@ -370,34 +364,10 @@ class _EventList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     if (bookmarks.isEmpty) {
-      return Center(
-        child: Container(
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: shell.surfaceCard,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: shell.surfaceCardBorder),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(emptyIcon, color: shell.iconDim, size: 42),
-              const SizedBox(height: 14),
-              Text(
-                emptyMessage,
-                style: TextStyle(
-                  color: shell.muted,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
+      return ScreenEmptyState(
+        title: emptyMessage,
+        icon: emptyIcon,
       );
     }
     return ListView.builder(

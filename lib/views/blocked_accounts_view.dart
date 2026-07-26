@@ -4,6 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../core/theme/support_shell_style.dart';
 import '../services/user_blocking_service.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/user_facing_error.dart';
+import '../widgets/screen_feedback_state.dart';
 
 class BlockedAccountsView extends StatefulWidget {
   const BlockedAccountsView({super.key});
@@ -15,6 +17,8 @@ class BlockedAccountsView extends StatefulWidget {
 class _BlockedAccountsViewState extends State<BlockedAccountsView> {
   final UserBlockingService _blockingService = UserBlockingService();
   bool _isLoading = true;
+  String? _loadError;
+  String? _actionError;
   List<BlockedUserInfo> _blockedUsers = [];
 
   @override
@@ -27,6 +31,7 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
     try {
       setState(() {
         _isLoading = true;
+        _loadError = null;
       });
 
       final List<BlockedUserRecord> blockedRecords =
@@ -71,36 +76,34 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
       debugPrint('Error loading blocked users: $e');
       setState(() {
         _isLoading = false;
+        _loadError = UserFacingError.message(e);
       });
     }
   }
 
   Future<void> _unblockUser(String userId, String displayName) async {
     try {
+      setState(() => _actionError = null);
       await _blockingService.unblockUser(userId);
 
       if (mounted) {
+        final ColorScheme cs = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('$displayName has been unblocked'),
-            backgroundColor: Colors.green,
+            content: Text(
+              '$displayName has been unblocked',
+              style: TextStyle(color: cs.onInverseSurface),
+            ),
+            backgroundColor: cs.inverseSurface,
             duration: const Duration(seconds: 2),
           ),
         );
-
-        // Reload the list
         _loadBlockedUsers();
       }
     } catch (e) {
       debugPrint('Error unblocking user: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to unblock user: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        setState(() => _actionError = UserFacingError.message(e));
       }
     }
   }
@@ -169,9 +172,33 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
                 valueColor: AlwaysStoppedAnimation<Color>(shell.refreshColor),
               ),
             )
-          : _blockedUsers.isEmpty
-              ? _buildEmptyState()
-              : _buildBlockedUsersList(),
+          : _loadError != null
+              ? ScreenErrorState(
+                  title: 'Couldn’t load blocked accounts',
+                  message: _loadError!,
+                  onRetry: _loadBlockedUsers,
+                )
+              : Column(
+                  children: <Widget>[
+                    if (_actionError != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: ScreenInlineErrorBanner(
+                          message: _actionError!,
+                          onDismiss: () {
+                            if (mounted) {
+                              setState(() => _actionError = null);
+                            }
+                          },
+                        ),
+                      ),
+                    Expanded(
+                      child: _blockedUsers.isEmpty
+                          ? _buildEmptyState()
+                          : _buildBlockedUsersList(),
+                    ),
+                  ],
+                ),
     );
   }
 

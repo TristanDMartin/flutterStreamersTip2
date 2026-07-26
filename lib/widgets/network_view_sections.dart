@@ -183,13 +183,16 @@ class NetworkViewErrorState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white60,
-                height: 1.35,
+            SelectableText.rich(
+              TextSpan(
+                text: error,
+                style: TextStyle(
+                  color: Colors.red.shade300,
+                  height: 1.35,
+                  fontSize: 14,
+                ),
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 18),
             FilledButton(

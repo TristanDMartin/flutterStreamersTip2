@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/support_shell_style.dart';
+import '../../widgets/screen_feedback_state.dart';
 
 /// Theme-aware shell and form rows for Settings sub-pages.
 abstract final class SettingsSubpageWidgets {
@@ -10,6 +11,11 @@ abstract final class SettingsSubpageWidgets {
     required Widget body,
     bool isLoading = false,
     bool isSaving = false,
+    String? loadError,
+    VoidCallback? onRetryLoad,
+    String? actionError,
+    VoidCallback? onDismissActionError,
+    VoidCallback? onRetryAction,
   }) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme cs = Theme.of(context).colorScheme;
@@ -44,16 +50,31 @@ abstract final class SettingsSubpageWidgets {
             ? Center(
                 child: CircularProgressIndicator(color: cs.primary),
               )
-            : Column(
-                children: <Widget>[
-                  if (isSaving)
-                    LinearProgressIndicator(
-                      backgroundColor: cs.surfaceContainerLow,
-                      color: cs.primary,
-                    ),
-                  Expanded(child: body),
-                ],
-              ),
+            : loadError != null
+                ? ScreenErrorState(
+                    title: 'Couldn’t load settings',
+                    message: loadError,
+                    onRetry: onRetryLoad,
+                  )
+                : Column(
+                    children: <Widget>[
+                      if (isSaving)
+                        LinearProgressIndicator(
+                          backgroundColor: cs.surfaceContainerLow,
+                          color: cs.primary,
+                        ),
+                      if (actionError != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: ScreenInlineErrorBanner(
+                            message: actionError,
+                            onDismiss: onDismissActionError,
+                            onRetry: onRetryAction,
+                          ),
+                        ),
+                      Expanded(child: body),
+                    ],
+                  ),
       ),
     );
   }
@@ -307,20 +328,6 @@ abstract final class SettingsSubpageWidgets {
           style: TextStyle(color: cs.onInverseSurface),
         ),
         duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  static void showErrorSnackBar(BuildContext context, String message) {
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: cs.errorContainer,
-        content: Text(
-          message,
-          style: TextStyle(color: cs.onErrorContainer),
-        ),
       ),
     );
   }

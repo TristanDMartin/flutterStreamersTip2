@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../constants/app_colors.dart';
 import '../core/theme/support_shell_style.dart';
+import '../utils/user_facing_error.dart';
+import '../widgets/screen_feedback_state.dart';
 
 class ContactSupportView extends StatefulWidget {
   const ContactSupportView({super.key});
@@ -18,6 +20,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
   final _messageController = TextEditingController();
   String _selectedCategory = 'General';
   bool _isSubmitting = false;
+  String? _actionError;
 
   final List<String> _categories = [
     'General',
@@ -82,6 +85,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
       });
 
       if (!mounted) return;
+      setState(() => _actionError = null);
       _showSuccess();
 
       // Clear form
@@ -92,7 +96,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
       });
     } catch (e) {
       if (mounted) {
-        _showError('Failed to submit ticket: $e');
+        _showError(UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -104,23 +108,21 @@ class _ContactSupportViewState extends State<ContactSupportView> {
   }
 
   void _showSuccess() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ Ticket submitted successfully!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 3),
+      SnackBar(
+        content: Text(
+          'Ticket submitted successfully',
+          style: TextStyle(color: cs.onInverseSurface),
+        ),
+        backgroundColor: cs.inverseSurface,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('❌ $message'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    setState(() => _actionError = message);
   }
 
   Widget _buildLabel(String text) {
@@ -297,6 +299,17 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_actionError != null) ...[
+                      ScreenInlineErrorBanner(
+                        message: _actionError!,
+                        onDismiss: () {
+                          if (mounted) {
+                            setState(() => _actionError = null);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     _buildHero(),
                     const SizedBox(height: 24),
                     _buildLabel('Category *'),

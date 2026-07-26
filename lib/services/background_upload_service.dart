@@ -25,12 +25,17 @@ class BackgroundUploadService {
       secureLog('❌ Upload job not found: $localId');
       return;
     }
-    if (job.state != UploadJobState.queued) {
-      secureLog('❌ Job is not in queued state: ${job.state}');
+    // Allow queued, failed (retry), and stuck uploading (app resume).
+    if (job.state != UploadJobState.queued &&
+        job.state != UploadJobState.failed &&
+        job.state != UploadJobState.uploading) {
+      secureLog('❌ Job cannot start from state: ${job.state}');
       return;
     }
     try {
       await _jobStorage.updateJobState(localId, UploadJobState.uploading);
+      _progressControllers[localId]?.close();
+      _resultControllers[localId]?.close();
       _progressControllers[localId] = StreamController<double>.broadcast();
       _resultControllers[localId] = StreamController<UploadResult>.broadcast();
       await _performUpload(job);
@@ -63,12 +68,19 @@ class BackgroundUploadService {
             '📊 Upload progress for $localId: ${(p * 100).toStringAsFixed(1)}%');
       }
 
+      final String privacy =
+          (job.metadata?['privacy'] as String?)?.trim().isNotEmpty == true
+              ? job.metadata!['privacy'] as String
+              : 'Everyone';
+      final bool allowComments =
+          job.metadata?['allowComments'] as bool? ?? true;
       final result = await _uploadService.uploadVideo(
         videoFile: file,
         caption: job.title,
         hashtags: job.categories,
-        privacy: 'public',
-        allowComments: true,
+        privacy: privacy,
+        allowComments: allowComments,
+        videoId: job.videoId,
         additionalMetadata: job.metadata,
         onProgress: onProgress,
       );
@@ -116,9 +128,10 @@ class BackgroundUploadService {
   }
 
   Future<void> resumeActiveUploads() async {
-    final activeJobs = await _jobStorage.loadActiveJobs();
-    for (final job in activeJobs) {
-      if (job.state == UploadJobState.queued) {
+    final List<UploadJob> activeJobs = await _jobStorage.loadActiveJobs();
+    for (final UploadJob job in activeJobs) {
+      if (job.state == UploadJobState.queued ||
+          job.state == UploadJobState.uploading) {
         await startUpload(job.localId);
       }
     }

@@ -30,6 +30,7 @@ import '../providers/home_provider.dart' as hp;
 import '../providers/follow_refresh_provider.dart';
 import 'comments_view2.dart';
 import 'enhanced_share_sheet.dart';
+import '../features/academy/academy_providers.dart';
 import '../routing/app_navigator.dart';
 import '../features/discover/presentation/widgets/trending_creators_section.dart';
 import '../utils/video_caption_resolver.dart';
@@ -512,8 +513,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
 
   // 🔥 FIX: Real-time subscriptions
   StreamSubscription<QuerySnapshot>? _trendingCreatorsSubscription;
-  StreamSubscription<QuerySnapshot>? _notificationsSubscription;
-  Timer? _trendingRefreshTimer; // ✅ FIX #2: Store timer to cancel in dispose
+  Timer? _trendingRefreshTimer;
+  Timer? _trendingUploadDebounce;
 
   // 🔥 FIX: Consistent spacing and sizing constants
   // Note: These constants are reserved for future UI improvements
@@ -535,21 +536,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
 
   @override
   void dispose() {
-    // 🔥 FIX: Cancel real-time subscriptions
     _trendingCreatorsSubscription?.cancel();
-    _notificationsSubscription?.cancel();
-
-    // ✅ FIX #2: Cancel timer to prevent leaks
     _trendingRefreshTimer?.cancel();
-
+    _trendingUploadDebounce?.cancel();
     _discoverScrollController.dispose();
-
-    // Cache cleared (removed unused _cachedVideos)
-
-    // 🔊 AUDIO FIX: Don't pause here - NavigationObserver will call setActiveOwner
-    // when navigating away, which handles pausing/muting non-active owners
-    // Pausing here would be redundant and could interfere with reactivation
-
     super.dispose();
   }
 
@@ -600,51 +590,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
     );
   }
 
-  /// 🔥 FIX: Set up real-time updates for trending creators and notifications
+  /// Set up trending refresh. Avoids a no-op notifications listener and
+  /// debounces the "new videos" query so every upload does not thrash.
   void _setupRealtimeUpdates() {
     try {
       LoggingService.instance.debug(
         'Setting up real-time updates',
         tag: 'DiscoverView',
       );
-
-      // 🔥 ENHANCED: Real-time trending creators updates based on video performance
-      // Note: We'll refresh trending creators periodically instead of using a simple user stream
-      // This ensures we always show creators whose videos are actually trending
       _setupTrendingCreatorsRefresh();
-
-      // Real-time notifications updates
-      final currentUser = fa.FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {
-        _notificationsSubscription = FirebaseFirestore.instance
-            .collection('notifications')
-            .doc(currentUser.uid)
-            .collection('items')
-            .where('status', isEqualTo: 'pending')
-            .snapshots()
-            .listen(
-          (snapshot) {
-            if (mounted) {
-              LoggingService.instance.debug(
-                'Real-time notifications update: ${snapshot.docs.length} pending',
-                tag: 'DiscoverView',
-              );
-
-              // Update notification count in real-time
-              // Note: unreadMessagesProvider is a StreamProvider, so we don't need to update it manually
-              // The provider will automatically update when the stream changes
-            }
-          },
-          onError: (error) {
-            LoggingService.instance.error(
-              'Error in notifications stream',
-              tag: 'DiscoverView',
-              error: error,
-            );
-          },
-        );
-      }
-
       LoggingService.instance.debug(
         'Real-time updates setup complete',
         tag: 'DiscoverView',
@@ -656,36 +610,28 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
         error: e,
         stackTrace: stackTrace,
       );
-      // Safe error handling - don't call ErrorHandlerService during startup
       if (kDebugMode) {
         debugPrint('❌ DiscoverView real-time setup error: $e');
       }
     }
   }
 
-  /// 🔥 ENHANCED: Set up periodic refresh of trending creators based on video performance
-  /// ✅ FIX #2: Store timer and cancel previous to prevent duplicates
+  /// Refresh trending creators periodically; debounce video upload stream.
   void _setupTrendingCreatorsRefresh() {
-    // Cancel previous timer if exists to avoid duplicates
     _trendingRefreshTimer?.cancel();
-
-    // Refresh trending creators every 5 minutes to catch new trending videos
     _trendingRefreshTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
-
       LoggingService.instance.debug(
         '🔄 Refreshing trending creators based on video performance...',
         tag: 'DiscoverView',
       );
-
-      // Use the enhanced algorithm to get trending creators
       ref.read(discoverProvider.notifier).loadTrendingCreators();
     });
 
-    // Refresh when new videos uploaded (scoped: limit 50, last hour)
+    _trendingCreatorsSubscription?.cancel();
     _trendingCreatorsSubscription = FirebaseFirestore.instance
         .collection('videos')
         .where(
@@ -698,15 +644,20 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
         .snapshots()
         .listen(
       (snapshot) {
-        if (mounted && snapshot.docs.isNotEmpty) {
+        if (!mounted || snapshot.docs.isEmpty) {
+          return;
+        }
+        _trendingUploadDebounce?.cancel();
+        _trendingUploadDebounce = Timer(const Duration(seconds: 8), () {
+          if (!mounted) {
+            return;
+          }
           LoggingService.instance.debug(
             '🔥 New videos detected, refreshing trending creators...',
             tag: 'DiscoverView',
           );
-
-          // Refresh trending creators when new videos are uploaded
           ref.read(discoverProvider.notifier).loadTrendingCreators();
-        }
+        });
       },
       onError: (error) {
         LoggingService.instance.error(
@@ -1733,6 +1684,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
   }
 
   Widget _buildDiscoverHeroCard(BuildContext context, _DiscoverPageStyle s) {
+    final AcademyDiscoverCardStatus status =
+        ref.watch(academyDiscoverCardStatusProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         STDiscoverTokens.pagePadding,
@@ -1740,76 +1693,133 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
         STDiscoverTokens.pagePadding,
         STDiscoverTokens.sectionGap,
       ),
-      child: Container(
-        height: STDiscoverTokens.heroHeight,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: s.heroGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => AppNavigator.openAcademy(context),
           borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: s.heroBorder),
-          boxShadow: [
-            BoxShadow(
-              color: StThemeColors.brandPurple.withValues(alpha: 0.24),
-              blurRadius: 28,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -24,
-              top: -30,
-              child: Icon(
-                Icons.travel_explore_rounded,
-                size: 150,
-                color: Colors.white.withValues(alpha: 0.13),
+          child: Ink(
+            height: STDiscoverTokens.heroHeight,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: s.heroGradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: s.heroBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: StThemeColors.brandPurple.withValues(alpha: 0.24),
+                  blurRadius: 28,
+                  offset: const Offset(0, 14),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: const Text(
-                      'Creator Match',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -24,
+                  top: -30,
+                  child: Icon(
+                    Icons.school_rounded,
+                    size: 150,
+                    color: Colors.white.withValues(alpha: 0.13),
                   ),
-                  const Spacer(),
-                  const Text(
-                    'Find streamers who fit your content style.',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      height: 1.05,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.4,
-                    ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: const Text(
+                          'Streamer Academy',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      const Text(
+                        'Master streaming, content, growth, and creator '
+                        'business skills.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          height: 1.1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              status.headline,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.88),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  status.actionLabel,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(
+                                  Icons.arrow_forward_rounded,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -3077,29 +3087,48 @@ class _DiscoverCategoryVideoFeedPageState
     super.dispose();
   }
 
-  /// Set up real-time listeners to detect when videos are deleted (first 15)
+  /// Listen only around the current page (±2) for deletion/visibility.
   void _setupRealtimeDeletionListeners() {
-    final videosToListen = _videos.take(15).toList();
-    for (final video in videosToListen) {
+    _resyncDeletionListenersAround(_currentIndex);
+  }
+
+  void _resyncDeletionListenersAround(int centerIndex) {
+    if (_videos.isEmpty) {
+      return;
+    }
+    final int start = (centerIndex - 2).clamp(0, _videos.length - 1);
+    final int end = (centerIndex + 2).clamp(0, _videos.length - 1);
+    final Set<String> keepIds = <String>{};
+    for (int i = start; i <= end; i++) {
+      keepIds.add(_videos[i].id);
+    }
+    final List<String> toCancel = _videoListeners.keys
+        .where((String id) => !keepIds.contains(id))
+        .toList(growable: false);
+    for (final String id in toCancel) {
+      _videoListeners[id]?.cancel();
+      _videoListeners.remove(id);
+    }
+    for (final String id in keepIds) {
+      if (_videoListeners.containsKey(id)) {
+        continue;
+      }
       final subscription = FirebaseFirestore.instance
           .collection('videos')
-          .doc(video.id)
+          .doc(id)
           .snapshots()
           .listen((snapshot) {
         if (!mounted) return;
-
         if (!snapshot.exists) {
-          _removeVideoFromFeed(video.id);
+          _removeVideoFromFeed(id);
           return;
         }
-
         final data = snapshot.data();
         if (data == null || !isVideoVisibleInFeed(data)) {
-          _removeVideoFromFeed(video.id);
+          _removeVideoFromFeed(id);
         }
       });
-
-      _videoListeners[video.id] = subscription;
+      _videoListeners[id] = subscription;
     }
   }
 
@@ -3133,6 +3162,8 @@ class _DiscoverCategoryVideoFeedPageState
         _pageController.jumpToPage(_currentIndex);
       }
     });
+
+    _resyncDeletionListenersAround(_currentIndex);
 
     LoggingService.instance.debug(
       'Removed deleted video $videoId from category feed ${widget.categoryId}',
@@ -3178,6 +3209,7 @@ class _DiscoverCategoryVideoFeedPageState
                     setState(() {
                       _currentIndex = index;
                     });
+                    _resyncDeletionListenersAround(index);
                     GlobalPlaybackManager.instance
                         .preloadDiscoverCategoryAround(index, _videos);
                   }

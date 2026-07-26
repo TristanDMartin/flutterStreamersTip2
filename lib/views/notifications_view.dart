@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'settings/settings_subpage_widgets.dart';
 import '../services/notification_settings_service.dart';
+import '../utils/user_facing_error.dart';
 
 class NotificationsView extends ConsumerStatefulWidget {
   const NotificationsView({super.key});
@@ -17,6 +18,8 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   bool _isSaving = false;
+  String? _loadError;
+  String? _actionError;
   bool _pushNotifications = true;
   bool _emailEnabled = true;
   bool _digestWeekly = true;
@@ -45,7 +48,10 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
     final firebase_auth.User? user =
         firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Please sign in to manage notification settings.';
+      });
       return;
     }
     try {
@@ -81,11 +87,15 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
             _weeklyRecap = data['weeklyRecap'] ?? true;
           }
           _isLoading = false;
+          _loadError = null;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadError = UserFacingError.message(e);
+        });
       }
     }
   }
@@ -96,7 +106,10 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
     if (user == null) {
       return;
     }
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _actionError = null;
+    });
     try {
       final Map<String, dynamic> updates = <String, dynamic>{
         key: value,
@@ -119,10 +132,7 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
       }
     } catch (e) {
       if (mounted) {
-        SettingsSubpageWidgets.showErrorSnackBar(
-          context,
-          'Error updating settings: $e',
-        );
+        setState(() => _actionError = UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -195,6 +205,20 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
       title: 'Notifications',
       isLoading: _isLoading,
       isSaving: _isSaving,
+      loadError: _loadError,
+      onRetryLoad: () {
+        setState(() {
+          _isLoading = true;
+          _loadError = null;
+        });
+        _loadSettings();
+      },
+      actionError: _actionError,
+      onDismissActionError: () {
+        if (mounted) {
+          setState(() => _actionError = null);
+        }
+      },
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(

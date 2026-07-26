@@ -17,11 +17,13 @@ import '../services/user_blocking_service.dart';
 import 'status_aware_avatar.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/responsive_layout.dart';
+import '../utils/user_facing_error.dart';
 import '../providers/unread_messages_provider.dart';
 import '../providers/main_tab_provider.dart';
 import '../routing/app_navigator.dart';
 import 'new_message_view.dart';
 import 'draft_feedback_view.dart';
+import 'screen_feedback_state.dart';
 // import 'draft_creation_view.dart'; // Removed - unused
 
 class InboxViewOptimized extends ConsumerStatefulWidget {
@@ -62,14 +64,18 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   final Map<String, app_user.User> _userProfiles = {};
   final Map<String, int> _unreadCounts = {};
   final Map<String, bool> _onlineStatus = {};
-  final Map<String, StreamSubscription<DocumentSnapshot>>
-      _unreadCountSubscriptions = {};
+  // Cap concurrent profile doc listeners. Unread comes from the chats stream.
+  static const int _maxProfileListeners = 20;
   final Map<String, StreamSubscription<DocumentSnapshot>>
       _userProfileSubscriptions = {};
+  Timer? _profileRebuildDebouncer;
+  ProviderSubscription<int>? _mainTabVisibilitySubscription;
+  bool _inboxListenersActive = false;
 
   // State
   bool _isLoading = true;
   String? _error;
+  String? _actionError;
   bool _isSyncingInbox = false;
   bool _isSelectionMode = false;
   final Set<String> _selectedItems = {};
@@ -91,9 +97,26 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       if (_chats.isEmpty) {
         setState(() => _isLoading = true);
       }
-      _initializeRealTimeUpdates();
+      if (isMainTabInboxVisible(ref.read(mainTabActiveIndexProvider))) {
+        _initializeRealTimeUpdates();
+      }
     });
     _blockingService.blockListRevision.addListener(_handleBlockListChanged);
+    _mainTabVisibilitySubscription = ref.listenManual<int>(
+      mainTabActiveIndexProvider,
+      (int? previous, int next) {
+        if (!mounted) {
+          return;
+        }
+        if (isMainTabInboxVisible(next)) {
+          if (!_inboxListenersActive) {
+            _initializeRealTimeUpdates();
+          }
+          return;
+        }
+        _pauseInboxListeners();
+      },
+    );
     _tabBackgroundRefreshSubscription = ref.listenManual<int>(
       inboxTabBackgroundRefreshProvider,
       (int? previous, int next) {
@@ -112,22 +135,43 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
-    _inboxService.stopRealTimeListeners();
+    _profileRebuildDebouncer?.cancel();
+    _pauseInboxListeners();
     _blockingService.blockListRevision.removeListener(_handleBlockListChanged);
-    // Cancel all unread count subscriptions
-    for (final subscription in _unreadCountSubscriptions.values) {
-      subscription.cancel();
-    }
-    _unreadCountSubscriptions.clear();
-    for (final subscription in _userProfileSubscriptions.values) {
-      subscription.cancel();
-    }
-    _userProfileSubscriptions.clear();
+    _mainTabVisibilitySubscription?.close();
     _tabBackgroundRefreshSubscription?.close();
     super.dispose();
   }
 
+  void _pauseInboxListeners() {
+    _inboxService.stopRealTimeListeners();
+    _inboxListenersActive = false;
+    _profileRebuildDebouncer?.cancel();
+    for (final StreamSubscription<DocumentSnapshot> subscription
+        in _userProfileSubscriptions.values) {
+      subscription.cancel();
+    }
+    _userProfileSubscriptions.clear();
+  }
+
+  void _syncUnreadFromChatStream(List<app_chat.Chat> chats) {
+    final Map<String, int> cached = _inboxService.snapshotUnreadCounts();
+    for (final app_chat.Chat chat in chats) {
+      final String chatId = chat.id ?? '';
+      if (chatId.isEmpty) {
+        continue;
+      }
+      if (cached.containsKey(chatId)) {
+        _unreadCounts[chatId] = cached[chatId]!;
+      }
+    }
+  }
+
   void _initializeRealTimeUpdates() async {
+    if (_inboxListenersActive) {
+      return;
+    }
+    _inboxListenersActive = true;
     if (_chats.isEmpty && mounted) {
       setState(() {
         _isLoading = true;
@@ -141,8 +185,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         // Filter out invalid chats (with empty participant IDs)
         final validChats = await _filterVisibleChats(chats);
 
-        // Set up real-time unread count listeners for each chat
-        _setupUnreadCountListeners(validChats);
+        _syncUnreadFromChatStream(validChats);
         _setupUserProfileListeners(validChats);
 
         await _loadUserDataForChats(validChats);
@@ -167,66 +210,37 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     );
   }
 
-  /// Set up real-time listeners for unread counts per chat
-  void _setupUnreadCountListeners(List<app_chat.Chat> chats) {
-    final currentUser = _inboxService.auth.currentUser;
-    if (currentUser == null) return;
-
-    // Cancel subscriptions for chats that no longer exist
-    final currentChatIds =
-        chats.map((c) => c.id ?? '').where((id) => id.isNotEmpty).toSet();
-    final subscriptionsToCancel = <String>[];
-    _unreadCountSubscriptions.forEach((chatId, subscription) {
-      if (!currentChatIds.contains(chatId)) {
-        subscriptionsToCancel.add(chatId);
+  void _scheduleProfileRebuild() {
+    _profileRebuildDebouncer?.cancel();
+    _profileRebuildDebouncer = Timer(const Duration(milliseconds: 120), () {
+      if (mounted) {
+        setState(() {});
       }
     });
-    for (final chatId in subscriptionsToCancel) {
-      _unreadCountSubscriptions[chatId]?.cancel();
-      _unreadCountSubscriptions.remove(chatId);
-    }
-
-    // Set up listeners for each chat
-    for (final chat in chats) {
-      final chatId = chat.id ?? '';
-      if (chatId.isEmpty || _unreadCountSubscriptions.containsKey(chatId)) {
-        continue; // Already listening or invalid chat ID
-      }
-
-      // Listen to chat document for unread count changes
-      final subscription = FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .snapshots()
-          .listen((snapshot) {
-        if (!snapshot.exists || !mounted) return;
-
-        final data = snapshot.data()!;
-        final unreadField = 'unreadCount_${currentUser.uid}';
-        final dynamic unreadValue = data[unreadField];
-        final unreadCount = unreadValue != null
-            ? (unreadValue is int ? unreadValue : (unreadValue as num).toInt())
-            : 0;
-
-        if (mounted) {
-          setState(() {
-            _unreadCounts[chatId] = unreadCount;
-          });
-        }
-      });
-
-      _unreadCountSubscriptions[chatId] = subscription;
-    }
   }
 
   void _setupUserProfileListeners(List<app_chat.Chat> chats) {
     final currentUser = _inboxService.auth.currentUser;
     if (currentUser == null) return;
 
-    final nextUserIds = chats
-        .expand((chat) => chat.participants)
-        .where((id) => id.isNotEmpty && id != currentUser.uid)
-        .toSet();
+    final List<String> orderedUserIds = <String>[];
+    final Set<String> seen = <String>{};
+    for (final app_chat.Chat chat in chats) {
+      for (final String id in chat.participants) {
+        if (id.isEmpty || id == currentUser.uid || seen.contains(id)) {
+          continue;
+        }
+        seen.add(id);
+        orderedUserIds.add(id);
+        if (orderedUserIds.length >= _maxProfileListeners) {
+          break;
+        }
+      }
+      if (orderedUserIds.length >= _maxProfileListeners) {
+        break;
+      }
+    }
+    final Set<String> nextUserIds = orderedUserIds.toSet();
     final subscriptionsToCancel = _userProfileSubscriptions.keys
         .where((id) => !nextUserIds.contains(id))
         .toList();
@@ -235,15 +249,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       _userProfileSubscriptions.remove(userId);
     }
 
-    for (final chat in chats) {
-      // Filter out empty IDs and current user
-      final validParticipants = chat.participants
-          .where((id) => id.isNotEmpty && id != currentUser.uid)
-          .toList();
-
-      if (validParticipants.isEmpty) continue;
-
-      final otherUserId = validParticipants.first;
+    for (final String otherUserId in orderedUserIds) {
       if (_userProfileSubscriptions.containsKey(otherUserId)) continue;
 
       // Listen to user profile changes
@@ -271,9 +277,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             calendarEvents: [],
           );
 
-          setState(() {
-            _userProfiles[otherUserId] = updatedUser;
-          });
+          _userProfiles[otherUserId] = updatedUser;
+          _scheduleProfileRebuild();
         }
       });
       _userProfileSubscriptions[otherUserId] = subscription;
@@ -338,8 +343,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       // Filter out invalid chats (with empty participant IDs)
       final validChats = await _filterVisibleChats(allChats);
 
-      // Load user profiles and unread counts for each chat
-      _setupUnreadCountListeners(validChats);
+      // Sync unread from chat stream cache; cap profile listeners.
+      _syncUnreadFromChatStream(validChats);
       _setupUserProfileListeners(validChats);
       await _loadUserDataForChats(validChats);
 
@@ -356,7 +361,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     } catch (e) {
       LoggingService.instance.error('Error loading inbox data: $e');
       setState(() {
-        _error = 'Failed to load inbox data. Please try again.';
+        _error = UserFacingError.message(e);
         _isLoading = false;
       });
     }
@@ -399,62 +404,26 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final currentUser = _inboxService.auth.currentUser;
     if (currentUser == null) return;
 
-    // Load user profiles and unread counts in parallel
-    final futures = <Future>[];
+    _syncUnreadFromChatStream(chats);
 
+    final futures = <Future>[];
     for (final chat in chats) {
-      // Filter out empty IDs and current user
       final validParticipants = chat.participants
           .where((id) => id.isNotEmpty && id != currentUser.uid)
           .toList();
-
       if (validParticipants.isEmpty) continue;
-
       final otherUserId = validParticipants.first;
-
-      // Load user profile
       futures.add(_inboxService.getUserProfile(otherUserId).then((user) {
         if (user != null) {
           _userProfiles[otherUserId] = user;
         }
       }));
-
-      // Load initial unread count from chat document (real-time updates handled by listener)
-      final chatId = chat.id ?? '';
-      if (chatId.isNotEmpty) {
-        // Get unread count from chat document directly
-        futures.add(
-          FirebaseFirestore.instance
-              .collection('chats')
-              .doc(chatId)
-              .get()
-              .then((doc) {
-            if (doc.exists) {
-              final data = doc.data()!;
-              final currentUser = _inboxService.auth.currentUser;
-              if (currentUser != null) {
-                final unreadField = 'unreadCount_${currentUser.uid}';
-                final dynamic unreadValue = data[unreadField];
-                final unreadCount = unreadValue != null
-                    ? (unreadValue is int
-                        ? unreadValue
-                        : (unreadValue as num).toInt())
-                    : 0;
-                _unreadCounts[chatId] = unreadCount;
-              }
-            }
-          }),
-        );
-      }
-
-      // Load online status
       futures.add(_inboxService.isUserOnline(otherUserId).then((isOnline) {
         _onlineStatus[otherUserId] = isOnline;
       }));
     }
 
     await Future.wait(futures);
-    // Cache user data offline
     await _offlineService.cacheUserProfiles(_userProfiles);
     await _offlineService.cacheUnreadCounts(_unreadCounts);
     await _offlineService.cacheOnlineStatus(_onlineStatus);
@@ -487,7 +456,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final List<SharedDraft> drafts = results[1] as List<SharedDraft>;
       final List<app_chat.Chat> validChats =
           await _filterVisibleChats(allChats);
-      _setupUnreadCountListeners(validChats);
+      _syncUnreadFromChatStream(validChats);
       _setupUserProfileListeners(validChats);
       await _loadUserDataForChats(validChats);
       await _offlineService.cacheChats(validChats);
@@ -510,7 +479,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       }
       if (isFirstLoad) {
         setState(() {
-          _error = 'Failed to load inbox data. Please try again.';
+          _error = UserFacingError.message(e);
           _isLoading = false;
         });
       }
@@ -597,6 +566,18 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             child: Column(
               children: <Widget>[
                 _buildHeader(),
+                if (_actionError != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: ScreenInlineErrorBanner(
+                      message: _actionError!,
+                      onDismiss: () {
+                        if (mounted) {
+                          setState(() => _actionError = null);
+                        }
+                      },
+                    ),
+                  ),
                 _buildSearchBar(),
                 _buildTabBar(),
                 Expanded(
@@ -1709,94 +1690,11 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   }
 
   Widget _buildErrorState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Container(
-          key: const ValueKey('error-state'),
-          constraints: const BoxConstraints(maxWidth: 420),
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
-          decoration: BoxDecoration(
-            color: _on.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: _on.withValues(alpha: 0.10),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.red.withValues(alpha: 0.28),
-                    width: 1.5,
-                  ),
-                ),
-                child: Icon(
-                  Icons.error_outline,
-                  size: 40,
-                  color: Colors.red[300],
-                ),
-              ),
-              const SizedBox(height: 22),
-              Text(
-                'We couldn’t load your inbox',
-                style: TextStyle(
-                  color: _on,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _error ?? 'Unknown error',
-                style: TextStyle(
-                  color: _on.withValues(alpha: 0.64),
-                  fontSize: 14,
-                  height: 1.45,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 26),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: AppColors.supportAccentGradient,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: ElevatedButton(
-                  onPressed: _loadData,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 28, vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: Text(
-                    'Try Again',
-                    style: TextStyle(
-                      color: _onP,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ScreenErrorState(
+      key: const ValueKey('error-state'),
+      title: 'We couldn’t load your inbox',
+      message: _error ?? 'Something went wrong. Please try again.',
+      onRetry: _loadData,
     );
   }
 
@@ -2563,9 +2461,19 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     );
   }
 
-  // Helper method for showing SnackBars
+  // Failures stay on-screen; successes remain ephemeral.
   void _showSnackBar(String message, Color backgroundColor) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
+    final bool isError = backgroundColor == Colors.red;
+    if (isError) {
+      setState(() => _actionError = message);
+      return;
+    }
+    if (_actionError != null) {
+      setState(() => _actionError = null);
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),

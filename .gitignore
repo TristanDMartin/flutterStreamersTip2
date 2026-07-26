@@ -56,8 +56,12 @@ app.*.map.json
 # Local QA credentials for Flutter integration tests (never commit)
 .env.qa.local
 
+# Release dart-define secrets (never commit)
+.env.release
+
 # Cloud Functions secrets (never commit)
 cloud_functions/.env
 cloud_functions/.env.*
 !.env.example
+!.env.release.example
 cloud_functions/node_modules/

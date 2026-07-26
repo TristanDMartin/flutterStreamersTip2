@@ -358,6 +358,9 @@ class EngagementTrend {
 }
 
 extension InsightsDataAvailability on InsightsData {
+  /// Below this, rates/demographics are early signals — not reliable trends.
+  static const int minViewsForReliableRates = 10;
+
   bool get hasAudienceBreakdown {
     final GenderBreakdown gender = viewers.genderBreakdown;
     final int genderTotal =
@@ -383,4 +386,18 @@ extension InsightsDataAvailability on InsightsData {
   bool get hasEngagementTrends => engagement.trends.isNotEmpty;
 
   int get bookmarks => engagement.favorites;
+
+  bool get hasAnyActivity =>
+      overview.totalViews > 0 ||
+      engagement.likes > 0 ||
+      engagement.comments > 0 ||
+      engagement.shares > 0 ||
+      engagement.favorites > 0;
+
+  bool get hasEnoughCoreSignal =>
+      overview.totalViews >= minViewsForReliableRates;
+
+  bool get isEarlySignal => hasAnyActivity && !hasEnoughCoreSignal;
+
+  bool get isNotEnoughDataYet => !hasAnyActivity;
 }

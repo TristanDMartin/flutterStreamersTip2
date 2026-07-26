@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'settings/settings_subpage_widgets.dart';
 import '../services/content_settings_service.dart';
+import '../utils/user_facing_error.dart';
 
 class ContentPreferencesView extends ConsumerStatefulWidget {
   const ContentPreferencesView({super.key});
@@ -19,6 +20,8 @@ class _ContentPreferencesViewState
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   bool _isSaving = false;
+  String? _loadError;
+  String? _actionError;
   bool _autoPlay = true;
   bool _soundEnabled = true;
   bool _dataSaver = false;
@@ -38,7 +41,10 @@ class _ContentPreferencesViewState
     final firebase_auth.User? user =
         firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Please sign in to manage content preferences.';
+      });
       return;
     }
     try {
@@ -62,11 +68,15 @@ class _ContentPreferencesViewState
             _languagePreference = data['languagePreference'] ?? 'en';
           }
           _isLoading = false;
+          _loadError = null;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadError = UserFacingError.message(e);
+        });
       }
     }
   }
@@ -77,7 +87,10 @@ class _ContentPreferencesViewState
     if (user == null) {
       return;
     }
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _actionError = null;
+    });
     try {
       await _firestore
           .collection('users')
@@ -91,10 +104,7 @@ class _ContentPreferencesViewState
       }
     } catch (e) {
       if (mounted) {
-        SettingsSubpageWidgets.showErrorSnackBar(
-          context,
-          'Error updating settings: $e',
-        );
+        setState(() => _actionError = UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -124,6 +134,20 @@ class _ContentPreferencesViewState
       title: 'Content Preferences',
       isLoading: _isLoading,
       isSaving: _isSaving,
+      loadError: _loadError,
+      onRetryLoad: () {
+        setState(() {
+          _isLoading = true;
+          _loadError = null;
+        });
+        _loadSettings();
+      },
+      actionError: _actionError,
+      onDismissActionError: () {
+        if (mounted) {
+          setState(() => _actionError = null);
+        }
+      },
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(

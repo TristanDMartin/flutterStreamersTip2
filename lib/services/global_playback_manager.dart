@@ -36,6 +36,7 @@ import '../features/home/application/home_first_frame_gate.dart';
 import '../utils/video_health_gate.dart';
 import '../utils/secure_log.dart';
 import '../utils/like_interaction_boundary.dart';
+import 'production_monitoring_service.dart';
 
 /// Enhanced Global Playback Manager - Single source of truth for video playback
 ///
@@ -1689,6 +1690,13 @@ class GlobalPlaybackManager {
       'controllerAgeMs=${controllerAgeMs ?? 'n/a'} '
       'warmReuseMs=${warmReuseMs ?? 'n/a'} '
       'pool=${_controllerPool.length}',
+    );
+    unawaited(
+      ProductionMonitoringService.instance.recordFirstFrame(
+        videoId: videoId,
+        source: 'playback_manager',
+        activationToFirstFrameMs: activationToFirstFrameMs,
+      ),
     );
     HomeFirstFrameGate.instance.markFirstFrameRendered(
       videoId: videoId,

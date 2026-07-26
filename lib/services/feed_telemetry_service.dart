@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'creator_intelligence_analytics_service.dart';
+import 'production_monitoring_service.dart';
 
 /// Service for feed telemetry per spec (video_impression, video_skip, etc.)
 class FeedTelemetryService {
@@ -77,6 +78,12 @@ class FeedTelemetryService {
     String? networkType,
     int? feedPosition,
   }) async {
+    unawaited(
+      ProductionMonitoringService.instance.recordFeedError(
+        reason: error,
+        videoId: videoId,
+      ),
+    );
     await _logToFeedSkipLogs(
       videoId: videoId,
       event: 'video_load_error',
@@ -92,6 +99,12 @@ class FeedTelemetryService {
     required String reason,
     int? feedPosition,
   }) async {
+    unawaited(
+      ProductionMonitoringService.instance.recordFeedError(
+        reason: reason,
+        videoId: videoId,
+      ),
+    );
     await _logToFeedSkipLogs(
       videoId: videoId,
       event: 'video_auto_skipped',

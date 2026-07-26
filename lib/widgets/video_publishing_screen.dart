@@ -15,8 +15,10 @@ import '../services/enhanced_error_handling_service.dart';
 import '../services/video_watermark_service.dart';
 import '../services/optimistic_video_service.dart';
 import '../utils/upload_error_classifier.dart';
+import '../utils/user_facing_error.dart';
 import '../services/hashtag_lock_service.dart';
 import '../widgets/schedule_post_widget.dart';
+import '../widgets/screen_feedback_state.dart';
 import '../models/scheduled_post.dart';
 import '../services/firebase_ios_service.dart';
 import '../services/network_connectivity_service.dart';
@@ -104,6 +106,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   bool _isPlaying = false;
   String? _initializationError;
   bool _hasError = false;
+  String? _actionError;
   Duration? _videoDuration;
   int _captionCharacterCount = 0;
   final ScrollController _scrollController = ScrollController();
@@ -213,6 +216,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   bool _allowComments = true;
   bool _isUploading = false;
   double _uploadProgress = 0.0;
+  String? _retryVideoId;
+  File? _retryVideoFile;
   String? _aspectRatioWarning;
   bool _aspectRatioWarningDismissed = false;
 
@@ -864,12 +869,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      setState(() => _actionError = e.message);
     } finally {
       if (mounted) {
         setState(() => _tippyAssistBusy = false);
@@ -967,6 +967,18 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       body: Column(
         children: <Widget>[
           _buildHeader(),
+          if (_actionError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: ScreenInlineErrorBanner(
+                message: _actionError!,
+                onDismiss: () {
+                  if (mounted) {
+                    setState(() => _actionError = null);
+                  }
+                },
+              ),
+            ),
           Expanded(
             child: SingleChildScrollView(
               controller: _scrollController,
@@ -1547,11 +1559,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                                 size: 48,
                               ),
                               const SizedBox(height: 16),
-                              Text(
-                                _initializationError!,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
+                              SelectableText.rich(
+                                TextSpan(
+                                  text: _initializationError!,
+                                  style: TextStyle(
+                                    color: Colors.red.shade300,
+                                    fontSize: 14,
+                                  ),
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -2570,15 +2584,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               _addHashtagToCaption(hashtag);
             });
           } else {
-            // Show error message
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(validation.errorMessage ?? 'Invalid hashtag'),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
+              setState(() {
+                _actionError =
+                    validation.errorMessage ?? 'Invalid hashtag';
+              });
             }
           }
         }
@@ -2806,8 +2816,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         _isModerating = false;
       });
 
-      // 2. Generate video ID and create optimistic video
-      final videoId = _generateVideoId();
+      // 2. Generate video ID (reuse on retry) and create optimistic video
+      final String videoId = _retryVideoId ?? _generateVideoId();
+      _retryVideoId = videoId;
       _syncSelectedPlatforms();
       final selectedPlatforms = FeatureFlags.crossPostingEnabled
           ? _effectiveSelectedPlatforms
@@ -2816,11 +2827,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           '🎬 VideoPublishingScreen: Creating optimistic video: $videoId');
 
       // Apply watermark if cross-platform sharing is selected
-      File videoFileToUpload = widget.videoFile;
-      if (_watermarkService.shouldApplyWatermarkForTier(
-        _subscriptionTier,
-        selectedPlatforms,
-      )) {
+      File videoFileToUpload = _retryVideoFile ?? widget.videoFile;
+      if (_retryVideoFile == null &&
+          _watermarkService.shouldApplyWatermarkForTier(
+            _subscriptionTier,
+            selectedPlatforms,
+          )) {
         debugPrint(
             '🎬 VideoPublishingScreen: Applying watermark for cross-platform sharing...');
         final watermarkedFile = await _watermarkService.addWatermarkToVideo(
@@ -2833,6 +2845,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           debugPrint('✅ VideoPublishingScreen: Watermark applied successfully');
         }
       }
+      _retryVideoFile = videoFileToUpload;
 
       // 3. Create optimistic video placeholder
       debugPrint(
@@ -2896,6 +2909,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       setState(() {
         _isUploading = true;
         _uploadProgress = 0.0;
+        _actionError = null;
       });
 
       try {
@@ -2915,6 +2929,19 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         final fileSize = await videoFileToUpload.length();
         final canonicalCategory =
             resolveCategoryIdForPublish(_selectedCategory);
+        final UploadStatusManager uploadStatus = UploadStatusManager();
+        await uploadStatus.beginInScreenUpload(
+          fileUri: videoFileToUpload.path,
+          thumbUri: _customThumbnailFile?.path,
+          title: _caption,
+          categories: <String>[canonicalCategory, ..._hashtags],
+          videoId: videoId,
+          metadata: <String, dynamic>{
+            'privacy': _selectedPrivacy,
+            'allowComments': _allowComments,
+            'category': canonicalCategory,
+          },
+        );
 
         // Build cross-post requests for selected platforms.
         final crossPostRequests = _connectedPlatforms
@@ -2956,6 +2983,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               ..._previewEditMetadata,
             },
             onProgress: (progress) {
+              unawaited(uploadStatus.reportUploadProgress(progress));
               if (mounted) setState(() => _uploadProgress = progress);
             },
           ),
@@ -2979,7 +3007,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               serverVideoId: uploadedVideoId,
             );
           }
-          UploadStatusManager().enterProcessing(uploadedVideoId);
+          _retryVideoId = null;
+          _retryVideoFile = null;
+          uploadStatus.enterProcessing(uploadedVideoId);
           await _returnToHomeAfterPublish(
             uploadedVideoId: uploadedVideoId,
             privacy: _selectedPrivacy,
@@ -2990,14 +3020,18 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           final String raw = result.streamerstipResult.error ??
               publishController.errorDetails['streamerstip'] ??
               'Failed to publish video';
-          _showUploadErrorDialog(_friendlyUploadError(raw));
+          final String friendly = _friendlyUploadError(raw);
+          await uploadStatus.markFailed(friendly);
+          _showUploadErrorDialog(friendly);
         }
       } catch (e) {
         secureLog('❌ VideoPublishingScreen: upload error: $e',
             name: 'VideoPublishingScreen');
         if (!mounted) return;
         setState(() => _isUploading = false);
-        _showUploadErrorDialog(_friendlyUploadError(e.toString()));
+        final String friendly = _friendlyUploadError(e.toString());
+        await UploadStatusManager().markFailed(friendly);
+        _showUploadErrorDialog(friendly);
       }
     } catch (e) {
       if (!mounted) {
@@ -3052,14 +3086,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     if (failedPlatforms.isNotEmpty && mounted) {
       final String names =
           failedPlatforms.map((CrossPostResult r) => r.platformName).join(', ');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Posted on StreamersTip. Cross-post failed for: $names',
-          ),
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      setState(() {
+        _actionError =
+            'Posted on StreamersTip. Cross-post failed for: $names';
+      });
     }
     if (!mounted) {
       return;
@@ -3241,9 +3271,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   void _showUploadErrorDialog(String error) {
-    showDialog(
+    final String safeMessage = UserFacingError.message(error);
+    if (mounted) {
+      setState(() => _actionError = safeMessage);
+    }
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (BuildContext context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Row(
           children: [
@@ -3255,13 +3289,23 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             ),
           ],
         ),
-        content: Text(
-          error,
-          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        content: SelectableText.rich(
+          TextSpan(
+            text: safeMessage,
+            style: TextStyle(
+              color: Colors.red.shade300,
+              fontSize: 14,
+            ),
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (!_isUploading && !_isModerating) {
+                unawaited(_publishVideo());
+              }
+            },
             child: const Text(
               'Try Again',
               style: TextStyle(color: Color(0xFF9248D2)),
@@ -3270,7 +3314,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              _saveAsDraft();
+              unawaited(_saveAsDraft());
             },
             child: const Text(
               'Save as Draft',

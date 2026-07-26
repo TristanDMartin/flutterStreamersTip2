@@ -8,6 +8,9 @@ import '../core/theme/support_shell_style.dart';
 import '../features/tippy/tippy_legal_service.dart';
 import '../providers/status_provider.dart';
 import '../services/privacy_settings_service.dart';
+import '../utils/user_facing_error.dart';
+import '../widgets/screen_feedback_state.dart';
+import 'settings/settings_subpage_widgets.dart';
 
 class PrivacySettingsView extends ConsumerStatefulWidget {
   const PrivacySettingsView({super.key});
@@ -21,6 +24,8 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   bool _isSaving = false;
+  String? _loadError;
+  String? _actionError;
 
   bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -62,7 +67,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     final firebase_auth.User? user =
         firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Please sign in to manage privacy settings.';
+      });
       return;
     }
 
@@ -86,12 +94,21 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
           _showOnlineStatus = data['showOnlineStatus'] ?? true;
           _readReceipts = data['readReceipts'] ?? true;
           _isLoading = false;
+          _loadError = null;
         });
-      } else {
-        setState(() => _isLoading = false);
+      } else if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError = null;
+        });
       }
-    } catch (_) {
-      setState(() => _isLoading = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError = UserFacingError.message(e);
+        });
+      }
     }
   }
 
@@ -102,7 +119,10 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _actionError = null;
+    });
 
     try {
       await _firestore
@@ -118,32 +138,11 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
       }
 
       if (mounted) {
-        final ColorScheme cs = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Settings updated',
-              style: TextStyle(color: cs.onInverseSurface),
-            ),
-            backgroundColor: cs.inverseSurface,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        SettingsSubpageWidgets.showUpdatedSnackBar(context);
       }
     } catch (e) {
       if (mounted) {
-        final ColorScheme cs = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Error updating settings: $e',
-              style: TextStyle(color: cs.onErrorContainer),
-            ),
-            backgroundColor: cs.errorContainer,
-          ),
-        );
+        setState(() => _actionError = UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -200,6 +199,36 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
       );
     }
 
+    if (_loadError != null) {
+      return _wrapIosTextScale(
+        context,
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: StSupportShellStyle.of(context).pageGradient,
+            ),
+          ),
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: _buildAppBar(context),
+            body: ScreenErrorState(
+              title: 'Couldn’t load privacy settings',
+              message: _loadError!,
+              onRetry: () {
+                setState(() {
+                  _isLoading = true;
+                  _loadError = null;
+                });
+                _loadPrivacySettings();
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
     return _wrapIosTextScale(
       context,
       DecoratedBox(
@@ -223,6 +252,17 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
                     backgroundColor: cs.surfaceContainerLow,
                     color: cs.primary,
                   ),
+                if (_actionError != null) ...[
+                  ScreenInlineErrorBanner(
+                    message: _actionError!,
+                    onDismiss: () {
+                      if (mounted) {
+                        setState(() => _actionError = null);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _buildSection(
                   context,
                   'Profile',
@@ -647,26 +687,29 @@ class _PrivacySettingsViewState extends ConsumerState<PrivacySettingsView> {
     if (confirmed != true || !mounted) {
       return;
     }
-    setState(() => _deletingTippyHistory = true);
+    setState(() {
+      _deletingTippyHistory = true;
+      _actionError = null;
+    });
     try {
       await _tippyLegalService.deleteAllPromptHistory();
       if (!mounted) {
         return;
       }
+      final ColorScheme cs = Theme.of(context).colorScheme;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('Tippy chat history deleted'),
+          backgroundColor: cs.inverseSurface,
+          content: Text(
+            'Tippy chat history deleted',
+            style: TextStyle(color: cs.onInverseSurface),
+          ),
         ),
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text('Could not delete history: $e'),
-          ),
-        );
+        setState(() => _actionError = UserFacingError.message(e));
       }
     } finally {
       if (mounted) {

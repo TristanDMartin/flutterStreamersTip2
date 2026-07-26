@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'settings/settings_subpage_widgets.dart';
 import '../services/privacy_settings_service.dart';
 import '../services/notification_settings_service.dart';
+import '../utils/user_facing_error.dart';
 
 class MentionsTagsView extends ConsumerStatefulWidget {
   const MentionsTagsView({super.key});
@@ -18,6 +19,8 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   bool _isSaving = false;
+  String? _loadError;
+  String? _actionError;
   String _allowMentions = 'everyone';
   bool _allowTags = true;
   bool _allowMentionNotifications = true;
@@ -33,7 +36,10 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
     final firebase_auth.User? user =
         firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Please sign in to manage mentions and tags.';
+      });
       return;
     }
     try {
@@ -64,11 +70,15 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
             _allowTagNotifications = data['tags'] ?? true;
           }
           _isLoading = false;
+          _loadError = null;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadError = UserFacingError.message(e);
+        });
       }
     }
   }
@@ -79,7 +89,10 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
     if (user == null) {
       return;
     }
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _actionError = null;
+    });
     try {
       await _firestore
           .collection('users')
@@ -93,10 +106,7 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
       }
     } catch (e) {
       if (mounted) {
-        SettingsSubpageWidgets.showErrorSnackBar(
-          context,
-          'Error updating settings: $e',
-        );
+        setState(() => _actionError = UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -111,7 +121,10 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
     if (user == null) {
       return;
     }
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _actionError = null;
+    });
     try {
       await _firestore
           .collection('users')
@@ -119,18 +132,13 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
           .collection('notificationSettings')
           .doc('main')
           .set(<String, dynamic>{key: value}, SetOptions(merge: true));
-      if (key == 'mentions' || key == 'tags') {
-        NotificationSettingsService.instance.invalidate(user.uid);
-      }
+      NotificationSettingsService.instance.invalidate(user.uid);
       if (mounted) {
         SettingsSubpageWidgets.showUpdatedSnackBar(context);
       }
     } catch (e) {
       if (mounted) {
-        SettingsSubpageWidgets.showErrorSnackBar(
-          context,
-          'Error updating settings: $e',
-        );
+        setState(() => _actionError = UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -146,6 +154,20 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
       title: 'Mentions & Tags',
       isLoading: _isLoading,
       isSaving: _isSaving,
+      loadError: _loadError,
+      onRetryLoad: () {
+        setState(() {
+          _isLoading = true;
+          _loadError = null;
+        });
+        _loadSettings();
+      },
+      actionError: _actionError,
+      onDismissActionError: () {
+        if (mounted) {
+          setState(() => _actionError = null);
+        }
+      },
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -181,6 +203,7 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
                     setState(() => _allowMentionNotifications = value);
                     _updateNotificationSetting('mentions', value);
                   },
+                  showDivider: false,
                 ),
               ],
             ),
@@ -192,9 +215,9 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
               children: <Widget>[
                 SettingsSubpageWidgets.switchRow(
                   context: context,
-                  icon: Icons.label_outline,
+                  icon: Icons.local_offer_outlined,
                   title: 'Allow Tags',
-                  subtitle: 'Let people tag you in their content',
+                  subtitle: 'Let people tag you in videos and posts',
                   value: _allowTags,
                   onChanged: (bool value) {
                     setState(() => _allowTags = value);
@@ -211,18 +234,10 @@ class _MentionsTagsViewState extends ConsumerState<MentionsTagsView> {
                     setState(() => _allowTagNotifications = value);
                     _updateNotificationSetting('tags', value);
                   },
+                  showDivider: false,
                 ),
               ],
             ),
-            const SizedBox(height: 32),
-            SettingsSubpageWidgets.infoCard(
-              context: context,
-              title: 'About Mentions & Tags',
-              body:
-                  'Control who can mention or tag you, and whether you receive '
-                  'notifications when they do.',
-            ),
-            const SizedBox(height: 40),
           ],
         ),
       ),

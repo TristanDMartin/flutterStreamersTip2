@@ -4,12 +4,14 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/two_factor_settings_view.dart';
+import '../widgets/screen_feedback_state.dart';
 import '../services/account_management_service.dart';
 import '../services/account_deletion_service.dart';
 import '../routing/app_routes.dart';
 import '../services/unified_avatar_service.dart' as nav;
 import '../utils/avatar_url_resolver.dart';
 import '../utils/swallow_non_fatal.dart';
+import '../utils/user_facing_error.dart';
 
 class ManageAccountView extends ConsumerStatefulWidget {
   const ManageAccountView({super.key});
@@ -25,6 +27,8 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
   bool _isAccountActionInFlight = false;
+  String? _loadError;
+  String? _actionError;
 
   bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -70,6 +74,7 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     if (user == null) {
       setState(() {
         _isLoading = false;
+        _loadError = 'Please sign in to manage your account.';
       });
       return;
     }
@@ -82,17 +87,45 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     }
     try {
       final doc = await _firestore.collection('users').doc(user.uid).get();
-      if (mounted && doc.exists) {
+      if (!mounted) {
+        return;
+      }
+      if (doc.exists) {
         setState(() {
           _userData = doc.data();
           _isLoading = false;
+          _loadError = null;
         });
+        return;
       }
+      setState(() {
+        _userData = null;
+        _isLoading = false;
+        _loadError = 'Account profile could not be found.';
+      });
     } catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _isLoading = false;
+        _loadError = UserFacingError.message(e);
       });
     }
+  }
+
+  void _setActionError(String message) {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _actionError = message);
+  }
+
+  void _clearActionError() {
+    if (!mounted || _actionError == null) {
+      return;
+    }
+    setState(() => _actionError = null);
   }
 
   Future<void> _switchAccount() async {
@@ -146,42 +179,20 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       if (!mounted || result.outcome == AddAccountOutcome.cancelled) {
         return;
       }
-      final ColorScheme cs = Theme.of(context).colorScheme;
-      final bool isError = result.outcome == AddAccountOutcome.failed;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(
-            result.message ??
-                (isError
-                    ? 'Failed to add account. Please try again.'
-                    : 'Account added successfully.'),
-            style: TextStyle(
-              color: isError ? cs.onErrorContainer : cs.onInverseSurface,
-            ),
-          ),
-          backgroundColor:
-              isError ? cs.errorContainer : cs.inverseSurface,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (result.outcome == AddAccountOutcome.failed) {
+        _setActionError(
+          result.message ?? 'Failed to add account. Please try again.',
+        );
+        return;
+      }
+      _clearActionError();
       if (result.isSuccess) {
         await _loadUserData();
       }
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop();
-        final ColorScheme cs = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Error: $e',
-              style: TextStyle(color: cs.onErrorContainer),
-            ),
-            backgroundColor: cs.errorContainer,
-          ),
-        );
+        _setActionError(UserFacingError.message(e));
       }
     } finally {
       if (mounted) {
@@ -485,30 +496,13 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       if (result.outcome == AccountDeletionOutcome.cancelled) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(
-            result.message ?? 'Error deleting account. Please try again.',
-            style: TextStyle(color: cs.onErrorContainer),
-          ),
-          backgroundColor: cs.errorContainer,
-        ),
+      _setActionError(
+        result.message ?? 'Error deleting account. Please try again.',
       );
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop();
-        final ColorScheme cs = Theme.of(context).colorScheme;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Error deleting account: $e',
-              style: TextStyle(color: cs.onErrorContainer),
-            ),
-            backgroundColor: cs.errorContainer,
-          ),
-        );
+        _setActionError(UserFacingError.message(e));
       }
     }
   }
@@ -549,7 +543,19 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         ),
         child: _isLoading
             ? Center(child: CircularProgressIndicator(color: c.primary))
-            : SafeArea(
+            : _loadError != null
+                ? ScreenErrorState(
+                    title: 'Couldn’t load account',
+                    message: _loadError!,
+                    onRetry: () {
+                      setState(() {
+                        _isLoading = true;
+                        _loadError = null;
+                      });
+                      _loadUserData();
+                    },
+                  )
+                : SafeArea(
                 top: false,
                 bottom: true,
                 child: SingleChildScrollView(
@@ -566,6 +572,13 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_actionError != null) ...[
+                        ScreenInlineErrorBanner(
+                          message: _actionError!,
+                          onDismiss: _clearActionError,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       _buildProfileHeader(user),
                       const SizedBox(height: 32),
                       _buildAccountInfo(user),

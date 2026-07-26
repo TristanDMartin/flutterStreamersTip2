@@ -70,6 +70,17 @@ class UploadJobStorageService {
     return allJobs.where((job) => job.state.isActive).toList();
   }
 
+  /// Active jobs plus failed checkpoints that can still be retried.
+  Future<List<UploadJob>> loadResumableJobs() async {
+    final List<UploadJob> allJobs = await loadAllJobs();
+    return allJobs
+        .where(
+          (UploadJob job) =>
+              job.state.isActive || job.state == UploadJobState.failed,
+        )
+        .toList();
+  }
+
   /// Update job state
   Future<void> updateJobState(String localId, UploadJobState state,
       {double? progress, String? errorMessage}) async {

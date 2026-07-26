@@ -189,6 +189,13 @@ class InboxServiceOptimized {
     }
   }
 
+  /// Cached unread count populated when chat docs are mapped from streams.
+  int cachedUnreadCount(String chatId) => _unreadCounts[chatId] ?? 0;
+
+  /// Snapshot of all cached unread counts (for inbox list sync).
+  Map<String, int> snapshotUnreadCounts() =>
+      Map<String, int>.from(_unreadCounts);
+
   /// Get unread message count for a chat
   Future<int> getUnreadCount(String chatId) async {
     if (_unreadCounts.containsKey(chatId)) {

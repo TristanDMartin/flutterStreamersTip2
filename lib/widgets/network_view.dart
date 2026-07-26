@@ -7,6 +7,7 @@ import '../routing/app_navigator.dart';
 import '../services/user_blocking_service.dart';
 import 'network_view_controller.dart';
 import 'network_view_sections.dart';
+import 'screen_feedback_state.dart';
 
 class NetworkView extends StatefulWidget {
   const NetworkView({super.key});
@@ -20,6 +21,7 @@ class _NetworkViewState extends State<NetworkView>
   late final TabController _tabController;
   late final NetworkViewController _controller;
   final UserBlockingService _blockingService = UserBlockingService();
+  String? _actionError;
 
   @override
   void initState() {
@@ -65,6 +67,18 @@ class _NetworkViewState extends State<NetworkView>
               onRefresh: _controller.refresh,
               isRefreshing: state.isLoading,
             ),
+            if (_actionError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: ScreenInlineErrorBanner(
+                  message: _actionError!,
+                  onDismiss: () {
+                    if (mounted) {
+                      setState(() => _actionError = null);
+                    }
+                  },
+                ),
+              ),
             NetworkViewTabBarCard(controller: _tabController),
             Expanded(
               child: state.isLoading
@@ -130,26 +144,27 @@ class _NetworkViewState extends State<NetworkView>
 
   Future<void> _handleFollow(User user) async {
     final feedback = await _controller.follow(user);
-    _showSnackBar(feedback.message, isError: feedback.isError);
+    _showActionFeedback(feedback.message, isError: feedback.isError);
   }
 
   Future<void> _handleUnfollow(User user) async {
     final feedback = await _controller.unfollow(user);
-    _showSnackBar(feedback.message, isError: feedback.isError);
+    _showActionFeedback(feedback.message, isError: feedback.isError);
   }
 
   Future<void> _handleRemove(User user) async {
     final feedback = await _controller.remove(user);
-    _showSnackBar(feedback.message, isError: feedback.isError);
+    _showActionFeedback(feedback.message, isError: feedback.isError);
   }
 
-  void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : const Color(0xFF955CFF),
-      ),
-    );
+  void _showActionFeedback(String message, {required bool isError}) {
+    if (isError) {
+      setState(() => _actionError = message);
+      return;
+    }
+    if (_actionError != null) {
+      setState(() => _actionError = null);
+    }
   }
 
   void _openStreamerCardForUser(User user) {

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../services/two_factor_auth_service.dart';
+import '../utils/user_facing_error.dart';
+import 'screen_feedback_state.dart';
 import 'two_factor_setup_view.dart';
 
 class TwoFactorSettingsView extends ConsumerStatefulWidget {
@@ -17,6 +19,7 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
   final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
   bool _isEnabled = false;
   bool _isLoading = true;
+  String? _actionError;
 
   bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -122,6 +125,7 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
         await _twoFactorService.disable2FA(user.uid);
         if (mounted) {
           final ColorScheme cs = Theme.of(context).colorScheme;
+          setState(() => _actionError = null);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               behavior: SnackBarBehavior.floating,
@@ -136,17 +140,7 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
         }
       } catch (e) {
         if (mounted) {
-          final ColorScheme cs = Theme.of(context).colorScheme;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              behavior: SnackBarBehavior.floating,
-              content: Text(
-                'Error: $e',
-                style: TextStyle(color: cs.onErrorContainer),
-              ),
-              backgroundColor: cs.errorContainer,
-            ),
-          );
+          setState(() => _actionError = UserFacingError.message(e));
         }
       }
     }
@@ -214,6 +208,17 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                if (_actionError != null) ...[
+                  ScreenInlineErrorBanner(
+                    message: _actionError!,
+                    onDismiss: () {
+                      if (mounted) {
+                        setState(() => _actionError = null);
+                      }
+                    },
+                  ),
+                  SizedBox(height: _isIos ? 12 : 16),
+                ],
                 Container(
                   padding: EdgeInsets.all(_isIos ? 16 : 20),
                   decoration: BoxDecoration(

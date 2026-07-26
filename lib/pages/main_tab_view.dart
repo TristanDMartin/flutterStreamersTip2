@@ -30,6 +30,7 @@ import '../controllers/home_view_controller.dart';
 import '../services/global_playback_manager.dart';
 import '../routing/app_routes.dart';
 import '../constants/playback_owners.dart';
+import '../widgets/upload_status_bar.dart';
 import 'package:streamers_tip/qa/qa_runtime.dart';
 import 'package:streamers_tip/utils/interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
@@ -377,41 +378,55 @@ class _MainTabViewState extends ConsumerState<MainTabView>
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody:
           true, // This allows content to extend behind the bottom navigation
-      body: IndexedStack(
-        index: _currentIndex,
-        sizing: StackFit.expand,
+      body: Stack(
+        fit: StackFit.expand,
         children: <Widget>[
-          HomeView(key: _homeViewKey),
-          const NetworkView(),
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Icon(
-                  Icons.add_circle,
-                  size: 80,
-                  color: on.withValues(alpha: 0.45),
+          IndexedStack(
+            index: _currentIndex,
+            sizing: StackFit.expand,
+            children: <Widget>[
+              HomeView(key: _homeViewKey),
+              const NetworkView(),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Icon(
+                      Icons.add_circle,
+                      size: 80,
+                      color: on.withValues(alpha: 0.45),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Create Content',
+                      style: TextStyle(
+                        fontSize: 24,
+                        color: on.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    Text(
+                      'Tap the + button',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: on.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Create Content',
-                  style: TextStyle(
-                    fontSize: 24,
-                    color: on.withValues(alpha: 0.6),
-                  ),
-                ),
-                Text(
-                  'Tap the + button',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: on.withValues(alpha: 0.5),
-                  ),
-                ),
-              ],
+              ),
+              const InboxViewOptimized(),
+              _buildCurrentUserProfileTab(on),
+            ],
+          ),
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: UploadStatusBar(),
             ),
           ),
-          const InboxViewOptimized(),
-          _buildCurrentUserProfileTab(on),
         ],
       ),
       bottomNavigationBar: CustomBottomNav(

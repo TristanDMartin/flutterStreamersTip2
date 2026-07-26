@@ -273,41 +273,48 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   void _handleProfileStateChanged() {
     if (!mounted) return;
-
-    final profileState = _profileController.state;
-    final previousResolvedUserDocId = _resolvedUserDocId;
-    final previousUserData = _userData;
-
-    setState(() {
-      _userData = profileState.userData;
-      _resolvedUserDocId = profileState.resolvedUserDocId;
-      _isLoading = profileState.isLoading;
-      _error = profileState.error;
-      _syncDerivedProfileFields();
+    _rebuildDebouncer?.cancel();
+    _rebuildDebouncer = Timer(const Duration(milliseconds: 80), () {
+      if (!mounted) return;
+      final profileState = _profileController.state;
+      final previousResolvedUserDocId = _resolvedUserDocId;
+      final previousUserData = _userData;
+      setState(() {
+        _userData = profileState.userData;
+        _resolvedUserDocId = profileState.resolvedUserDocId;
+        _isLoading = profileState.isLoading;
+        _error = profileState.error;
+        _syncDerivedProfileFields();
+      });
+      final String? resolvedUid = _resolvedUserDocId;
+      if (resolvedUid != null && resolvedUid.isNotEmpty) {
+        _attachContentPlansListener(resolvedUid);
+      }
+      final bool profileChanged =
+          previousResolvedUserDocId != _resolvedUserDocId ||
+              !identical(previousUserData, _userData);
+      if (profileChanged && _userData != null) {
+        final String cacheId = _resolvedUserDocId ?? widget.userId;
+        CreatorCacheService.instance.setFromUserData(cacheId, _userData!);
+        unawaited(
+          _relationshipController.bind(
+            currentUserId: widget.currentUserId,
+            targetUserId: widget.userId,
+          ),
+        );
+      }
     });
-
-    final String? resolvedUid = _resolvedUserDocId;
-    if (resolvedUid != null && resolvedUid.isNotEmpty) {
-      _attachContentPlansListener(resolvedUid);
-    }
-
-    final profileChanged = previousResolvedUserDocId != _resolvedUserDocId ||
-        !identical(previousUserData, _userData);
-    if (profileChanged && _userData != null) {
-      final String cacheId = _resolvedUserDocId ?? widget.userId;
-      CreatorCacheService.instance.setFromUserData(cacheId, _userData!);
-      unawaited(
-        _relationshipController.bind(
-          currentUserId: widget.currentUserId,
-          targetUserId: widget.userId,
-        ),
-      );
-    }
   }
 
   void _handleRelationshipStateChanged() {
     if (!mounted) return;
-    setState(() {});
+    _rebuildDebouncer?.cancel();
+    _rebuildDebouncer = Timer(const Duration(milliseconds: 80), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+    });
   }
 
   void _handleBlockListChanged() {

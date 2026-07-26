@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/user.dart';
 import '../services/network_service_optimized.dart';
 import '../services/user_blocking_service.dart';
+import '../utils/user_facing_error.dart';
 
 enum NetworkActionType {
   follow,
@@ -158,7 +159,7 @@ class NetworkViewController extends ChangeNotifier {
       _updateState(
         _state.copyWith(
           isLoading: false,
-          error: error.toString(),
+          error: UserFacingError.message(error),
         ),
       );
     }

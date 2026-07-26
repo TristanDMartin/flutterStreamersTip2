@@ -33,6 +33,8 @@ import 'components/onboarding/onboarding_gate.dart';
 import 'features/gamification/widgets/gamification_celebration_overlay.dart';
 import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
+import 'services/upload_status_manager.dart';
+import 'config/release_config_health.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_theme_mode.dart';
@@ -163,6 +165,17 @@ Future<void> _recordProductionStartupHealth() async {
       appCheckReady: readiness.isReady,
       appCheckDetail: readiness.detail,
     );
+    final ReleaseConfigHealth releaseHealth = ReleaseConfigHealth.evaluate();
+    await ProductionMonitoringService.instance.recordReleaseConfigHealth(
+      isGiphyConfigured: releaseHealth.isGiphyConfigured,
+      isBillingVerifyConfigured: releaseHealth.isBillingVerifyConfigured,
+      missingKeys: releaseHealth.missingKeys,
+    );
+    if (kReleaseMode && releaseHealth.warnings.isNotEmpty) {
+      for (final String warning in releaseHealth.warnings) {
+        debugPrint('⚠️ RELEASE CONFIG: $warning');
+      }
+    }
   }());
 }
 
@@ -313,6 +326,11 @@ Future<void> _initializePhase2Services() async {
 
   await _initializeServiceSafely('FavoritesServiceOptimized', () async {
     await FavoritesServiceOptimized().initialize();
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  await _initializeServiceSafely('UploadStatusManager', () async {
+    await UploadStatusManager().initialize();
   }, timeout: serviceTimeout);
   await _yieldBetweenDeferredServices();
 

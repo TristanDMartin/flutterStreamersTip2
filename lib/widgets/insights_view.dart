@@ -182,19 +182,22 @@ class _InsightsViewState extends ConsumerState<InsightsView>
               _buildHeader(shell),
               if (_loadState == _InsightsLoadState.ready &&
                   _snapshot != null) ...<Widget>[
-                CreatorInsightsHero(
-                  video: _snapshot!.video,
-                  isLive: _snapshot!.isLive,
-                  lastUpdated: _snapshot!.lastUpdated,
-                  views: _snapshot!.insights.overview.totalViews,
-                  likes: _snapshot!.insights.engagement.likes,
-                  comments: _snapshot!.insights.overview.comments,
-                  shares: _snapshot!.insights.overview.shares,
-                  bookmarks: _snapshot!.insights.bookmarks,
-                ),
+                if (!_snapshot!.insights.isNotEnoughDataYet)
+                  CreatorInsightsHero(
+                    video: _snapshot!.video,
+                    isLive: _snapshot!.isLive,
+                    lastUpdated: _snapshot!.lastUpdated,
+                    views: _snapshot!.insights.overview.totalViews,
+                    likes: _snapshot!.insights.engagement.likes,
+                    comments: _snapshot!.insights.overview.comments,
+                    shares: _snapshot!.insights.overview.shares,
+                    bookmarks: _snapshot!.insights.bookmarks,
+                  ),
                 _buildVideoSelector(),
               ],
-              if (_loadState == _InsightsLoadState.ready)
+              if (_loadState == _InsightsLoadState.ready &&
+                  _snapshot != null &&
+                  !_snapshot!.insights.isNotEnoughDataYet)
                 _buildTabBar(shell),
               Expanded(child: _buildBody(shell)),
             ],
@@ -330,30 +333,67 @@ class _InsightsViewState extends ConsumerState<InsightsView>
         );
       case _InsightsLoadState.ready:
         final InsightsData? insights = _snapshot?.insights;
-        if (insights == null) {
+        if (insights == null || insights.isNotEnoughDataYet) {
           return _buildStatusCard(
             shell: shell,
             icon: Icons.insights_outlined,
-            title: 'No insights yet',
-            message: 'Analytics will appear once your video gets activity.',
+            title: 'Not enough data yet',
+            message:
+                'Keep sharing this video. Verified views and engagement will '
+                'appear here — we never fill in sample numbers.',
             accentColor: const Color(0xFF3D99F7),
             actionLabel: 'Refresh',
             onAction: _refreshCurrent,
           );
         }
         final int windowDays = _analyticsWindowDays();
-        return TabBarView(
-          controller: _tabController,
+        return Column(
           children: <Widget>[
-            InsightsOverviewTab(
-              insights: insights,
-              analyticsWindowDays: windowDays,
+            if (insights.isEarlySignal)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _buildEarlySignalBanner(shell: shell),
+              ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: <Widget>[
+                  InsightsOverviewTab(
+                    insights: insights,
+                    analyticsWindowDays: windowDays,
+                  ),
+                  InsightsViewersTab(insights: insights),
+                  InsightsEngagementTab(insights: insights),
+                ],
+              ),
             ),
-            InsightsViewersTab(insights: insights),
-            InsightsEngagementTab(insights: insights),
           ],
         );
     }
+  }
+
+  Widget _buildEarlySignalBanner({required StSupportShellStyle shell}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3D99F7).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF3D99F7).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        'Early signal — under '
+        '${InsightsDataAvailability.minViewsForReliableRates} views. '
+        'Rates can swing a lot until more people watch.',
+        style: TextStyle(
+          color: shell.onChrome,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 
   Widget _buildStatusCard({
