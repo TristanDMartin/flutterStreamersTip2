@@ -19,6 +19,7 @@ import '../components/onboarding/contextual_tips_service.dart';
 import '../features/analytics/creator_intelligence_view.dart';
 import '../features/analytics/creator_video_insights_view.dart';
 import 'linked_platforms_view.dart';
+import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
 import '../widgets/two_factor_settings_view.dart';
 import '../widgets/video_categorization_screen.dart';
@@ -134,6 +135,24 @@ class _SettingsViewState extends State<SettingsView> {
                             subtitle: 'Views, engagement, audience, and retention',
                             onTap: () =>
                                 _navigateToPage(context, 'Video Insights'),
+                          ),
+                          _buildSettingsItem(
+                            context,
+                            icon: Icons.summarize_rounded,
+                            title: 'Weekly Report',
+                            subtitle:
+                                'Basic recap free; Pro growth and Studio business depth',
+                            onTap: () =>
+                                _navigateToPage(context, 'Weekly Report'),
+                          ),
+                          _buildSettingsItem(
+                            context,
+                            icon: Icons.groups_rounded,
+                            title: 'Team & Automation',
+                            subtitle:
+                                'Assignments, approvals, automation, and exports',
+                            onTap: () =>
+                                _navigateToPage(context, 'Team & Automation'),
                           ),
                         ],
                       ),
@@ -557,6 +576,12 @@ class _SettingsViewState extends State<SettingsView> {
           const CreatorVideoInsightsView(),
           AppRoutes.videoInsights,
         );
+        return;
+      case 'Weekly Report':
+        AppNavigator.openWeeklyReport(context);
+        return;
+      case 'Team & Automation':
+        AppNavigator.openStudioTeamControl(context);
         return;
       case 'Blocked Accounts':
         _pushSettingsPage(

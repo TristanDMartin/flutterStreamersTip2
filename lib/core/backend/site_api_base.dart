@@ -47,3 +47,12 @@ String siteGrowthRefreshUrl({
 
 String siteRetentionTrackUrl({String? base}) =>
     siteApiPath('/api/track', base: base);
+
+String siteWeeklyReportUrl({String? base}) =>
+    siteApiPath('/api/reports/weekly', base: base);
+
+String siteStudioTeamControlUrl({String? base}) =>
+    siteApiPath('/api/studio/team-control', base: base);
+
+String siteStudioExportWeeklyUrl({String? base}) =>
+    siteApiPath('/api/studio/export/weekly', base: base);

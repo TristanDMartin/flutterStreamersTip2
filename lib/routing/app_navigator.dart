@@ -315,6 +315,16 @@ class AppNavigator {
     return Navigator.of(context).pushNamed<T>(AppRoutes.creatorIntelligence);
   }
 
+  static Future<T?> openWeeklyReport<T>(BuildContext context) {
+    _trackToolOpened('weekly-report');
+    return Navigator.of(context).pushNamed<T>(AppRoutes.weeklyReport);
+  }
+
+  static Future<T?> openStudioTeamControl<T>(BuildContext context) {
+    _trackToolOpened('studio-team-control');
+    return Navigator.of(context).pushNamed<T>(AppRoutes.studioTeamControl);
+  }
+
   static Future<T?> openStreamerCard<T>(
     BuildContext context, {
     required String userId,

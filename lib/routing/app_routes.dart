@@ -29,6 +29,8 @@ import '../features/academy/views/academy_path_view.dart';
 import '../features/academy/views/academy_progress_view.dart';
 import '../features/academy/views/academy_saved_view.dart';
 import '../features/academy/views/academy_search_view.dart';
+import '../features/reports/weekly_report_view.dart';
+import '../features/studio/studio_team_control_view.dart';
 import '../features/tippy/models/tippy_launch_context.dart';
 import '../features/tippy/tippy_chat_page.dart';
 
@@ -71,6 +73,8 @@ class AppRoutes {
   static const String growthAnalytics = '/growth-analytics';
   static const String videoInsights = '/video-insights';
   static const String creatorIntelligence = '/creator-intelligence';
+  static const String weeklyReport = '/weekly-report';
+  static const String studioTeamControl = '/studio-team-control';
 
   static Route<dynamic> onGenerateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
@@ -321,6 +325,16 @@ class AppRoutes {
         return _buildRoute(
           settings: routeSettings,
           builder: (_) => const CreatorIntelligenceView(),
+        );
+      case weeklyReport:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const WeeklyReportView(),
+        );
+      case studioTeamControl:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const StudioTeamControlView(),
         );
     }
 
