@@ -1,5 +1,6 @@
 import 'package:streamers_tip/features/billing/entitlement_sentinel.dart';
 import 'package:streamers_tip/features/billing/models/billing_tier.dart';
+import 'package:streamers_tip/features/billing/models/growth_entitlement_levels.dart';
 import 'package:streamers_tip/features/billing/tier_display_names.dart';
 import 'package:streamers_tip/features/entitlements/tippy_ai_entitlement_payload.dart';
 
@@ -65,8 +66,12 @@ class ApiEntitlements {
         1,
       ),
       analyticsWindowDays: _readInt(raw['analyticsWindowDays'], 7),
-      crossPostWeeklyLimit: _readInt(raw['crossPostWeeklyLimit'], 1),
-      videoUploadsPerMonth: _readInt(raw['videoUploadsPerMonth'], 0),
+      crossPostWeeklyLimit: _readInt(raw['crossPostWeeklyLimit'], 0),
+      // Missing field must not look like "0 uploads left" — uploads are unlimited.
+      videoUploadsPerMonth: _readInt(
+        raw['videoUploadsPerMonth'],
+        kEntitlementUnlimited,
+      ),
       teamMembersLimit: _readInt(raw['teamMembersLimit'] ?? raw['teamMembers'], 0),
       canCrossPost: _readBool(raw['canCrossPost'], false),
       canBulkPublish: _readBool(raw['canBulkPublish'], false),
@@ -94,8 +99,11 @@ class ApiEntitlements {
       monthlyAiCredits: _readInt(lim['aiCreditsPerMonth'], 0),
       contentPlansLimit: _readInt(lim['contentPlans'], 1),
       analyticsWindowDays: _readInt(lim['analyticsWindowDays'], 7),
-      crossPostWeeklyLimit: _readInt(lim['crossPostWeeklyLimit'], 1),
-      videoUploadsPerMonth: 0,
+      crossPostWeeklyLimit: _readInt(lim['crossPostWeeklyLimit'], 0),
+      videoUploadsPerMonth: _readInt(
+        lim['videoUploadsPerMonth'],
+        kEntitlementUnlimited,
+      ),
       teamMembersLimit: _readInt(lim['teamMembers'], 0),
       canCrossPost: _readBool(feat['crossPosting'], false),
       canBulkPublish: _readBool(feat['bulkPublishing'], false),
@@ -109,16 +117,17 @@ class ApiEntitlements {
     );
   }
 
+  /// Matches website `lib/billing/entitlements.ts` starter SoT.
   factory ApiEntitlements.fallbackStarter() {
     return const ApiEntitlements(
       maxPlatforms: 1,
       monthlyAiCredits: 25,
       contentPlansLimit: 1,
       analyticsWindowDays: 7,
-      crossPostWeeklyLimit: 1,
-      videoUploadsPerMonth: 0,
+      crossPostWeeklyLimit: 0,
+      videoUploadsPerMonth: kEntitlementUnlimited,
       teamMembersLimit: 0,
-      canCrossPost: true,
+      canCrossPost: false,
       canBulkPublish: false,
       canUseAdvancedAnalytics: false,
       canUseAICaptionRewrite: false,
@@ -229,6 +238,13 @@ class SubscriptionSnapshot {
     required this.entitlements,
     required this.usage,
     required this.aiCreditCosts,
+    this.levels = const GrowthEntitlementLevels(
+      dailyBriefLevel: 'basic',
+      creatorMemoryLevel: 'basic',
+      creatorScoreLevel: 'basic',
+      weeklyReportLevel: 'basic',
+      academyAccessLevel: 'foundation',
+    ),
     this.subscriptionPeriodEnd,
     this.resetAt,
     this.source = '',
@@ -256,6 +272,7 @@ class SubscriptionSnapshot {
   final ApiEntitlements entitlements;
   final UsageSnapshot usage;
   final AiCreditCosts aiCreditCosts;
+  final GrowthEntitlementLevels levels;
   final String uid;
   final String email;
   final bool canUseTippy;
@@ -264,8 +281,18 @@ class SubscriptionSnapshot {
 
   String get tierDisplayName => tierDisplayNameForApi(tierApi);
 
+  String get weeklyReportLevel => levels.weeklyReportLevel;
+
   bool get isTrialing =>
       subscriptionStatus.trim().toLowerCase() == 'trialing';
+
+  /// Uploads are never paywalled across Creator / Pro / Studio.
+  bool canUpload({required int uploadsThisMonth}) {
+    return canUploadVideo(
+      videoUploadsPerMonth: entitlements.videoUploadsPerMonth,
+      uploadsThisMonth: uploadsThisMonth,
+    );
+  }
 
   /// Legacy provider / Tippy UI compatibility.
   String get tierSource => source;
@@ -370,6 +397,14 @@ class SubscriptionSnapshot {
         lastResetDate: usage.lastResetDate ?? _readDate(root['resetAt']),
       );
     }
+    final Map<String, dynamic>? levelsMap =
+        root['levels'] is Map<String, dynamic>
+            ? root['levels'] as Map<String, dynamic>
+            : root;
+    final GrowthEntitlementLevels levels = GrowthEntitlementLevels.fromJson(
+      levelsMap,
+      tierApi: billingTierToApiValue(effective),
+    );
     return SubscriptionSnapshot(
       uid: _readString(root['uid'], ''),
       email: _readString(root['email'], ''),
@@ -406,6 +441,7 @@ class SubscriptionSnapshot {
             ? root['aiCreditCosts'] as Map<String, dynamic>
             : null,
       ),
+      levels: levels,
       canUseTippy: tippyMap != null
           ? tippyMap['enabled'] == true
           : true,
@@ -434,6 +470,7 @@ class SubscriptionSnapshot {
         monthlyCreditsRemaining: 0,
       ),
       aiCreditCosts: AiCreditCosts.canonical,
+      levels: GrowthEntitlementLevels.forTierApi('starter'),
     );
   }
 }

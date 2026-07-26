@@ -8,6 +8,7 @@ const {
   creditCostForAction,
   isUnlimited,
   canCreateContentPlan,
+  canUploadVideo,
 } = require('./src/shared/entitlements');
 
 function test(name, fn) {
@@ -54,6 +55,19 @@ test('starter content plan limit is one', () => {
   assert.strictEqual(canCreateContentPlan('starter', 0), true);
   assert.strictEqual(canCreateContentPlan('starter', 1), false);
   assert.strictEqual(canCreateContentPlan('pro', 10), true);
+});
+
+test('uploads are unlimited on all tiers', () => {
+  assert.strictEqual(isUnlimited(getEntitlementsForTier('starter').videoUploadsPerMonth), true);
+  assert.strictEqual(isUnlimited(getEntitlementsForTier('pro').videoUploadsPerMonth), true);
+  assert.strictEqual(isUnlimited(getEntitlementsForTier('studio').videoUploadsPerMonth), true);
+  assert.strictEqual(canUploadVideo('starter', 999), true);
+});
+
+test('starter does not include cross-post or advanced analytics', () => {
+  assert.strictEqual(hasBillingFeature('starter', 'crossPosting'), false);
+  assert.strictEqual(hasBillingFeature('pro', 'advancedAnalytics'), false);
+  assert.strictEqual(hasBillingFeature('studio', 'advancedAnalytics'), true);
 });
 
 console.log('entitlements_test.js: all passed');

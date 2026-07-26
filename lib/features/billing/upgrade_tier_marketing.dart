@@ -1,27 +1,31 @@
 /// Qualitative upgrade copy only — numeric limits come from `/api/user/entitlements`.
+/// Keep aligned with website Pricing v2 (Creator / Creator Pro / Creator Studio).
 class UpgradeTierMarketing {
   UpgradeTierMarketing._();
 
   static const List<String> starterBullets = <String>[
-    'One active content plan',
-    'Short analytics history',
-    'Monthly AI credits',
+    'Unlimited content uploads',
+    '1 active content plan',
+    '7-day analytics',
+    '25 monthly AI credits',
+    'Basic weekly recap',
   ];
 
   static const List<String> proBullets = <String>[
+    'Unlimited content uploads',
     'Unlimited content plans',
-    'Extended analytics history',
-    'Higher monthly AI credits',
-    'Caption rewrite and hashtags',
-    'Growth reports',
+    '500 monthly AI credits',
+    '90-day analytics',
+    'Full weekly growth reports',
+    'AI caption rewriting',
   ];
 
   static const List<String> studioBullets = <String>[
-    'Unlimited content plans',
-    'Full-year analytics history',
-    'Advanced analytics',
-    'Highest monthly AI credits',
-    'Team member access',
-    'Exportable reports and priority support',
+    'Unlimited content uploads',
+    '2,500 monthly AI credits',
+    '365-day analytics',
+    'Up to 5 team members',
+    'Automation and approvals',
+    'Exportable business reports',
   ];
 }

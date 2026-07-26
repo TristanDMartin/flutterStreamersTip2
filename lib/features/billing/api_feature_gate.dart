@@ -98,3 +98,16 @@ bool canAffordAiAction(SubscriptionSnapshot snapshot, String action) {
       : snapshot.creditsRemaining;
   return remaining >= cost;
 }
+
+bool canUploadFromSnapshot(
+  SubscriptionSnapshot snapshot, {
+  required int uploadsThisMonth,
+}) {
+  if (snapshot.hasFullAccess) {
+    return true;
+  }
+  return canUploadVideo(
+    videoUploadsPerMonth: snapshot.entitlements.videoUploadsPerMonth,
+    uploadsThisMonth: uploadsThisMonth,
+  );
+}

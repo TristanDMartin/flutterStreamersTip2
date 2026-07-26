@@ -2,7 +2,7 @@
 
 /**
  * Canonical plan limits for StreamersTip (website, app, Stripe, API).
- * Do not duplicate these values elsewhere — import this module only.
+ * Keep aligned with website `lib/billing/entitlements.ts` — do not drift.
  *
  * Tier keys: starter (Creator), pro (Creator Pro), studio (Creator Studio).
  * Use -1 for unlimited numeric limits.
@@ -18,13 +18,14 @@ const TIER_ENTITLEMENTS = {
     contentPlans: 1,
     connectedPlatforms: 1,
     teamMembers: 0,
-    crossPostWeeklyLimit: 1,
+    crossPostWeeklyLimit: 0,
+    videoUploadsPerMonth: UNLIMITED,
     schedulingEnabled: true,
     features: {
       advancedAnalytics: false,
       contentPlanner: true,
       bulkPublishing: false,
-      crossPosting: true,
+      crossPosting: false,
       automation: false,
       teamMembers: false,
       analyticsExport: false,
@@ -41,9 +42,10 @@ const TIER_ENTITLEMENTS = {
     connectedPlatforms: 5,
     teamMembers: 0,
     crossPostWeeklyLimit: UNLIMITED,
+    videoUploadsPerMonth: UNLIMITED,
     schedulingEnabled: true,
     features: {
-      advancedAnalytics: true,
+      advancedAnalytics: false,
       contentPlanner: true,
       bulkPublishing: true,
       crossPosting: true,
@@ -63,6 +65,7 @@ const TIER_ENTITLEMENTS = {
     connectedPlatforms: UNLIMITED,
     teamMembers: 5,
     crossPostWeeklyLimit: UNLIMITED,
+    videoUploadsPerMonth: UNLIMITED,
     schedulingEnabled: true,
     features: {
       advancedAnalytics: true,
@@ -160,6 +163,14 @@ function canCreateContentPlan(tier, existingCount) {
   return Number(existingCount) < Number(limit);
 }
 
+function canUploadVideo(tier, uploadsThisMonth) {
+  const limit = getEntitlementsForTier(tier).videoUploadsPerMonth;
+  if (isUnlimited(limit)) {
+    return true;
+  }
+  return Number(uploadsThisMonth) < Number(limit);
+}
+
 module.exports = {
   UNLIMITED,
   TIER_ENTITLEMENTS,
@@ -174,4 +185,5 @@ module.exports = {
   hasBillingFeature,
   creditCostForAction,
   canCreateContentPlan,
+  canUploadVideo,
 };
