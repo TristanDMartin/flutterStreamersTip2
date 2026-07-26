@@ -64,7 +64,7 @@ class _AcademyHomeViewState extends ConsumerState<AcademyHomeView> {
           );
           final int level = bundle?.progress.level ?? 1;
           final int totalXp = bundle?.progress.totalXp ?? 0;
-          final int nextXp = GamificationConstants.xpFloorForLevel(level + 1);
+          final int nextXp = GamificationConstants.xpCeilingForLevel(level);
           final int streak = bundle?.progress.streakDays ?? 0;
           return RefreshIndicator(
             onRefresh: () async {

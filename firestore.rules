@@ -248,6 +248,7 @@ service cloud.firestore {
       // Viewers may only bump favorite counters (UnifiedBookmarkService batch).
       allow update: if resource != null && isVideoLikeCountOnlyUpdate();
       allow update: if resource != null && isBookmarkFavoriteCountOnlyUpdate();
+      allow update: if resource != null && isVideoShareCountOnlyUpdate();
       allow update: if resource != null && isOwnerVideoCaptionOnlyUpdate();
       allow update: if resource != null
         && isOwnerVideoMetadataBackfillUpdate(videoId);
@@ -953,7 +954,11 @@ service cloud.firestore {
   // Video doc: bookmark / unbookmark by non-owner (client increment only).
   function videoIntField(data, field) {
     let value = data.get(field, 0);
-    return value is int ? value : 0;
+    // JS/Worker often store counts as float; treat float as int so like/bookmark
+    // +1/-1 bumps are not denied when before was misread as 0.
+    return value is int
+      ? value
+      : (value is float ? int(value) : 0);
   }
 
   // Matches VideoActionsService owner resolution (userId, creatorId, creator_id).
@@ -1088,6 +1093,25 @@ service cloud.firestore {
         && afterFavoriteCount == 0);
   }
 
+  function isVideoShareCountOnlyUpdate() {
+    return resource != null
+      && resource.data != null
+      && request.auth != null
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['shares', 'shareCount', 'updatedAt'])
+      && isShareAndShareCountStepTogether();
+  }
+
+  function isShareAndShareCountStepTogether() {
+    let beforeShares = videoIntField(resource.data, 'shares');
+    let beforeShareCount = videoIntField(resource.data, 'shareCount');
+    let beforeCount = beforeShares > beforeShareCount ? beforeShares : beforeShareCount;
+    let afterShares = videoIntField(request.resource.data, 'shares');
+    let afterShareCount = videoIntField(request.resource.data, 'shareCount');
+    return afterShares == beforeCount + 1
+      && afterShareCount == beforeCount + 1;
+  }
+
   function isVideoLikeCountOnlyUpdate() {
     return resource != null
       && resource.data != null
@@ -1114,10 +1138,12 @@ service cloud.firestore {
 
   function canonicalVideoBookmarkCount(data) {
     let bookmarkCount = videoIntField(data, 'bookmarkCount');
+    let bookmarks = videoIntField(data, 'bookmarks');
     let favorites = videoIntField(data, 'favorites');
     let favoriteCount = videoIntField(data, 'favoriteCount');
     let legacyMax = favorites > favoriteCount ? favorites : favoriteCount;
-    return bookmarkCount > legacyMax ? bookmarkCount : legacyMax;
+    let withBookmarks = bookmarkCount > bookmarks ? bookmarkCount : bookmarks;
+    return withBookmarks > legacyMax ? withBookmarks : legacyMax;
   }
 
   function isVideoOwnerById(videoId) {

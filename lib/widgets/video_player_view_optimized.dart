@@ -982,17 +982,17 @@ class _VideoPlayerViewOptimizedState
         }
         final int nextShareCount = _readStatCount(
           data,
-          primary: 'shares',
-          fallback: 'shareCount',
+          keys: const <String>['shares', 'shareCount'],
         );
         final int nextFavoriteCount = _readStatCount(
           data,
-          primary: 'bookmarkCount',
-          fallback: 'favoriteCount',
-          additionalFallbacks: const [
+          keys: const <String>[
+            'bookmarkCount',
+            'bookmarks',
             'favorites',
+            'favoriteCount',
             'bookmarksCount',
-            'savesCount'
+            'savesCount',
           ],
         );
         if (_shareCount != nextShareCount ||
@@ -1021,25 +1021,26 @@ class _VideoPlayerViewOptimizedState
 
   int _readStatCount(
     Map<String, dynamic> data, {
-    required String primary,
-    String? fallback,
-    List<String> additionalFallbacks = const [],
+    required List<String> keys,
   }) {
-    for (final key in <String>[
-      primary,
-      if (fallback != null) fallback,
-      ...additionalFallbacks,
-    ]) {
+    int maxCount = 0;
+    for (final String key in keys) {
       final dynamic value = data[key];
+      int? parsed;
       if (value is num) {
-        return math.max(0, value.toInt());
+        parsed = value.toInt();
+      } else if (value is String) {
+        parsed = int.tryParse(value);
       }
-      if (value is String) {
-        final parsed = int.tryParse(value);
-        if (parsed != null) return math.max(0, parsed);
+      if (parsed == null) {
+        continue;
+      }
+      final int clamped = math.max(0, parsed);
+      if (clamped > maxCount) {
+        maxCount = clamped;
       }
     }
-    return 0;
+    return maxCount;
   }
 
   /// Safe controller operations with comprehensive error handling
@@ -3752,6 +3753,7 @@ class _VideoPlayerViewOptimizedState
       backgroundColor: Colors.transparent,
       isDismissible: true,
       enableDrag: true,
+      routeSettings: const RouteSettings(name: '/share_sheet'),
       builder: (context) {
         debugPrint('📤 _handleShare: Building EnhancedShareSheet...');
         return EnhancedShareSheet(
@@ -3764,10 +3766,17 @@ class _VideoPlayerViewOptimizedState
       },
     ).whenComplete(() {
       if (!mounted || _isDisposed || !widget.isCurrentVideo) return;
+      // Clear orphaned overlay blocks left by unnamed share routes.
+      final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+      final String? reason = manager.blockReason;
+      if (reason == 'route_change_unknown' ||
+          reason == 'route_change_overlay' ||
+          (reason != null && reason.startsWith('route_overlay_'))) {
+        manager.forceUnblock();
+      }
       _hasRequestedFocus = false;
       _lastRequestedVideoId = null;
-      GlobalPlaybackManager.instance
-          .setDesiredFocus(widget.video.id, _ownerKey);
+      manager.setDesiredFocus(widget.video.id, _ownerKey);
       _activateCurrentVideo('share_dismissed');
     });
   }

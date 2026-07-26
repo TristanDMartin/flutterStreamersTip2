@@ -15,6 +15,11 @@ class GamificationSummaryModel {
   final String? nextActionHint;
   final DateTime? lastQualifiedActivityAt;
 
+  /// Server-owned progress (from `gamification/state`) when present.
+  final int? serverXpInCurrentLevel;
+  final int? serverXpToNextLevel;
+  final int? serverLevelProgressPct;
+
   const GamificationSummaryModel({
     required this.level,
     required this.totalXp,
@@ -26,6 +31,9 @@ class GamificationSummaryModel {
     this.lastActiveDate,
     this.nextActionHint,
     this.lastQualifiedActivityAt,
+    this.serverXpInCurrentLevel,
+    this.serverXpToNextLevel,
+    this.serverLevelProgressPct,
   });
 
   factory GamificationSummaryModel.fromFirestoreMap(Map<String, dynamic>? raw) {
@@ -41,23 +49,33 @@ class GamificationSummaryModel {
     final int level = _readInt(raw, <String>['level', 'creatorLevel']) ?? 1;
     final int totalXp =
         _readInt(raw, <String>['totalXp', 'total_xp', 'xp']) ?? 0;
-    final int streak =
-        _readInt(raw, <String>['streakCount', 'streakDays', 'streak_days']) ??
-            0;
-    final double score =
-        _readDouble(raw, <String>['creatorScore', 'creator_score']) ?? 0;
+    final int streak = _readInt(raw, <String>[
+          'streakLength',
+          'streakCount',
+          'streakDays',
+          'streak_days',
+          'currentStreakDays',
+        ]) ??
+        0;
+    final double score = _readDouble(raw, <String>[
+          'creatorScore',
+          'creator_score',
+          'consistencyScore',
+        ]) ??
+        0;
     final String? storedRank = _readString(raw, <String>[
       'rank_title',
       'rankTitle',
       'rankName',
+      'rank',
+      'currentTitleLabel',
     ]);
-    final String title = (storedRank != null && storedRank.isNotEmpty)
-        ? storedRank
-        : GamificationConstants.rankTitleForLevel(level);
+    final String title = _resolveRankTitle(storedRank, level);
     final String? next = _readString(raw, <String>[
       'nextAction',
       'next_action',
       'nextSuggestedAction',
+      'nextActionHint',
     ]);
     return GamificationSummaryModel(
       level: level,
@@ -72,6 +90,21 @@ class GamificationSummaryModel {
       lastQualifiedActivityAt: _readTimestamp(raw, <String>[
         'lastQualifiedActivityAt',
         'last_qualified_activity_at',
+      ]),
+      serverXpInCurrentLevel: _readInt(raw, <String>[
+        'xpInCurrentLevel',
+        'xpIntoLevel',
+        'currentLevelXp',
+      ]),
+      serverXpToNextLevel: _readInt(raw, <String>[
+        'xpToNextLevel',
+        'xpNeededForNextLevel',
+        'nextLevelXp',
+      ]),
+      serverLevelProgressPct: _readInt(raw, <String>[
+        'levelProgressPct',
+        'levelProgressPercent',
+        'progressPercent',
       ]),
     );
   }
@@ -95,15 +128,45 @@ class GamificationSummaryModel {
   }
 
   int get xpIntoLevel {
+    final int? serverInto = serverXpInCurrentLevel;
+    if (serverInto != null && serverInto >= 0) {
+      return serverInto;
+    }
     final int floor = GamificationConstants.xpFloorForLevel(level);
     return (totalXp - floor).clamp(0, 1 << 30);
   }
 
-  int get xpNeededForNextLevel =>
-      GamificationConstants.xpSpanIntoNextLevel(level);
+  int get xpNeededForNextLevel {
+    final int? serverNeed = serverXpToNextLevel;
+    if (serverNeed != null && serverNeed > 0) {
+      return serverNeed;
+    }
+    return GamificationConstants.xpSpanIntoNextLevel(level);
+  }
 
-  double get progressInLevel =>
-      GamificationConstants.progressInLevel(level, totalXp);
+  double get progressInLevel {
+    final int? pct = serverLevelProgressPct;
+    if (pct != null) {
+      return (pct.clamp(0, 100)) / 100.0;
+    }
+    return GamificationConstants.progressInLevel(level, totalXp);
+  }
+}
+
+const Set<String> _obsoleteRankTitles = <String>{
+  'Active Creator',
+  'Community Builder',
+  'Pro Creator',
+  'Emerging Creator',
+};
+
+String _resolveRankTitle(String? storedRank, int level) {
+  if (storedRank != null &&
+      storedRank.isNotEmpty &&
+      !_obsoleteRankTitles.contains(storedRank)) {
+    return storedRank;
+  }
+  return GamificationConstants.rankTitleForLevel(level);
 }
 
 int? _readInt(Map<String, dynamic> raw, List<String> keys) {

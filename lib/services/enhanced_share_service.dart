@@ -22,6 +22,10 @@ class ShareUserNoticeException implements Exception {
   final String message;
 }
 
+class _ShareCancelledException implements Exception {
+  const _ShareCancelledException();
+}
+
 class EnhancedShareService {
   static final EnhancedShareService _instance =
       EnhancedShareService._internal();
@@ -243,11 +247,14 @@ class EnhancedShareService {
       // Track success
       _trackShareSuccess(payload.videoId, target.analyticsName);
       _updatePlatformUsage(target.analyticsName);
+      await incrementVideoShareCount(payload.videoId);
 
       LoggingService.instance.info(
         '✅ EnhancedShareService: Successfully shared to ${target.displayName}',
         tag: 'EnhancedShareService',
       );
+    } on _ShareCancelledException {
+      return;
     } on ShareUserNoticeException {
       rethrow;
     } catch (e, st) {
@@ -319,7 +326,67 @@ class EnhancedShareService {
     final ShareResult result = await SharePlus.instance.share(shareParams);
     if (result.status == ShareResultStatus.dismissed) {
       trackShareCancel(payload.videoId);
+      throw const _ShareCancelledException();
     }
+  }
+
+  /// Best-effort public share counter bump (aliases: shares + shareCount).
+  Future<void> incrementVideoShareCount(String videoId) async {
+    if (videoId.isEmpty) {
+      return;
+    }
+    try {
+      final DocumentReference<Map<String, dynamic>> videoRef =
+          FirebaseFirestore.instance.collection('videos').doc(videoId);
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final DocumentSnapshot<Map<String, dynamic>> snap =
+            await transaction.get(videoRef);
+        if (!snap.exists) {
+          return;
+        }
+        final Map<String, dynamic> data =
+            snap.data() ?? const <String, dynamic>{};
+        final int before = _readShareCount(data);
+        final int next = before + 1;
+        transaction.set(
+          videoRef,
+          <String, dynamic>{
+            'shares': next,
+            'shareCount': next,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      });
+    } catch (e, st) {
+      LoggingService.instance.error(
+        '⚠️ EnhancedShareService: share counter bump failed for $videoId: $e',
+        tag: 'EnhancedShareService',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  int _readShareCount(Map<String, dynamic> data) {
+    int maxCount = 0;
+    for (final String key in const <String>['shares', 'shareCount']) {
+      final Object? value = data[key];
+      int? parsed;
+      if (value is num) {
+        parsed = value.toInt();
+      } else if (value is String) {
+        parsed = int.tryParse(value);
+      }
+      if (parsed == null) {
+        continue;
+      }
+      final int clamped = parsed.clamp(0, 1 << 31).toInt();
+      if (clamped > maxCount) {
+        maxCount = clamped;
+      }
+    }
+    return maxCount;
   }
 
   /// Copy link with rich preview data

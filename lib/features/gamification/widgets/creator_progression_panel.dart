@@ -667,46 +667,25 @@ class _ProgressionTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Progression',
-                style: TextStyle(
-                  color: shell.onChrome,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Track creator growth and daily momentum.',
-                style: TextStyle(
-                  color: shell.mutedStrong,
-                  fontSize: 13,
-                  height: 1.25,
-                ),
-              ),
-            ],
+        Text(
+          'Progression',
+          style: TextStyle(
+            color: shell.onChrome,
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            height: 1,
           ),
         ),
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLow.withValues(alpha: 0.74),
-            shape: BoxShape.circle,
-            border: Border.all(color: shell.surfaceCardBorder),
-          ),
-          child: Icon(
-            Icons.explore_rounded,
-            color: scheme.primary,
-            size: 21,
+        const SizedBox(height: 6),
+        Text(
+          'Track creator growth and daily momentum.',
+          style: TextStyle(
+            color: shell.mutedStrong,
+            fontSize: 13,
+            height: 1.25,
           ),
         ),
       ],
@@ -1330,11 +1309,18 @@ class _AnimatedXpText extends StatefulWidget {
 class _AnimatedXpTextState extends State<_AnimatedXpText>
     with SingleTickerProviderStateMixin {
   late int _previousValue = widget.value;
-  late final AnimationController _pulseController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
+  AnimationController? _pulseController;
   late ColorScheme _scheme;
+
+  @override
+  void initState() {
+    super.initState();
+    // Create while the element is active — never lazily in dispose().
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+  }
 
   @override
   void didChangeDependencies() {
@@ -1350,20 +1336,21 @@ class _AnimatedXpTextState extends State<_AnimatedXpText>
     }
     _previousValue = oldWidget.value;
     if (widget.value > oldWidget.value) {
-      _pulseController.forward(from: 0);
+      _pulseController?.forward(from: 0);
     }
   }
 
   @override
   void dispose() {
-    _pulseController.stop();
-    _pulseController.dispose();
+    _pulseController?.dispose();
+    _pulseController = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = _scheme;
+    final AnimationController? pulse = _pulseController;
     final int delta = widget.value - _previousValue;
     return SizedBox(
       height: 22,
@@ -1384,19 +1371,19 @@ class _AnimatedXpTextState extends State<_AnimatedXpText>
               );
             },
           ),
-          if (delta > 0)
+          if (delta > 0 && pulse != null)
             Positioned(
               right: 0,
               top: -18,
               child: FadeTransition(
-                opacity: ReverseAnimation(_pulseController),
+                opacity: ReverseAnimation(pulse),
                 child: SlideTransition(
                   position: Tween<Offset>(
                     begin: Offset.zero,
                     end: const Offset(0, -0.7),
                   ).animate(
                     CurvedAnimation(
-                      parent: _pulseController,
+                      parent: pulse,
                       curve: Curves.easeOutCubic,
                     ),
                   ),
@@ -1436,10 +1423,16 @@ class _AnimatedLevelProgressBar extends StatefulWidget {
 class _AnimatedLevelProgressBarState extends State<_AnimatedLevelProgressBar>
     with SingleTickerProviderStateMixin {
   double _previousValue = 0;
-  late final AnimationController _glowController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
+  late final AnimationController _glowController;
+
+  @override
+  void initState() {
+    super.initState();
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+  }
 
   @override
   void didUpdateWidget(_AnimatedLevelProgressBar oldWidget) {
@@ -1452,7 +1445,6 @@ class _AnimatedLevelProgressBarState extends State<_AnimatedLevelProgressBar>
 
   @override
   void dispose() {
-    _glowController.stop();
     _glowController.dispose();
     super.dispose();
   }

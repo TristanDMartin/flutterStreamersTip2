@@ -34,16 +34,28 @@ class DiscoverFieldMapper {
   }
 
   static int safeCount(Map<String, dynamic> data, List<String> keys) {
+    int maxCount = 0;
+    bool found = false;
     for (final String key in keys) {
       final dynamic value = data[key];
-      if (value is int) return math.max(0, value);
-      if (value is num) return math.max(0, value.toInt());
-      if (value is String) {
-        final int? parsed = int.tryParse(value);
-        if (parsed != null) return math.max(0, parsed);
+      int? parsed;
+      if (value is int) {
+        parsed = value;
+      } else if (value is num) {
+        parsed = value.toInt();
+      } else if (value is String) {
+        parsed = int.tryParse(value);
+      }
+      if (parsed == null) {
+        continue;
+      }
+      final int clamped = math.max(0, parsed);
+      if (!found || clamped > maxCount) {
+        maxCount = clamped;
+        found = true;
       }
     }
-    return 0;
+    return found ? maxCount : 0;
   }
 
   static double safeDouble(dynamic value) {

@@ -148,6 +148,81 @@ class AppNavigator {
     return Navigator.of(context).pushNamed<T>(AppRoutes.discover);
   }
 
+  static Future<T?> openAcademy<T>(BuildContext context) {
+    _trackToolOpened('academy');
+    return Navigator.of(context).pushNamed<T>(AppRoutes.academy);
+  }
+
+  static Future<T?> openAcademySearch<T>(BuildContext context) {
+    return Navigator.of(context).pushNamed<T>(AppRoutes.academySearch);
+  }
+
+  static Future<T?> openAcademySaved<T>(BuildContext context) {
+    return Navigator.of(context).pushNamed<T>(AppRoutes.academySaved);
+  }
+
+  static Future<T?> openAcademyProgress<T>(BuildContext context) {
+    return Navigator.of(context).pushNamed<T>(AppRoutes.academyProgress);
+  }
+
+  static Future<T?> openAcademyCategory<T>(
+    BuildContext context, {
+    required String categoryId,
+  }) {
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.academyCategory,
+      arguments: AcademyCategoryRouteArgs(categoryId: categoryId),
+    );
+  }
+
+  static Future<T?> openAcademyPath<T>(
+    BuildContext context, {
+    required String pathId,
+  }) {
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.academyPath,
+      arguments: AcademyPathRouteArgs(pathId: pathId),
+    );
+  }
+
+  static Future<T?> openAcademyGuide<T>(
+    BuildContext context, {
+    required String guideId,
+  }) {
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.academyGuide,
+      arguments: AcademyGuideRouteArgs(guideId: guideId),
+    );
+  }
+
+  static Future<T?> openAcademyLesson<T>(
+    BuildContext context, {
+    required String lessonId,
+    String? guideId,
+  }) {
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.academyLesson,
+      arguments: AcademyLessonRouteArgs(
+        lessonId: lessonId,
+        guideId: guideId,
+      ),
+    );
+  }
+
+  static Future<T?> openAcademyLessonReplace<T>(
+    BuildContext context, {
+    required String lessonId,
+    String? guideId,
+  }) {
+    return Navigator.of(context).pushReplacementNamed<T, void>(
+      AppRoutes.academyLesson,
+      arguments: AcademyLessonRouteArgs(
+        lessonId: lessonId,
+        guideId: guideId,
+      ),
+    );
+  }
+
   static Future<T?> openActivity<T>(BuildContext context) {
     return Navigator.of(context).pushNamed<T>(AppRoutes.activity);
   }

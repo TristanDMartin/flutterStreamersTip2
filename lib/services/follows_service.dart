@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart' as user_model;
 import 'event_trigger_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
@@ -113,8 +115,13 @@ class FollowsService {
   _FollowIdSets? _cachedIdSets;
   String? _cachedIdSetsUserId;
   DateTime? _cachedIdSetsAt;
+  NetworkTabUsers? _cachedNetworkTabUsers;
+  String? _cachedNetworkTabUsersUserId;
+  static bool migrationCheckedThisSession = false;
   static const Duration _followIdSetsCacheTtl = Duration(seconds: 45);
   static const int _followQueryPageSize = 100;
+  static const int _networkDiskCacheMaxPerList = 80;
+  static const String _networkDiskCacheKeyPrefix = 'network_tab_users_v1_';
   final Map<String, _FollowPaginationState> _paginationByUserId =
       <String, _FollowPaginationState>{};
 
@@ -129,7 +136,7 @@ class FollowsService {
   }) {
     _firestoreOverride = firestore;
     _authOverride = auth;
-    _instance.invalidateFollowIdSetsCache();
+    _instance.clearNetworkTabUsersCache();
   }
 
   void invalidateFollowIdSetsCache() {
@@ -137,6 +144,155 @@ class FollowsService {
     _cachedIdSetsUserId = null;
     _cachedIdSetsAt = null;
     _paginationByUserId.clear();
+  }
+
+  /// Drop in-memory network lists (e.g. on sign-out). Disk cache is cleared
+  /// for the signed-in user when [userId] is provided.
+  void clearNetworkTabUsersCache({String? userId}) {
+    _cachedNetworkTabUsers = null;
+    _cachedNetworkTabUsersUserId = null;
+    invalidateFollowIdSetsCache();
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    unawaited(() async {
+      try {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.remove('$_networkDiskCacheKeyPrefix$userId');
+      } catch (_) {}
+    }());
+  }
+
+  /// Synchronous memory peek for instant NetworkView paint.
+  NetworkTabUsers? peekCachedNetworkTabUsers({String? userId}) {
+    final String? uid = userId ?? _auth.currentUser?.uid;
+    if (uid == null ||
+        uid.isEmpty ||
+        _cachedNetworkTabUsers == null ||
+        _cachedNetworkTabUsersUserId != uid) {
+      return null;
+    }
+    return _cachedNetworkTabUsers;
+  }
+
+  /// Disk hydrate for cold start before Firestore returns.
+  Future<NetworkTabUsers?> loadCachedNetworkTabUsersFromDisk({
+    String? userId,
+  }) async {
+    final String? uid = userId ?? _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      return null;
+    }
+    final NetworkTabUsers? memory = peekCachedNetworkTabUsers(userId: uid);
+    if (memory != null) {
+      return memory;
+    }
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? raw = prefs.getString('$_networkDiskCacheKeyPrefix$uid');
+      if (raw == null || raw.isEmpty) {
+        return null;
+      }
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      final NetworkTabUsers bundle = _networkTabUsersFromCacheMap(decoded);
+      _cachedNetworkTabUsers = bundle;
+      _cachedNetworkTabUsersUserId = uid;
+      return bundle;
+    } catch (e) {
+      debugPrint('⚠️ FollowsService: disk network cache read failed: $e');
+      return null;
+    }
+  }
+
+  void _rememberNetworkTabUsers(String userId, NetworkTabUsers bundle) {
+    _cachedNetworkTabUsers = bundle;
+    _cachedNetworkTabUsersUserId = userId;
+    unawaited(_persistNetworkTabUsers(userId, bundle));
+  }
+
+  Future<void> _persistNetworkTabUsers(
+    String userId,
+    NetworkTabUsers bundle,
+  ) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String encoded = jsonEncode(_networkTabUsersToCacheMap(bundle));
+      await prefs.setString('$_networkDiskCacheKeyPrefix$userId', encoded);
+    } catch (e) {
+      debugPrint('⚠️ FollowsService: disk network cache write failed: $e');
+    }
+  }
+
+  Map<String, dynamic> _networkTabUsersToCacheMap(NetworkTabUsers bundle) {
+    List<Map<String, dynamic>> slim(List<user_model.User> users) {
+      return users
+          .take(_networkDiskCacheMaxPerList)
+          .map(_slimUserCacheMap)
+          .toList(growable: false);
+    }
+
+    return <String, dynamic>{
+      'connections': slim(bundle.connections),
+      'followers': slim(bundle.followers),
+      'following': slim(bundle.following),
+      'counts': <String, dynamic>{
+        'followersCount': bundle.counts.followersCount,
+        'followingCount': bundle.counts.followingCount,
+        'connectionsCount': bundle.counts.connectionsCount,
+      },
+      'hasMoreFollowGraph': bundle.hasMoreFollowGraph,
+    };
+  }
+
+  NetworkTabUsers _networkTabUsersFromCacheMap(Map<String, dynamic> map) {
+    List<user_model.User> parseUsers(Object? raw) {
+      if (raw is! List) {
+        return <user_model.User>[];
+      }
+      return raw
+          .whereType<Map>()
+          .map(
+            (Map item) => user_model.User.fromMap(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList(growable: false);
+    }
+
+    final Map<String, dynamic> countsMap =
+        map['counts'] is Map<String, dynamic>
+            ? map['counts'] as Map<String, dynamic>
+            : <String, dynamic>{};
+    return NetworkTabUsers(
+      connections: parseUsers(map['connections']),
+      followers: parseUsers(map['followers']),
+      following: parseUsers(map['following']),
+      counts: FollowCounts(
+        followersCount: (countsMap['followersCount'] as num?)?.toInt() ?? 0,
+        followingCount: (countsMap['followingCount'] as num?)?.toInt() ?? 0,
+        connectionsCount:
+            (countsMap['connectionsCount'] as num?)?.toInt() ?? 0,
+      ),
+      hasMoreFollowGraph: map['hasMoreFollowGraph'] == true,
+    );
+  }
+
+  Map<String, dynamic> _slimUserCacheMap(user_model.User user) {
+    return <String, dynamic>{
+      'id': user.id,
+      'username': user.username,
+      'displayName': user.displayName,
+      'bio': user.bio,
+      'avatarURL': user.avatarURL,
+      'postCount': user.postCount,
+      'followerCount': user.followerCount,
+      'followingCount': user.followingCount,
+      'creatorActivity': user.creatorActivity.toMap(),
+      'activityPrivacy': user.activityPrivacy.toMap(),
+    };
   }
 
   Future<bool> followUser(String targetUserId) async {
@@ -572,18 +728,36 @@ class FollowsService {
         ),
       );
     }
+    if (!forceRefresh) {
+      final NetworkTabUsers? memory =
+          peekCachedNetworkTabUsers(userId: currentUser.uid);
+      if (memory != null &&
+          _cachedIdSetsUserId == currentUser.uid &&
+          _cachedIdSets != null &&
+          _cachedIdSetsAt != null &&
+          DateTime.now().difference(_cachedIdSetsAt!) < _followIdSetsCacheTtl) {
+        return memory;
+      }
+    }
     try {
       final _FollowGraphPageResult graph = await _loadFollowIdSets(
         currentUser.uid,
         forceRefresh: forceRefresh,
       );
-      return _buildNetworkTabUsersFromIdSets(
+      final NetworkTabUsers bundle = await _buildNetworkTabUsersFromIdSets(
         currentUser.uid,
         graph.idSets,
         hasMoreFollowGraph: graph.hasMore,
       );
+      _rememberNetworkTabUsers(currentUser.uid, bundle);
+      return bundle;
     } catch (e) {
       debugPrint('❌ FollowsService: Error loading network tabs: $e');
+      final NetworkTabUsers? stale =
+          peekCachedNetworkTabUsers(userId: currentUser.uid);
+      if (stale != null) {
+        return stale;
+      }
       return const NetworkTabUsers(
         connections: <user_model.User>[],
         followers: <user_model.User>[],
@@ -623,11 +797,13 @@ class FollowsService {
         currentUser.uid,
         loadMore: true,
       );
-      return _buildNetworkTabUsersFromIdSets(
+      final NetworkTabUsers bundle = await _buildNetworkTabUsersFromIdSets(
         currentUser.uid,
         graph.idSets,
         hasMoreFollowGraph: graph.hasMore,
       );
+      _rememberNetworkTabUsers(currentUser.uid, bundle);
+      return bundle;
     } catch (e) {
       debugPrint('❌ FollowsService: Error loading more network tabs: $e');
       return loadNetworkTabUsers();

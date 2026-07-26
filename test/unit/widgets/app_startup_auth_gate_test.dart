@@ -25,7 +25,28 @@ void main() {
       expect(
         resolveStartupShell(
           firebaseInitialized: false,
-          startupGracePeriodElapsed: false,
+          startupGracePeriodElapsed: true,
+          allowDegradedAuthShell: true,
+          hadPriorSession: true,
+          authConnectionState: ConnectionState.waiting,
+          hasFirebaseUser: false,
+          isSigningOut: false,
+          isCheckingAuth: true,
+          isOauthInProgress: false,
+          isSigningIn: false,
+        ),
+        StartupShell.loading,
+      );
+    });
+
+    test('does not flash login for returning users before Firebase is ready',
+        () {
+      expect(
+        resolveStartupShell(
+          firebaseInitialized: false,
+          startupGracePeriodElapsed: true,
+          allowDegradedAuthShell: true,
+          hadPriorSession: true,
           authConnectionState: ConnectionState.waiting,
           hasFirebaseUser: false,
           isSigningOut: false,
@@ -99,6 +120,23 @@ void main() {
           isSigningIn: false,
         ),
         StartupShell.auth,
+      );
+    });
+
+    test('keeps splash for returning users while auth is still restoring', () {
+      expect(
+        resolveStartupShell(
+          firebaseInitialized: true,
+          startupGracePeriodElapsed: true,
+          hadPriorSession: true,
+          authConnectionState: ConnectionState.waiting,
+          hasFirebaseUser: false,
+          isSigningOut: false,
+          isCheckingAuth: true,
+          isOauthInProgress: false,
+          isSigningIn: false,
+        ),
+        StartupShell.loading,
       );
     });
 
@@ -278,6 +316,21 @@ void main() {
           authConnectionState: ConnectionState.active,
         ),
         isFalse,
+      );
+    });
+
+    test('keeps splash while restoring a prior session', () {
+      expect(
+        resolveStartupShowsAuthLoading(
+          isSigningOut: false,
+          hasFirebaseUser: false,
+          isCheckingAuth: true,
+          isOauthInProgress: false,
+          isSigningIn: false,
+          authConnectionState: ConnectionState.waiting,
+          hadPriorSession: true,
+        ),
+        isTrue,
       );
     });
   });

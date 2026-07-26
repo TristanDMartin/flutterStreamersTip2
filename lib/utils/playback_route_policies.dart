@@ -25,7 +25,10 @@ abstract final class PlaybackRoutePolicies {
     return routeName.contains('commentsview2') ||
         routeName == '/comments' ||
         routeName.contains('enhancedsharesheet') ||
-        routeName == '/share_sheet';
+        routeName == '/share_sheet' ||
+        routeName.contains('sharesheet') ||
+        // Unnamed modal bottom sheets (share / menus) keep feed audio playing.
+        routeName.contains('modalbottomsheetroute');
   }
 
   static bool isKeepPlayingOverlayRoute(String routeName) {

@@ -21,6 +21,14 @@ import '../features/analytics/creator_video_insights_view.dart';
 import '../features/analytics/growth_analytics_view.dart';
 import '../features/content_planning/content_planner_view.dart';
 import '../features/content_scheduler/content_scheduler_view.dart';
+import '../features/academy/views/academy_category_view.dart';
+import '../features/academy/views/academy_guide_view.dart';
+import '../features/academy/views/academy_home_view.dart';
+import '../features/academy/views/academy_lesson_view.dart';
+import '../features/academy/views/academy_path_view.dart';
+import '../features/academy/views/academy_progress_view.dart';
+import '../features/academy/views/academy_saved_view.dart';
+import '../features/academy/views/academy_search_view.dart';
 import '../features/tippy/models/tippy_launch_context.dart';
 import '../features/tippy/tippy_chat_page.dart';
 
@@ -40,6 +48,14 @@ class AppRoutes {
   static const String upgrade = '/upgrade';
   static const String linkedPlatforms = '/linked-platforms';
   static const String discover = '/discover';
+  static const String academy = '/academy';
+  static const String academySearch = '/academy/search';
+  static const String academySaved = '/academy/saved';
+  static const String academyProgress = '/academy/progress';
+  static const String academyCategory = '/academy/category';
+  static const String academyPath = '/academy/path';
+  static const String academyGuide = '/academy/guide';
+  static const String academyLesson = '/academy/lesson';
   static const String activity = '/activity';
   static const String search = '/search';
   static const String player = '/player';
@@ -150,6 +166,67 @@ class AppRoutes {
           settings: routeSettings,
           builder: (_) => const DiscoverView(),
         );
+      case academy:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const AcademyHomeView(),
+        );
+      case academySearch:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const AcademySearchView(),
+        );
+      case academySaved:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const AcademySavedView(),
+        );
+      case academyProgress:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const AcademyProgressView(),
+        );
+      case academyCategory:
+        final Object? categoryArgs = routeSettings.arguments;
+        if (categoryArgs is AcademyCategoryRouteArgs) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => AcademyCategoryView(
+              categoryId: categoryArgs.categoryId,
+            ),
+          );
+        }
+        break;
+      case academyPath:
+        final Object? pathArgs = routeSettings.arguments;
+        if (pathArgs is AcademyPathRouteArgs) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => AcademyPathView(pathId: pathArgs.pathId),
+          );
+        }
+        break;
+      case academyGuide:
+        final Object? guideArgs = routeSettings.arguments;
+        if (guideArgs is AcademyGuideRouteArgs) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => AcademyGuideView(guideId: guideArgs.guideId),
+          );
+        }
+        break;
+      case academyLesson:
+        final Object? lessonArgs = routeSettings.arguments;
+        if (lessonArgs is AcademyLessonRouteArgs) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => AcademyLessonView(
+              lessonId: lessonArgs.lessonId,
+              guideId: lessonArgs.guideId,
+            ),
+          );
+        }
+        break;
       case activity:
         return _buildRoute(
           settings: routeSettings,
@@ -360,4 +437,32 @@ class LinkedPlatformsRouteArgs {
 
   final List<String> initialPlatforms;
   final bool fullscreenDialog;
+}
+
+class AcademyCategoryRouteArgs {
+  const AcademyCategoryRouteArgs({required this.categoryId});
+
+  final String categoryId;
+}
+
+class AcademyPathRouteArgs {
+  const AcademyPathRouteArgs({required this.pathId});
+
+  final String pathId;
+}
+
+class AcademyGuideRouteArgs {
+  const AcademyGuideRouteArgs({required this.guideId});
+
+  final String guideId;
+}
+
+class AcademyLessonRouteArgs {
+  const AcademyLessonRouteArgs({
+    required this.lessonId,
+    this.guideId,
+  });
+
+  final String lessonId;
+  final String? guideId;
 }

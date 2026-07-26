@@ -923,20 +923,30 @@ class StreamersTipLikeService extends ChangeNotifier {
         '📊 StreamersTipLikeService: like_tap - video: $videoId, source: $source');
   }
 
+  /// Max of the same counters Firestore rules use (plus legacy aliases).
   int _readLikeCount(Map<String, dynamic> data) {
-    for (final key in const ['likeCount', 'likesCount', 'likes']) {
-      final dynamic value = data[key];
+    int maxCount = 0;
+    for (final String key in const <String>[
+      'likeCount',
+      'likesCount',
+      'likes',
+    ]) {
+      final Object? value = data[key];
+      int? parsed;
       if (value is num) {
-        return value.toInt().clamp(0, 1 << 31).toInt();
+        parsed = value.toInt();
+      } else if (value is String) {
+        parsed = int.tryParse(value);
       }
-      if (value is String) {
-        final parsed = int.tryParse(value);
-        if (parsed != null) {
-          return parsed.clamp(0, 1 << 31).toInt();
-        }
+      if (parsed == null) {
+        continue;
+      }
+      final int clamped = parsed.clamp(0, 1 << 31).toInt();
+      if (clamped > maxCount) {
+        maxCount = clamped;
       }
     }
-    return 0;
+    return maxCount;
   }
 
   int _coerceServerLikeCount({

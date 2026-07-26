@@ -3266,6 +3266,8 @@ class _DiscoverCategoryVideoFeedPageState
                       HapticFeedback.lightImpact();
                       showModalBottomSheet<void>(
                         context: context,
+                        routeSettings:
+                            const RouteSettings(name: '/share_sheet'),
                         isScrollControlled: true,
                         backgroundColor: Colors.transparent,
                         isDismissible: true,

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/current_user_provider.dart';
 import 'data/gamification_repository.dart';
 import 'models/user_progress_bundle.dart';
 import 'services/gamification_event_service.dart';
@@ -17,37 +17,18 @@ final Provider<GamificationEventService> gamificationEventServiceProvider =
   (Ref ref) => GamificationEventService(),
 );
 
-class ProgressionSubscriptionsActiveNotifier extends Notifier<bool> {
-  @override
-  bool build() => false;
-
-  void setActive(bool value) {
-    if (state == value) {
-      return;
-    }
-    state = value;
-  }
-}
-
-final NotifierProvider<ProgressionSubscriptionsActiveNotifier, bool>
-    progressionSubscriptionsActiveProvider =
-    NotifierProvider<ProgressionSubscriptionsActiveNotifier, bool>(
-  ProgressionSubscriptionsActiveNotifier.new,
-);
-
 /// Live progression + missions + tier snapshot for the signed-in user.
+///
+/// Always listens while authenticated so Home Progression, Tippy, and Academy
+/// match website Mission Control (`users/{uid}/gamification/state`).
+/// Do not gate this behind a mount-only flag — that previously forced Level 1
+/// fallback forever because [ProgressionSubscriptionScope] was never mounted.
 final StreamProvider<UserProgressBundle> userProgressBundleProvider =
     StreamProvider<UserProgressBundle>((Ref ref) {
-  final bool subscriptionsActive =
-      ref.watch(progressionSubscriptionsActiveProvider);
-  if (!subscriptionsActive) {
+  final AsyncValue<String?> authUid = ref.watch(authUserIdStreamProvider);
+  final String? uid = authUid.valueOrNull;
+  if (uid == null || uid.isEmpty) {
     return Stream<UserProgressBundle>.value(UserProgressBundle.fallback());
   }
-  final User? user = FirebaseAuth.instance.currentUser;
-  if (user == null) {
-    return Stream<UserProgressBundle>.value(UserProgressBundle.fallback());
-  }
-  return ref
-      .watch(gamificationRepositoryProvider)
-      .watchProgressBundle(user.uid);
+  return ref.watch(gamificationRepositoryProvider).watchProgressBundle(uid);
 });

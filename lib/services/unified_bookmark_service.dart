@@ -420,120 +420,78 @@ class UnifiedBookmarkService extends ChangeNotifier {
     }
   }
 
-  /// Perform atomic Firebase operation with retry logic
+  /// Persist edge docs first; bump video counters best-effort separately so a
+  /// counter-rule denial cannot roll back the user's favorite.
   Future<BookmarkResult> _performAtomicFirebaseOperation({
     required String videoId,
     required String userId,
     required bool isBookmarking,
   }) async {
     try {
-      final userDocRef = _firestore.collection('users').doc(userId);
-      final favoriteDocRef = userDocRef.collection('favorites').doc(videoId);
-      final videoDocRef = _firestore.collection('videos').doc(videoId);
-      final bookmarkDocRef = videoDocRef.collection('bookmarks').doc(userId);
+      final DocumentReference<Map<String, dynamic>> favoriteDocRef =
+          _firestore.collection('users').doc(userId).collection('favorites').doc(videoId);
+      final DocumentReference<Map<String, dynamic>> videoDocRef =
+          _firestore.collection('videos').doc(videoId);
+      final DocumentReference<Map<String, dynamic>> bookmarkDocRef =
+          videoDocRef.collection('bookmarks').doc(userId);
 
+      bool edgeExisted = false;
       await _firestore.runTransaction<void>((transaction) async {
-        final favoriteDoc = await transaction.get(favoriteDocRef);
-        final bookmarkDoc = await transaction.get(bookmarkDocRef);
-        final videoDoc = await transaction.get(videoDocRef);
-        final bool exists = favoriteDoc.exists || bookmarkDoc.exists;
-
-        int currentCount = 0;
-        if (videoDoc.exists) {
-          currentCount = _readBookmarkCount(videoDoc.data() ?? const {});
-        }
+        final DocumentSnapshot<Map<String, dynamic>> favoriteDoc =
+            await transaction.get(favoriteDocRef);
+        final DocumentSnapshot<Map<String, dynamic>> bookmarkDoc =
+            await transaction.get(bookmarkDocRef);
+        edgeExisted = favoriteDoc.exists || bookmarkDoc.exists;
 
         if (isBookmarking) {
-          if (exists) {
-            transaction.set(
-              bookmarkDocRef,
-              {
-                'userId': userId,
-                'videoId': videoId,
-                'bookmarkedAt': FieldValue.serverTimestamp(),
-                'favoritedAt': FieldValue.serverTimestamp(),
-                'updatedAt': FieldValue.serverTimestamp(),
-                'source': 'mobile',
-              },
-              SetOptions(merge: true),
-            );
-            transaction.set(
-              favoriteDocRef,
-              {
-                'videoId': videoId,
-                'favoritedAt': FieldValue.serverTimestamp(),
-                'timestamp': FieldValue.serverTimestamp(),
-                'updatedAt': FieldValue.serverTimestamp(),
-                'source': 'mobile',
-              },
-              SetOptions(merge: true),
-            );
-            if (videoDoc.exists) {
-              final int nextCount = currentCount < 1 ? 1 : currentCount;
-              transaction.set(
-                videoDocRef,
-                <String, dynamic>{
-                  'bookmarkCount': nextCount,
-                  'favorites': nextCount,
-                  'favoriteCount': nextCount,
-                  'updatedAt': FieldValue.serverTimestamp(),
-                },
-                SetOptions(merge: true),
-              );
-            }
-            return;
-          }
-          transaction.set(bookmarkDocRef, {
-            'userId': userId,
-            'videoId': videoId,
-            'bookmarkedAt': FieldValue.serverTimestamp(),
-            'favoritedAt': FieldValue.serverTimestamp(),
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'source': 'mobile',
-          });
-          transaction.set(favoriteDocRef, {
-            'videoId': videoId,
-            'favoritedAt': FieldValue.serverTimestamp(),
-            'timestamp': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'source': 'mobile',
-          });
-          if (videoDoc.exists) {
-            final nextCount = currentCount + 1;
-            transaction.set(
-              videoDocRef,
-              <String, dynamic>{
-                'bookmarkCount': nextCount,
-                'favorites': nextCount,
-                'favoriteCount': nextCount,
-                'updatedAt': FieldValue.serverTimestamp(),
-              },
-              SetOptions(merge: true),
-            );
-          }
+          transaction.set(
+            bookmarkDocRef,
+            <String, dynamic>{
+              'userId': userId,
+              'videoId': videoId,
+              'bookmarkedAt': FieldValue.serverTimestamp(),
+              'favoritedAt': FieldValue.serverTimestamp(),
+              if (!edgeExisted) 'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              'source': 'mobile',
+            },
+            SetOptions(merge: true),
+          );
+          transaction.set(
+            favoriteDocRef,
+            <String, dynamic>{
+              'videoId': videoId,
+              'favoritedAt': FieldValue.serverTimestamp(),
+              'timestamp': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              'source': 'mobile',
+            },
+            SetOptions(merge: true),
+          );
           return;
         }
 
-        if (!exists) {
+        if (!edgeExisted) {
           return;
         }
         transaction.delete(bookmarkDocRef);
         transaction.delete(favoriteDocRef);
-        if (videoDoc.exists) {
-          final nextCount = (currentCount - 1).clamp(0, 1 << 31).toInt();
-          transaction.set(
-            videoDocRef,
-            <String, dynamic>{
-              'bookmarkCount': nextCount,
-              'favorites': nextCount,
-              'favoriteCount': nextCount,
-              'updatedAt': FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true),
+      });
+
+      final bool shouldBumpCount = isBookmarking && !edgeExisted;
+      final bool shouldDecrementCount = !isBookmarking && edgeExisted;
+      if (shouldBumpCount || shouldDecrementCount) {
+        try {
+          await _bumpVideoBookmarkCounters(
+            videoDocRef: videoDocRef,
+            isIncrement: shouldBumpCount,
+          );
+        } catch (e) {
+          debugPrint(
+            '⚠️ UnifiedBookmarkService: Counter update failed for $videoId (edge saved): $e',
           );
         }
-      });
+      }
 
       debugPrint(
         isBookmarking
@@ -548,8 +506,42 @@ class UnifiedBookmarkService extends ChangeNotifier {
     }
   }
 
+  Future<void> _bumpVideoBookmarkCounters({
+    required DocumentReference<Map<String, dynamic>> videoDocRef,
+    required bool isIncrement,
+  }) async {
+    await _firestore.runTransaction<void>((transaction) async {
+      final DocumentSnapshot<Map<String, dynamic>> videoDoc =
+          await transaction.get(videoDocRef);
+      if (!videoDoc.exists) {
+        return;
+      }
+      final int currentCount =
+          _readBookmarkCount(videoDoc.data() ?? const <String, dynamic>{});
+      final int nextCount = isIncrement
+          ? currentCount + 1
+          : (currentCount - 1).clamp(0, 1 << 31).toInt();
+      if (nextCount == currentCount) {
+        return;
+      }
+      transaction.set(
+        videoDocRef,
+        <String, dynamic>{
+          'bookmarks': nextCount,
+          'bookmarkCount': nextCount,
+          'favorites': nextCount,
+          'favoriteCount': nextCount,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
+  }
+
+  /// Max of the same counters Firestore rules use (plus legacy aliases).
   int _readBookmarkCount(Map<String, dynamic> data) {
-    for (final key in const [
+    int maxCount = 0;
+    for (final String key in const <String>[
       'bookmarkCount',
       'bookmarksCount',
       'savesCount',
@@ -557,14 +549,22 @@ class UnifiedBookmarkService extends ChangeNotifier {
       'favoriteCount',
       'favorites',
     ]) {
-      final value = data[key];
-      if (value is num) return value.toInt().clamp(0, 1 << 31).toInt();
-      if (value is String) {
-        final parsed = int.tryParse(value);
-        if (parsed != null) return parsed.clamp(0, 1 << 31).toInt();
+      final Object? value = data[key];
+      int? parsed;
+      if (value is num) {
+        parsed = value.toInt();
+      } else if (value is String) {
+        parsed = int.tryParse(value);
+      }
+      if (parsed == null) {
+        continue;
+      }
+      final int clamped = parsed.clamp(0, 1 << 31).toInt();
+      if (clamped > maxCount) {
+        maxCount = clamped;
       }
     }
-    return 0;
+    return maxCount;
   }
 
   static DateTime? _readFavoritedAt(Map<String, dynamic> data) {

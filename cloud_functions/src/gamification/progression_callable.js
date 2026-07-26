@@ -285,10 +285,22 @@ async function completeTaskForUser(db, uid, taskId, source) {
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(taskRef);
+    const userSnapTx = await tx.get(userDocRef);
     if (snap.exists && snap.data() && snap.data().completed === true) {
       return;
     }
     completedNow = true;
+    const userDataTx = userSnapTx.exists ? userSnapTx.data() || {} : {};
+    const gamTx =
+      userDataTx.gamification && typeof userDataTx.gamification === 'object'
+        ? userDataTx.gamification
+        : {};
+    const currentXp =
+      readInt(gamTx.totalXp) ||
+      readInt(gamTx.totalXP) ||
+      readInt(userDataTx.totalXp) ||
+      readInt(userDataTx.totalXP);
+    const nextXp = currentXp + task.xpReward;
     tx.set(taskRef, {
       taskId: task.id,
       completed: true,
@@ -297,10 +309,16 @@ async function completeTaskForUser(db, uid, taskId, source) {
       source: safeSource(source, task.source),
       checkedAt: FieldValue.serverTimestamp(),
     }, {merge: true});
+    // Award into global XP once; never replace Worker/mission totals later.
     tx.set(userDocRef, {
-      totalXP: FieldValue.increment(task.xpReward),
-      totalXp: FieldValue.increment(task.xpReward),
+      totalXP: nextXp,
+      totalXp: nextXp,
       completedTaskCount: FieldValue.increment(1),
+      gamification: {
+        ...gamTx,
+        totalXp: nextXp,
+        totalXP: nextXp,
+      },
       updatedAt: FieldValue.serverTimestamp(),
     }, {merge: true});
   });
@@ -335,7 +353,7 @@ async function recalculateUserProgressSummary(db, uid) {
     collectEvidence(db, uid),
   ]);
   const userData = userSnap.exists ? userSnap.data() || {} : {};
-  let totalXP = 0;
+  let onboardingXp = 0;
   let completedTaskCount = 0;
   const completedTaskIds = [];
   for (const doc of snap.docs) {
@@ -344,9 +362,8 @@ async function recalculateUserProgressSummary(db, uid) {
     completedTaskCount += 1;
     completedTaskIds.push(doc.id);
     const task = TASKS_BY_ID[doc.id];
-    totalXP += readInt(data.xpReward, task ? task.xpReward : 0);
+    onboardingXp += readInt(data.xpReward, task ? task.xpReward : 0);
   }
-  const levelRow = levelForXp(totalXP);
   completedTaskIds.sort((a, b) => {
     const taskA = TASKS_BY_ID[a];
     const taskB = TASKS_BY_ID[b];
@@ -354,13 +371,27 @@ async function recalculateUserProgressSummary(db, uid) {
   });
   const creatorScore = scoreForEvidence(evidence, completedTaskIds);
   const streak = streakForUserData(userData);
+  const existingGam =
+    userData.gamification && typeof userData.gamification === 'object'
+      ? userData.gamification
+      : {};
+  // Global XP is Worker/events + one-time onboarding increments — never the
+  // onboarding task sum alone (that was wiping mission XP on every refresh).
+  const globalXp =
+    readInt(existingGam.totalXp) ||
+    readInt(existingGam.totalXP) ||
+    readInt(userData.totalXp) ||
+    readInt(userData.totalXP) ||
+    onboardingXp;
+  const levelRow = levelForXp(globalXp);
+  const onboardingLevelRow = levelForXp(onboardingXp);
   const progressionSummary = {
-    totalXP,
-    totalXp: totalXP,
+    totalXP: onboardingXp,
+    totalXp: onboardingXp,
     creatorScore,
-    level: levelRow.level,
-    rankTitle: levelRow.rankName,
-    rankName: levelRow.rankName,
+    level: onboardingLevelRow.level,
+    rankTitle: onboardingLevelRow.rankName,
+    rankName: onboardingLevelRow.rankName,
     streakCount: streak.streakCount,
     streakDays: streak.streakCount,
     streakStatus: streak.streakStatus,
@@ -371,11 +402,6 @@ async function recalculateUserProgressSummary(db, uid) {
     updatedAt: FieldValue.serverTimestamp(),
   };
   await userDocRef.set({
-    totalXP,
-    totalXp: totalXP,
-    level: levelRow.level,
-    rankName: levelRow.rankName,
-    rankTitle: levelRow.rankName,
     creatorScore,
     streakCount: streak.streakCount,
     streakDays: streak.streakCount,
@@ -384,11 +410,7 @@ async function recalculateUserProgressSummary(db, uid) {
     progressionSummary,
     updatedAt: FieldValue.serverTimestamp(),
     gamification: {
-      totalXp: totalXP,
-      totalXP,
-      level: levelRow.level,
-      rankTitle: levelRow.rankName,
-      rankName: levelRow.rankName,
+      ...existingGam,
       creatorScore,
       streakDays: streak.streakCount,
       streakCount: streak.streakCount,
@@ -400,7 +422,8 @@ async function recalculateUserProgressSummary(db, uid) {
   }, {merge: true});
   await syncGamificationState(db, uid);
   return {
-    totalXP,
+    totalXP: globalXp,
+    onboardingXp,
     level: levelRow.level,
     rankName: levelRow.rankName,
     rankTitle: levelRow.rankName,

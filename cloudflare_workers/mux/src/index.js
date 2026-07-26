@@ -1103,10 +1103,18 @@ async function getMuxAsset(env, assetId) {
   return json.data;
 }
 
-/** Mirrors mission_templates_config.dart + GamificationConstants (Dart). */
-const cumulativeXpForLevel = [
-  0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3300, 4000, 4800, 5700,
-  6700,
+/** Canonical sparse table — mirrors cloud_functions/src/gamification/level_table.js */
+const LEVELS = [
+  { level: 1, title: 'New Creator', xpRequired: 0 },
+  { level: 2, title: 'Getting Started', xpRequired: 100 },
+  { level: 3, title: 'Clip Builder', xpRequired: 250 },
+  { level: 4, title: 'Consistent Creator', xpRequired: 500 },
+  { level: 5, title: 'Rising Creator', xpRequired: 900 },
+  { level: 10, title: 'Growth Creator', xpRequired: 2500 },
+  { level: 20, title: 'Partner-Level Creator', xpRequired: 8000 },
+  { level: 30, title: 'Elite Creator', xpRequired: 18000 },
+  { level: 40, title: 'Platform Leader', xpRequired: 35000 },
+  { level: 50, title: 'StreamersTip Legend', xpRequired: 60000 },
 ];
 
 const MISSION_TEMPLATES = {
@@ -1233,30 +1241,52 @@ const MISSION_TEMPLATES = {
 };
 
 function rankTitleForLevel(level) {
-  if (level <= 2) return 'New Creator';
-  if (level <= 4) return 'Active Creator';
-  if (level <= 6) return 'Rising Creator';
-  if (level <= 8) return 'Consistent Creator';
-  if (level <= 10) return 'Community Builder';
-  if (level <= 12) return 'Growth Creator';
-  if (level <= 14) return 'Pro Creator';
-  return 'Elite Creator';
+  const lv = Math.max(1, Math.trunc(level));
+  let title = LEVELS[0].title;
+  for (const row of LEVELS) {
+    if (lv >= row.level) title = row.title;
+  }
+  return title;
 }
 
 function levelFromTotalXp(totalXp) {
-  const t = cumulativeXpForLevel;
-  let level = 1;
-  for (let lv = 2; lv <= t.length; lv++) {
-    if (totalXp >= t[lv - 1]) level = lv;
+  const xp = Math.max(0, Math.trunc(totalXp));
+  let level = LEVELS[0].level;
+  for (const row of LEVELS) {
+    if (xp >= row.xpRequired) level = row.level;
   }
-  if (level < t.length) return level;
-  let floor = t[t.length - 1];
-  let lv = t.length;
-  while (totalXp >= floor + 1000) {
-    lv++;
-    floor += 1000;
+  return level;
+}
+
+function xpFloorForLevel(level) {
+  const lv = Math.max(1, Math.trunc(level));
+  let floor = 0;
+  for (const row of LEVELS) {
+    if (row.level <= lv) floor = row.xpRequired;
   }
-  return lv;
+  return floor;
+}
+
+function xpCeilingForLevel(level) {
+  const lv = Math.max(1, Math.trunc(level));
+  for (const row of LEVELS) {
+    if (row.level > lv) return row.xpRequired;
+  }
+  const max = LEVELS[LEVELS.length - 1];
+  return max.xpRequired + 1000;
+}
+
+function xpProgressForLevel(level, totalXp) {
+  const floor = xpFloorForLevel(level);
+  const ceiling = xpCeilingForLevel(level);
+  const span = Math.max(1, ceiling - floor);
+  const into = Math.max(0, Math.trunc(totalXp) - floor);
+  const percent = Math.min(100, Math.round((into / span) * 100));
+  return {
+    currentLevelXp: floor,
+    nextLevelXp: ceiling,
+    progressPercent: percent,
+  };
 }
 
 function readInt(v) {

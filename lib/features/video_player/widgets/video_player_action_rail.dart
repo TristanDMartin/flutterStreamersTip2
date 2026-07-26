@@ -148,6 +148,9 @@ class VideoPlayerActionRailButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final double btnSize = metrics.buttonSize;
     final bool isShareAction = count == 'Share';
+    final Color iconColor = isActive
+        ? StThemeColors.brandPurple
+        : Colors.white.withValues(alpha: 0.96);
     final Color labelColor = isActive
         ? AppColors.textPrimary.withValues(alpha: 0.98)
         : Colors.white.withValues(alpha: 0.92);
@@ -171,50 +174,31 @@ class VideoPlayerActionRailButton extends StatelessWidget {
                     : null,
                 borderRadius: BorderRadius.circular(btnSize / 2),
                 child: Center(
-                  child: Container(
-                    width: btnSize - 4,
-                    height: btnSize - 4,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black.withValues(alpha: 0.28),
-                      border: Border.all(
-                        color: isActive
-                            ? StThemeColors.brandPurple.withValues(alpha: 0.55)
-                            : Colors.white.withValues(alpha: 0.12),
-                      ),
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.18),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: isLoading
-                          ? SizedBox(
-                              width: metrics.progressSize,
-                              height: metrics.progressSize,
-                              child: CircularProgressIndicator(
-                                strokeWidth: metrics.progressStrokeWidth,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  isActive
-                                      ? AppColors.primary
-                                      : Colors.white.withValues(alpha: 0.9),
-                                ),
-                              ),
-                            )
-                          : Icon(
-                              icon,
-                              color: isActive
-                                  ? StThemeColors.brandPurple
-                                  : Colors.white.withValues(alpha: 0.96),
-                              size: isShareAction
-                                  ? metrics.shareIconSize
-                                  : metrics.iconSize,
+                  child: isLoading
+                      ? SizedBox(
+                          width: metrics.progressSize,
+                          height: metrics.progressSize,
+                          child: CircularProgressIndicator(
+                            strokeWidth: metrics.progressStrokeWidth,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              iconColor,
                             ),
-                    ),
-                  ),
+                          ),
+                        )
+                      : Icon(
+                          icon,
+                          color: iconColor,
+                          size: isShareAction
+                              ? metrics.shareIconSize
+                              : metrics.iconSize,
+                          shadows: const <Shadow>[
+                            Shadow(
+                              color: Color(0x99000000),
+                              blurRadius: 8,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ),
@@ -250,10 +234,11 @@ class VideoPlayerActionRailButton extends StatelessWidget {
                     : metrics.labelFontSize,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.1,
-                shadows: <Shadow>[
+                shadows: const <Shadow>[
                   Shadow(
-                    color: Colors.black.withValues(alpha: 0.24),
+                    color: Color(0x99000000),
                     blurRadius: 6,
+                    offset: Offset(0, 1),
                   ),
                 ],
               ),

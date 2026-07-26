@@ -38,6 +38,7 @@ class _OptimizedShareButtonState extends State<OptimizedShareButton> {
     // Show share sheet modal - video continues playing behind it
     showModalBottomSheet(
       context: context,
+      routeSettings: const RouteSettings(name: '/share_sheet'),
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       isDismissible: true,

@@ -1,208 +1,127 @@
-/// Display-only helpers aligned with shared StreamersTip gamification rules.
+/// Display-only helpers aligned with
+/// `cloud_functions/src/gamification/level_table.js`.
 /// Server remains source of truth for awarded XP and levels.
+class GamificationLevelRow {
+  const GamificationLevelRow({
+    required this.level,
+    required this.title,
+    required this.xpRequired,
+  });
+
+  final int level;
+  final String title;
+  final int xpRequired;
+}
+
 class GamificationConstants {
   GamificationConstants._();
 
-  /// Minimum cumulative XP to reach each level (index 0 = level 1).
-  static const List<int> cumulativeXpForLevel = <int>[
-    0,
-    100,
-    250,
-    450,
-    700,
-    1000,
-    1350,
-    1750,
-    2200,
-    2700,
-    3300,
-    4000,
-    4800,
-    5700,
-    6700,
-    7800,
-    9000,
-    10300,
-    11700,
-    13200,
-    14800,
-    16500,
-    18300,
-    20200,
-    22200,
-    24300,
-    26500,
-    28800,
-    31200,
-    33700,
-    36300,
-    39000,
-    41800,
-    44700,
-    47700,
-    50800,
-    54000,
-    57300,
-    60700,
-    64200,
-    67800,
-    71500,
-    75300,
-    79200,
-    83200,
-    87300,
-    91500,
-    95800,
-    100200,
-    104700,
-    109300,
-    114000,
-    118800,
-    123700,
-    128700,
+  /// Canonical sparse level table (same order / thresholds as backend).
+  static const List<GamificationLevelRow> levels = <GamificationLevelRow>[
+    GamificationLevelRow(level: 1, title: 'New Creator', xpRequired: 0),
+    GamificationLevelRow(level: 2, title: 'Getting Started', xpRequired: 100),
+    GamificationLevelRow(level: 3, title: 'Clip Builder', xpRequired: 250),
+    GamificationLevelRow(level: 4, title: 'Consistent Creator', xpRequired: 500),
+    GamificationLevelRow(level: 5, title: 'Rising Creator', xpRequired: 900),
+    GamificationLevelRow(level: 10, title: 'Growth Creator', xpRequired: 2500),
+    GamificationLevelRow(
+      level: 20,
+      title: 'Partner-Level Creator',
+      xpRequired: 8000,
+    ),
+    GamificationLevelRow(level: 30, title: 'Elite Creator', xpRequired: 18000),
+    GamificationLevelRow(level: 40, title: 'Platform Leader', xpRequired: 35000),
+    GamificationLevelRow(
+      level: 50,
+      title: 'StreamersTip Legend',
+      xpRequired: 60000,
+    ),
   ];
 
-  static const List<String> _levelTitles = <String>[
-    'New Creator',
-    'First Upload',
-    'Getting Started',
-    'Showing Up',
-    'Learning the Game',
-    'Finding Your Voice',
-    'First Momentum',
-    'On the Radar',
-    'Building Rhythm',
-    'Consistent Beginner',
-    'Rising Creator',
-    'Gaining Traction',
-    'Content Builder',
-    'Locked In',
-    'Daily Creator',
-    'Algorithm Friendly',
-    'Growth Mode',
-    'Attention Grabber',
-    'Creator in Motion',
-    'Consistency Locked',
-    'Growth Operator',
-    'Audience Builder',
-    'Engagement Driver',
-    'Trend Catcher',
-    'Platform Player',
-    'Multi-Post Machine',
-    'Content Strategist',
-    'Viral Potential',
-    'System Builder',
-    'Creator Engine',
-    'Recognized Creator',
-    'Influence Builder',
-    'Community Leader',
-    'Content Authority',
-    'Algorithm Hacker',
-    'Trend Leader',
-    'Viral Creator',
-    'Growth Specialist',
-    'Audience Magnet',
-    'Platform Dominator',
-    'Creator Elite',
-    'Viral Operator',
-    'Culture Builder',
-    'Content Machine',
-    'Growth Legend',
-    'Platform Icon',
-    'Algorithm Master',
-    'Creator Titan',
-    'Industry Force',
-    'StreamersTip Legend',
-  ];
-
-  static const List<String> _levelRewards = <String>[
-    'Starter profile boost',
-    'First upload badge',
-    'Creator onboarding XP boost',
-    'Daily check-in mission unlocked',
-    'Beginner insights unlocked',
-    'Voice finder badge',
-    'Momentum mission pack',
-    'Discovery boost preview',
-    'Rhythm streak bonus',
-    'Consistency checkpoint badge',
-    'Rising creator badge',
-    'Traction tracker unlocked',
-    'Content builder mission pack',
-    'Locked-in streak boost',
-    'Daily creator insights',
-    'Algorithm-friendly badge',
-    'Growth mode XP boost',
-    'Attention grabber flair',
-    'Motion streak shield',
-    'Consistency locked title card',
-    'Growth operator badge',
-    'Audience builder insights',
-    'Engagement driver mission pack',
-    'Trend catcher flair',
-    'Platform player boost',
-    'Multi-post machine rewards',
-    'Strategy mission upgrade',
-    'Viral potential badge',
-    'System builder unlock',
-    'Creator engine checkpoint',
-    'Recognized creator badge',
-    'Influence builder insights',
-    'Community leader flair',
-    'Content authority unlock',
-    'Algorithm hacker badge',
-    'Trend leader boost',
-    'Viral creator checkpoint',
-    'Growth specialist insights',
-    'Audience magnet flair',
-    'Platform dominator title card',
-    'Creator elite badge',
-    'Viral operator boost',
-    'Culture builder flair',
-    'Content machine upgrade',
-    'Growth legend checkpoint',
-    'Platform icon badge',
-    'Algorithm master unlock',
-    'Creator titan flair',
-    'Industry force rewards',
+  static const List<String> levelRewardHints = <String>[
+    'Welcome to StreamersTip',
+    'Profile basics unlocked',
+    'Clip posting boost',
+    'Consistency badge',
+    'Rising creator flair',
+    'Growth insights',
+    'Partner-level insights',
+    'Elite creator flair',
+    'Platform leader title card',
     'StreamersTip legend crown',
   ];
 
-  static int maxConfiguredLevel() => cumulativeXpForLevel.length;
+  static int maxConfiguredLevel() => levels.last.level;
+
+  static int levelFromTotalXp(int totalXp) {
+    final int xp = totalXp < 0 ? 0 : totalXp;
+    int level = levels.first.level;
+    for (final GamificationLevelRow row in levels) {
+      if (xp >= row.xpRequired) {
+        level = row.level;
+      }
+    }
+    return level;
+  }
 
   static String rankTitleForLevel(int level) {
-    final int idx = (level - 1).clamp(0, _levelTitles.length - 1);
-    return _levelTitles[idx];
+    final int lv = level < 1 ? 1 : level;
+    GamificationLevelRow row = levels.first;
+    for (final GamificationLevelRow candidate in levels) {
+      if (candidate.level <= lv) {
+        row = candidate;
+      }
+    }
+    return row.title;
   }
 
-  static String rewardLabelForLevel(int level) {
-    final int idx = (level - 1).clamp(0, _levelRewards.length - 1);
-    return _levelRewards[idx];
-  }
-
-  /// Minimum XP for [level] (1-based). Clamped to table.
   static int xpFloorForLevel(int level) {
-    final int idx = (level - 1).clamp(0, cumulativeXpForLevel.length - 1);
-    return cumulativeXpForLevel[idx];
+    final int lv = level < 1 ? 1 : level;
+    int floor = 0;
+    for (final GamificationLevelRow row in levels) {
+      if (row.level <= lv) {
+        floor = row.xpRequired;
+      }
+    }
+    return floor;
+  }
+
+  static int xpCeilingForLevel(int level) {
+    final int lv = level < 1 ? 1 : level;
+    for (final GamificationLevelRow row in levels) {
+      if (row.level > lv) {
+        return row.xpRequired;
+      }
+    }
+    return levels.last.xpRequired + 1000;
   }
 
   /// XP span from current level floor to next level floor.
   static int xpSpanIntoNextLevel(int level) {
     final int floor = xpFloorForLevel(level);
-    final int nextFloor = level < cumulativeXpForLevel.length
-        ? cumulativeXpForLevel[level]
-        : floor + 1000;
-    final int span = nextFloor - floor;
+    final int ceiling = xpCeilingForLevel(level);
+    final int span = ceiling - floor;
     return span <= 0 ? 1 : span;
   }
 
   static double progressInLevel(int level, int totalXp) {
     final int floor = xpFloorForLevel(level);
-    final int nextFloor = level < cumulativeXpForLevel.length
-        ? cumulativeXpForLevel[level]
-        : floor + 1000;
-    final int span = nextFloor - floor;
-    if (span <= 0) return 0;
-    return ((totalXp - floor) / span).clamp(0.0, 1.0);
+    final int span = xpSpanIntoNextLevel(level);
+    final int into = (totalXp - floor).clamp(0, span);
+    return into / span;
+  }
+
+  static String rewardLabelForLevel(int level) {
+    final int lv = level < 1 ? 1 : level;
+    int index = 0;
+    for (int i = 0; i < levels.length; i++) {
+      if (levels[i].level <= lv) {
+        index = i;
+      }
+    }
+    if (index >= 0 && index < levelRewardHints.length) {
+      return levelRewardHints[index];
+    }
+    return levelRewardHints.last;
   }
 }

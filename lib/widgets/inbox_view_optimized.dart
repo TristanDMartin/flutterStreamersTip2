@@ -73,7 +73,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   bool _inboxListenersActive = false;
 
   // State
-  bool _isLoading = true;
+  bool _isLoading = false;
   String? _error;
   String? _actionError;
   bool _isSyncingInbox = false;
@@ -89,18 +89,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       vsync: this,
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _loadOfflineData();
-      if (!mounted) {
-        return;
-      }
-      if (_chats.isEmpty) {
-        setState(() => _isLoading = true);
-      }
-      if (isMainTabInboxVisible(ref.read(mainTabActiveIndexProvider))) {
-        _initializeRealTimeUpdates();
-      }
-    });
+    _applyOfflineSnapshot(_offlineService.peekMemory());
+    unawaited(_hydrateAndStartInbox());
+
     _blockingService.blockListRevision.addListener(_handleBlockListChanged);
     _mainTabVisibilitySubscription = ref.listenManual<int>(
       mainTabActiveIndexProvider,
@@ -111,6 +102,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         if (isMainTabInboxVisible(next)) {
           if (!_inboxListenersActive) {
             _initializeRealTimeUpdates();
+          }
+          if (_chats.isEmpty) {
+            unawaited(_refreshDataInBackground());
           }
           return;
         }
@@ -129,6 +123,79 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         unawaited(_refreshDataInBackground());
       },
     );
+  }
+
+  void _applyOfflineSnapshot(InboxOfflineSnapshot? snapshot) {
+    if (snapshot == null || !snapshot.hasChats) {
+      return;
+    }
+    _chats = snapshot.chats;
+    _sharedDrafts = snapshot.drafts;
+    _filteredChats = snapshot.chats;
+    _filteredDrafts = snapshot.drafts;
+    _userProfiles
+      ..clear()
+      ..addAll(snapshot.userProfiles);
+    _unreadCounts
+      ..clear()
+      ..addAll(snapshot.unreadCounts);
+    _onlineStatus
+      ..clear()
+      ..addAll(snapshot.onlineStatus);
+    _isLoading = false;
+    _error = null;
+  }
+
+  Future<void> _hydrateAndStartInbox() async {
+    final InboxOfflineSnapshot disk = await _offlineService.loadSnapshot();
+    if (!mounted) {
+      return;
+    }
+    if (_chats.isEmpty && disk.hasChats) {
+      final List<app_chat.Chat> visible =
+          await _filterVisibleChats(disk.chats);
+      if (!mounted) {
+        return;
+      }
+      if (visible.isNotEmpty) {
+        setState(() {
+          _applyOfflineSnapshot(
+            InboxOfflineSnapshot(
+              chats: visible,
+              drafts: disk.drafts,
+              userProfiles: disk.userProfiles,
+              unreadCounts: disk.unreadCounts,
+              onlineStatus: disk.onlineStatus,
+            ),
+          );
+        });
+      } else {
+        setState(() {
+          _isLoading = true;
+        });
+      }
+    } else if (_chats.isEmpty) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    if (isMainTabInboxVisible(ref.read(mainTabActiveIndexProvider))) {
+      _initializeRealTimeUpdates();
+    } else {
+      unawaited(_prefetchInboxInBackground());
+    }
+  }
+
+  Future<void> _prefetchInboxInBackground() async {
+    if (_isSyncingInbox) {
+      return;
+    }
+    try {
+      await _refreshDataInBackground();
+    } catch (e) {
+      LoggingService.instance.error('Inbox prefetch failed: $e');
+    }
   }
 
   @override
@@ -285,48 +352,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
   }
 
-  Future<void> _loadOfflineData() async {
-    try {
-      // Check if data is stale
-      final isStale = await _offlineService.isDataStale();
-
-      if (!isStale) {
-        // Load cached data
-        final cachedChats = await _offlineService.getCachedChats();
-        final cachedDrafts = await _offlineService.getCachedDrafts();
-        final cachedUserProfiles =
-            await _offlineService.getCachedUserProfiles();
-        final cachedUnreadCounts =
-            await _offlineService.getCachedUnreadCounts();
-        final cachedOnlineStatus =
-            await _offlineService.getCachedOnlineStatus();
-
-        // Filter out invalid chats (with empty participant IDs)
-        final validCachedChats = await _filterVisibleChats(cachedChats);
-
-        if (mounted) {
-          setState(() {
-            _chats = validCachedChats;
-            _sharedDrafts = cachedDrafts;
-            _filteredChats = validCachedChats;
-            _filteredDrafts = cachedDrafts;
-            _userProfiles.addAll(cachedUserProfiles);
-            _unreadCounts.addAll(cachedUnreadCounts);
-            _onlineStatus.addAll(cachedOnlineStatus);
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      LoggingService.instance.error('Error loading offline data: $e');
-    }
-  }
-
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    final bool showLoading = _chats.isEmpty;
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       LoggingService.instance.info('Loading inbox data');
@@ -347,6 +380,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       _syncUnreadFromChatStream(validChats);
       _setupUserProfileListeners(validChats);
       await _loadUserDataForChats(validChats);
+      await _offlineService.cacheChats(validChats);
+      await _offlineService.cacheDrafts(drafts);
 
       setState(() {
         _chats = validChats;
@@ -439,7 +474,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       return;
     }
     _isSyncingInbox = true;
-    final bool isFirstLoad = _chats.isEmpty && _sharedDrafts.isEmpty;
+    final bool isFirstLoad = _chats.isEmpty;
     if (isFirstLoad && mounted) {
       setState(() {
         _isLoading = true;
@@ -457,7 +492,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final List<app_chat.Chat> validChats =
           await _filterVisibleChats(allChats);
       _syncUnreadFromChatStream(validChats);
-      _setupUserProfileListeners(validChats);
+      if (isMainTabInboxVisible(ref.read(mainTabActiveIndexProvider))) {
+        _setupUserProfileListeners(validChats);
+      }
       await _loadUserDataForChats(validChats);
       await _offlineService.cacheChats(validChats);
       await _offlineService.cacheDrafts(drafts);
@@ -598,9 +635,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         ),
                       );
                     },
-                    child: _isLoading
+                    child: _isLoading && _chats.isEmpty
                         ? _buildLoadingState()
-                        : _error != null
+                        : _error != null && _chats.isEmpty
                             ? _buildErrorState()
                             : _buildTabContent(),
                   ),

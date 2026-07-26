@@ -1212,6 +1212,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       if (!sent) {
         throw StateError('Message could not be sent');
       }
+      await EnhancedShareService().incrementVideoShareCount(widget.video.id);
       if (!mounted) {
         return;
       }

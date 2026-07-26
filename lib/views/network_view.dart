@@ -153,6 +153,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   bool _isLoadingMoreFollowGraph = false;
   bool _hasMoreFollowGraph = false;
   bool _hasInitialNetworkLoad = false;
+  bool _isBootstrappingNetwork = false;
   Timer? _followsDebounceTimer;
   ProviderSubscription<int>? _tabBackgroundRefreshSubscription;
   ProviderSubscription<int>? _mainTabVisibilitySubscription;
@@ -201,20 +202,14 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       }
     }
 
-    // ❌ REMOVED: Global error handler override - now handled at app level
+    _applyCachedNetworkUsers(FollowsService().peekCachedNetworkTabUsers());
 
     // Initialize network connectivity monitoring
     _initializeConnectivityMonitoring();
 
     PerformanceMonitoringService().startMonitoring();
 
-    if (_isFirebaseReady) {
-      if (isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
-        unawaited(_bootstrapNetworkData());
-      } else {
-        _listenersPaused = true;
-      }
-    }
+    unawaited(_hydrateDiskCacheAndStart());
 
     _tabBackgroundRefreshSubscription = ref.listenManual<int>(
       networkTabBackgroundRefreshProvider,
@@ -243,15 +238,86 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     );
   }
 
-  Future<void> _bootstrapNetworkData() async {
-    if (mounted) {
+  void _applyCachedNetworkUsers(NetworkTabUsers? bundle) {
+    if (bundle == null) {
+      return;
+    }
+    final bool hasPeople = bundle.connections.isNotEmpty ||
+        bundle.followers.isNotEmpty ||
+        bundle.following.isNotEmpty;
+    if (!hasPeople) {
+      return;
+    }
+    _connectionsUsers = bundle.connections;
+    _followersUsers = bundle.followers;
+    _followingUsers = bundle.following;
+    _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
+    _isLoadingUsers = false;
+    _hasInitialNetworkLoad = true;
+  }
+
+  Future<void> _hydrateDiskCacheAndStart() async {
+    final NetworkTabUsers? disk =
+        await FollowsService().loadCachedNetworkTabUsersFromDisk();
+    if (!mounted) {
+      return;
+    }
+    if (_isNetworkCompletelyEmpty && disk != null) {
       setState(() {
-        _isLoadingUsers = true;
+        _applyCachedNetworkUsers(disk);
       });
     }
-    await _runMigrationIfNeeded();
-    _initializeRelationshipListeners();
-    await _loadUsersFromFollowsService();
+    if (!_isFirebaseReady) {
+      return;
+    }
+    if (isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+      unawaited(_bootstrapNetworkData());
+    } else {
+      _listenersPaused = true;
+      unawaited(_prefetchNetworkInBackground());
+    }
+  }
+
+  Future<void> _prefetchNetworkInBackground() async {
+    if (!_isFirebaseReady || FirebaseAuth.instance.currentUser == null) {
+      return;
+    }
+    try {
+      await FollowsService().loadNetworkTabUsers();
+      if (!mounted || !_isNetworkCompletelyEmpty) {
+        return;
+      }
+      final NetworkTabUsers? cached =
+          FollowsService().peekCachedNetworkTabUsers();
+      if (cached == null) {
+        return;
+      }
+      setState(() {
+        _applyCachedNetworkUsers(cached);
+      });
+    } catch (e) {
+      debugPrint('⚠️ NetworkView: background prefetch failed: $e');
+    }
+  }
+
+  Future<void> _bootstrapNetworkData() async {
+    if (_isBootstrappingNetwork) {
+      return;
+    }
+    _isBootstrappingNetwork = true;
+    try {
+      final bool showSkeleton = _isNetworkCompletelyEmpty;
+      if (showSkeleton && mounted) {
+        setState(() {
+          _isLoadingUsers = true;
+        });
+      }
+      await _runMigrationIfNeeded();
+      _initializeRelationshipListeners();
+      await _loadUsersFromFollowsService(showLoading: showSkeleton);
+    } finally {
+      _isBootstrappingNetwork = false;
+    }
   }
 
   bool get _isNetworkCompletelyEmpty =>
@@ -338,17 +404,24 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   void _resumeRelationshipListenersIfNeeded() {
-    if (!_listenersPaused || _listenersInitialized || !_isFirebaseReady) {
+    if (!_isFirebaseReady) {
       return;
     }
     if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
       return;
     }
+    final bool wasPaused = _listenersPaused;
     _listenersPaused = false;
     PerformanceMonitoringService().startMonitoring();
-    _initializeRelationshipListeners();
-    if (!_hasInitialNetworkLoad) {
-      unawaited(_refreshDataInstantly(forceRefresh: true));
+    if (!_listenersInitialized) {
+      _initializeRelationshipListeners();
+    }
+    if (!_hasInitialNetworkLoad || _isNetworkCompletelyEmpty) {
+      unawaited(_bootstrapNetworkData());
+      return;
+    }
+    if (wasPaused || !_hasInitialNetworkLoad) {
+      unawaited(_refreshDataInstantly());
     }
   }
 
@@ -469,13 +542,15 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   /// Load users from clean relationship service
-  Future<void> _loadUsersFromFollowsService() async {
+  Future<void> _loadUsersFromFollowsService({bool showLoading = true}) async {
     if (!_isFirebaseReady) {
       if (mounted) {
         setState(() {
-          _connectionsUsers = [];
-          _followersUsers = [];
-          _followingUsers = [];
+          if (_isNetworkCompletelyEmpty) {
+            _connectionsUsers = [];
+            _followersUsers = [];
+            _followingUsers = [];
+          }
           _isLoadingUsers = false;
         });
       }
@@ -497,9 +572,12 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     if (!mounted) {
       return;
     }
-    setState(() {
-      _isLoadingUsers = true;
-    });
+    final bool shouldShowLoading = showLoading && _isNetworkCompletelyEmpty;
+    if (shouldShowLoading) {
+      setState(() {
+        _isLoadingUsers = true;
+      });
+    }
 
     try {
       debugPrint(
@@ -556,6 +634,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         _isLoadingUsers = false;
         _networkErrorMessage = null;
         _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
+        _hasInitialNetworkLoad = true;
       });
 
       _logDriftIfAny(
@@ -575,28 +654,6 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       debugPrint(
         '🎯 NetworkView: Final state - Connections: ${_connectionsUsers.length}, Followers: ${_followersUsers.length}, Following: ${_followingUsers.length}',
       );
-
-      // Debug: Print user details with clear section headers
-      debugPrint('🔗 CONNECTIONS (Mutual Follows):');
-      for (int i = 0; i < _connectionsUsers.length; i++) {
-        debugPrint(
-          '  $i: ${_connectionsUsers[i].displayName} (${_connectionsUsers[i].id})',
-        );
-      }
-
-      debugPrint('👥 FOLLOWERS (They follow you):');
-      for (int i = 0; i < _followersUsers.length; i++) {
-        debugPrint(
-          '  $i: ${_followersUsers[i].displayName} (${_followersUsers[i].id})',
-        );
-      }
-
-      debugPrint('➡️ FOLLOWING (You follow them):');
-      for (int i = 0; i < _followingUsers.length; i++) {
-        debugPrint(
-          '  $i: ${_followingUsers[i].displayName} (${_followingUsers[i].id})',
-        );
-      }
     } catch (e) {
       debugPrint('❌ Error loading users from follows service: $e');
       if (mounted) {
@@ -617,7 +674,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
             action: SnackBarAction(
               label: 'Retry',
               textColor: Colors.white,
-              onPressed: _loadUsersFromFollowsService,
+              onPressed: () => _loadUsersFromFollowsService(),
             ),
           ),
         );
@@ -627,6 +684,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   /// Run migration if needed (check if follows collection is empty)
   Future<void> _runMigrationIfNeeded() async {
+    if (FollowsService.migrationCheckedThisSession) {
+      return;
+    }
+    FollowsService.migrationCheckedThisSession = true;
     try {
       // Check if follows collection has any data
       final followsSnapshot =
@@ -1360,7 +1421,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   Widget _buildMainContent() {
-    if (_isLoadingUsers) {
+    // Keep last network list visible while refreshing — never flash empty.
+    if (_isLoadingUsers && _isNetworkCompletelyEmpty) {
       return RefreshIndicator(
         onRefresh: _handlePullToRefresh,
         color: _th.primary,
@@ -2139,6 +2201,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           }
           _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
           _isLoadingUsers = false;
+          _hasInitialNetworkLoad = true;
         });
         if (listsChanged) {
           debugPrint('✅ NetworkView: UI updated with new data');

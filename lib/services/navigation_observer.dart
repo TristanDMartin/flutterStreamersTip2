@@ -70,6 +70,28 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     }
 
     if (previousRoute != null && !_shouldBlockRoute(previousRoute)) {
+      final String previousName =
+          (previousRoute.settings.name ?? previousRoute.runtimeType.toString())
+              .toLowerCase();
+      // Share/comments sheets used to suppress via route_change_unknown without
+      // entering _blockingRoutes, so unblock() on pop never ran. Clear orphaned
+      // overlay blocks when returning to the shell feed.
+      if (PlaybackRoutePolicies.isShellRoute(previousName) &&
+          _manager.isPlaybackBlocked) {
+        final String? reason = _manager.blockReason;
+        if (reason == 'route_change_unknown' ||
+            reason == 'route_change_overlay' ||
+            (reason != null && reason.startsWith('route_overlay_'))) {
+          debugPrint(
+            '🔓 NavigationObserver: Clearing orphaned overlay block ($reason)',
+          );
+          _manager.forceUnblock();
+          final String? owner = _manager.visibleOwner ?? _manager.activeOwner;
+          if (owner == PlaybackOwners.home || owner == PlaybackOwners.discover) {
+            _manager.resumeAfterTabSwitch();
+          }
+        }
+      }
       _handleRouteChange(previousRoute, isForeground: true);
     }
   }

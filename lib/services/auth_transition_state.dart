@@ -54,6 +54,7 @@ bool resolveStartupShowsAuthLoading({
   required bool isOauthInProgress,
   required bool isSigningIn,
   required ConnectionState authConnectionState,
+  bool hadPriorSession = false,
 }) {
   if (isSigningOut) {
     return true;
@@ -69,6 +70,11 @@ bool resolveStartupShowsAuthLoading({
   }
   if (isSigningIn) {
     return false;
+  }
+  // Returning users: stay on splash until Firebase confirms signed-in or out.
+  if (hadPriorSession &&
+      (isCheckingAuth || authConnectionState == ConnectionState.waiting)) {
+    return true;
   }
   return false;
 }

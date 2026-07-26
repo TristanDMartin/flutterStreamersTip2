@@ -22,38 +22,59 @@ int intFieldFromMapKeys(
   List<String> keys, {
   int fallback = 0,
 }) {
+  int maxCount = fallback;
+  bool found = false;
   for (final String key in keys) {
     final Object? value = map[key];
+    int? parsed;
     if (value is num) {
-      return value.toInt().clamp(0, 1 << 31).toInt();
+      parsed = value.toInt();
+    } else if (value is String) {
+      parsed = int.tryParse(value);
     }
-    if (value is String) {
-      final int? parsed = int.tryParse(value);
-      if (parsed != null) {
-        return parsed.clamp(0, 1 << 31).toInt();
-      }
+    if (parsed == null) {
+      continue;
+    }
+    final int clamped = parsed.clamp(0, 1 << 31).toInt();
+    if (!found || clamped > maxCount) {
+      maxCount = clamped;
+      found = true;
     }
   }
-  return fallback;
+  return found ? maxCount : fallback;
 }
 
 int readVideoLikeCountFromFirestore(Map<String, dynamic> data) {
   return intFieldFromMapKeys(
     data,
-    const <String>['likeCount', 'likesCount', 'likes'],
+    const <String>['likes', 'likeCount', 'likesCount'],
   );
 }
 
 int readVideoCommentCountFromFirestore(Map<String, dynamic> data) {
   return intFieldFromMapKeys(
     data,
-    const <String>['commentCount', 'commentsCount', 'comments'],
+    const <String>['comments', 'commentCount', 'commentsCount'],
+  );
+}
+
+int readVideoBookmarkCountFromFirestore(Map<String, dynamic> data) {
+  return intFieldFromMapKeys(
+    data,
+    const <String>[
+      'bookmarkCount',
+      'bookmarks',
+      'favorites',
+      'favoriteCount',
+      'bookmarksCount',
+      'savesCount',
+    ],
   );
 }
 
 int readVideoViewCountFromFirestore(Map<String, dynamic> data) {
   return intFieldFromMapKeys(
     data,
-    const <String>['viewCount', 'viewsCount', 'views'],
+    const <String>['views', 'viewCount', 'viewsCount'],
   );
 }

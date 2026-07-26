@@ -249,16 +249,28 @@ class RobustAuthenticationService extends ChangeNotifier {
               return;
             }
             debugPrint('AUTH_TRANSITION firebase_session_available');
+            _cancelAuthRestoreTimeout();
             _promoteFirebaseSession(user);
             unawaited(_handleUserSignIn(user));
           } else {
+            if (_isCheckingAuth &&
+                _authTransitionState == AuthTransitionState.checkingAuth) {
+              // Native/web auth can emit a transient null before persistence
+              // restores. Keep waiting for the user event or restore timeout.
+              debugPrint(
+                'AUTH_TRANSITION interim_signed_out_while_checking',
+              );
+              return;
+            }
             debugPrint('AUTH_TRANSITION signed_out');
+            _cancelAuthRestoreTimeout();
             _signingOutUid = null;
             _authTransitionState = AuthTransitionState.unauthenticated;
             _cancelUserFirestoreSubscription();
             _currentUser = null;
             _isLoggedIn = false;
             _isCheckingAuth = false;
+            unawaited(AuthSessionHintStorage.clearSession());
             notifyListeners();
           }
         } catch (e) {
@@ -286,8 +298,8 @@ class RobustAuthenticationService extends ChangeNotifier {
       // CRITICAL: Check if Firebase is ready before accessing
       if (Firebase.apps.isEmpty) {
         debugPrint('⚠️ Firebase not ready - will retry auth check');
-        _isCheckingAuth = false;
-        _authTransitionState = AuthTransitionState.unauthenticated;
+        _isCheckingAuth = true;
+        _authTransitionState = AuthTransitionState.checkingAuth;
         notifyListeners();
         return;
       }
@@ -314,7 +326,24 @@ class RobustAuthenticationService extends ChangeNotifier {
           // Don't change login state - user is still logged in
         });
       } else {
-        // No user is logged in, set the state immediately
+        final bool hadSession =
+            await AuthSessionHintStorage.readHadSession();
+        if (_isLoggedIn ||
+            _authTransitionState == AuthTransitionState.signingOut ||
+            _authInstance.currentUser != null) {
+          return;
+        }
+        if (hadSession) {
+          // Persistence may still be restoring — wait for authStateChanges.
+          debugPrint(
+            '⏳ Prior session hint present — waiting for auth restore',
+          );
+          _isCheckingAuth = true;
+          _authTransitionState = AuthTransitionState.checkingAuth;
+          notifyListeners();
+          _scheduleAuthRestoreTimeout();
+          return;
+        }
         _currentUser = null;
         _isLoggedIn = false;
         _isCheckingAuth = false;
@@ -331,10 +360,42 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
   }
 
+  Timer? _authRestoreTimeoutTimer;
+
+  void _scheduleAuthRestoreTimeout() {
+    _authRestoreTimeoutTimer?.cancel();
+    _authRestoreTimeoutTimer = Timer(const Duration(seconds: 8), () {
+      if (_isLoggedIn ||
+          _authTransitionState == AuthTransitionState.signingOut ||
+          _authTransitionState == AuthTransitionState.signingIn) {
+        return;
+      }
+      if (_authInstance.currentUser != null) {
+        return;
+      }
+      if (!_isCheckingAuth) {
+        return;
+      }
+      debugPrint('⏳ Auth restore timed out — showing login');
+      _currentUser = null;
+      _isLoggedIn = false;
+      _isCheckingAuth = false;
+      _authTransitionState = AuthTransitionState.unauthenticated;
+      unawaited(AuthSessionHintStorage.clearSession());
+      notifyListeners();
+    });
+  }
+
+  void _cancelAuthRestoreTimeout() {
+    _authRestoreTimeoutTimer?.cancel();
+    _authRestoreTimeoutTimer = null;
+  }
+
   @override
   void dispose() {
     _debounceTimer?.cancel();
     _minimumSpinnerTimer?.cancel();
+    _cancelAuthRestoreTimeout();
     _authStateSubscription?.cancel();
     _cancelUserFirestoreSubscription();
     super.dispose();
@@ -1050,6 +1111,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   void _promoteFirebaseSession(firebase_auth.User firebaseUser) {
+    _cancelAuthRestoreTimeout();
     _signingOutUid = null;
     _currentUser ??= _mapFirebaseUserToFallback(firebaseUser);
     _isLoggedIn = true;

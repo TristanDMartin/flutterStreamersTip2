@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,7 @@ import '../features/billing/store_product_ids.dart';
 import '../services/creator_intelligence_analytics_service.dart';
 import 'contact_support_view.dart';
 
+/// Duolingo-inspired subscription surface for StreamersTip tiers.
 class UpgradeView extends ConsumerStatefulWidget {
   const UpgradeView({super.key});
 
@@ -29,8 +31,14 @@ class UpgradeView extends ConsumerStatefulWidget {
 }
 
 class _UpgradeViewState extends ConsumerState<UpgradeView> {
-  Color get _on => Theme.of(context).colorScheme.onSurface;
-  Color get _onP => Theme.of(context).colorScheme.onPrimary;
+  static const Color _pageBg = Color(0xFF0B1220);
+  static const Color _cardBg = Color(0xFF131B2B);
+  static const Color _cardBorder = Color(0xFF2A3548);
+  static const Color _checkBlue = Color(0xFF49C0F8);
+  static const Color _ctaBlue = Color(0xFF49C0F8);
+  static const Color _muted = Color(0xFF9AA6B8);
+
+  Color get _on => Colors.white;
 
   IapBillingFacade get _iap => IapBillingCoordinator.instance.facade;
   final SubscriptionManageService _manageService =
@@ -118,19 +126,24 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
       context: context,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          title: const Text('Pro billing period'),
-          content: const Text(
+          backgroundColor: _cardBg,
+          title: Text(
+            'Pro billing period',
+            style: TextStyle(color: _on, fontWeight: FontWeight.w800),
+          ),
+          content: Text(
             'Choose monthly or yearly Pro. Checkout runs in the '
             'App Store or Google Play app on this device.',
+            style: TextStyle(color: _on.withValues(alpha: 0.78)),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(storeProMonthlyId()),
-              child: const Text('Monthly'),
+              child: const Text('Monthly', style: TextStyle(color: _ctaBlue)),
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(storeProYearlyId()),
-              child: const Text('Yearly'),
+              child: const Text('Yearly', style: TextStyle(color: _ctaBlue)),
             ),
           ],
         );
@@ -149,21 +162,26 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
       context: context,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          title: const Text('Studio billing period'),
-          content: const Text(
+          backgroundColor: _cardBg,
+          title: Text(
+            'Studio billing period',
+            style: TextStyle(color: _on, fontWeight: FontWeight.w800),
+          ),
+          content: Text(
             'Choose monthly or yearly Studio. Apple or Google will '
             'run checkout; entitlements unlock after server verification.',
+            style: TextStyle(color: _on.withValues(alpha: 0.78)),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () =>
                   Navigator.of(ctx).pop(storeStudioMonthlyId()),
-              child: const Text('Monthly'),
+              child: const Text('Monthly', style: TextStyle(color: _ctaBlue)),
             ),
             TextButton(
               onPressed: () =>
                   Navigator.of(ctx).pop(storeStudioYearlyId()),
-              child: const Text('Yearly'),
+              child: const Text('Yearly', style: TextStyle(color: _ctaBlue)),
             ),
           ],
         );
@@ -237,6 +255,11 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
 
   String _statusLabel(String? status) => subscriptionStatusDisplayLabel(status);
 
+  String _tryCtaLabel(ProductDetails? monthly, String fallbackPrice) {
+    final String price = formatStorePrice(monthly, fallbackPrice);
+    return 'TRY FOR $price';
+  }
+
   @override
   Widget build(BuildContext context) {
     final ({String tier, String? status, bool isLoading}) tierSnapshot =
@@ -257,125 +280,331 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
     final String storeLabel = defaultTargetPlatform == TargetPlatform.iOS
         ? 'App Store'
         : 'Google Play';
+
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context),
-              const SizedBox(height: 24),
-              _buildCurrentPlanCard(),
-              if (entitlements != null) ...<Widget>[
-                const SizedBox(height: 12),
-                _buildBillingChannelCard(entitlements),
-                if (_isGraceOrPastDue(entitlements)) ...<Widget>[
-                  const SizedBox(height: 12),
-                  _buildGracePeriodBanner(entitlements),
-                ],
-              ],
-              const SizedBox(height: 16),
-              _buildRestorePurchasesRow(),
-              if (_iap.lastError != null &&
-                  _iap.lastError!.trim().isNotEmpty) ...<Widget>[
-                const SizedBox(height: 12),
-                SelectableText.rich(
-                  TextSpan(
-                    text: _iap.lastError!,
-                    style: TextStyle(
-                      color: Colors.red.shade300,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+      backgroundColor: _pageBg,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF1A1035),
+              Color(0xFF0B1220),
+              Color(0xFF080D16),
+            ],
+            stops: <double>[0.0, 0.28, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: CustomScrollView(
+            slivers: <Widget>[
+              SliverToBoxAdapter(child: _buildTopBar(context)),
+              SliverToBoxAdapter(child: _buildHero()),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate(
+                    <Widget>[
+                      _buildCurrentPlanChip(),
+                      if (entitlements != null &&
+                          _isGraceOrPastDue(entitlements)) ...<Widget>[
+                        const SizedBox(height: 12),
+                        _buildGracePeriodBanner(entitlements),
+                      ],
+                      if (_iap.lastError != null &&
+                          _iap.lastError!.trim().isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 12),
+                        _buildInlineAlert(_iap.lastError!, isError: true),
+                      ] else if (_iap.lastRecoverableHint != null &&
+                          _iap.lastRecoverableHint!
+                              .trim()
+                              .isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 12),
+                        _buildInlineAlert(_iap.lastRecoverableHint!),
+                      ],
+                      const SizedBox(height: 18),
+                      _buildPlanCard(
+                        tierKey: 'pro',
+                        title: 'Creator Pro',
+                        subtitle: formatStorePrice(proMonthly, '\$12.99') +
+                            (storeCadenceLabel(proMonthly) ?? '/month'),
+                        secondaryPrice: proYearly != null
+                            ? '${formatStorePrice(proYearly, '\$120')}/year'
+                            : '\$120/year',
+                        features: UpgradeTierMarketing.proBullets,
+                        illustration: Icons.auto_awesome_rounded,
+                        isRecommended: true,
+                        isCurrent: !isLoadingTier && resolvedTier == 'pro',
+                        ctaLabel: _tryCtaLabel(proMonthly, '\$12.99'),
+                        onCta: !isLoadingTier &&
+                                !blockStorePurchase &&
+                                resolvedTier == 'starter'
+                            ? _pickProProductThenBuy
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      _buildPlanCard(
+                        tierKey: 'studio',
+                        title: 'Creator Studio',
+                        subtitle: formatStorePrice(studioMonthly, '\$29.99') +
+                            (storeCadenceLabel(studioMonthly) ?? '/month'),
+                        secondaryPrice: studioYearly != null
+                            ? '${formatStorePrice(studioYearly, '\$300')}/year'
+                            : '\$300/year',
+                        features: UpgradeTierMarketing.studioBullets,
+                        illustration: Icons.workspace_premium_rounded,
+                        isCurrent: !isLoadingTier && resolvedTier == 'studio',
+                        ctaLabel: _tryCtaLabel(studioMonthly, '\$29.99'),
+                        onCta: !isLoadingTier &&
+                                !blockStorePurchase &&
+                                (resolvedTier == 'starter' ||
+                                    resolvedTier == 'pro')
+                            ? _pickStudioProductThenBuy
+                            : null,
+                      ),
+                      const SizedBox(height: 22),
+                      const Text(
+                        'MORE OPTIONS',
+                        style: TextStyle(
+                          color: _muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPlanCard(
+                        tierKey: 'starter',
+                        title: 'Creator (free)',
+                        subtitle: 'Get started with cross-posting basics',
+                        features: UpgradeTierMarketing.starterBullets,
+                        illustration: Icons.bolt_rounded,
+                        isCurrent:
+                            !isLoadingTier && resolvedTier == 'starter',
+                        ctaLabel: 'STAY ON CREATOR',
+                        onCta: null,
+                        forceDisabledCta: true,
+                      ),
+                      if (entitlements != null) ...<Widget>[
+                        const SizedBox(height: 14),
+                        _buildBillingChannelCard(entitlements),
+                      ],
+                      const SizedBox(height: 16),
+                      _buildRestorePurchasesRow(),
+                      const SizedBox(height: 18),
+                      Text(
+                        _subscriptionFootnote(
+                          entitlements: entitlements,
+                          blockStorePurchase: blockStorePurchase,
+                          storeLabel: storeLabel,
+                        ),
+                        style: TextStyle(
+                          color: _on.withValues(alpha: 0.55),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ] else if (_iap.lastRecoverableHint != null &&
-                  _iap.lastRecoverableHint!.trim().isNotEmpty) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  _iap.lastRecoverableHint!,
-                  style: TextStyle(
-                    color: _on.withValues(alpha: 0.7),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              _buildTierCard(
-                context,
-                tierKey: 'starter',
-                name: 'Creator',
-                price: '\$0',
-                cadence: '/month',
-                description:
-                    'A solid free plan for creators getting started with cross-posting and lightweight planning.',
-                features: UpgradeTierMarketing.starterBullets,
-              ),
-              const SizedBox(height: 16),
-              _buildTierCard(
-                context,
-                tierKey: 'pro',
-                name: 'Creator Pro',
-                price: formatStorePrice(
-                  proMonthly,
-                  '\$12.99',
-                ),
-                cadence: storeCadenceLabel(proMonthly) ?? '/month',
-                secondaryPrice: proYearly != null
-                    ? '${formatStorePrice(proYearly, '\$120')}/year'
-                    : '\$120/year',
-                description:
-                    'For active creators who need more platforms, stronger publishing tools, and deeper growth support.',
-                features: UpgradeTierMarketing.proBullets,
-                isFeatured: true,
-                storePrimaryAction: !isLoadingTier &&
-                        !blockStorePurchase &&
-                        resolvedTier == 'starter'
-                    ? _pickProProductThenBuy
-                    : null,
-                storePrimaryLabel: 'Subscribe with $storeLabel',
-              ),
-              const SizedBox(height: 16),
-              _buildTierCard(
-                context,
-                tierKey: 'studio',
-                name: 'Creator Studio',
-                price: formatStorePrice(
-                  studioMonthly,
-                  '\$29.99',
-                ),
-                cadence: storeCadenceLabel(studioMonthly) ?? '/month',
-                secondaryPrice: studioYearly != null
-                    ? '${formatStorePrice(studioYearly, '\$300')}/year'
-                    : '\$300/year',
-                description:
-                    'For serious teams and power creators who need advanced analytics, automation, and team access.',
-                features: UpgradeTierMarketing.studioBullets,
-                storePrimaryAction: !isLoadingTier &&
-                        !blockStorePurchase &&
-                        (resolvedTier == 'starter' || resolvedTier == 'pro')
-                    ? _pickStudioProductThenBuy
-                    : null,
-                storePrimaryLabel: 'Subscribe to Studio',
-              ),
-              const SizedBox(height: 20),
-              Text(
-                _subscriptionFootnote(
-                  entitlements: entitlements,
-                  blockStorePurchase: blockStorePurchase,
-                  storeLabel: storeLabel,
-                ),
-                style: TextStyle(
-                  color: _on.withValues(alpha: 0.62),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 18, 0),
+      child: Row(
+        children: <Widget>[
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: Icon(Icons.arrow_back_rounded, color: _on, size: 24),
+          ),
+          Expanded(
+            child: Text(
+              'Subscription',
+              style: TextStyle(
+                color: _on,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHero() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+      child: Column(
+        children: <Widget>[
+          const Text(
+            'COMPARE PLANS',
+            style: TextStyle(
+              color: _muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 128,
+            child: Stack(
+              alignment: Alignment.center,
+              children: <Widget>[
+                ...List<Widget>.generate(6, (int i) {
+                  final double angle = (i / 6) * math.pi * 2;
+                  return Transform.translate(
+                    offset: Offset(
+                      math.cos(angle) * 58,
+                      math.sin(angle) * 42,
+                    ),
+                    child: Icon(
+                      Icons.star_rounded,
+                      size: i.isEven ? 14 : 10,
+                      color: Colors.white.withValues(alpha: 0.55),
+                    ),
+                  );
+                }),
+                Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.35),
+                        blurRadius: 24,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        Color(0xFF66FCF1),
+                        Color(0xFF7768DF),
+                        Color(0xFF9248D2),
+                        Color(0xFFFF6BCB),
+                      ],
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (
+                      BuildContext context,
+                      Object error,
+                      StackTrace? stackTrace,
+                    ) {
+                      return const Icon(
+                        Icons.play_circle_filled_rounded,
+                        color: Colors.white,
+                        size: 48,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentPlanChip() {
+    final ({String tier, String? status, bool isLoading}) tierSnapshot =
+        _readTierSnapshot();
+    final SubscriptionSnapshot? snap = _readEntitlementsSnapshot();
+    final int creditsRemaining = snap?.creditsRemaining ?? 0;
+    final int creditsLimit = snap?.creditsLimit ?? 0;
+    final String label = tierSnapshot.isLoading
+        ? 'Checking plan…'
+        : 'Current · ${_tierLabel(tierSnapshot.tier)} · '
+            '${_statusLabel(tierSnapshot.status)}';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              if (tierSnapshot.isLoading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _ctaBlue,
+                  ),
+                )
+              else
+                const Icon(Icons.verified_rounded, color: _ctaBlue, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: _on,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!tierSnapshot.isLoading && creditsLimit > 0) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              '$creditsRemaining of $creditsLimit AI credits this month',
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineAlert(String message, {bool isError = false}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (isError ? Colors.red : Colors.orange).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: (isError ? Colors.red : Colors.orange).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          color: isError ? Colors.red.shade200 : _on.withValues(alpha: 0.85),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -394,7 +623,7 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.orange.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
       ),
       child: Column(
@@ -427,33 +656,276 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
     );
   }
 
+  Widget _buildPlanCard({
+    required String tierKey,
+    required String title,
+    required String subtitle,
+    required List<String> features,
+    required IconData illustration,
+    required String ctaLabel,
+    String? secondaryPrice,
+    bool isRecommended = false,
+    bool isCurrent = false,
+    bool forceDisabledCta = false,
+    VoidCallback? onCta,
+  }) {
+    final bool ctaEnabled =
+        !forceDisabledCta && !isCurrent && onCta != null && !_iap.purchaseBusy;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isRecommended
+              ? AppColors.primary.withValues(alpha: 0.55)
+              : _cardBorder,
+          width: isRecommended ? 1.4 : 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (isRecommended)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[
+                    Color(0xFF7B3FE4),
+                    Color(0xFF2BB8C8),
+                  ],
+                ),
+              ),
+              child: const Text(
+                'RECOMMENDED',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.3,
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          if (isCurrent) ...<Widget>[
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _checkBlue.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _checkBlue.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: const Text(
+                                'CURRENT PLAN',
+                                style: TextStyle(
+                                  color: _checkBlue,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                          ],
+                          Text(
+                            title,
+                            style: TextStyle(
+                              color: _on,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              height: 1.05,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              color: _on.withValues(alpha: 0.72),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (secondaryPrice != null) ...<Widget>[
+                            const SizedBox(height: 4),
+                            Text(
+                              secondaryPrice,
+                              style: const TextStyle(
+                                color: _muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: isRecommended
+                              ? const <Color>[
+                                  Color(0xFF66FCF1),
+                                  Color(0xFF9248D2),
+                                ]
+                              : const <Color>[
+                                  Color(0xFF2A3548),
+                                  Color(0xFF1A2233),
+                                ],
+                        ),
+                      ),
+                      child: Icon(
+                        illustration,
+                        color: Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                ...features.map(
+                  (String feature) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Padding(
+                          padding: EdgeInsets.only(top: 1),
+                          child: Icon(
+                            Icons.check_rounded,
+                            color: _checkBlue,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            feature,
+                            style: TextStyle(
+                              color: _on.withValues(alpha: 0.9),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              height: 1.25,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                    child: OutlinedButton(
+                    onPressed: ctaEnabled
+                        ? onCta
+                        : (isCurrent || forceDisabledCta
+                            ? null
+                            : () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (BuildContext ctx) =>
+                                        const ContactSupportView(),
+                                  ),
+                                );
+                              }),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _ctaBlue,
+                      side: BorderSide(
+                        color: _on.withValues(alpha: 0.22),
+                        width: 2,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      backgroundColor: Colors.transparent,
+                    ),
+                    child: Text(
+                      isCurrent ? 'CURRENT PLAN' : ctaLabel,
+                      style: TextStyle(
+                        color: ctaEnabled || isCurrent || forceDisabledCta
+                            ? _ctaBlue
+                            : _ctaBlue.withValues(alpha: 0.55),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.4,
+                        decoration: TextDecoration.underline,
+                        decorationColor: _ctaBlue,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRestorePurchasesRow() {
     final bool busy = _iap.purchaseBusy;
     return SizedBox(
       width: double.infinity,
-      child: OutlinedButton.icon(
+      height: 48,
+      child: OutlinedButton(
         onPressed: busy || kIsWeb
             ? null
             : () {
                 unawaited(_restorePurchases());
               },
-        icon: busy
-            ? SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _on,
-                ),
-              )
-            : Icon(Icons.restore, color: _on),
-        label: Text(
-          busy ? 'Restoring…' : 'Restore purchases',
-          style: TextStyle(
-            color: _on,
-            fontWeight: FontWeight.w700,
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: _on.withValues(alpha: 0.18), width: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
+        child: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _ctaBlue,
+                ),
+              )
+            : const Text(
+                'RESTORE PURCHASES',
+                style: TextStyle(
+                  color: _ctaBlue,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.4,
+                  decoration: TextDecoration.underline,
+                  decorationColor: _ctaBlue,
+                ),
+              ),
       ),
     );
   }
@@ -487,19 +959,20 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _on.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _on.withValues(alpha: 0.1)),
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Billing',
+          const Text(
+            'BILLING',
             style: TextStyle(
-              color: _on.withValues(alpha: 0.72),
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+              color: _muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
             ),
           ),
           const SizedBox(height: 6),
@@ -543,403 +1016,13 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
                 snap.isPaidViaApple
                     ? 'Open App Store subscriptions'
                     : 'Open Google Play subscriptions',
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCurrentPlanCard() {
-    final ({String tier, String? status, bool isLoading}) tierSnapshot =
-        _readTierSnapshot();
-    final SubscriptionSnapshot? snap = _readEntitlementsSnapshot();
-    final bool isLoadingTier = tierSnapshot.isLoading;
-    final String resolvedTier = tierSnapshot.tier;
-    final String? subscriptionStatus = tierSnapshot.status;
-    final int creditsRemaining = snap?.creditsRemaining ?? 0;
-    final int creditsLimit = snap?.creditsLimit ?? 0;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: _on.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: _on.withValues(alpha: 0.12),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: _on.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: isLoadingTier
-                ? Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _on,
-                    ),
-                  )
-                : Icon(
-                    Icons.verified_rounded,
-                    color: _on,
-                    size: 24,
-                  ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Current plan',
-                  style: TextStyle(
-                    color: _on.withValues(alpha: 0.64),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  isLoadingTier
-                      ? 'Checking your subscription...'
-                      : '${_tierLabel(resolvedTier)} · ${_statusLabel(subscriptionStatus)}',
-                  style: TextStyle(
-                    color: _on,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                if (!isLoadingTier && creditsLimit > 0) ...<Widget>[
-                  const SizedBox(height: 4),
-                  Text(
-                    '$creditsRemaining of $creditsLimit AI credits this month',
-                    style: TextStyle(
-                      color: _on.withValues(alpha: 0.62),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-      decoration: BoxDecoration(
-        color: _on.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: _on.withValues(alpha: 0.14),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: _on.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _on.withValues(alpha: 0.12),
-              ),
-            ),
-            child: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: Icon(
-                Icons.arrow_back,
-                color: _on,
-                size: 22,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Upgrade',
-                  style: TextStyle(
-                    color: _on,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    height: 1.0,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Choose the tier that fits your creator journey',
-                  style: TextStyle(
-                    color: _on.withValues(alpha: 0.68),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  softWrap: true,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTierCard(
-    BuildContext context, {
-    required String tierKey,
-    required String name,
-    required String price,
-    required String cadence,
-    required String description,
-    required List<String> features,
-    String? secondaryPrice,
-    bool isFeatured = false,
-    VoidCallback? storePrimaryAction,
-    String? storePrimaryLabel,
-  }) {
-    final ({String tier, String? status, bool isLoading}) tierSnapshot =
-        _readTierSnapshot();
-    final bool isCurrentTier =
-        !tierSnapshot.isLoading && tierSnapshot.tier == tierKey;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _on.withValues(
-          alpha: isCurrentTier ? 0.12 : (isFeatured ? 0.1 : 0.07),
-        ),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: _on.withValues(
-            alpha: isCurrentTier ? 0.26 : (isFeatured ? 0.18 : 0.1),
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (isCurrentTier)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _on.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: _on.withValues(alpha: 0.14),
-                          ),
-                        ),
-                        child: Text(
-                          'Current Plan',
-                          style: TextStyle(
-                            color: _on,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    if (isFeatured)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: AppColors.supportAccentGradient,
-                          ),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Most Popular',
-                          style: TextStyle(
-                            color: _onP,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    Text(
-                      name,
-                      style: TextStyle(
-                        color: _on,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        height: 1.0,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    RichText(
-                      text: TextSpan(
-                        children: [
-                          TextSpan(
-                            text: price,
-                            style: TextStyle(
-                              color: _on,
-                              fontSize: 30,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          TextSpan(
-                            text: cadence,
-                            style: TextStyle(
-                              color: _on.withValues(alpha: 0.68),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (secondaryPrice != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        secondaryPrice,
-                        style: TextStyle(
-                          color: _on.withValues(alpha: 0.66),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    Text(
-                      description,
-                      style: TextStyle(
-                        color: _on.withValues(alpha: 0.74),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: _on.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(
-                  Icons.auto_awesome_rounded,
-                  color: _on,
-                  size: 24,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          ...features.map(
-            (feature) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 2),
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: _on.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.check,
-                      color: _on,
-                      size: 12,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      feature,
-                      style: TextStyle(
-                        color: _on.withValues(alpha: 0.82),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: isCurrentTier
-                  ? null
-                  : () {
-                      if (_iap.purchaseBusy) {
-                        return;
-                      }
-                      if (storePrimaryAction != null) {
-                        storePrimaryAction();
-                        return;
-                      }
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (BuildContext ctx) =>
-                              const ContactSupportView(),
-                        ),
-                      );
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isFeatured
-                    ? AppColors.supportAccent
-                    : _on.withValues(alpha: 0.1),
-                foregroundColor: isFeatured ? _onP : _on,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: BorderSide(
-                    color: _on.withValues(alpha: 0.12),
-                  ),
-                ),
-              ),
-              child: Text(
-                isCurrentTier
-                    ? 'Current Plan'
-                    : (storePrimaryLabel ??
-                        (name == 'Creator'
-                            ? 'Stay on Creator'
-                            : 'Subscribe to $name')),
                 style: const TextStyle(
-                  fontSize: 15,
+                  color: _ctaBlue,
                   fontWeight: FontWeight.w800,
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

@@ -101,13 +101,9 @@ function badgesFromUser(userData) {
 
 function buildGamificationState(uid, userData, previousState) {
   const xp = readXp(userData);
-  const storedLevel = readInt((userData.gamification || {}).level, 0);
-  const level = storedLevel > 0 ? storedLevel : levelFromTotalXp(xp);
-  const rank = (userData.gamification || {}).rankTitle ||
-    (userData.gamification || {}).rank ||
-    userData.rankTitle ||
-    userData.rankName ||
-    rankTitleForLevel(level);
+  // Always derive level from XP so Worker/CF/app never diverge.
+  const level = levelFromTotalXp(xp);
+  const rank = rankTitleForLevel(level);
   const progress = xpProgressForLevel(level, xp);
   const streakCount = readStreak(userData);
   const previousLevel = readInt(
@@ -158,6 +154,32 @@ async function syncGamificationState(db, uid) {
       delete state.leveledUpAt;
     }
     tx.set(stateRef, state, {merge: true});
+    // Keep legacy user.gamification level/rank aligned with canonical XP curve.
+    const existingGam =
+      userData.gamification && typeof userData.gamification === 'object'
+        ? userData.gamification
+        : {};
+    tx.set(
+      userRef,
+      {
+        level: state.level,
+        rankTitle: state.rank,
+        rankName: state.rank,
+        totalXp: state.xp,
+        totalXP: state.xp,
+        gamification: {
+          ...existingGam,
+          totalXp: state.xp,
+          totalXP: state.xp,
+          level: state.level,
+          rankTitle: state.rank,
+          rankName: state.rank,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+    );
   });
 }
 

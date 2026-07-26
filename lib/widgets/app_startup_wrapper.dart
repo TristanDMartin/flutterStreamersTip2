@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../core/firebase_bootstrap.dart';
 import '../core/firebase_bootstrap_ready_provider.dart';
 import '../core/theme/st_theme_tokens.dart';
+import '../services/auth_session_hint_storage.dart';
 import '../services/auth_transition_state.dart';
 import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
@@ -41,9 +42,14 @@ StartupShell resolveStartupShell({
   required bool isSigningIn,
   bool allowDegradedAuthShell = false,
   bool isAwaiting2FA = false,
+  bool hadPriorSession = false,
 }) {
   if (!firebaseInitialized) {
-    if (allowDegradedAuthShell && startupGracePeriodElapsed) {
+    // Returning users must stay on splash — never flash login while Firebase
+    // boots after runApp. Degraded auth is only for first-time / signed-out.
+    if (allowDegradedAuthShell &&
+        startupGracePeriodElapsed &&
+        !hadPriorSession) {
       return StartupShell.auth;
     }
     return StartupShell.loading;
@@ -55,6 +61,7 @@ StartupShell resolveStartupShell({
     isOauthInProgress: isOauthInProgress,
     isSigningIn: isSigningIn,
     authConnectionState: authConnectionState,
+    hadPriorSession: hadPriorSession,
   )) {
     return StartupShell.loading;
   }
@@ -65,13 +72,17 @@ StartupShell resolveStartupShell({
 }
 
 class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
-  final bool _firebaseStartupGracePeriodElapsed = true;
+  bool _firebaseStartupGracePeriodElapsed = false;
+  bool _hadPriorSession = false;
+  bool _sessionHintLoaded = false;
   bool _calendarCleanupStarted = false;
   Timer? _firebaseReadyPollTimer;
+  Timer? _firebaseStartupGraceTimer;
   Widget? _cachedHomeShell;
   String? _cachedHomeUid;
   static const Duration _firebaseReadyPollInterval =
       Duration(milliseconds: 150);
+  static const Duration _firebaseStartupGracePeriod = Duration(seconds: 8);
 
   @override
   void didChangeDependencies() {
@@ -84,6 +95,16 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     super.initState();
     _setSystemUIOverlayStyle();
     _startFirebaseReadyPolling();
+    unawaited(_loadSessionHint());
+    _firebaseStartupGraceTimer?.cancel();
+    _firebaseStartupGraceTimer = Timer(_firebaseStartupGracePeriod, () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _firebaseStartupGracePeriodElapsed = true;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -101,6 +122,21 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
       _onAuthStateChanged,
     );
   }
+
+  Future<void> _loadSessionHint() async {
+    final bool hadSession = await AuthSessionHintStorage.readHadSession();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _hadPriorSession = hadSession;
+      _sessionHintLoaded = true;
+    });
+  }
+
+  /// Until SharedPreferences resolves, treat cold start as a possible return.
+  bool get _effectiveHadPriorSession =>
+      !_sessionHintLoaded || _hadPriorSession;
 
   void _startFirebaseReadyPolling() {
     if (FirebaseBootstrap.isReady) {
@@ -144,6 +180,8 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   void dispose() {
     _firebaseReadyPollTimer?.cancel();
     _firebaseReadyPollTimer = null;
+    _firebaseStartupGraceTimer?.cancel();
+    _firebaseStartupGraceTimer = null;
     _resetSystemUIOverlayStyle();
     super.dispose();
   }
@@ -287,10 +325,11 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
         authConnectionState: ConnectionState.waiting,
         hasFirebaseUser: false,
         isSigningOut: authService.isSigningOut,
-        isCheckingAuth: authService.isCheckingAuth,
+        isCheckingAuth: authService.isCheckingAuth || !_sessionHintLoaded,
         isOauthInProgress: authService.isOauthInProgress,
         isSigningIn: authService.isSigningIn,
         isAwaiting2FA: authService.isAwaiting2FA,
+        hadPriorSession: _effectiveHadPriorSession,
       );
       if (shell == StartupShell.auth) {
         return const KeyedSubtree(
@@ -329,10 +368,11 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
           authConnectionState: authConnectionState,
           hasFirebaseUser: firebaseUser != null,
           isSigningOut: authService.isSigningOut,
-          isCheckingAuth: authService.isCheckingAuth,
+          isCheckingAuth: authService.isCheckingAuth || !_sessionHintLoaded,
           isOauthInProgress: authService.isOauthInProgress,
           isSigningIn: authService.isSigningIn,
           isAwaiting2FA: authService.isAwaiting2FA,
+          hadPriorSession: _effectiveHadPriorSession,
         );
         if (kDebugMode) {
           final String routeDecision = switch (shell) {

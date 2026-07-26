@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import '../providers/video_like_provider.dart';
+import '../services/streamers_tip_like_service.dart';
 
 /// Enhanced Like Button with TikTok-style animations and persistence
 ///
@@ -79,7 +81,29 @@ class _EnhancedLikeButtonState extends ConsumerState<EnhancedLikeButton>
             likeCount: widget.initialLikeCount,
           );
       _subscribeToLiveLikeCount();
+      unawaited(_hydrateLikedEdgeFromFirestore());
     });
+  }
+
+  /// Ensure filled heart survives remount / web likes (edge docs, not just feed flag).
+  Future<void> _hydrateLikedEdgeFromFirestore() async {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final bool liked = await StreamersTipLikeService.instance
+          .isVideoLikedByUser(widget.videoId, user.uid);
+      if (!mounted) return;
+      if (!liked) return;
+      final VideoLikeState current =
+          ref.read(videoLikeProvider(widget.videoId));
+      if (current.isLiked) return;
+      ref.read(videoLikeProvider(widget.videoId).notifier).seedFromDisplay(
+            isLiked: true,
+            likeCount: current.likeCount,
+          );
+    } catch (e) {
+      debugPrint('⚠️ EnhancedLikeButton: like-edge hydrate failed: $e');
+    }
   }
 
   void _initializeAnimations() {
@@ -154,11 +178,15 @@ class _EnhancedLikeButtonState extends ConsumerState<EnhancedLikeButton>
       final data = snapshot.data();
       if (data == null) return;
 
-      final dynamic rawLikeCount =
-          data['likeCount'] ?? data['likesCount'] ?? data['likes'];
-      final int nextLikeCount = rawLikeCount is num
-          ? math.max(0, rawLikeCount.toInt())
-          : math.max(0, int.tryParse(rawLikeCount?.toString() ?? '') ?? 0);
+      final dynamic rawLikeCount = data['likes'];
+      final dynamic rawLikeCountLegacy = data['likeCount'] ?? data['likesCount'];
+      final int likes = rawLikeCount is num
+          ? rawLikeCount.toInt()
+          : int.tryParse(rawLikeCount?.toString() ?? '') ?? 0;
+      final int likeCount = rawLikeCountLegacy is num
+          ? rawLikeCountLegacy.toInt()
+          : int.tryParse(rawLikeCountLegacy?.toString() ?? '') ?? 0;
+      final int nextLikeCount = math.max(0, math.max(likes, likeCount));
       ref
           .read(videoLikeProvider(widget.videoId).notifier)
           .applyLikeCountFromFirestore(nextLikeCount);
@@ -290,6 +318,13 @@ class _EnhancedLikeButtonState extends ConsumerState<EnhancedLikeButton>
                                 Icons.favorite_border,
                                 color: Colors.white,
                                 size: widget.iconSize,
+                                shadows: const <Shadow>[
+                                  Shadow(
+                                    color: Color(0x99000000),
+                                    blurRadius: 8,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
                               ),
                       );
                     },
