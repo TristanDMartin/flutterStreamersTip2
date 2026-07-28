@@ -91,12 +91,15 @@ class TippyLegalService {
     if (uid == null) {
       throw StateError('Sign in required.');
     }
-    final CollectionReference<Map<String, dynamic>> conversations =
+    final CollectionReference<Map<String, dynamic>> chats =
+        _firestore.collection('users').doc(uid).collection('tippyChats');
+    await _deleteTippyChatsRecursive(chats);
+    final CollectionReference<Map<String, dynamic>> legacy =
         _firestore
             .collection('users')
             .doc(uid)
             .collection('tippyConversations');
-    await _deleteCollectionBatch(conversations);
+    await _deleteCollectionBatch(legacy);
     if (_remoteHistoryDeleter != null) {
       await _remoteHistoryDeleter!();
       return;
@@ -107,6 +110,24 @@ class TippyLegalService {
     } finally {
       if (_chatService == null) {
         service.dispose();
+      }
+    }
+  }
+
+  Future<void> _deleteTippyChatsRecursive(
+    CollectionReference<Map<String, dynamic>> chats,
+  ) async {
+    const int pageSize = 50;
+    while (true) {
+      final QuerySnapshot<Map<String, dynamic>> snap =
+          await chats.limit(pageSize).get();
+      if (snap.docs.isEmpty) {
+        return;
+      }
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> chat
+          in snap.docs) {
+        await _deleteCollectionBatch(chat.reference.collection('messages'));
+        await chat.reference.delete();
       }
     }
   }

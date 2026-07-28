@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,11 +24,11 @@ import '../content_planning/content_planning_provider.dart';
 import '../content_planning/content_planning_repository.dart';
 import 'tippy_access.dart';
 import 'tippy_chat_service.dart';
+import 'tippy_chat_tokens.dart';
 import 'tippy_legal_service.dart';
 import 'tippy_message_content.dart';
 import 'widgets/tippy_consent_gate.dart';
 import 'tippy_personality.dart';
-import 'tippy_tier.dart';
 import '../../components/onboarding/contextual_tip_overlay.dart';
 import '../../providers/creator_personalization_provider.dart';
 import '../../services/creator_intelligence_analytics_service.dart';
@@ -40,6 +41,7 @@ import 'models/tippy_launch_context.dart';
 import 'models/tippy_ui_payload.dart';
 import 'widgets/tippy_action_card.dart';
 import 'widgets/tippy_approval_sheet.dart';
+import 'widgets/tippy_chat_chrome.dart';
 import 'widgets/tippy_context_strip.dart';
 import 'widgets/tippy_goal_sheet.dart';
 import 'widgets/tippy_memory_empty_state.dart';
@@ -69,7 +71,8 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   late final TippyChatService _service =
       widget.chatService ?? TippyChatService();
   late final TippyConversationHistoryStore _historyStore =
-      widget.historyStore ?? TippyConversationHistoryStore();
+      widget.historyStore ??
+          TippyConversationHistoryStore(chatService: _service);
   late final TippyLegalService _legalService =
       widget.legalService ?? TippyLegalService();
   StreamSubscription<bool>? _tippyEnabledSub;
@@ -80,7 +83,6 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   bool _busy = false;
   int? _creditsRemaining;
   String? _creditsTier;
-  String? _greeting;
   String? _nudge;
   String? _conversationId;
   _RetryAction? _pendingRetryAction;
@@ -179,9 +181,6 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         return;
       }
       setState(() {
-        _greeting = contextSnapshot.greeting.isNotEmpty
-            ? contextSnapshot.greeting
-            : credits.greeting;
         _creditsRemaining = credits.creditsRemaining;
         _creditsTier = credits.tier;
         _nudge = nudge;
@@ -754,35 +753,47 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     return tierDisplayNameForApi(t == 'unknown' ? 'starter' : t);
   }
 
-  String _planSubtitle(
+  String _creditsPillLabel(
     UserProgressBundle bundle, {
     required MeEntitlementsData me,
   }) {
-    final int? dc = _displayCreditsRemaining(me);
     final String? fromCredits = _labelForResolvedTierString(_creditsTier);
-    if (fromCredits != null) {
-      if (dc != null) {
-        return '$fromCredits · $dc credits';
-      }
-      return fromCredits;
-    }
     final String? fromApi = _labelForResolvedTierString(me.tierApi);
-    if (fromApi != null) {
-      if (dc != null) {
-        return '$fromApi · $dc credits';
-      }
-      return '$fromApi plan active';
-    }
     final SubscriptionPlan? subscriptionPlan = bundle.subscription?.plan;
-    final String label = subscriptionPlan == null
-        ? tierDisplayNameForApi('starter')
-        : tierDisplayNameForApi(
-            subscriptionPlanToApiValue(subscriptionPlan),
-          );
-    if (dc != null) {
-      return '$label · $dc credits';
+    final String label = fromCredits ??
+        fromApi ??
+        (subscriptionPlan == null
+            ? tierDisplayNameForApi('starter')
+            : tierDisplayNameForApi(
+                subscriptionPlanToApiValue(subscriptionPlan),
+              ));
+    final int? remaining = _displayCreditsRemaining(me);
+    final int limit = me.creditsLimit > 0
+        ? me.creditsLimit
+        : me.entitlements.monthlyAiCredits;
+    if (remaining != null && limit > 0) {
+      return '$label · $remaining/$limit';
+    }
+    if (remaining != null) {
+      return '$label · $remaining';
     }
     return label;
+  }
+
+  String _timeOfDayGreeting() {
+    final int hour = DateTime.now().hour;
+    final String time = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+    final String? rawName =
+        FirebaseAuth.instance.currentUser?.displayName?.trim();
+    if (rawName == null || rawName.isEmpty) {
+      return '$time.';
+    }
+    final String first = rawName.split(RegExp(r'\s+')).first;
+    return '$time, $first.';
   }
 
   Future<void> _send() async {
@@ -791,6 +802,13 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       return;
     }
     HapticFeedback.lightImpact();
+    final String clientMessageId =
+        'm_${DateTime.now().millisecondsSinceEpoch}_${trimmed.hashCode.abs()}';
+    final String platform = switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => 'ios',
+      TargetPlatform.android => 'android',
+      _ => 'desktop',
+    };
     setState(() {
       _lines.add(_ChatLine(user: true, text: trimmed));
       _lines.add(
@@ -804,24 +822,22 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       _input.clear();
     });
     _scrollToEnd();
-    final List<TippyChatMessage> payload = <TippyChatMessage>[
-      ..._lines
-          .where((_ChatLine line) => !line.isError && !line.isThinking)
-          .map(
-            (_ChatLine line) => TippyChatMessage(
-              role: line.user ? 'user' : 'assistant',
-              content: line.text,
-            ),
-          ),
-    ];
     try {
       final TippyChatResult reply = await _service.sendMessage(
-        messages: payload,
+        messages: <TippyChatMessage>[
+          TippyChatMessage(role: 'user', content: trimmed),
+        ],
+        chatId: _conversationId,
+        clientMessageId: clientMessageId,
+        platform: platform,
       );
       if (!mounted) {
         return;
       }
       setState(() {
+        if (reply.chatId != null && reply.chatId!.isNotEmpty) {
+          _conversationId = reply.chatId;
+        }
         final int thinkingIndex = _lines.lastIndexWhere(
           (_ChatLine line) => line.isThinking,
         );
@@ -841,7 +857,6 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
           _uiPayload = reply.ui;
         }
       });
-      await _persistConversation();
       await _refreshCreditsSnapshot();
       unawaited(
         ref.read(creatorIntelligenceAnalyticsProvider).trackTippyQuestionAsked(
@@ -1068,14 +1083,21 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     });
   }
 
-  void _loadConversation(TippyConversationSummary conversation) {
+  Future<void> _loadConversation(TippyConversationSummary conversation) async {
     HapticFeedback.selectionClick();
+    final List<TippyStoredMessage> messages =
+        conversation.messages.isNotEmpty
+            ? conversation.messages
+            : await _historyStore.loadMessages(conversation.id);
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _conversationId = conversation.id;
       _lines
         ..clear()
         ..addAll(
-          conversation.messages.map(
+          messages.map(
             (TippyStoredMessage message) => _ChatLine(
               user: message.role == 'user',
               text: message.content,
@@ -1104,7 +1126,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
           },
           onSelect: (TippyConversationSummary conversation) {
             Navigator.of(context).pop();
-            _loadConversation(conversation);
+            unawaited(_loadConversation(conversation));
           },
         );
       },
@@ -1239,14 +1261,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     required UserProgressBundle bundle,
     required MeEntitlementsData me,
   }) {
-    final ThemeData theme = Theme.of(context);
     final int? displayCredits = _displayCreditsRemaining(me);
-    final String creditsLabel = _planSubtitle(bundle, me: me);
+    final String creditsLabel = _creditsPillLabel(bundle, me: me);
     final CreatorPersonalizationProfile personalization =
         ref.watch(creatorPersonalizationProvider).valueOrNull ??
             CreatorPersonalizationProfile.empty;
-    final TippyFeatureTier featureTier =
-        resolveTippyFeatureTierFromSnapshot(me);
     final List<String> quickPrompts =
         _uiPayload.suggestedPrompts.isNotEmpty
             ? _uiPayload.suggestedPrompts
@@ -1257,20 +1276,28 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                   personalization.creatorGoals,
                 ),
               );
+    final List<String> starters = <String>[
+      if (_nudge != null && _nudge!.trim().isNotEmpty) _nudge!.trim(),
+      ...TippyChatTokens.defaultStarters,
+      ...quickPrompts,
+    ];
+    final List<String> uniqueStarters = <String>[];
+    for (final String prompt in starters) {
+      if (prompt.trim().isEmpty) {
+        continue;
+      }
+      if (uniqueStarters.contains(prompt)) {
+        continue;
+      }
+      uniqueStarters.add(prompt);
+      if (uniqueStarters.length >= 4) {
+        break;
+      }
+    }
+    final bool hasConversation = _lines.isNotEmpty;
     return Scaffold(
-      backgroundColor: const Color(0xFF050816),
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: <Color>[
-              Color(0xFF111827),
-              Color(0xFF07111F),
-              Color(0xFF050816),
-            ],
-          ),
-        ),
+      backgroundColor: TippyChatTokens.bg,
+      body: TippyChatAtmosphere(
         child: SafeArea(
           child: Column(
             children: <Widget>[
@@ -1282,92 +1309,78 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                 onGoals: _openGoalsSheet,
               ),
               Expanded(
-                child: ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-                  itemCount: _lines.isEmpty ? 1 : _lines.length,
-                  itemBuilder: (BuildContext context, int index) {
-                    if (_lines.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(2, 8, 2, 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            _TippyWelcomePanel(
-                              greeting: _greeting,
-                              nudge: _nudge,
-                              creditsLabel: creditsLabel,
-                              subtitle: TippyPersonality.welcomeSubtitle(
-                                featureTier,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            if (_memoryReady)
-                              TippyContextStrip(data: _uiPayload.contextStrip)
-                            else
-                              TippyMemoryEmptyState(
-                                onUploadTap: () {
-                                  Navigator.of(context)
-                                      .pushNamed(AppRoutes.camera);
-                                },
-                              ),
-                            const SizedBox(height: 14),
-                            _QuickPromptGrid(
-                              prompts: quickPrompts,
-                              onPrompt: (String prompt) {
+                child: hasConversation
+                    ? ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+                        itemCount: _lines.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final _ChatLine line = _lines[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: _ChatBubble(
+                              line: line,
+                              onContentPlanDeepLink:
+                                  line.user || line.isThinking
+                                      ? null
+                                      : _openContentPlanById,
+                              onPrefillPrompt: (String prompt) {
                                 _input.text = prompt;
                                 _send();
                               },
+                              onApproveSchedule: _reviewScheduleProposal,
                             ),
-                          ],
-                        ),
-                      );
-                    }
-                    final _ChatLine line = _lines[index];
-                    return _ChatBubble(
-                      line: line,
-                      onContentPlanDeepLink: line.user || line.isThinking
-                          ? null
-                          : _openContentPlanById,
-                      onPrefillPrompt: (String prompt) {
-                        _input.text = prompt;
-                        _send();
-                      },
-                      onApproveSchedule: _reviewScheduleProposal,
-                    );
-                  },
-                ),
+                          );
+                        },
+                      )
+                    : ListView(
+                        controller: _scroll,
+                        padding: EdgeInsets.zero,
+                        children: <Widget>[
+                          TippyEmptyState(
+                            greeting: _timeOfDayGreeting(),
+                            starters: uniqueStarters,
+                            busy: _busy,
+                            onStarter: (String prompt) {
+                              _input.text = prompt;
+                              _send();
+                            },
+                            onCaption: _runGenerateCaption,
+                            onGeneratePlan: _runCreatePlan,
+                            footer: !_memoryReady
+                                ? TippyMemoryEmptyState(
+                                    onUploadTap: () {
+                                      Navigator.of(context)
+                                          .pushNamed(AppRoutes.camera);
+                                    },
+                                  )
+                                : TippyContextStrip(
+                                    data: _uiPayload.contextStrip,
+                                  ),
+                          ),
+                        ],
+                      ),
               ),
-              if (_busy)
-                const LinearProgressIndicator(
-                  minHeight: 2,
-                  backgroundColor: Color(0xFF111827),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Color(0xFF60A5FA),
-                  ),
-                ),
               if (displayCredits != null && displayCredits <= 0)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7F1D1D).withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFFEF4444).withValues(alpha: 0.7),
-                      ),
+                      color: TippyChatTokens.amberFill,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: TippyChatTokens.amberBorder),
                     ),
                     child: Row(
                       children: <Widget>[
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'You are out of credits for this cycle.',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
+                            'Out of AI credits for this cycle.',
+                            style: TippyChatTokens.nunito(
+                              size: 12,
+                              weight: FontWeight.w700,
+                              color: const Color(0xFFFFFBEB),
                             ),
                           ),
                         ),
@@ -1375,89 +1388,37 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                           onPressed: () {
                             Navigator.of(context).pushNamed(AppRoutes.upgrade);
                           },
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFFBCFE8),
+                          ),
                           child: const Text('Upgrade'),
                         ),
                       ],
                     ),
                   ),
                 ),
-              _TippyActionDock(
-                busy: _busy,
-                compact: _lines.isNotEmpty,
-                hasRetry: _pendingRetryAction != null,
-                onRetry: _retryLastAction,
-                onCreatePlan: _runCreatePlan,
-                onGenerateCaption: _runGenerateCaption,
-                onAnalyzeContent: _runAnalyzeContent,
-                onHookIdeas: _runHookIdeas,
-                onGenerateMission: _runGenerateMission,
-                onProposeSchedule: _runProposeSchedule,
-                onGrowthProgram: _runGrowthProgram,
-              ),
-              SafeArea(
-                top: false,
-                child: Container(
-                  margin: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                  padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0B1220).withValues(alpha: 0.96),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
-                    ),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.28),
-                        blurRadius: 24,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: <Widget>[
-                      Expanded(
-                        child: TextField(
-                          controller: _input,
-                          minLines: 1,
-                          maxLines: 5,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Message Tippy...',
-                            hintStyle: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.44),
-                            ),
-                            filled: true,
-                            fillColor: Colors.white.withValues(alpha: 0.045),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 13,
-                              vertical: 12,
-                            ),
-                          ),
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _send(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: _busy ? null : _send,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                          padding: EdgeInsets.zero,
-                          backgroundColor: theme.colorScheme.primary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: const Icon(Icons.send_rounded, size: 20),
-                      ),
-                    ],
-                  ),
-                ),
+              TippyComposerShell(
+                controller: _input,
+                onSend: _send,
+                enabled: !_busy,
+                hintText: hasConversation
+                    ? 'Message Tippy…'
+                    : 'Ask Tippy anything…',
+                chips: hasConversation
+                    ? _TippyActionDock(
+                        busy: _busy,
+                        compact: true,
+                        hasRetry: _pendingRetryAction != null,
+                        onRetry: _retryLastAction,
+                        onCreatePlan: _runCreatePlan,
+                        onGenerateCaption: _runGenerateCaption,
+                        onAnalyzeContent: _runAnalyzeContent,
+                        onHookIdeas: _runHookIdeas,
+                        onGenerateMission: _runGenerateMission,
+                        onProposeSchedule: _runProposeSchedule,
+                        onGrowthProgram: _runGrowthProgram,
+                      )
+                    : null,
               ),
             ],
           ),
@@ -1485,97 +1446,59 @@ class _TippyTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
       child: Row(
         children: <Widget>[
-          IconButton(
+          TippyIconButton(
             tooltip: 'Back',
-            onPressed: () {
-              Navigator.of(context).maybePop();
-            },
-            icon: const Icon(Icons.arrow_back_rounded),
-            color: Colors.white,
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: Icons.arrow_back_rounded,
           ),
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: const LinearGradient(
-                colors: <Color>[Color(0xFF9248D2), Color(0xFF38BDF8)],
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 19,
-            ),
-          ),
+          const SizedBox(width: 10),
+          const TippyMark(size: 24),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const Text(
-                  'Tippy AI',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                Text(
+                  'Tippy',
+                  style: TippyChatTokens.nunito(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: TippyChatTokens.textPrimary,
+                    letterSpacing: -0.2,
                   ),
                 ),
-                Row(
-                  children: <Widget>[
-                    Icon(
-                      busy ? Icons.sync_rounded : Icons.verified_rounded,
-                      color: busy
-                          ? const Color(0xFF93C5FD)
-                          : const Color(0xFF34D399),
-                      size: 13,
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        creditsLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.62),
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  busy ? 'Thinking…' : 'Ask Tippy',
+                  style: TippyChatTokens.nunito(
+                    size: 10,
+                    color: TippyChatTokens.textSecondary,
+                  ),
                 ),
               ],
             ),
           ),
-          IconButton(
+          TippyCreditsPill(label: creditsLabel),
+          const SizedBox(width: 6),
+          TippyIconButton(
             tooltip: 'Creator goals',
             onPressed: onGoals,
-            icon: const Icon(Icons.flag_rounded),
-            color: Colors.white.withValues(alpha: 0.82),
+            icon: Icons.flag_rounded,
           ),
-          IconButton(
+          const SizedBox(width: 6),
+          TippyIconButton(
             tooltip: 'New chat',
             onPressed: onNewChat,
-            icon: const Icon(Icons.add_comment_rounded),
-            color: Colors.white.withValues(alpha: 0.82),
+            icon: Icons.refresh_rounded,
           ),
-          IconButton(
+          const SizedBox(width: 6),
+          TippyIconButton(
             tooltip: 'Conversation history',
             onPressed: onHistory,
-            icon: const Icon(Icons.history_rounded),
-            color: Colors.white.withValues(alpha: 0.82),
+            icon: Icons.history_rounded,
           ),
         ],
       ),
@@ -1591,58 +1514,30 @@ class _TippyLoadingScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050816),
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: <Color>[
-              Color(0xFF111827),
-              Color(0xFF07111F),
-              Color(0xFF050816),
-            ],
-          ),
-        ),
+      backgroundColor: TippyChatTokens.bg,
+      body: TippyChatAtmosphere(
         child: SafeArea(
           child: Column(
             children: <Widget>[
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                 child: Row(
                   children: <Widget>[
-                    IconButton(
+                    TippyIconButton(
                       tooltip: 'Back',
                       onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      color: Colors.white,
-                    ),
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: const LinearGradient(
-                          colors: <Color>[
-                            Color(0xFF9248D2),
-                            Color(0xFF38BDF8),
-                          ],
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.auto_awesome_rounded,
-                        color: Colors.white,
-                        size: 19,
-                      ),
+                      icon: Icons.arrow_back_rounded,
                     ),
                     const SizedBox(width: 10),
-                    const Expanded(
+                    const TippyMark(size: 24),
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: Text(
-                        'Tippy AI',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
+                        'Tippy',
+                        style: TippyChatTokens.nunito(
+                          size: 14,
+                          weight: FontWeight.w700,
+                          color: TippyChatTokens.textPrimary,
                         ),
                       ),
                     ),
@@ -1651,28 +1546,22 @@ class _TippyLoadingScaffold extends StatelessWidget {
               ),
               Expanded(
                 child: Center(
-                  child: Container(
-                    margin: const EdgeInsets.all(24),
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0B1220).withValues(alpha: 0.88),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFF4897D2).withValues(alpha: 0.2),
-                      ),
-                    ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const CircularProgressIndicator(),
+                        const CircularProgressIndicator(
+                          color: TippyChatTokens.focus,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           message,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.72),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                          style: TippyChatTokens.nunito(
+                            size: 13,
+                            color: TippyChatTokens.textSecondary,
+                            weight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -1702,7 +1591,7 @@ class _TippyErrorScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050816),
+      backgroundColor: TippyChatTokens.bg,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -1969,340 +1858,38 @@ class _TippyActionDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (compact) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-        child: Row(
-          children: <Widget>[
-            if (hasRetry) ...<Widget>[
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: busy ? null : onRetry,
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Retry last request'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.18),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            OutlinedButton.icon(
-              onPressed: () => _openTools(context),
-              icon: const Icon(Icons.tune_rounded, size: 16),
-              label: const Text('Tools'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 11,
-                ),
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
-                backgroundColor: Colors.white.withValues(alpha: 0.045),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: <Widget>[
+          if (hasRetry)
+            TippyAccentChip(
+              label: 'Retry last request',
+              accent: false,
+              enabled: !busy,
+              onTap: onRetry,
             ),
-          ],
-        ),
+          TippyAccentChip(
+            label: 'Caption',
+            accent: false,
+            enabled: !busy,
+            onTap: onGenerateCaption,
+          ),
+          TippyAccentChip(
+            label: 'Plan',
+            accent: false,
+            enabled: !busy,
+            onTap: onCreatePlan,
+          ),
+          TippyAccentChip(
+            label: 'Tools',
+            accent: false,
+            onTap: () => _openTools(context),
+          ),
+        ],
       );
     }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-      child: Column(
-        children: <Widget>[
-          if (hasRetry) ...<Widget>[
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: busy ? null : onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text('Retry last request'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _TippyToolButton(
-                  icon: Icons.auto_awesome_motion_rounded,
-                  label: 'Create + Sync Plan',
-                  onPressed: busy ? null : onCreatePlan,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _TippyToolButton(
-                  icon: Icons.text_fields_rounded,
-                  label: 'AI Caption',
-                  onPressed: busy ? null : onGenerateCaption,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TippyToolButton extends StatelessWidget {
-  const _TippyToolButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 16),
-      label: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
-        backgroundColor: Colors.white.withValues(alpha: 0.045),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickPromptGrid extends StatelessWidget {
-  const _QuickPromptGrid({
-    required this.prompts,
-    required this.onPrompt,
-  });
-
-  final List<String> prompts;
-  final ValueChanged<String> onPrompt;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          'Start fast',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.72),
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 10),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: prompts.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisExtent: 82,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-          ),
-          itemBuilder: (BuildContext context, int index) {
-            final String prompt = prompts[index];
-            return _QuickPromptCard(
-              prompt: prompt,
-              icon: switch (index) {
-                0 => Icons.calendar_month_rounded,
-                1 => Icons.sports_esports_rounded,
-                2 => Icons.lightbulb_rounded,
-                _ => Icons.edit_calendar_rounded,
-              },
-              onTap: () => onPrompt(prompt),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _QuickPromptCard extends StatelessWidget {
-  const _QuickPromptCard({
-    required this.prompt,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String prompt;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Ink(
-          padding: const EdgeInsets.all(11),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.055),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Icon(icon, color: const Color(0xFF93C5FD), size: 18),
-              const Spacer(),
-              Text(
-                prompt,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  height: 1.18,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TippyWelcomePanel extends StatelessWidget {
-  const _TippyWelcomePanel({
-    required this.greeting,
-    required this.nudge,
-    required this.creditsLabel,
-    this.subtitle,
-  });
-
-  final String? greeting;
-  final String? nudge;
-  final String creditsLabel;
-  final String? subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1220).withValues(alpha: 0.86),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFF4897D2).withValues(alpha: 0.22),
-        ),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 24,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2).withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(13),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: Colors.white,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  creditsLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.62),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            greeting ?? 'Tippy is ready.',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              height: 1.08,
-            ),
-          ),
-          if (subtitle != null && subtitle!.trim().isNotEmpty) ...<Widget>[
-            const SizedBox(height: 6),
-            Text(
-              subtitle!,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.58),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.25,
-              ),
-            ),
-          ],
-          if (nudge != null && nudge!.trim().isNotEmpty) ...<Widget>[
-            const SizedBox(height: 8),
-            Text(
-              nudge!,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.72),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.3,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
+    return const SizedBox.shrink();
   }
 }
 
@@ -2340,108 +1927,248 @@ class TippyConversationSummary {
     required this.title,
     required this.messages,
     this.updatedAt,
+    this.lastMessage = '',
   });
 
   final String id;
   final String title;
   final List<TippyStoredMessage> messages;
   final DateTime? updatedAt;
+  final String lastMessage;
 }
 
+/// Canonical Tippy history: `users/{uid}/tippyChats/{chatId}/messages/{id}`.
 class TippyConversationHistoryStore {
   TippyConversationHistoryStore({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
+    TippyChatService? chatService,
   })  : _firestore = firestore,
-        _auth = auth;
+        _auth = auth,
+        _chatService = chatService;
 
   final FirebaseFirestore? _firestore;
   final FirebaseAuth? _auth;
+  final TippyChatService? _chatService;
 
   FirebaseFirestore get _db => _firestore ?? FirebaseFirestore.instance;
   FirebaseAuth get _firebaseAuth => _auth ?? FirebaseAuth.instance;
 
-  CollectionReference<Map<String, dynamic>>? _collection() {
+  CollectionReference<Map<String, dynamic>>? _chatsCollection() {
     final User? user = _firebaseAuth.currentUser;
     if (user == null) {
       return null;
     }
-    return _db
-        .collection('users')
-        .doc(user.uid)
-        .collection('tippyConversations');
+    return _db.collection('users').doc(user.uid).collection('tippyChats');
   }
 
+  CollectionReference<Map<String, dynamic>>? _messagesCollection(String chatId) {
+    final CollectionReference<Map<String, dynamic>>? chats = _chatsCollection();
+    if (chats == null) {
+      return null;
+    }
+    return chats.doc(chatId).collection('messages');
+  }
+
+  /// Legacy client persist path — no longer writes embedded tippyConversations.
+  /// Prefer server persistence via [TippyChatService.sendPersistedMessage].
   Future<String?> saveConversation({
     required String? conversationId,
     required List<TippyStoredMessage> messages,
   }) async {
-    final CollectionReference<Map<String, dynamic>>? collection = _collection();
-    if (collection == null || messages.isEmpty) {
+    if (messages.isEmpty) {
       return conversationId;
     }
-    final DocumentReference<Map<String, dynamic>> docRef =
-        conversationId == null
-            ? collection.doc()
-            : collection.doc(conversationId);
-    final String title = _titleFromMessages(messages);
-    final Map<String, dynamic> payload = <String, dynamic>{
-      'title': title,
-      'messageCount': messages.length,
-      'messages': messages
-          .take(60)
-          .map((TippyStoredMessage message) => message.toJson())
-          .toList(growable: false),
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-    if (conversationId == null) {
-      payload['createdAt'] = FieldValue.serverTimestamp();
+    String? chatId = conversationId;
+    final TippyChatService? service = _chatService;
+    if (chatId == null || chatId.isEmpty) {
+      if (service == null) {
+        return conversationId;
+      }
+      chatId = await service.createChat(
+        title: _titleFromMessages(messages),
+        platform: _platformLabel(),
+      );
     }
-    await docRef.set(
-      payload,
+    final CollectionReference<Map<String, dynamic>>? messagesCol =
+        _messagesCollection(chatId);
+    final CollectionReference<Map<String, dynamic>>? chats = _chatsCollection();
+    if (messagesCol == null || chats == null) {
+      return chatId;
+    }
+    final QuerySnapshot<Map<String, dynamic>> existing =
+        await messagesCol.orderBy('createdAt').limit(200).get();
+    final int existingCount = existing.docs.length;
+    if (messages.length <= existingCount) {
+      return chatId;
+    }
+    final WriteBatch batch = _db.batch();
+    for (int i = existingCount; i < messages.length; i++) {
+      final TippyStoredMessage message = messages[i];
+      final DocumentReference<Map<String, dynamic>> ref = messagesCol.doc();
+      batch.set(ref, <String, dynamic>{
+        'id': ref.id,
+        'role': message.role,
+        'content': message.content,
+        'createdAt': FieldValue.serverTimestamp(),
+        'creditCost': 0,
+        'platform': _platformLabel(),
+        'status': 'complete',
+        'metadata': <String, dynamic>{'source': 'tippy_mobile_tool'},
+      });
+    }
+    final TippyStoredMessage last = messages.last;
+    batch.set(
+      chats.doc(chatId),
+      <String, dynamic>{
+        'title': _titleFromMessages(messages),
+        'lastMessage': last.content.length > 120
+            ? last.content.substring(0, 120)
+            : last.content,
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'deleted': false,
+        'archived': false,
+      },
       SetOptions(merge: true),
     );
-    return docRef.id;
+    await batch.commit();
+    return chatId;
+  }
+
+  Future<List<TippyStoredMessage>> loadMessages(String chatId) async {
+    final CollectionReference<Map<String, dynamic>>? messagesCol =
+        _messagesCollection(chatId);
+    if (messagesCol == null) {
+      return const <TippyStoredMessage>[];
+    }
+    final QuerySnapshot<Map<String, dynamic>> snap =
+        await messagesCol.orderBy('createdAt').limit(200).get();
+    return snap.docs
+        .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+          final Map<String, dynamic> data = doc.data();
+          final String role = data['role'] is String ? data['role'] as String : '';
+          final String content =
+              data['content'] is String ? data['content'] as String : '';
+          return TippyStoredMessage(role: role, content: content);
+        })
+        .where((TippyStoredMessage m) => m.content.trim().isNotEmpty)
+        .toList(growable: false);
   }
 
   Stream<List<TippyConversationSummary>> watchRecent() {
-    final CollectionReference<Map<String, dynamic>>? collection = _collection();
+    final CollectionReference<Map<String, dynamic>>? collection =
+        _chatsCollection();
     if (collection == null) {
       return Stream<List<TippyConversationSummary>>.value(
         const <TippyConversationSummary>[],
       );
     }
-    return collection
-        .orderBy('updatedAt', descending: true)
-        .limit(20)
-        .snapshots()
-        .map(
-          (QuerySnapshot<Map<String, dynamic>> snapshot) => snapshot.docs
-              .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-            final Map<String, dynamic> data = doc.data();
-            final Object? rawMessages = data['messages'];
-            final List<TippyStoredMessage> messages = rawMessages is List
-                ? rawMessages
-                    .map(TippyStoredMessage.fromJson)
-                    .where(
-                      (TippyStoredMessage message) =>
-                          message.content.trim().isNotEmpty,
-                    )
-                    .toList(growable: false)
-                : const <TippyStoredMessage>[];
-            final Timestamp? updatedAt = data['updatedAt'] is Timestamp
-                ? data['updatedAt'] as Timestamp
-                : null;
-            return TippyConversationSummary(
-              id: doc.id,
-              title: data['title'] is String
+    final User? user = _firebaseAuth.currentUser;
+    final String uid = user?.uid ?? '';
+    return collection.limit(150).snapshots().map(
+      (QuerySnapshot<Map<String, dynamic>> snapshot) {
+        final List<TippyConversationSummary> rows = snapshot.docs
+            .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+              final Map<String, dynamic> data = doc.data();
+              final String owner = (data['ownerUid'] ?? data['userId'] ?? '')
+                  .toString()
+                  .trim();
+              if (owner.isNotEmpty && owner != uid) {
+                return null;
+              }
+              if (data['deleted'] == true || data['archived'] == true) {
+                return null;
+              }
+              final DateTime? updatedAt = _readTimestamp(
+                    data['lastMessageAt'],
+                  ) ??
+                  _readTimestamp(data['updatedAt']) ??
+                  _readTimestamp(data['createdAt']);
+              final String lastMessage = data['lastMessage'] is String
+                  ? data['lastMessage'] as String
+                  : '';
+              final String title = data['title'] is String
                   ? data['title'] as String
-                  : _titleFromMessages(messages),
-              messages: messages,
-              updatedAt: updatedAt?.toDate(),
-            );
-          }).toList(growable: false),
-        );
+                  : (lastMessage.isEmpty ? 'New chat' : lastMessage);
+              return TippyConversationSummary(
+                id: doc.id,
+                title: title,
+                messages: const <TippyStoredMessage>[],
+                updatedAt: updatedAt,
+                lastMessage: lastMessage,
+              );
+            })
+            .whereType<TippyConversationSummary>()
+            .toList(growable: false);
+        rows.sort((TippyConversationSummary a, TippyConversationSummary b) {
+          final int aMs = a.updatedAt?.millisecondsSinceEpoch ?? 0;
+          final int bMs = b.updatedAt?.millisecondsSinceEpoch ?? 0;
+          return bMs.compareTo(aMs);
+        });
+        if (rows.length <= 50) {
+          return rows;
+        }
+        return rows.sublist(0, 50);
+      },
+    );
+  }
+
+  Future<void> softDelete(String chatId) async {
+    final TippyChatService? service = _chatService;
+    if (service != null) {
+      await service.deleteChat(chatId: chatId);
+      return;
+    }
+    final CollectionReference<Map<String, dynamic>>? chats = _chatsCollection();
+    if (chats == null) {
+      return;
+    }
+    await chats.doc(chatId).set(
+      <String, dynamic>{
+        'deleted': true,
+        'archived': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> rename(String chatId, String title) async {
+    final TippyChatService? service = _chatService;
+    if (service != null) {
+      await service.renameChat(chatId: chatId, title: title);
+      return;
+    }
+    final CollectionReference<Map<String, dynamic>>? chats = _chatsCollection();
+    if (chats == null) {
+      return;
+    }
+    await chats.doc(chatId).set(
+      <String, dynamic>{
+        'title': title.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  DateTime? _readTimestamp(Object? raw) {
+    if (raw is Timestamp) {
+      return raw.toDate();
+    }
+    return null;
+  }
+
+  String _platformLabel() {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.android:
+        return 'android';
+      default:
+        return 'desktop';
+    }
   }
 
   String _titleFromMessages(List<TippyStoredMessage> messages) {
@@ -2472,6 +2199,20 @@ class _TippyHistorySheet extends StatelessWidget {
   final TippyConversationHistoryStore historyStore;
   final VoidCallback onNewChat;
   final ValueChanged<TippyConversationSummary> onSelect;
+
+  String _formatRelative(DateTime time) {
+    final Duration diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) {
+      return 'just now';
+    }
+    if (diff.inHours < 1) {
+      return '${diff.inMinutes}m ago';
+    }
+    if (diff.inDays < 1) {
+      return '${diff.inHours}h ago';
+    }
+    return '${diff.inDays}d ago';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2553,15 +2294,29 @@ class _TippyHistorySheet extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(
-                          '${conversation.messages.length} messages',
+                          conversation.lastMessage.isNotEmpty
+                              ? conversation.lastMessage
+                              : (conversation.updatedAt == null
+                                  ? 'Open conversation'
+                                  : 'Updated ${_formatRelative(conversation.updatedAt!)}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.55),
                             fontSize: 12,
                           ),
                         ),
-                        trailing: const Icon(
-                          Icons.chevron_right_rounded,
-                          color: Colors.white54,
+                        trailing: IconButton(
+                          tooltip: 'Delete',
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.white54,
+                          ),
+                          onPressed: () async {
+                            try {
+                              await historyStore.softDelete(conversation.id);
+                            } catch (_) {}
+                          },
                         ),
                       );
                     },
@@ -2582,7 +2337,7 @@ class _TippyDisabledScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050816),
+      backgroundColor: TippyChatTokens.bg,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -2654,7 +2409,7 @@ class _TippyLockedScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050816),
+      backgroundColor: TippyChatTokens.bg,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -2790,78 +2545,105 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Alignment align =
-        line.user ? Alignment.centerRight : Alignment.centerLeft;
-    final Color bg = line.isError
-        ? const Color(0xFF7F1D1D).withValues(alpha: 0.9)
-        : line.user
-            ? const Color(0xFF2563EB).withValues(alpha: 0.92)
-            : const Color(0xFF111827).withValues(alpha: 0.96);
-    final Color fg = line.isError ? Colors.red.shade100 : Colors.white;
-    return Align(
-      alignment: align,
-      child: Container(
-        margin: EdgeInsets.only(
-          left: line.user ? 44 : 0,
-          right: line.user ? 0 : 44,
-          bottom: 10,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.86,
-        ),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(line.user ? 18 : 6),
-            bottomRight: Radius.circular(line.user ? 6 : 18),
-          ),
-          border: Border.all(
-            color: line.user
-                ? const Color(0xFF60A5FA).withValues(alpha: 0.18)
-                : Colors.white.withValues(alpha: 0.08),
-          ),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+    if (line.isThinking) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const TippyMark(size: 24),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: TippyChatTokens.surface,
+              borderRadius: BorderRadius.circular(16),
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            TippyMessageContent(
-              text: line.text,
-              style: TextStyle(
-                color: fg,
-                fontSize: 14,
-                height: 1.35,
-              ),
-              onContentPlanDeepLink: onContentPlanDeepLink,
+            child: const TippyThinkingDots(),
+          ),
+        ],
+      );
+    }
+    if (line.user) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                TippyChatTokens.accent,
+                TippyChatTokens.bubbleEnd,
+              ],
             ),
-            for (final TippyUiCardData card in line.cards)
-              TippyActionCard(
-                card: card,
-                onDeepLink: (String value) {
-                  final RegExp planPattern = RegExp(
-                    r'streamerstip://content-plan/([A-Za-z0-9_-]+)',
-                  );
-                  final RegExpMatch? match = planPattern.firstMatch(value);
-                  if (match != null) {
-                    onContentPlanDeepLink?.call(match.group(1)!);
-                    return;
-                  }
-                },
-                onPrefillPrompt: onPrefillPrompt,
-                onApproveSchedule: onApproveSchedule,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(6),
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: TippyChatTokens.accent.withValues(alpha: 0.25),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
-          ],
+            ],
+          ),
+          child: Text(
+            line.text,
+            style: TippyChatTokens.nunito(
+              size: 13,
+              color: Colors.white,
+              height: 1.4,
+            ),
+          ),
         ),
-      ),
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const TippyMark(size: 24),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              TippyMessageContent(
+                text: line.text,
+                style: TippyChatTokens.nunito(
+                  size: 13,
+                  color: line.isError
+                      ? const Color(0xFFFECACA)
+                      : TippyChatTokens.textBody,
+                  height: 1.4,
+                ),
+                onContentPlanDeepLink: onContentPlanDeepLink,
+              ),
+              for (final TippyUiCardData card in line.cards)
+                TippyActionCard(
+                  card: card,
+                  onDeepLink: (String value) {
+                    final RegExp planPattern = RegExp(
+                      r'streamerstip://content-plan/([A-Za-z0-9_-]+)',
+                    );
+                    final RegExpMatch? match = planPattern.firstMatch(value);
+                    if (match != null) {
+                      onContentPlanDeepLink?.call(match.group(1)!);
+                      return;
+                    }
+                  },
+                  onPrefillPrompt: onPrefillPrompt,
+                  onApproveSchedule: onApproveSchedule,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

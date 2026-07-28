@@ -50,26 +50,47 @@ void main() {
       expect(actual, isFalse);
     });
 
-    test('deleteAllPromptHistory removes saved conversations', () async {
+    test('deleteAllPromptHistory removes tippyChats and legacy conversations',
+        () async {
       final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
       await firestore
           .collection('users')
           .doc('user_1')
           .collection('tippyConversations')
           .doc('c1')
-          .set(<String, dynamic>{'title': 'Test'});
+          .set(<String, dynamic>{'title': 'Legacy'});
+      await firestore
+          .collection('users')
+          .doc('user_1')
+          .collection('tippyChats')
+          .doc('chat1')
+          .set(<String, dynamic>{'title': 'Canonical'});
+      await firestore
+          .collection('users')
+          .doc('user_1')
+          .collection('tippyChats')
+          .doc('chat1')
+          .collection('messages')
+          .doc('m1')
+          .set(<String, dynamic>{'content': 'hi'});
       final TippyLegalService service = TippyLegalService(
         firestore: firestore,
         userIdResolver: () => 'user_1',
         remoteHistoryDeleter: () async {},
       );
       await service.deleteAllPromptHistory();
-      final QuerySnapshot<Map<String, dynamic>> snap = await firestore
+      final QuerySnapshot<Map<String, dynamic>> legacy = await firestore
           .collection('users')
           .doc('user_1')
           .collection('tippyConversations')
           .get();
-      expect(snap.docs, isEmpty);
+      final QuerySnapshot<Map<String, dynamic>> chats = await firestore
+          .collection('users')
+          .doc('user_1')
+          .collection('tippyChats')
+          .get();
+      expect(legacy.docs, isEmpty);
+      expect(chats.docs, isEmpty);
     });
   });
 }

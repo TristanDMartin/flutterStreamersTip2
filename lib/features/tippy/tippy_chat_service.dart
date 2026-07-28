@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/app_check_http_headers.dart';
 import '../../core/backend/firebase_https_function_url.dart';
+import '../../core/backend/site_api_base.dart';
 import '../../services/production_monitoring_service.dart';
 import '../../services/performance_monitoring_service.dart';
 import 'models/tippy_ui_payload.dart';
@@ -99,7 +100,23 @@ class TippyChatService {
 
   Future<TippyChatResult> sendMessage({
     required List<TippyChatMessage> messages,
+    String? chatId,
+    String? clientMessageId,
+    String platform = 'android',
   }) async {
+    final String text = messages.isEmpty ? '' : messages.last.content.trim();
+    if (text.isEmpty) {
+      throw const TippyChatException('Message is required.');
+    }
+    // Canonical Ask Tippy history path (same as website /ask-tippy).
+    if (clientMessageId != null && clientMessageId.trim().isNotEmpty) {
+      return sendPersistedMessage(
+        message: text,
+        chatId: chatId,
+        clientMessageId: clientMessageId.trim(),
+        platform: platform,
+      );
+    }
     final Stopwatch stopwatch = Stopwatch()..start();
     secureLog('frontend_send_click', name: 'TippyLatency');
     final Map<String, dynamic> payload = <String, dynamic>{
@@ -141,6 +158,175 @@ class TippyChatService {
       message: cleanedAssistantText,
       creditsRemaining: envelope.credits?.remaining,
       ui: TippyUiPayload.fromJson(envelope.data['ui']),
+      chatId: chatId,
+    );
+  }
+
+  /// Persisted Ask Tippy send — writes to `users/{uid}/tippyChats` on the server.
+  Future<TippyChatResult> sendPersistedMessage({
+    required String message,
+    String? chatId,
+    required String clientMessageId,
+    String platform = 'android',
+  }) async {
+    final Stopwatch stopwatch = Stopwatch()..start();
+    secureLog('frontend_send_persisted_click', name: 'TippyLatency');
+    final Uri uri = Uri.parse(siteTippyChatUrl());
+    final Map<String, String> headers = await _buildHeaders();
+    final Map<String, dynamic> payload = <String, dynamic>{
+      'message': message.trim(),
+      'clientMessageId': clientMessageId,
+      'platform': platform,
+      if (chatId != null && chatId.trim().isNotEmpty) 'chatId': chatId.trim(),
+    };
+    final http.Response response = await _executeRequest(
+      () => _client.post(
+        uri,
+        headers: headers,
+        body: jsonEncode(payload),
+      ),
+    );
+    PerformanceMonitoringService().trackNetworkRequest(
+      '/api/tippy/chat',
+      stopwatch.elapsed,
+      statusCode: response.statusCode,
+    );
+    final TippyChatResult result = _parseSiteChatResponse(response);
+    _creditsCache = _creditsCache?.copyWith(
+      creditsRemaining: result.creditsRemaining,
+    );
+    return result;
+  }
+
+  Future<String> createChat({
+    String title = 'New chat',
+    String platform = 'android',
+  }) async {
+    final Uri uri = Uri.parse(siteTippyChatsUrl());
+    final Map<String, String> headers = await _buildHeaders();
+    final http.Response response = await _executeRequest(
+      () => _client.post(
+        uri,
+        headers: headers,
+        body: jsonEncode(<String, dynamic>{
+          'title': title,
+          'platform': platform,
+        }),
+      ),
+    );
+    final Map<String, dynamic>? body = _tryDecodeMap(response.body);
+    if (body == null || response.statusCode < 200 || response.statusCode >= 300) {
+      throw TippyChatException(
+        _readString(body?['error']) ?? 'Failed to create chat.',
+        status: response.statusCode,
+      );
+    }
+    final String? id = _readString(body['chatId']);
+    if (id == null || id.isEmpty) {
+      throw const TippyChatException('Failed to create chat.');
+    }
+    return id;
+  }
+
+  Future<void> renameChat({
+    required String chatId,
+    required String title,
+  }) async {
+    final Uri uri = Uri.parse(siteTippyChatByIdUrl(chatId));
+    final Map<String, String> headers = await _buildHeaders();
+    final http.Response response = await _executeRequest(
+      () => _client.patch(
+        uri,
+        headers: headers,
+        body: jsonEncode(<String, dynamic>{'title': title.trim()}),
+      ),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final Map<String, dynamic>? body = _tryDecodeMap(response.body);
+      throw TippyChatException(
+        _readString(body?['error']) ?? 'Failed to rename chat.',
+        status: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> deleteChat({required String chatId}) async {
+    final Uri uri = Uri.parse(siteTippyChatByIdUrl(chatId));
+    final Map<String, String> headers = await _buildHeaders();
+    final http.Response response = await _executeRequest(
+      () => _client.delete(uri, headers: headers),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final Map<String, dynamic>? body = _tryDecodeMap(response.body);
+      throw TippyChatException(
+        _readString(body?['error']) ?? 'Failed to delete chat.',
+        status: response.statusCode,
+      );
+    }
+  }
+
+  TippyChatResult _parseSiteChatResponse(http.Response response) {
+    final Map<String, dynamic>? raw = _tryDecodeMap(response.body);
+    if (raw == null) {
+      throw TippyChatException(
+        'Unexpected response format.',
+        status: response.statusCode,
+      );
+    }
+    final Map<String, dynamic> nestedError =
+        raw['error'] is Map<String, dynamic>
+            ? raw['error'] as Map<String, dynamic>
+            : <String, dynamic>{};
+    final Map<String, dynamic> data =
+        raw['success'] == true && raw['data'] is Map<String, dynamic>
+            ? <String, dynamic>{
+                ...raw,
+                ...Map<String, dynamic>.from(raw['data'] as Map),
+              }
+            : raw;
+    final String? errorMessage = _readString(raw['error']) ??
+        _readString(nestedError['message']) ??
+        _readString(data['error']);
+    final String? errorCode =
+        _readString(nestedError['code']) ?? _readString(data['code']);
+    final bool failed = raw['success'] == false ||
+        response.statusCode < 200 ||
+        response.statusCode >= 300;
+    if (failed) {
+      if (response.statusCode == 401) {
+        throw TippyAuthException(
+          errorMessage ?? 'Authentication required.',
+          code: errorCode ?? 'AUTH_REQUIRED',
+          status: response.statusCode,
+        );
+      }
+      if (response.statusCode == 402 || errorCode == 'INSUFFICIENT_CREDITS') {
+        throw TippyUpgradeRequiredException(
+          errorMessage ?? "You've used your Tippy credits.",
+          code: errorCode ?? 'INSUFFICIENT_CREDITS',
+          status: 402,
+        );
+      }
+      throw TippyChatException(
+        errorMessage ?? 'Tippy request failed (${response.statusCode}).',
+        code: errorCode ?? 'INTERNAL_ERROR',
+        status: response.statusCode,
+      );
+    }
+    final String? assistantText = _readString(
+      data['message'] ?? data['assistantMessage'],
+    );
+    final String cleaned = _cleanPublicAiText(assistantText);
+    if (cleaned.isEmpty) {
+      throw const TippyChatException('Tippy returned an empty response.');
+    }
+    final int? creditsRemaining = _readInt(data['creditsRemaining']) ??
+        _readInt(_readMap(data['credits'])?['remaining']);
+    return TippyChatResult(
+      message: cleaned,
+      creditsRemaining: creditsRemaining,
+      ui: TippyUiPayload.fromJson(data['ui']),
+      chatId: _readString(data['chatId']),
     );
   }
 
@@ -517,11 +703,13 @@ class TippyChatResult {
     required this.message,
     this.creditsRemaining,
     this.ui = TippyUiPayload.empty,
+    this.chatId,
   });
 
   final String message;
   final int? creditsRemaining;
   final TippyUiPayload ui;
+  final String? chatId;
 }
 
 class TippyContextSnapshot {

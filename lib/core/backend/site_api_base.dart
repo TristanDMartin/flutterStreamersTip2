@@ -56,3 +56,12 @@ String siteStudioTeamControlUrl({String? base}) =>
 
 String siteStudioExportWeeklyUrl({String? base}) =>
     siteApiPath('/api/studio/export/weekly', base: base);
+
+String siteTippyChatUrl({String? base}) =>
+    siteApiPath('/api/tippy/chat', base: base);
+
+String siteTippyChatsUrl({String? base}) =>
+    siteApiPath('/api/tippy/chats', base: base);
+
+String siteTippyChatByIdUrl(String chatId, {String? base}) =>
+    siteApiPath('/api/tippy/chats/${Uri.encodeComponent(chatId)}', base: base);
