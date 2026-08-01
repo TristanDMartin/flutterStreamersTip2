@@ -74,6 +74,8 @@ class _InstantResponseButtonState extends State<InstantResponseButton>
       });
       _animationController.forward();
       _triggerHapticFeedback();
+      // Instant: run action on press, not after gesture arena / tap-up.
+      widget.onPressed?.call();
     }
   }
 
@@ -124,7 +126,6 @@ class _InstantResponseButtonState extends State<InstantResponseButton>
       onTapDown: _handleTapDown,
       onTapUp: _handleTapUp,
       onTapCancel: _handleTapCancel,
-      onTap: widget.enabled ? widget.onPressed : null,
       behavior: HitTestBehavior.opaque,
       child: AnimatedBuilder(
         animation: _animationController,
@@ -133,21 +134,7 @@ class _InstantResponseButtonState extends State<InstantResponseButton>
             scale: _scaleAnimation.value,
             child: Opacity(
               opacity: _opacityAnimation.value,
-              child: widget.showRippleEffect
-                  ? Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: widget.enabled ? widget.onPressed : null,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: widget.child,
-                        ),
-                      ),
-                    )
-                  : widget.child,
+              child: widget.child,
             ),
           );
         },

@@ -93,6 +93,70 @@ void main() {
       expect(playing, isNull);
     });
 
+    test('unregisterController skips dispose when controller is attached', () {
+      final VideoPlayerController controller = newController();
+      pool.recordRegister('v1', controller);
+      pool.markAttached('v1', controller.hashCode);
+      bool disposeCalled = false;
+
+      coordinator.unregisterController(
+        videoId: 'v1',
+        pool: pool,
+        focus: focus,
+        muteStates: muteStates,
+        warmStartedAt: <String, DateTime>{},
+        focusRequestedAt: <String, DateTime>{},
+        firstFrameLoggedKeys: <String>{},
+        isControllerSafe: (_, __) => true,
+        getCurrentlyPlayingController: () => null,
+        setCurrentlyPlayingController: (_) {},
+        disposeControllerAfterPause: ({
+          required videoId,
+          required controller,
+          required pool,
+          required isControllerSafe,
+          log,
+        }) {
+          disposeCalled = true;
+        },
+      );
+
+      expect(disposeCalled, isFalse);
+      expect(pool.containsKey('v1'), isFalse);
+      expect(pool.attached.containsKey('v1'), isFalse);
+    });
+
+    test('unregisterController disposes when controller is detached', () {
+      final VideoPlayerController controller = newController();
+      pool.recordRegister('v1', controller);
+      bool disposeCalled = false;
+
+      coordinator.unregisterController(
+        videoId: 'v1',
+        pool: pool,
+        focus: focus,
+        muteStates: muteStates,
+        warmStartedAt: <String, DateTime>{},
+        focusRequestedAt: <String, DateTime>{},
+        firstFrameLoggedKeys: <String>{},
+        isControllerSafe: (_, __) => true,
+        getCurrentlyPlayingController: () => null,
+        setCurrentlyPlayingController: (_) {},
+        disposeControllerAfterPause: ({
+          required videoId,
+          required controller,
+          required pool,
+          required isControllerSafe,
+          log,
+        }) {
+          disposeCalled = true;
+        },
+      );
+
+      expect(disposeCalled, isTrue);
+      expect(pool.containsKey('v1'), isFalse);
+    });
+
     test('registerController evicts outside warm window when pool is full', () {
       final List<String> unregistered = <String>[];
       final Map<String, int> videoIdToIndex = <String, int>{

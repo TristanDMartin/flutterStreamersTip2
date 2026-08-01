@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:streamers_tip/features/content_planning/content_planning_models.dart';
 import 'package:streamers_tip/features/gamification/models/gamification_summary_model.dart';
 import 'package:streamers_tip/features/gamification/models/subscription_plan.dart';
 import 'package:streamers_tip/features/gamification/models/user_entitlements_model.dart';
@@ -95,6 +96,112 @@ void main() {
       expect(snapshot.alertCount, 0);
       expect(snapshot.consistencyScorePercent, greaterThan(0));
       expect(snapshot.collapsedSummary, contains('solo'));
+    });
+
+    test('merges Tippy content-plan item schedules into next due and queue', () {
+      final DateTime soon = DateTime.now().add(const Duration(hours: 5));
+      final DateTime later = DateTime.now().add(const Duration(days: 2));
+      final snapshot = buildCreatorCommandSnapshot(
+        userData: <String, dynamic>{
+          'id': 'user-1',
+          'username': 'technqs',
+          'displayName': 'TechnQs',
+        },
+        bundle: UserProgressBundle.fallback(),
+        scheduledPosts: const <Map<String, dynamic>>[],
+        contentPlans: <ContentPlan>[
+          ContentPlan(
+            id: 'plan-1',
+            title: 'Launch week',
+            itemCount: 2,
+            userId: 'user-1',
+            status: 'draft',
+            source: 'tippy',
+            items: <ContentPlanItem>[
+              ContentPlanItem(
+                id: 'item-1',
+                title: 'Hook clip A',
+                status: 'scheduled',
+                platforms: <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'platform': 'tiktok',
+                    'scheduledAt': soon,
+                    'status': 'scheduled',
+                  },
+                ],
+              ),
+              ContentPlanItem(
+                id: 'item-2',
+                title: 'Stream recap',
+                status: 'scheduled',
+                platforms: <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'platform': 'youtube',
+                    'scheduledAt': later,
+                    'status': 'scheduled',
+                  },
+                ],
+              ),
+            ],
+          ),
+        ],
+        draftCount: 0,
+        metrics: null,
+        recentVideos: const <Map<String, dynamic>>[],
+      );
+
+      expect(snapshot.scheduledQueueCount, 2);
+      expect(snapshot.nextPostOverdue, isFalse);
+      expect(snapshot.nextPostTitle, 'Hook clip A');
+      expect(snapshot.nextPostPlanTitle, 'Launch week');
+      expect(snapshot.nextPostDueAt, isNotNull);
+      expect(
+        snapshot.nextPostDueAt!.difference(soon).inSeconds.abs(),
+        lessThan(2),
+      );
+    });
+
+    test('counts overdue content-plan items as due alerts', () {
+      final DateTime overdue = DateTime.now().subtract(const Duration(hours: 3));
+      final snapshot = buildCreatorCommandSnapshot(
+        userData: <String, dynamic>{
+          'id': 'user-1',
+          'username': 'technqs',
+          'displayName': 'TechnQs',
+        },
+        bundle: UserProgressBundle.fallback(),
+        scheduledPosts: const <Map<String, dynamic>>[],
+        contentPlans: <ContentPlan>[
+          ContentPlan(
+            id: 'plan-2',
+            title: 'Recovery plan',
+            itemCount: 1,
+            userId: 'user-1',
+            status: 'draft',
+            items: <ContentPlanItem>[
+              ContentPlanItem(
+                id: 'item-overdue',
+                title: 'Missed Short',
+                status: 'scheduled',
+                platforms: <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'platform': 'instagram',
+                    'scheduledAt': overdue,
+                  },
+                ],
+              ),
+            ],
+          ),
+        ],
+        draftCount: 0,
+        metrics: null,
+        recentVideos: const <Map<String, dynamic>>[],
+      );
+
+      expect(snapshot.scheduledQueueCount, 1);
+      expect(snapshot.nextPostOverdue, isTrue);
+      expect(snapshot.alertCount, 1);
+      expect(snapshot.nextPostTitle, 'Missed Short');
     });
 
     test('enables Tippy for active Studio without entitlement flag', () {

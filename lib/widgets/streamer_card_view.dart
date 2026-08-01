@@ -34,6 +34,7 @@ import '../core/theme/support_shell_style.dart';
 import '../features/creator_score/creator_score.dart';
 import '../features/creator_score/creator_score_service.dart';
 import '../features/creator_score/creator_score_widgets.dart';
+import '../features/content_planning/calendar_visibility_contract.dart';
 import '../models/creator_profile_snapshot.dart';
 import '../utils/user_profile_firestore.dart';
 import '../models/user.dart' as app_models;
@@ -134,10 +135,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _isLoading = true;
   String? _error;
   String? _resolvedUserDocId;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
-      _contentPlansSubscription;
-  String? _contentPlansListenerUid;
-  List<CalendarEvent> _contentPlanCalendarEvents = <CalendarEvent>[];
   late final StreamerCardProfileController _profileController;
 
   late final StreamerCardRelationshipController _relationshipController;
@@ -212,12 +209,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _syncDerivedProfileFields() {
     final List<Map<String, dynamic>> platforms =
         UserProfileFirestore.parsePlatformsFromUserData(_userData);
-    final List<CalendarEvent> docEvents =
-        UserProfileFirestore.parseCalendarEventsFromUserData(_userData);
+    // Phase 4 + calendar visibility: prefer streamer projection; exclude expired.
     final List<CalendarEvent> events =
-        UserProfileFirestore.mergeCalendarEventLists(
-      docEvents,
-      _contentPlanCalendarEvents,
+        filterActiveUpcomingCalendarEvents(
+      events: UserProfileFirestore.mergeCalendarEventLists(
+        UserProfileFirestore.parseStreamerCalendarProjection(_userData),
+        UserProfileFirestore.parseCalendarEventsFromUserData(_userData),
+      ),
+      startsAtOf: (CalendarEvent e) => e.date,
     );
     final String uid = (_userData?['id'] ??
             _userData?['uid'] ??
@@ -234,41 +233,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         uid: uid,
         source: 'StreamerCardBackView',
         count: events.length,
+        readPath: UserProfileFirestore.streamerCalendarProjectionPath(uid),
       );
     }
     _platforms = platforms;
     _calendarEvents = events;
-  }
-
-  void _attachContentPlansListener(String userId) {
-    final String uid = userId.trim();
-    if (uid.isEmpty || _contentPlansListenerUid == uid) {
-      return;
-    }
-    _contentPlansSubscription?.cancel();
-    _contentPlansListenerUid = uid;
-    _contentPlansSubscription = FirebaseFirestore.instance
-        .collection(UserProfileFirestore.usersCollection)
-        .doc(uid)
-        .collection(UserProfileFirestore.contentPlansSubcollection)
-        .snapshots()
-        .listen(
-      (QuerySnapshot<Map<String, dynamic>> snapshot) {
-        if (!mounted) {
-          return;
-        }
-        final List<Map<String, dynamic>> docs =
-            snapshot.docs.map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
-          return <String, dynamic>{...d.data(), 'id': d.id};
-        }).toList(growable: false);
-        setState(() {
-          _contentPlanCalendarEvents =
-              UserProfileFirestore.calendarEventsFromContentPlanDocs(docs);
-          _syncDerivedProfileFields();
-        });
-      },
-      onError: (_) {},
-    );
   }
 
   void _handleProfileStateChanged() {
@@ -286,10 +255,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         _error = profileState.error;
         _syncDerivedProfileFields();
       });
-      final String? resolvedUid = _resolvedUserDocId;
-      if (resolvedUid != null && resolvedUid.isNotEmpty) {
-        _attachContentPlansListener(resolvedUid);
-      }
       final bool profileChanged =
           previousResolvedUserDocId != _resolvedUserDocId ||
               !identical(previousUserData, _userData);
@@ -383,9 +348,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void didUpdateWidget(covariant StreamerCardView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userId != widget.userId) {
-      _contentPlansSubscription?.cancel();
-      _contentPlansListenerUid = null;
-      _contentPlanCalendarEvents = <CalendarEvent>[];
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           unawaited(_loadUserProfile());
@@ -448,7 +410,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _flipController.dispose();
     _blockingService.blockListRevision.removeListener(_handleBlockListChanged);
 
-    _contentPlansSubscription?.cancel();
     _profileController
       ..removeListener(_handleProfileStateChanged)
       ..dispose();

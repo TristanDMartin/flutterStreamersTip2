@@ -19,6 +19,7 @@ import '../providers/discover_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/feed_state_provider.dart';
 import '../providers/main_tab_provider.dart';
+import '../providers/creator_command_provider.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
@@ -215,10 +216,29 @@ class _HomeViewState extends ConsumerState<HomeView>
       unawaited(
           ref.read(hp.homeProvider.notifier).runDeferredBackgroundRefresh());
     } else {
-      unawaited(_loadVideos());
+      unawaited(_loadVideosWhenAuthReady());
     }
     _controller.markAsActiveOwner();
     ref.read(hp.homeProvider.notifier).startForYouRealtimeFeed();
+  }
+
+  Future<void> _loadVideosWhenAuthReady() async {
+    if (!context.mounted) return;
+    if (firebase_auth.FirebaseAuth.instance.currentUser == null) {
+      try {
+        await firebase_auth.FirebaseAuth.instance
+            .authStateChanges()
+            .where((firebase_auth.User? user) => user != null)
+            .first
+            .timeout(const Duration(seconds: 12));
+      } on TimeoutException {
+        secureLog('⚠️ HomeView: Auth not ready; loading feed anyway');
+      } catch (e) {
+        secureLog('⚠️ HomeView: Auth wait failed before feed load: $e');
+      }
+    }
+    if (!context.mounted) return;
+    await _loadVideos();
   }
 
   /// ✅ IMPROVEMENT: Handle return to HomeView with simplified logic
@@ -772,7 +792,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted) return;
 
     secureLog('🔄 HomeView: Returned from DiscoverView - resuming videos');
-    _handleReturnedToHome();
+    // Always run the Discover return path after await — do not gate on
+    // ModalRoute.isCurrent (shell root is `/`, which can race with observer).
+    _controller.resumeFromTabReturn(fromDiscover: true);
   }
 
   /// ✅ FIX #2: Real route change - use onLeaveHomeView() to pause and save position
@@ -796,6 +818,9 @@ class _HomeViewState extends ConsumerState<HomeView>
           ? CreatorCommandCenterState.expanded
           : CreatorCommandCenterState.closed;
     });
+    if (willOpen) {
+      unawaited(markCreatorCommandScoreSeen(ref));
+    }
     _setPlaybackOverlayActive('commandCenterOverlay', willOpen);
   }
 
@@ -806,6 +831,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     setState(() {
       _commandCenterState = CreatorCommandCenterState.expanded;
     });
+    unawaited(markCreatorCommandScoreSeen(ref));
     if (wasClosed) {
       _setPlaybackOverlayActive('commandCenterOverlay', true);
     }

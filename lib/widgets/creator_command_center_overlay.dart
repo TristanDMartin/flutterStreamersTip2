@@ -5,11 +5,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/gamification/models/subscription_plan.dart';
+import '../features/content_planning/content_planner_view.dart';
 import '../models/creator_command_snapshot.dart';
 import '../providers/creator_command_provider.dart';
 import '../qa/qa_keys.dart';
 import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
+
+const Color _commandInk = Color(0xFF0F172A);
+const Color _commandPanel = Color(0xFF1E293B);
+const Color _commandTeal = Color(0xFF4897D2);
+const Color _commandMint = Color(0xFF93C5FD);
+const Color _commandAmber = Color(0xFF9248D2);
+const Color _commandRose = Color(0xFFEF4444);
 
 Future<void> _executeTippyFromCommandCenter(
   BuildContext context, {
@@ -50,14 +58,21 @@ String _momentumLabel(CreatorCommandSnapshot s) {
 
 String _briefLine(CreatorCommandSnapshot s, BuildContext context) {
   if (s.nextPostOverdue) {
-    return 'Recover the overdue post before creating more.';
+    final String title = s.nextDueSummary;
+    return title.isEmpty
+        ? 'Recover the overdue post before creating more.'
+        : 'Overdue: $title — clear it before creating more.';
   }
   if (s.alertCount > 0) {
     return '${s.alertCount} item${s.alertCount == 1 ? '' : 's'} need review.';
   }
   if (s.nextPostDueAt != null) {
     final TimeOfDay time = TimeOfDay.fromDateTime(s.nextPostDueAt!.toLocal());
-    return 'Next post is queued for ${MaterialLocalizations.of(context).formatTimeOfDay(time)}.';
+    final String when = MaterialLocalizations.of(context).formatTimeOfDay(time);
+    final String title = s.nextDueSummary;
+    return title.isEmpty
+        ? 'Next post is queued for $when.'
+        : 'Next up: $title at $when.';
   }
   if (s.draftCount > 0) return 'Turn one draft into a scheduled post today.';
   return 'Create a plan so your next move is ready.';
@@ -94,20 +109,27 @@ IconData _primaryActionIcon(CreatorCommandSnapshot s) {
       : Icons.lock_open_rounded;
 }
 
-void _executePrimaryAction(BuildContext context, CreatorCommandSnapshot s) {
+void _executePrimaryAction(
+  BuildContext context,
+  CreatorCommandSnapshot s, {
+  VoidCallback? onDismiss,
+}) {
   HapticFeedback.selectionClick();
   if (s.nextPostOverdue || s.alertCount > 0 || s.draftCount > 0) {
-    AppNavigator.openManagePostsWithArgs(
+    AppNavigator.openContentPlanner(
       context,
-      initialTab: ManagePostsInitialTab.scheduled,
-      launchSource: ManagePostsLaunchSource.commandCenter,
+      initialScope: s.draftCount > 0 && !s.nextPostOverdue && s.alertCount == 0
+          ? ContentPlannerInitialScope.ideas
+          : ContentPlannerInitialScope.review,
     );
     return;
   }
   if (s.scheduledQueueCount == 0) {
+    onDismiss?.call();
     _executeTippyFromCommandCenter(context, tippyEnabled: s.tippyAiEnabled);
     return;
   }
+  onDismiss?.call();
   _executeTippyFromCommandCenter(context, tippyEnabled: s.tippyAiEnabled);
 }
 
@@ -126,7 +148,7 @@ class StreamersTipCommandCenterTrigger extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final BoxShadow glow = BoxShadow(
-      color: const Color(0xFF9248D2)
+      color: (showAlertPulse ? _commandAmber : _commandTeal)
           .withValues(alpha: showAlertPulse ? 0.38 : 0.24),
       blurRadius: showAlertPulse ? 20 : 14,
       offset: const Offset(0, 6),
@@ -144,7 +166,7 @@ class StreamersTipCommandCenterTrigger extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: const LinearGradient(
-            colors: <Color>[Color(0xFF9248D2), Color(0xFF4897D2)],
+            colors: <Color>[_commandAmber, _commandTeal],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -153,7 +175,7 @@ class StreamersTipCommandCenterTrigger extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFF0F172A).withValues(alpha: 0.95),
+            color: _commandInk.withValues(alpha: 0.95),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.2),
             ),
@@ -423,7 +445,7 @@ class _CollapsedSummaryBar extends StatelessWidget {
                 height: 5,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF4897D2).withValues(alpha: 0.9),
+                  color: _commandTeal.withValues(alpha: 0.9),
                 ),
               ),
               const SizedBox(width: 8),
@@ -450,6 +472,19 @@ class _CollapsedSummaryBar extends StatelessWidget {
       ),
     );
   }
+}
+
+String _nextDueLabel(CreatorCommandSnapshot snapshot, BuildContext context) {
+  final MaterialLocalizations l10n = MaterialLocalizations.of(context);
+  if (snapshot.nextPostDueAt == null) {
+    return 'No post scheduled';
+  }
+  final DateTime local = snapshot.nextPostDueAt!.toLocal();
+  final TimeOfDay time = TimeOfDay.fromDateTime(local);
+  final String when =
+      '${l10n.formatShortDate(local)} · ${l10n.formatTimeOfDay(time)}';
+  final String title = snapshot.nextDueSummary.trim();
+  return title.isEmpty ? when : '$title · $when';
 }
 
 class _ExpandedHeader extends StatelessWidget {
@@ -496,9 +531,13 @@ class _ExpandedHeader extends StatelessWidget {
 }
 
 class _QuickCommandRow extends StatelessWidget {
-  const _QuickCommandRow({required this.snapshot});
+  const _QuickCommandRow({
+    required this.snapshot,
+    required this.onDismiss,
+  });
 
   final CreatorCommandSnapshot snapshot;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -519,10 +558,13 @@ class _QuickCommandRow extends StatelessWidget {
           child: _CommandButton(
             icon: Icons.auto_awesome_rounded,
             label: snapshot.tippyAiEnabled ? 'Tippy' : 'Tippy (locked)',
-            onTap: () => _executeTippyFromCommandCenter(
-              context,
-              tippyEnabled: snapshot.tippyAiEnabled,
-            ),
+            onTap: () {
+              onDismiss();
+              _executeTippyFromCommandCenter(
+                context,
+                tippyEnabled: snapshot.tippyAiEnabled,
+              );
+            },
           ),
         ),
       ],
@@ -580,8 +622,8 @@ class _CommandButton extends StatelessWidget {
   }
 }
 
-class _CreatorBriefCard extends StatelessWidget {
-  const _CreatorBriefCard({required this.snapshot});
+class _CommandScoreHero extends StatelessWidget {
+  const _CommandScoreHero({required this.snapshot});
 
   final CreatorCommandSnapshot snapshot;
 
@@ -589,45 +631,86 @@ class _CreatorBriefCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final double progress =
         (snapshot.consistencyScorePercent / 100).clamp(0.0, 1.0);
+    final bool urgent = snapshot.nextPostOverdue || snapshot.alertCount > 0;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1220).withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(10),
+        color: _commandPanel.withValues(alpha: 0.74),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: urgent
+              ? _commandRose.withValues(alpha: 0.26)
+              : Colors.white.withValues(alpha: 0.1),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Icon(
-                Icons.radar_rounded,
-                color: const Color(0xFF93C5FD).withValues(alpha: 0.92),
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _briefLine(snapshot, context),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    height: 1.22,
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.06),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+                child: Center(
+                  child: Text(
+                    '${snapshot.consistencyScorePercent}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              _SignalChip(label: _momentumLabel(snapshot)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            _momentumLabel(snapshot),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        _SignalChip(
+                            label: snapshot.tippyAiEnabled ? 'AI' : 'LOCKED'),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _briefLine(snapshot, context),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.28,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Row(
             children: <Widget>[
               Expanded(
@@ -638,14 +721,14 @@ class _CreatorBriefCard extends StatelessWidget {
                     minHeight: 3,
                     backgroundColor: Colors.white.withValues(alpha: 0.08),
                     valueColor: const AlwaysStoppedAnimation<Color>(
-                      Color(0xFF38BDF8),
+                      _commandTeal,
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               Text(
-                'Consistency ${snapshot.consistencyScorePercent}%',
+                'Consistency',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.58),
                   fontSize: 11,
@@ -660,10 +743,187 @@ class _CreatorBriefCard extends StatelessWidget {
   }
 }
 
-class _PrimaryActionCard extends StatelessWidget {
-  const _PrimaryActionCard({required this.snapshot});
+class _CommandMetricGrid extends StatelessWidget {
+  const _CommandMetricGrid({
+    required this.snapshot,
+    required this.onDismiss,
+  });
 
   final CreatorCommandSnapshot snapshot;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: _CommandMetricTile(
+                icon: snapshot.nextPostOverdue
+                    ? Icons.warning_amber_rounded
+                    : Icons.event_available_rounded,
+                label: snapshot.nextPostOverdue ? 'Overdue' : 'Next',
+                value: _nextDueLabel(snapshot, context),
+                urgent: snapshot.nextPostOverdue,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  AppNavigator.openContentPlanner(
+                    context,
+                    initialScope: snapshot.nextPostOverdue
+                        ? ContentPlannerInitialScope.review
+                        : ContentPlannerInitialScope.week,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: _CommandMetricTile(
+                icon: Icons.queue_play_next_rounded,
+                label: 'Queue',
+                value: '${snapshot.scheduledQueueCount} scheduled',
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  onDismiss();
+                  AppNavigator.openContentScheduler(context);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _CommandMetricTile(
+                icon: Icons.edit_note_rounded,
+                label: 'Drafts',
+                value: '${snapshot.draftCount}',
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  AppNavigator.openContentPlanner(
+                    context,
+                    initialScope: ContentPlannerInitialScope.ideas,
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _CommandMetricTile(
+                icon: Icons.notifications_active_rounded,
+                label: 'Alerts',
+                value: '${snapshot.alertCount}',
+                urgent: snapshot.alertCount > 0,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  AppNavigator.openContentPlanner(
+                    context,
+                    initialScope: ContentPlannerInitialScope.review,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CommandMetricTile extends StatelessWidget {
+  const _CommandMetricTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.urgent = false,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool urgent;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = urgent ? _commandRose : _commandMint;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 68),
+          child: Ink(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.045),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: urgent
+                    ? _commandRose.withValues(alpha: 0.3)
+                    : Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Icon(icon, color: accent, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.56),
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white.withValues(alpha: 0.38),
+                      size: 16,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color:
+                        urgent ? accent : Colors.white.withValues(alpha: 0.9),
+                    fontSize: 12,
+                    height: 1.16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PrimaryActionCard extends StatelessWidget {
+  const _PrimaryActionCard({
+    required this.snapshot,
+    required this.onDismiss,
+  });
+
+  final CreatorCommandSnapshot snapshot;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -671,19 +931,23 @@ class _PrimaryActionCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _executePrimaryAction(context, snapshot),
+        onTap: () => _executePrimaryAction(
+          context,
+          snapshot,
+          onDismiss: onDismiss,
+        ),
         borderRadius: BorderRadius.circular(12),
         child: Ink(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: urgent
-                ? const Color(0xFF3B1117).withValues(alpha: 0.82)
-                : const Color(0xFF10223A).withValues(alpha: 0.78),
+                ? _commandRose.withValues(alpha: 0.16)
+                : _commandTeal.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: urgent
-                  ? const Color(0xFFFCA5A5).withValues(alpha: 0.34)
-                  : const Color(0xFF60A5FA).withValues(alpha: 0.28),
+                  ? _commandRose.withValues(alpha: 0.34)
+                  : _commandTeal.withValues(alpha: 0.3),
             ),
           ),
           child: Row(
@@ -699,7 +963,7 @@ class _PrimaryActionCard extends StatelessWidget {
                 ),
                 child: Icon(
                   _primaryActionIcon(snapshot),
-                  color: urgent ? const Color(0xFFFCA5A5) : Colors.white,
+                  color: urgent ? _commandRose : _commandMint,
                   size: 18,
                 ),
               ),
@@ -790,9 +1054,9 @@ class _ExpandedCommandCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _GlassShell(
-      width: 320,
+      width: 334,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
+        padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -801,116 +1065,26 @@ class _ExpandedCommandCard extends StatelessWidget {
               snapshot: snapshot,
               onDismiss: onDismiss,
             ),
-            const SizedBox(height: 8),
-            _CreatorBriefCard(snapshot: snapshot),
-            const SizedBox(height: 8),
-            _PrimaryActionCard(snapshot: snapshot),
-            const SizedBox(height: 8),
-            _QuickCommandRow(snapshot: snapshot),
-            const SizedBox(height: 8),
-            _ActionStatusBlock(snapshot: snapshot),
+            const SizedBox(height: 10),
+            _CommandScoreHero(snapshot: snapshot),
+            const SizedBox(height: 10),
+            _PrimaryActionCard(
+              snapshot: snapshot,
+              onDismiss: onDismiss,
+            ),
+            const SizedBox(height: 10),
+            _CommandMetricGrid(
+              snapshot: snapshot,
+              onDismiss: onDismiss,
+            ),
+            const SizedBox(height: 10),
+            _QuickCommandRow(
+              snapshot: snapshot,
+              onDismiss: onDismiss,
+            ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _ActionStatusBlock extends StatelessWidget {
-  const _ActionStatusBlock({required this.snapshot});
-
-  final CreatorCommandSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final String dueLabel;
-    if (snapshot.nextPostDueAt == null) {
-      dueLabel = 'No video post scheduled';
-    } else {
-      final TimeOfDay time =
-          TimeOfDay.fromDateTime(snapshot.nextPostDueAt!.toLocal());
-      final MaterialLocalizations l10n = MaterialLocalizations.of(context);
-      dueLabel =
-          '${l10n.formatFullDate(snapshot.nextPostDueAt!.toLocal())} ${l10n.formatTimeOfDay(time)}';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: snapshot.nextPostOverdue
-              ? const Color(0xFFF97373).withValues(alpha: 0.4)
-              : Colors.white.withValues(alpha: 0.08),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          _StatusRow(
-            label: snapshot.nextPostOverdue ? 'Due' : 'Next',
-            value: dueLabel,
-            highlight: snapshot.nextPostOverdue,
-          ),
-          const SizedBox(height: 6),
-          _StatusRow(
-            label: 'Due alerts',
-            value: snapshot.alertCount > 0 ? '${snapshot.alertCount}' : '0',
-          ),
-          const SizedBox(height: 6),
-          _StatusRow(
-            label: 'Queue',
-            value: snapshot.scheduledQueueCount > 0
-                ? '${snapshot.scheduledQueueCount} scheduled'
-                : '0 scheduled',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusRow extends StatelessWidget {
-  const _StatusRow({
-    required this.label,
-    required this.value,
-    this.highlight = false,
-  });
-
-  final String label;
-  final String value;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color = highlight ? const Color(0xFFF97373) : Colors.white;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(
-          width: 72,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color.withValues(alpha: 0.92),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              color: color.withValues(alpha: 0.86),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -969,16 +1143,21 @@ class _GlassShell extends StatelessWidget {
         child: Container(
           width: width,
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.92),
+            color: _commandInk.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: _commandTeal.withValues(alpha: 0.16),
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.22),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: _commandAmber.withValues(alpha: 0.06),
+                blurRadius: 28,
+                offset: const Offset(0, 8),
               ),
             ],
           ),

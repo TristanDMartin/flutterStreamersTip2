@@ -7,6 +7,7 @@ import '../models/message.dart' as app_message;
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
 import 'progression_service.dart';
+import 'public_profile_firestore.dart';
 
 class ChatServiceOptimized {
   static final ChatServiceOptimized _instance =
@@ -217,48 +218,23 @@ class ChatServiceOptimized {
     }
   }
 
-  /// Get user info
+  /// Get user info (publicUsers first)
   Future<Map<String, dynamic>?> getUserInfo(String userId) async {
     try {
-      final DocumentSnapshot<Map<String, dynamic>> userDoc =
-          await _firestore.collection('users').doc(userId).get();
-      if (userDoc.exists) {
-        return userDoc.data();
-      }
-      final DocumentSnapshot<Map<String, dynamic>> publicUserDoc =
-          await _firestore.collection('publicUsers').doc(userId).get();
-      if (publicUserDoc.exists) {
-        return publicUserDoc.data();
-      }
-      final QuerySnapshot<Map<String, dynamic>> usersByUid = await _firestore
-          .collection('users')
-          .where('uid', isEqualTo: userId)
-          .limit(1)
-          .get();
-      if (usersByUid.docs.isNotEmpty) {
-        return usersByUid.docs.first.data();
-      }
-      final QuerySnapshot<Map<String, dynamic>> usersById = await _firestore
-          .collection('users')
-          .where('id', isEqualTo: userId)
-          .limit(1)
-          .get();
-      if (usersById.docs.isNotEmpty) {
-        return usersById.docs.first.data();
-      }
-      final QuerySnapshot<Map<String, dynamic>> publicByUid = await _firestore
-          .collection('publicUsers')
-          .where('uid', isEqualTo: userId)
-          .limit(1)
-          .get();
-      if (publicByUid.docs.isNotEmpty) {
-        return publicByUid.docs.first.data();
-      }
-      return <String, dynamic>{};
+      return await PublicProfileFirestore.instance.getProfileMap(userId);
     } catch (e) {
-      // appLog('Error getting user info: $e');
       return null;
     }
+  }
+
+  /// Listen to user status (public mirror for peers)
+  Stream<Map<String, dynamic>?> listenToUserStatus(String userId) {
+    return PublicProfileFirestore.instance.watchProfile(userId).map((snapshot) {
+      if (snapshot.exists) {
+        return snapshot.data();
+      }
+      return null;
+    });
   }
 
   /// Listen to messages in real-time
@@ -276,21 +252,7 @@ class ChatServiceOptimized {
         final message = _mapMessage(doc.id, doc.data());
         messages.add(message);
       }
-      return messages.reversed.toList(); // Return in chronological order
-    });
-  }
-
-  /// Listen to user status
-  Stream<Map<String, dynamic>?> listenToUserStatus(String userId) {
-    return _firestore
-        .collection('users')
-        .doc(userId)
-        .snapshots()
-        .map((snapshot) {
-      if (snapshot.exists) {
-        return snapshot.data();
-      }
-      return null;
+      return messages.reversed.toList();
     });
   }
 

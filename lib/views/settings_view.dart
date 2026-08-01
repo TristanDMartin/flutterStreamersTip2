@@ -102,16 +102,16 @@ class _SettingsViewState extends State<SettingsView> {
                             onTap: () =>
                                 _navigateToPage(context, 'Manage Account'),
                           ),
-                          _buildSettingsItem(
-                            context,
-                            icon: Icons.link,
-                            title: 'Linked Platforms',
-                            subtitle: FeatureFlags.linkedPlatforms
-                                ? 'Reconnect YouTube, TikTok, Instagram, and more'
-                                : 'Coming soon — connect destinations for cross-posting',
-                            onTap: () =>
-                                _navigateToPage(context, 'Linked Platforms'),
-                          ),
+                          if (FeatureFlags.linkedPlatforms)
+                            _buildSettingsItem(
+                              context,
+                              icon: Icons.link,
+                              title: 'Linked Platforms',
+                              subtitle:
+                                  'Reconnect YouTube, TikTok, Instagram, and more',
+                              onTap: () =>
+                                  _navigateToPage(context, 'Linked Platforms'),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 24),

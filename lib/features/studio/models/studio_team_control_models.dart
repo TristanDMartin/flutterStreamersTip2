@@ -49,12 +49,30 @@ class StudioApprovalItem {
     required this.title,
     required this.kind,
     required this.href,
+    this.status = 'pending_approval',
+    this.source = 'approval_request',
+    this.contentVersionId,
+    this.priority,
+    this.targetId,
+    this.targetType,
+    this.createdAt,
   });
 
   final String id;
   final String title;
   final String kind;
   final String href;
+  final String status;
+  final String source;
+  final String? contentVersionId;
+  final String? priority;
+  final String? targetId;
+  final String? targetType;
+  final String? createdAt;
+
+  bool get canOpenReview =>
+      source == 'approval_request' ||
+      (contentVersionId != null && contentVersionId!.isNotEmpty);
 
   factory StudioApprovalItem.fromJson(Map<String, dynamic> raw) {
     return StudioApprovalItem(
@@ -62,6 +80,16 @@ class StudioApprovalItem {
       title: _str(raw['title'], 'Pending approval'),
       kind: _str(raw['kind'], 'agent_plan'),
       href: _str(raw['href'], '/tippy'),
+      status: _str(raw['status'], 'pending_approval'),
+      source: _str(raw['source'], 'approval_request'),
+      contentVersionId: raw['contentVersionId'] is String
+          ? raw['contentVersionId'] as String
+          : null,
+      priority: raw['priority'] is String ? raw['priority'] as String : null,
+      targetId: raw['targetId'] is String ? raw['targetId'] as String : null,
+      targetType:
+          raw['targetType'] is String ? raw['targetType'] as String : null,
+      createdAt: raw['createdAt'] is String ? raw['createdAt'] as String : null,
     );
   }
 }
@@ -97,6 +125,7 @@ class StudioTeamControl {
     required this.members,
     required this.assignments,
     required this.approvals,
+    required this.myApprovals,
     required this.automationSummary,
     required this.automationActive,
     required this.exportEntitled,
@@ -108,14 +137,17 @@ class StudioTeamControl {
     required this.postsPublishedThisWeek,
     required this.targetPostsPerWeek,
     required this.previews,
+    this.workspaceId,
   });
 
   final bool entitled;
+  final String? workspaceId;
   final int activeCount;
   final int limit;
   final List<StudioTeamMemberSummary> members;
   final List<StudioAssignmentItem> assignments;
   final List<StudioApprovalItem> approvals;
+  final List<StudioApprovalItem> myApprovals;
   final String automationSummary;
   final bool automationActive;
   final bool exportEntitled;
@@ -127,6 +159,14 @@ class StudioTeamControl {
   final int postsPublishedThisWeek;
   final int? targetPostsPerWeek;
   final List<StudioTeamPreview> previews;
+
+  /// Prefer actor inbox; fall back to workspace approvals list.
+  List<StudioApprovalItem> get reviewQueue {
+    if (myApprovals.isNotEmpty) {
+      return myApprovals;
+    }
+    return approvals;
+  }
 
   factory StudioTeamControl.fromJson(Map<String, dynamic> raw) {
     final Map<String, dynamic> team =
@@ -145,14 +185,22 @@ class StudioTeamControl {
         raw['campaign'] is Map<String, dynamic>
             ? raw['campaign'] as Map<String, dynamic>
             : <String, dynamic>{};
+    final List<StudioApprovalItem> approvals =
+        _mapList(raw['approvals'], StudioApprovalItem.fromJson);
+    final List<StudioApprovalItem> myApprovals =
+        _mapList(raw['myApprovals'], StudioApprovalItem.fromJson);
 
     return StudioTeamControl(
       entitled: raw['entitled'] == true,
+      workspaceId: raw['workspaceId'] is String
+          ? raw['workspaceId'] as String
+          : null,
       activeCount: _int(team['activeCount'], 0),
       limit: _int(team['limit'], 0),
       members: _mapList(team['members'], StudioTeamMemberSummary.fromJson),
       assignments: _mapList(raw['assignments'], StudioAssignmentItem.fromJson),
-      approvals: _mapList(raw['approvals'], StudioApprovalItem.fromJson),
+      approvals: approvals,
+      myApprovals: myApprovals,
       automationSummary: _str(
         automation['summary'],
         'Automation status unavailable.',

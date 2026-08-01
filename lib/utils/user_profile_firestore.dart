@@ -9,6 +9,12 @@ abstract final class UserProfileFirestore {
   static const String usersCollection = 'users';
   static const String platformsField = 'platforms';
   static const String calendarEventsField = 'calendarEvents';
+  /// Phase 4 read-only projection rebuilt from contentItems.
+  static const String contentPlanProfileCalendarEventsField =
+      'contentPlanProfileCalendarEvents';
+  /// Phase 4 read-only projection rebuilt from contentItems.
+  static const String contentPlanStreamerCalendarEventsField =
+      'contentPlanStreamerCalendarEvents';
   static const String connectedPlatformsLegacyField = 'connectedPlatforms';
   static const String connectedPlatformsSubcollection = 'connectedPlatforms';
   static const String contentPlansSubcollection = 'contentPlans';
@@ -23,6 +29,12 @@ abstract final class UserProfileFirestore {
 
   static String contentPlansReadPath(String uid) =>
       '$usersCollection/$uid/$contentPlansSubcollection';
+
+  static String profileCalendarProjectionPath(String uid) =>
+      '$usersCollection/$uid.$contentPlanProfileCalendarEventsField';
+
+  static String streamerCalendarProjectionPath(String uid) =>
+      '$usersCollection/$uid.$contentPlanStreamerCalendarEventsField';
 
   static void logPlatformSave({
     required String uid,
@@ -87,6 +99,14 @@ abstract final class UserProfileFirestore {
     }
     if (fresh.containsKey(calendarEventsField)) {
       base[calendarEventsField] = fresh[calendarEventsField];
+    }
+    if (fresh.containsKey(contentPlanProfileCalendarEventsField)) {
+      base[contentPlanProfileCalendarEventsField] =
+          fresh[contentPlanProfileCalendarEventsField];
+    }
+    if (fresh.containsKey(contentPlanStreamerCalendarEventsField)) {
+      base[contentPlanStreamerCalendarEventsField] =
+          fresh[contentPlanStreamerCalendarEventsField];
     }
     final String? uid = (fresh['uid'] ?? fresh['id'] ?? base['uid'] ?? base['id'])
         ?.toString();
@@ -202,10 +222,32 @@ abstract final class UserProfileFirestore {
   static List<CalendarEvent> parseCalendarEventsFromUserData(
     Map<String, dynamic>? userData,
   ) {
-    if (userData == null) {
-      return <CalendarEvent>[];
-    }
-    final Object? raw = userData[calendarEventsField];
+    return _parseCalendarEventList(
+      userData == null ? null : userData[calendarEventsField],
+    );
+  }
+
+  /// Phase 4: profile calendar projection (`contentPlanProfileCalendarEvents`).
+  static List<CalendarEvent> parseProfileCalendarProjection(
+    Map<String, dynamic>? userData,
+  ) {
+    return _parseCalendarEventList(
+      userData == null ? null : userData[contentPlanProfileCalendarEventsField],
+    );
+  }
+
+  /// Phase 4: streamer calendar projection (`contentPlanStreamerCalendarEvents`).
+  static List<CalendarEvent> parseStreamerCalendarProjection(
+    Map<String, dynamic>? userData,
+  ) {
+    return _parseCalendarEventList(
+      userData == null
+          ? null
+          : userData[contentPlanStreamerCalendarEventsField],
+    );
+  }
+
+  static List<CalendarEvent> _parseCalendarEventList(Object? raw) {
     if (raw is! List) {
       return <CalendarEvent>[];
     }
@@ -245,14 +287,17 @@ abstract final class UserProfileFirestore {
     return events;
   }
 
-  /// Read-only: map Tippy / content planner docs into calendar rows for display.
+  /// Read-only fallback: map Tippy / content planner docs into calendar rows.
+  /// Prefer [parseProfileCalendarProjection] when mirrors are present (Phase 4).
+  /// Event ids match website mirrors: `cp-{planId}-{itemId}`.
   static List<CalendarEvent> calendarEventsFromContentPlanDocs(
     Iterable<Map<String, dynamic>> planDocs,
   ) {
     final List<CalendarEvent> derived = <CalendarEvent>[];
     for (final Map<String, dynamic> plan in planDocs) {
       final String planId = plan['id']?.toString() ?? '';
-      final String planTitle = (plan['title']?.toString() ?? 'Content plan').trim();
+      final String planTitle =
+          (plan['title']?.toString() ?? 'Content plan').trim();
       final Object? itemsRaw = plan['items'];
       if (itemsRaw is! List) {
         final DateTime? planDate = _parseEventDate(
@@ -261,7 +306,7 @@ abstract final class UserProfileFirestore {
         if (planDate != null && planTitle.isNotEmpty) {
           derived.add(
             CalendarEvent(
-              id: 'plan_${planId}_root',
+              id: planId.isEmpty ? 'plan_root' : 'cp-$planId-root',
               title: planTitle,
               description: (plan['description']?.toString() ?? '').trim(),
               date: planDate,
@@ -270,55 +315,69 @@ abstract final class UserProfileFirestore {
         }
         continue;
       }
-      int itemIndex = 0;
       for (final Object? itemRaw in itemsRaw) {
         final Map<String, dynamic>? item = _asMap(itemRaw);
         if (item == null) {
-          itemIndex++;
+          continue;
+        }
+        final String itemId = (item['id']?.toString() ?? '').trim();
+        if (itemId.isEmpty || planId.isEmpty) {
           continue;
         }
         final String itemTitle =
             (item['title']?.toString() ?? planTitle).trim();
-        final Object? platformsRaw = item['platforms'];
-        if (platformsRaw is List && platformsRaw.isNotEmpty) {
-          for (final Object? platRaw in platformsRaw) {
-            final Map<String, dynamic>? plat = _asMap(platRaw);
-            final DateTime? when = _parseEventDate(plat?['scheduledAt']);
-            if (when == null || itemTitle.isEmpty) {
-              continue;
-            }
-            final String platName = plat?['platform']?.toString() ?? '';
-            derived.add(
-              CalendarEvent(
-                id: 'plan_${planId}_${itemIndex}_$platName',
-                title: itemTitle,
-                description: platName.isEmpty
-                    ? 'Tippy content plan'
-                    : 'Tippy · $platName',
-                date: when,
-              ),
-            );
-          }
-        } else {
-          final DateTime? when = _parseEventDate(
-            item['scheduledAt'] ?? plan['scheduledAt'],
-          );
-          if (when != null && itemTitle.isNotEmpty) {
-            derived.add(
-              CalendarEvent(
-                id: 'plan_${planId}_$itemIndex',
-                title: itemTitle,
-                description: 'Tippy content plan',
-                date: when,
-              ),
-            );
-          }
+        final String profileVis =
+            (item['profileCalendar']?.toString() ?? 'public').toLowerCase();
+        if (profileVis == 'hidden') {
+          continue;
         }
-        itemIndex++;
+        final Object? platformsRaw = item['platforms'];
+        DateTime? when;
+        String platName = '';
+        if (platformsRaw is List && platformsRaw.isNotEmpty) {
+          final Map<String, dynamic>? plat = _asMap(platformsRaw.first);
+          when = _parseEventDate(plat?['scheduledAt']);
+          platName = plat?['platform']?.toString() ?? '';
+        } else {
+          when = _parseEventDate(item['scheduledAt'] ?? plan['scheduledAt']);
+        }
+        if (when == null || itemTitle.isEmpty) {
+          continue;
+        }
+        derived.add(
+          CalendarEvent(
+            id: 'cp-$planId-$itemId',
+            title: itemTitle,
+            description: platName.isEmpty
+                ? 'Content plan'
+                : 'Content plan · $platName',
+            date: when,
+          ),
+        );
       }
     }
     derived.sort((CalendarEvent a, CalendarEvent b) => a.date.compareTo(b.date));
     return derived;
+  }
+
+  /// Parse website-style `cp-{planId}-{itemId}` calendar event ids.
+  static ({String planId, String itemId})? parseContentPlanEventRef(
+    String eventId,
+  ) {
+    final String id = eventId.trim();
+    if (!id.startsWith('cp-')) {
+      return null;
+    }
+    final RegExpMatch? match = RegExp(r'^cp-([A-Za-z0-9_-]+)-(.+)$').firstMatch(id);
+    if (match == null) {
+      return null;
+    }
+    final String planId = match.group(1) ?? '';
+    final String itemId = match.group(2) ?? '';
+    if (planId.isEmpty || itemId.isEmpty || itemId == 'root') {
+      return null;
+    }
+    return (planId: planId, itemId: itemId);
   }
 
   static List<CalendarEvent> mergeCalendarEventLists(

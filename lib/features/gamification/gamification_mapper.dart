@@ -31,7 +31,7 @@ class GamificationMapper {
     // progressionSummary is onboarding rollup only — never let its XP/level
     // override global gamification / state (website + app must match).
     final Map<String, dynamic> progressMap = <String, dynamic>{
-      if (gamMap != null) ...gamMap,
+      if (gamMap != null) ..._progressWithoutInventedScore(gamMap),
       ...topLevelProgress,
       if (summaryMap != null) ..._progressFromProgressionSummary(summaryMap),
       if (stateMap != null) ..._progressFromGamificationState(stateMap),
@@ -141,7 +141,6 @@ class GamificationMapper {
     }
     final double? score = _readDouble(state, <String>[
       'creatorScore',
-      'consistencyScore',
       'creator_score',
     ]);
     if (score != null) {
@@ -255,6 +254,18 @@ class GamificationMapper {
     return out;
   }
 
+  /// Legacy `users/{uid}.gamification` may carry a stale `creatorScore`.
+  /// Prefer Worker `gamification/state` / summary for score; keep XP/level/streak.
+  static Map<String, dynamic> _progressWithoutInventedScore(
+    Map<String, dynamic> gamMap,
+  ) {
+    final Map<String, dynamic> out = Map<String, dynamic>.from(gamMap);
+    out.remove('creatorScore');
+    out.remove('creator_score');
+    out.remove('consistencyScore');
+    return out;
+  }
+
   static GamificationSummaryModel _mergeWithHistoricalFallback(
     GamificationSummaryModel existing,
     GamificationSummaryModel historical,
@@ -268,7 +279,22 @@ class GamificationMapper {
       return existing;
     }
 
-    return historical;
+    // Never adopt a client-invented historical creatorScore.
+    return GamificationSummaryModel(
+      level: historical.level,
+      totalXp: historical.totalXp,
+      streakDays: historical.streakDays,
+      creatorScore: 0,
+      rankTitle: historical.rankTitle,
+      streakStatus: historical.streakStatus,
+      streakLabel: historical.streakLabel,
+      lastActiveDate: historical.lastActiveDate,
+      nextActionHint: historical.nextActionHint,
+      lastQualifiedActivityAt: historical.lastQualifiedActivityAt,
+      serverXpInCurrentLevel: historical.serverXpInCurrentLevel,
+      serverXpToNextLevel: historical.serverXpToNextLevel,
+      serverLevelProgressPct: historical.serverLevelProgressPct,
+    );
   }
 
   static List<DailyMissionModel> _parseMissionList(Map<String, dynamic> data) {
@@ -323,10 +349,7 @@ class GamificationMapper {
 
     int level = GamificationConstants.levelFromTotalXp(totalXp);
 
-    final double creatorScore = (postCount * 8) +
-        (platformCount * 6) +
-        (followerCount / 10) +
-        (followingCount / 20);
+    final double creatorScore = 0;
 
     String? nextActionHint;
     if (!profileComplete) {

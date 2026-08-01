@@ -60,7 +60,6 @@ class _EnhancedLikeButtonState extends ConsumerState<EnhancedLikeButton>
   late Animation<double> _sparkleScaleAnimation;
   late Animation<double> _sparkleOpacityAnimation;
 
-  bool _isAnimating = false;
   bool _isProcessing = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
       _videoStatsSubscription;
@@ -195,28 +194,17 @@ class _EnhancedLikeButtonState extends ConsumerState<EnhancedLikeButton>
 
   /// Handle like button tap with debouncing and animations
   Future<void> _handleLike() async {
-    debugPrint(
-        '🎯 EnhancedLikeButton: _handleLike() called for video ${widget.videoId}');
-
-    // Debounce rapid taps
-    final now = DateTime.now();
+    final DateTime now = DateTime.now();
     if (_lastTapTime != null &&
         now.difference(_lastTapTime!) < _debounceDuration) {
-      debugPrint('⏱️ EnhancedLikeButton: Debounced (too fast)');
       return;
     }
     _lastTapTime = now;
-
-    if (_isAnimating || _isProcessing) {
-      debugPrint('⏸️ EnhancedLikeButton: Already animating/processing');
+    if (_isProcessing) {
       return;
     }
-
-    _isAnimating = true;
     _isProcessing = true;
-
     final VideoLikeState before = ref.read(videoLikeProvider(widget.videoId));
-
     try {
       HapticFeedback.mediumImpact();
       ref
@@ -224,18 +212,14 @@ class _EnhancedLikeButtonState extends ConsumerState<EnhancedLikeButton>
           .toggleOptimistic(source: widget.source ?? 'button_tap');
       widget.onLikeChanged?.call();
       final VideoLikeState after = ref.read(videoLikeProvider(widget.videoId));
-      await _playLikeAnimation(isLiked: after.isLiked);
+      // Never block the next tap on animation completion.
+      unawaited(_playLikeAnimation(isLiked: after.isLiked));
     } catch (e) {
       ref.read(videoLikeProvider(widget.videoId).notifier).restoreState(before);
       HapticFeedback.heavyImpact();
       debugPrint('Like operation failed, rolled back: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isAnimating = false;
-          _isProcessing = false;
-        });
-      }
+      _isProcessing = false;
     }
   }
 
@@ -279,8 +263,10 @@ class _EnhancedLikeButtonState extends ConsumerState<EnhancedLikeButton>
         button: true,
         onTap: _handleLike,
         child: GestureDetector(
-          onTap: _handleLike,
-          behavior: HitTestBehavior.translucent,
+          onTapDown: (_) {
+            unawaited(_handleLike());
+          },
+          behavior: HitTestBehavior.opaque,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.center,

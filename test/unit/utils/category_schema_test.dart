@@ -2,6 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/utils/category_schema.dart';
 
 void main() {
+  group('normalizeCategorySlug', () {
+    test('maps website Other/Education labels to canonical slugs', () {
+      expect(normalizeCategorySlug('Other'), 'general');
+      expect(normalizeCategorySlug('Education'), 'tutorials');
+      expect(normalizeCategorySlug('Gaming'), 'gaming');
+    });
+  });
+
   group('buildCanonicalCategoryFields', () {
     test('defaults empty to general with categoryName', () {
       final Map<String, dynamic> fields =

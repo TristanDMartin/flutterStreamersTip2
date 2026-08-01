@@ -7,6 +7,7 @@ import '../../models/creator_command_snapshot.dart';
 import '../../providers/creator_command_provider.dart';
 import '../../routing/app_navigator.dart';
 import 'content_plan_detail_view.dart';
+import 'content_planning_contract.dart';
 import 'content_planning_models.dart';
 import 'content_planning_provider.dart';
 import '../../components/onboarding/contextual_tip_overlay.dart';
@@ -16,8 +17,66 @@ EdgeInsets _plannerScrollPadding(BuildContext context) {
   return EdgeInsets.fromLTRB(16, 8, 16, 32 + bottomInset);
 }
 
+DateTime? _planNextDue(ContentPlan plan) {
+  final List<DateTime> candidates = <DateTime>[];
+  if (plan.scheduledAt != null) {
+    candidates.add(plan.scheduledAt!);
+  }
+  for (final ContentPlanItem item in plan.items) {
+    final DateTime? at = item.earliestScheduledAt;
+    if (at != null && item.isQueuedSchedule) {
+      candidates.add(at);
+    }
+  }
+  if (candidates.isEmpty) {
+    return null;
+  }
+  candidates.sort((DateTime a, DateTime b) => a.compareTo(b));
+  return candidates.first;
+}
+
+bool _isSameCalendarDay(DateTime a, DateTime b) {
+  final DateTime la = a.toLocal();
+  final DateTime lb = b.toLocal();
+  return la.year == lb.year && la.month == lb.month && la.day == lb.day;
+}
+
+bool _isWithinNextDays(DateTime value, DateTime now, int days) {
+  final DateTime local = value.toLocal();
+  final DateTime start = DateTime(now.year, now.month, now.day);
+  final DateTime end = start.add(Duration(days: days));
+  return !local.isBefore(start) && local.isBefore(end);
+}
+
+void _openPlanDetail(BuildContext context, ContentPlan plan) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (BuildContext ctx) => ContentPlanDetailView(plan: plan),
+    ),
+  );
+}
+
+enum ContentPlannerInitialScope {
+  today,
+  week,
+  ideas,
+  review,
+}
+
+enum _PlannerScope {
+  today,
+  week,
+  ideas,
+  review,
+}
+
 class ContentPlannerView extends ConsumerWidget {
-  const ContentPlannerView({super.key});
+  const ContentPlannerView({
+    super.key,
+    this.initialScope = ContentPlannerInitialScope.today,
+  });
+
+  final ContentPlannerInitialScope initialScope;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,6 +89,7 @@ class ContentPlannerView extends ConsumerWidget {
         return _PlannerScaffold(
           snapshot: snapshot,
           plansAsync: plansAsync,
+          initialScope: initialScope,
           onRefreshPlans: () => ref.invalidate(contentPlansProvider),
         );
       },
@@ -47,11 +107,13 @@ class _PlannerScaffold extends StatefulWidget {
   const _PlannerScaffold({
     required this.snapshot,
     required this.plansAsync,
+    required this.initialScope,
     required this.onRefreshPlans,
   });
 
   final CreatorCommandSnapshot? snapshot;
   final AsyncValue<List<ContentPlan>> plansAsync;
+  final ContentPlannerInitialScope initialScope;
   final VoidCallback onRefreshPlans;
 
   @override
@@ -59,9 +121,17 @@ class _PlannerScaffold extends StatefulWidget {
 }
 
 class _PlannerScaffoldState extends State<_PlannerScaffold> {
+  late _PlannerScope _scope;
+
   @override
   void initState() {
     super.initState();
+    _scope = switch (widget.initialScope) {
+      ContentPlannerInitialScope.today => _PlannerScope.today,
+      ContentPlannerInitialScope.week => _PlannerScope.week,
+      ContentPlannerInitialScope.ideas => _PlannerScope.ideas,
+      ContentPlannerInitialScope.review => _PlannerScope.review,
+    };
     ContextualTipCatalog.scheduleFeatureTipOnMount(
       context: context,
       tip: ContextualTipCatalog.contentPlannerTip,
@@ -81,34 +151,77 @@ class _PlannerScaffoldState extends State<_PlannerScaffold> {
     final List<ContentPlan> plans =
         widget.plansAsync.valueOrNull ?? const <ContentPlan>[];
     final DateTime now = DateTime.now();
-    final List<ContentPlan> scheduledPlans = plans
-        .where((ContentPlan plan) =>
-            plan.status == 'scheduled' &&
-            plan.scheduledAt != null &&
-            plan.scheduledAt!.isAfter(now))
-        .toList()
-      ..sort((ContentPlan a, ContentPlan b) =>
-          a.scheduledAt!.compareTo(b.scheduledAt!));
-    final List<ContentPlan> unscheduledIdeas = plans
-        .where((ContentPlan plan) =>
-            plan.scheduledAt == null &&
-            (plan.status == 'planned' ||
-                plan.status == 'draft' ||
-                plan.source == 'tippy_ai'))
-        .toList();
-    final List<ContentPlan> draftPlans = plans
-        .where((ContentPlan plan) =>
-            plan.status == 'draft' || plan.status == 'planned')
-        .toList();
-    final List<ContentPlan> needsReviewPlans = plans
-        .where((ContentPlan plan) =>
-            plan.status == 'needsReview' ||
-            (plan.caption ?? '').trim().isEmpty ||
-            (plan.platform ?? '').trim().isEmpty ||
-            plan.scheduledAt == null)
-        .toList();
+    final List<ContentPlan> scheduledPlans = plans.where((ContentPlan plan) {
+      final String status = normalizeContentItemStatus(plan.status);
+      if (plan.scheduledAt != null &&
+          plan.scheduledAt!.isAfter(now) &&
+          (status == 'scheduled' || status == 'publishing')) {
+        return true;
+      }
+      return plan.items.any(
+        (ContentPlanItem item) =>
+            item.isQueuedSchedule &&
+            item.earliestScheduledAt != null &&
+            item.earliestScheduledAt!.isAfter(now),
+      );
+    }).toList()
+      ..sort((ContentPlan a, ContentPlan b) {
+        final DateTime aTime =
+            _planNextDue(a) ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final DateTime bTime =
+            _planNextDue(b) ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return aTime.compareTo(bTime);
+      });
+    final List<ContentPlan> unscheduledIdeas = plans.where((ContentPlan plan) {
+      final String status = normalizeContentItemStatus(plan.status);
+      return plan.scheduledAt == null &&
+          (status == 'idea' ||
+              status == 'draft' ||
+              plan.source == 'tippy' ||
+              plan.source == 'tippy_ai');
+    }).toList();
+    final List<ContentPlan> todayPlans =
+        scheduledPlans.where((ContentPlan plan) {
+      final DateTime? due = _planNextDue(plan);
+      return due != null && _isSameCalendarDay(due, now);
+    }).toList(growable: false);
+    final List<ContentPlan> weekPlans =
+        scheduledPlans.where((ContentPlan plan) {
+      final DateTime? due = _planNextDue(plan);
+      return due != null && _isWithinNextDays(due, now, 7);
+    }).toList(growable: false);
+    final List<ContentPlan> draftPlans = plans.where((ContentPlan plan) {
+      final String status = normalizeContentItemStatus(plan.status);
+      return status == 'draft' || status == 'idea';
+    }).toList();
+    final List<ContentPlan> needsReviewPlans = plans.where((ContentPlan plan) {
+      final String status = normalizeContentItemStatus(plan.status);
+      return status == 'ready_for_review' ||
+          status == 'changes_requested' ||
+          (plan.caption ?? '').trim().isEmpty ||
+          (plan.platform ?? '').trim().isEmpty ||
+          plan.scheduledAt == null;
+    }).toList();
     final int draftPlanCount = draftPlans.length;
     final int needsReviewPlanCount = needsReviewPlans.length;
+    final List<ContentPlan> scopedPlans = switch (_scope) {
+      _PlannerScope.today => todayPlans,
+      _PlannerScope.week => weekPlans,
+      _PlannerScope.ideas => unscheduledIdeas,
+      _PlannerScope.review => needsReviewPlans,
+    };
+    final String scopedTitle = switch (_scope) {
+      _PlannerScope.today => 'Today',
+      _PlannerScope.week => 'This week',
+      _PlannerScope.ideas => 'Ideas',
+      _PlannerScope.review => 'Fix before posting',
+    };
+    final String scopedEmpty = switch (_scope) {
+      _PlannerScope.today => 'Nothing scheduled for today.',
+      _PlannerScope.week => 'No scheduled posts in the next 7 days.',
+      _PlannerScope.ideas => 'No unscheduled ideas yet.',
+      _PlannerScope.review => 'No plans need review.',
+    };
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -147,24 +260,50 @@ class _PlannerScaffoldState extends State<_PlannerScaffold> {
                 needsReviewPlanCount: needsReviewPlanCount,
               ),
               const SizedBox(height: 12),
-              _SchedulerEntryCard(card: card, text: text, muted: muted),
+              _PlannerPrimaryActions(card: card, text: text, muted: muted),
               const SizedBox(height: 12),
-              _PlansSection(
-                plansAsync: widget.plansAsync,
+              _PlannerScopeSelector(
+                scope: _scope,
+                todayCount: todayPlans.length,
+                weekCount: weekPlans.length,
+                ideaCount: unscheduledIdeas.length,
+                reviewCount: needsReviewPlans.length,
+                onChanged: (_PlannerScope scope) {
+                  setState(() => _scope = scope);
+                },
+              ),
+              const SizedBox(height: 12),
+              _PlanCollectionSection(
+                title: scopedTitle,
+                emptyMessage: scopedEmpty,
+                plans: scopedPlans,
                 card: card,
                 text: text,
                 muted: muted,
-                onRefresh: widget.onRefreshPlans,
+                accent: _scope == _PlannerScope.review
+                    ? const Color(0xFFEF4444)
+                    : null,
+                trailing: IconButton(
+                  tooltip: 'Refresh plans',
+                  onPressed: widget.onRefreshPlans,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
               ),
-              if (unscheduledIdeas.isNotEmpty) ...<Widget>[
+              if (needsReviewPlans.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 12),
-                _IdeasSection(
-                  plans: unscheduledIdeas,
+                _PlanCollectionSection(
+                  title: 'Fix before posting',
+                  emptyMessage: 'No plans need review.',
+                  plans: needsReviewPlans.take(3).toList(growable: false),
                   card: card,
                   text: text,
                   muted: muted,
+                  leadingIcon: Icons.priority_high_rounded,
+                  accent: const Color(0xFFEF4444),
                 ),
               ],
+              const SizedBox(height: 12),
+              _SchedulerEntryCard(card: card, text: text, muted: muted),
               const SizedBox(height: 12),
               Row(
                 children: <Widget>[
@@ -446,141 +585,223 @@ class _SchedulerEntryCard extends StatelessWidget {
   }
 }
 
-class _PlansSection extends StatelessWidget {
-  const _PlansSection({
-    required this.plansAsync,
+class _PlannerPrimaryActions extends StatelessWidget {
+  const _PlannerPrimaryActions({
     required this.card,
     required this.text,
     required this.muted,
-    required this.onRefresh,
   });
 
-  final AsyncValue<List<ContentPlan>> plansAsync;
   final Color card;
   final Color text;
   final Color muted;
-  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    return plansAsync.when(
-      data: (List<ContentPlan> plans) {
-        if (plans.isEmpty) {
-          return _PlansShell(
-            card: card,
-            text: text,
-            muted: muted,
-            title: 'Content plans',
-            trailing: IconButton(
-              tooltip: 'Refresh plans',
-              onPressed: onRefresh,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-            child: Text(
-              'Plans created by Tippy or streamerstip.com will appear here.',
-              style: TextStyle(
-                color: muted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          );
-        }
-        return _PlansShell(
-          card: card,
-          text: text,
-          muted: muted,
-          title: 'Content plans',
-          trailing: IconButton(
-            tooltip: 'Refresh plans',
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          child: Column(
-            children: plans.take(3).map((ContentPlan plan) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _PlanRow(
-                  plan: plan,
-                  text: text,
-                  muted: muted,
-                  onOpen: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (BuildContext ctx) =>
-                            ContentPlanDetailView(plan: plan),
-                      ),
-                    );
-                  },
-                ),
-              );
-            }).toList(growable: false),
-          ),
-        );
-      },
-      loading: () {
-        return _PlansShell(
-          card: card,
-          text: text,
-          muted: muted,
-          title: 'Content plans',
-          child: Row(
-            children: <Widget>[
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Syncing plans...',
-                style: TextStyle(
-                  color: muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: muted.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () => AppNavigator.openTippyChat(context),
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: const Text('Plan'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
-            ],
-          ),
-        );
-      },
-      error: (Object error, StackTrace stackTrace) {
-        return _PlansShell(
-          card: card,
-          text: text,
-          muted: muted,
-          title: 'Content plans',
-          trailing: IconButton(
-            tooltip: 'Retry plans',
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          child: Text(
-            'Could not sync plans from streamerstip.com.',
-            style: TextStyle(
-              color: muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
             ),
           ),
-        );
-      },
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => AppNavigator.openContentScheduler(context),
+              icon: const Icon(Icons.queue_play_next_rounded, size: 18),
+              label: Text(
+                'Queue',
+                style: TextStyle(color: text, fontWeight: FontWeight.w800),
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                side: BorderSide(color: muted.withValues(alpha: 0.2)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _IdeasSection extends StatelessWidget {
-  const _IdeasSection({
+class _PlannerScopeSelector extends StatelessWidget {
+  const _PlannerScopeSelector({
+    required this.scope,
+    required this.todayCount,
+    required this.weekCount,
+    required this.ideaCount,
+    required this.reviewCount,
+    required this.onChanged,
+  });
+
+  final _PlannerScope scope;
+  final int todayCount;
+  final int weekCount;
+  final int ideaCount;
+  final int reviewCount;
+  final ValueChanged<_PlannerScope> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: _PlannerScopeButton(
+            shell: shell,
+            selected: scope == _PlannerScope.today,
+            icon: Icons.today_rounded,
+            label: 'Today',
+            count: todayCount,
+            onTap: () => onChanged(_PlannerScope.today),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _PlannerScopeButton(
+            shell: shell,
+            selected: scope == _PlannerScope.week,
+            icon: Icons.date_range_rounded,
+            label: 'Week',
+            count: weekCount,
+            onTap: () => onChanged(_PlannerScope.week),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _PlannerScopeButton(
+            shell: shell,
+            selected: scope == _PlannerScope.ideas,
+            icon: Icons.lightbulb_outline_rounded,
+            label: 'Ideas',
+            count: ideaCount,
+            onTap: () => onChanged(_PlannerScope.ideas),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _PlannerScopeButton(
+            shell: shell,
+            selected: scope == _PlannerScope.review,
+            icon: Icons.priority_high_rounded,
+            label: 'Fix',
+            count: reviewCount,
+            accent: const Color(0xFFEF4444),
+            onTap: () => onChanged(_PlannerScope.review),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlannerScopeButton extends StatelessWidget {
+  const _PlannerScopeButton({
+    required this.shell,
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.onTap,
+    this.accent,
+  });
+
+  final StSupportShellStyle shell;
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final int count;
+  final VoidCallback onTap;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color selectedColor = accent ?? Theme.of(context).colorScheme.primary;
+    final Color fg = selected ? selectedColor : shell.muted;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          height: 58,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected
+                ? selectedColor.withValues(alpha: 0.13)
+                : shell.surfaceCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? selectedColor.withValues(alpha: 0.42)
+                  : shell.surfaceCardBorder,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, color: fg, size: 17),
+              const SizedBox(height: 3),
+              Text(
+                '$label $count',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanCollectionSection extends StatelessWidget {
+  const _PlanCollectionSection({
+    required this.title,
+    required this.emptyMessage,
     required this.plans,
     required this.card,
     required this.text,
     required this.muted,
+    this.accent,
+    this.trailing,
+    this.leadingIcon,
   });
 
+  final String title;
+  final String emptyMessage;
   final List<ContentPlan> plans;
   final Color card;
   final Color text;
   final Color muted;
+  final Color? accent;
+  final Widget? trailing;
+  final IconData? leadingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -588,34 +809,79 @@ class _IdeasSection extends StatelessWidget {
       card: card,
       text: text,
       muted: muted,
-      title: 'Ideas / Unscheduled',
-      trailing: Text(
-        '${plans.length}',
-        style: TextStyle(
-          color: muted,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-      child: Column(
-        children: plans.take(4).map((ContentPlan plan) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _PlanRow(
-              plan: plan,
+      title: title,
+      accent: accent,
+      trailing: trailing ??
+          Text(
+            '${plans.length}',
+            style: TextStyle(
+              color: accent ?? muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+      child: plans.isEmpty
+          ? _PlannerEmptyState(
+              message: emptyMessage,
               text: text,
               muted: muted,
-              onOpen: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (BuildContext ctx) =>
-                        ContentPlanDetailView(plan: plan),
+              icon: leadingIcon ?? Icons.event_note_rounded,
+            )
+          : Column(
+              children: plans.take(5).map((ContentPlan plan) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _PlanRow(
+                    plan: plan,
+                    text: text,
+                    muted: muted,
+                    leadingIcon: leadingIcon,
+                    onOpen: () => _openPlanDetail(context, plan),
                   ),
                 );
-              },
+              }).toList(growable: false),
             ),
-          );
-        }).toList(growable: false),
+    );
+  }
+}
+
+class _PlannerEmptyState extends StatelessWidget {
+  const _PlannerEmptyState({
+    required this.message,
+    required this.text,
+    required this.muted,
+    required this.icon,
+  });
+
+  final String message;
+  final Color text;
+  final Color muted;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+      decoration: BoxDecoration(
+        color: muted.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: muted.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        children: <Widget>[
+          Icon(icon, color: muted, size: 22),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: text.withValues(alpha: 0.82),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -629,6 +895,7 @@ class _PlansShell extends StatelessWidget {
     required this.title,
     required this.child,
     this.trailing,
+    this.accent,
   });
 
   final Color card;
@@ -637,6 +904,7 @@ class _PlansShell extends StatelessWidget {
   final String title;
   final Widget child;
   final Widget? trailing;
+  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
@@ -645,7 +913,10 @@ class _PlansShell extends StatelessWidget {
       decoration: BoxDecoration(
         color: card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: muted.withValues(alpha: 0.12)),
+        border: Border.all(
+          color:
+              (accent ?? muted).withValues(alpha: accent == null ? 0.12 : 0.36),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,7 +927,7 @@ class _PlansShell extends StatelessWidget {
                 child: Text(
                   title,
                   style: TextStyle(
-                    color: text,
+                    color: accent ?? text,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
@@ -679,12 +950,14 @@ class _PlanRow extends StatelessWidget {
     required this.text,
     required this.muted,
     required this.onOpen,
+    this.leadingIcon,
   });
 
   final ContentPlan plan;
   final Color text;
   final Color muted;
   final VoidCallback onOpen;
+  final IconData? leadingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -697,8 +970,8 @@ class _PlanRow extends StatelessWidget {
             : MaterialLocalizations.of(context).formatMediumDate(updated);
     final String subtitle = <String>[
       '${plan.itemCount} items',
-      plan.status,
-      if (plan.source == 'tippy_ai') 'Tippy AI',
+      contentItemStatusLabel(plan.status),
+      if (normalizeContentSource(plan.source) == 'tippy') 'Tippy',
       dateLabel,
     ].where((String value) => value.trim().isNotEmpty).join(' · ');
     return Material(
@@ -711,7 +984,7 @@ class _PlanRow extends StatelessWidget {
           child: Row(
             children: <Widget>[
               Icon(
-                Icons.view_timeline_rounded,
+                leadingIcon ?? Icons.view_timeline_rounded,
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 10),
@@ -1101,7 +1374,9 @@ class _ConsistencyPlansView extends StatelessWidget {
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final int scheduled = plans.where((p) => p.status == 'scheduled').length;
-    final int drafts = plans.where((p) => p.status == 'draft').length;
+    final int drafts = plans
+        .where((p) => normalizeContentItemStatus(p.status) == 'draft')
+        .length;
     final Set<String> platforms = plans
         .map((ContentPlan p) => p.platform ?? '')
         .where((String p) => p.trim().isNotEmpty)

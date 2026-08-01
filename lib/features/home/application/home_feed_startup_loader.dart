@@ -46,15 +46,20 @@ class HomeFeedStartupLoader {
   HomeFeedStartupLoader({
     required video_service.VideoService videoService,
     required HomeFeedWarmCache warmCache,
-    this.startupTimeout = const Duration(seconds: 6),
+    this.authWaitTimeout = const Duration(seconds: 12),
+    this.startupTimeout = const Duration(seconds: 20),
+    Future<String?> Function()? waitForSignedInUserId,
     void Function(String message)? log,
   })  : _videoService = videoService,
         _warmCache = warmCache,
+        _waitForSignedInUserId = waitForSignedInUserId,
         _log = log ?? _noopLog;
 
   final video_service.VideoService _videoService;
   final HomeFeedWarmCache _warmCache;
+  final Duration authWaitTimeout;
   final Duration startupTimeout;
+  final Future<String?> Function()? _waitForSignedInUserId;
   final void Function(String message) _log;
 
   List<HomeVideo>? peekMemoryWarmFeed() {
@@ -92,15 +97,36 @@ class HomeFeedStartupLoader {
     String? cacheUserId,
   }) async {
     _log('🚀 HomeProvider: Loading fresh startup feed before first playback...');
-    await _videoService
-        .loadAllVideos(source: 'home_startup')
-        .timeout(
-      startupTimeout,
-      onTimeout: () {
-        _log('⏰ HomeProvider: Video load timed out; ending startup wait');
-        throw TimeoutException('Fresh startup feed load timed out');
-      },
-    );
+    final String? signedInUserId = await _resolveSignedInUserId();
+    if (signedInUserId == null || signedInUserId.isEmpty) {
+      _log('⏳ HomeProvider: Auth not ready for startup feed load');
+      throw TimeoutException('Auth not ready for startup feed load');
+    }
+    try {
+      await _videoService
+          .loadAllVideos(source: 'home_startup')
+          .timeout(
+        startupTimeout,
+        onTimeout: () {
+          _log('⏰ HomeProvider: Video load timed out; ending startup wait');
+          throw TimeoutException('Fresh startup feed load timed out');
+        },
+      );
+    } on TimeoutException {
+      final List<HomeVideo> partialVideos = _videoService.getAllVideos();
+      if (partialVideos.isNotEmpty) {
+        _log(
+          '⚡ HomeProvider: Using ${partialVideos.length} videos after '
+          'startup timeout',
+        );
+        return HomeFeedStartupSuccess(
+          videos: partialVideos,
+          clearError: true,
+          cacheUserId: cacheUserId ?? signedInUserId,
+        );
+      }
+      rethrow;
+    }
     final List<HomeVideo> realVideos = _videoService.getAllVideos();
     _log('📱 Loaded ${realVideos.length} real videos from VideoService');
     if (realVideos.isEmpty) {
@@ -113,7 +139,7 @@ class HomeFeedStartupLoader {
     return HomeFeedStartupSuccess(
       videos: realVideos,
       clearError: true,
-      cacheUserId: cacheUserId,
+      cacheUserId: cacheUserId ?? signedInUserId,
     );
   }
 
@@ -153,6 +179,40 @@ class HomeFeedStartupLoader {
       videos: videos,
       nextCursor: nextCursor,
     );
+  }
+
+  Future<String?> _resolveSignedInUserId() async {
+    if (_waitForSignedInUserId != null) {
+      return _waitForSignedInUserId!();
+    }
+    final User? user = await waitForFirebaseSignedInUser(
+      timeout: authWaitTimeout,
+    );
+    return user?.uid;
+  }
+
+  static Future<User?> waitForFirebaseSignedInUser({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        return null;
+      }
+      final User? current = FirebaseAuth.instance.currentUser;
+      if (current != null) {
+        return current;
+      }
+      return await FirebaseAuth.instance
+          .authStateChanges()
+          .where((User? user) => user != null)
+          .map((User? user) => user!)
+          .first
+          .timeout(timeout);
+    } on TimeoutException {
+      return FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      return null;
+    }
   }
 
   static void _noopLog(String message) {}

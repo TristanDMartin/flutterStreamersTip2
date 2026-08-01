@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/connection_lite.dart';
 import 'progression_service.dart';
+import 'public_profile_firestore.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
 /// ConnectionsService - Handles fetching and caching user connections
@@ -210,13 +211,12 @@ class ConnectionsService {
           bool isOnline = connectionData['isOnline'] ??
               connectionData['onlineStatus'] == 'online';
 
-          // If connection data is incomplete, fetch from users collection
+          // If connection data is incomplete, fetch public profile
           if (handle.isEmpty || displayName.isEmpty || avatarUrl.isEmpty) {
-            final userDoc =
-                await _firestore.collection('users').doc(connectedUserId).get();
+            final userData = await PublicProfileFirestore.instance
+                .getProfileMap(connectedUserId);
 
-            if (userDoc.exists) {
-              final userData = userDoc.data()!;
+            if (userData != null) {
               handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
               displayName = displayName.isEmpty
                   ? (userData['displayName'] ?? userData['name'] ?? handle)
@@ -281,13 +281,12 @@ class ConnectionsService {
               relationshipData['avatarURL'] ??
               '';
 
-          // If relationship data is incomplete, fetch from users collection
+          // If relationship data is incomplete, fetch public profile
           if (handle.isEmpty || displayName.isEmpty) {
-            final userDoc =
-                await _firestore.collection('users').doc(connectedUserId).get();
+            final userData = await PublicProfileFirestore.instance
+                .getProfileMap(connectedUserId);
 
-            if (userDoc.exists) {
-              final userData = userDoc.data()!;
+            if (userData != null) {
               handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
               displayName = displayName.isEmpty
                   ? (userData['displayName'] ?? userData['name'] ?? handle)
@@ -345,13 +344,12 @@ class ConnectionsService {
               relationshipData['avatarURL'] ??
               '';
 
-          // If relationship data is incomplete, fetch from users collection
+          // If relationship data is incomplete, fetch public profile
           if (handle.isEmpty || displayName.isEmpty) {
-            final userDoc =
-                await _firestore.collection('users').doc(connectedUserId).get();
+            final userData = await PublicProfileFirestore.instance
+                .getProfileMap(connectedUserId);
 
-            if (userDoc.exists) {
-              final userData = userDoc.data()!;
+            if (userData != null) {
               handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
               displayName = displayName.isEmpty
                   ? (userData['displayName'] ?? userData['name'] ?? handle)
@@ -618,13 +616,12 @@ class ConnectionsService {
           secureLog(
               '🔍 ConnectionsService: Raw connection data: ${connectionData.keys.toList()}');
 
-          // If connection data is incomplete, fetch from users collection
+          // If connection data is incomplete, fetch public profile
           if (handle.isEmpty || displayName.isEmpty || avatarUrl.isEmpty) {
-            final userDoc =
-                await _firestore.collection('users').doc(connectedUserId).get();
+            final userData = await PublicProfileFirestore.instance
+                .getProfileMap(connectedUserId);
 
-            if (userDoc.exists) {
-              final userData = userDoc.data()!;
+            if (userData != null) {
               handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
               displayName = displayName.isEmpty
                   ? (userData['displayName'] ?? userData['name'] ?? handle)
@@ -699,13 +696,12 @@ class ConnectionsService {
               relationshipData['avatarURL'] ??
               '';
 
-          // If relationship data is incomplete, fetch from users collection
+          // If relationship data is incomplete, fetch public profile
           if (handle.isEmpty || displayName.isEmpty) {
-            final userDoc =
-                await _firestore.collection('users').doc(connectedUserId).get();
+            final userData = await PublicProfileFirestore.instance
+                .getProfileMap(connectedUserId);
 
-            if (userDoc.exists) {
-              final userData = userDoc.data()!;
+            if (userData != null) {
               handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
               displayName = displayName.isEmpty
                   ? (userData['displayName'] ?? userData['name'] ?? handle)
@@ -772,13 +768,12 @@ class ConnectionsService {
               relationshipData['avatarURL'] ??
               '';
 
-          // If relationship data is incomplete, fetch from users collection
+          // If relationship data is incomplete, fetch public profile
           if (handle.isEmpty || displayName.isEmpty) {
-            final userDoc =
-                await _firestore.collection('users').doc(connectedUserId).get();
+            final userData = await PublicProfileFirestore.instance
+                .getProfileMap(connectedUserId);
 
-            if (userDoc.exists) {
-              final userData = userDoc.data()!;
+            if (userData != null) {
               handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
               displayName = displayName.isEmpty
                   ? (userData['displayName'] ?? userData['name'] ?? handle)

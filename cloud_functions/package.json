@@ -18,6 +18,7 @@
     "test:rules:interactions": "node interaction_rules_test.js",
     "test:rules:follows": "node follows_rules_test.js",
     "test:rules:videos": "node videos_rules_test.js",
+    "test:rules:users-privacy": "cd .. && npx firebase-tools emulators:exec --only firestore --project demo-users-privacy \"node cloud_functions/users_privacy_rules_test.js\"",
     "test:e2e:follows": "node follows_e2e_test.js"
   },
   "engines": {

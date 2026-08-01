@@ -17,6 +17,7 @@ import '../models/user_count_fields.dart';
 import '../services/creator_cache_service.dart';
 import '../services/follows_service.dart';
 import '../services/logging_service.dart';
+import '../services/public_profile_firestore.dart';
 import '../utils/swallow_non_fatal.dart';
 import '../utils/discover_category_rules.dart';
 import '../utils/video_document_rules.dart';
@@ -493,12 +494,8 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     final TrendingCreator current = state.trendingCreators[idx];
     int nextCount = current.followerCount;
     try {
-      final DocumentSnapshot<Map<String, dynamic>> snap =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(creatorId)
-              .get();
-      final Map<String, dynamic>? data = snap.data();
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(creatorId);
       if (data != null) {
         nextCount = UserCountFields.readFollowersCount(data);
       } else {
@@ -581,7 +578,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
         // username prefix
         try {
           final qs1 = await db
-              .collection('users')
+              .collection('publicUsers')
               .orderBy('username')
               .startAt([q])
               .endAt(["$q\uf8ff"])
@@ -609,7 +606,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
         // displayName prefix
         try {
           final qs2 = await db
-              .collection('users')
+              .collection('publicUsers')
               .orderBy('displayName')
               .startAt([q])
               .endAt(["$q\uf8ff"])
@@ -720,7 +717,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
         // Search for hashtags in user profiles
         try {
           final qs1 = await db
-              .collection('users')
+              .collection('publicUsers')
               .where('hashtags', arrayContains: qLower)
               .limit(10)
               .get();

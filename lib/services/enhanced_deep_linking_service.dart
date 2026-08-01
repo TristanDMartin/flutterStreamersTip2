@@ -15,6 +15,7 @@ import '../utils/video_document_rules.dart';
 import '../widgets/player_screen.dart';
 import '../utils/sensitive_data_redactor.dart';
 import 'logging_service.dart';
+import 'public_profile_firestore.dart';
 
 class EnhancedDeepLinkingService {
   static final EnhancedDeepLinkingService _instance =
@@ -178,7 +179,7 @@ class EnhancedDeepLinkingService {
 
       // Find user by username
       final userQuery = await _firestore
-          .collection('users')
+          .collection('publicUsers')
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
@@ -331,20 +332,20 @@ class EnhancedDeepLinkingService {
         return;
       }
 
-      final userDoc =
-          await _firestore.collection('users').doc(identifier).get();
-      if (!userDoc.exists) {
+      final Map<String, dynamic>? userData =
+          await PublicProfileFirestore.instance.getProfileMap(identifier);
+      if (userData == null) {
         throw Exception('Profile not found');
       }
 
-      final user = _buildUser(userDoc.data()!, userDoc.id);
+      final user = _buildUser(userData, identifier);
 
       if (context.mounted) {
         Navigator.of(context).pushNamed(
           AppRoutes.profile,
           arguments: ProfileRouteArgs(
             user: user,
-            isCurrentUser: _auth.currentUser?.uid == userDoc.id,
+            isCurrentUser: _auth.currentUser?.uid == identifier,
           ),
         );
       }
@@ -410,9 +411,8 @@ class EnhancedDeepLinkingService {
       bool otherUserIsOnline = false;
 
       if (otherUserId != currentUser.uid) {
-        final otherUserDoc =
-            await _firestore.collection('users').doc(otherUserId).get();
-        final otherUserData = otherUserDoc.data();
+        final otherUserData =
+            await PublicProfileFirestore.instance.getProfileMap(otherUserId);
         if (otherUserData != null) {
           otherUserName = (otherUserData['displayName'] ??
                   otherUserData['username'] ??

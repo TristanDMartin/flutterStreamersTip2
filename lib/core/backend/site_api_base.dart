@@ -57,6 +57,21 @@ String siteStudioTeamControlUrl({String? base}) =>
 String siteStudioExportWeeklyUrl({String? base}) =>
     siteApiPath('/api/studio/export/weekly', base: base);
 
+String siteWorkspaceApprovalsUrl({String? base, String scope = 'queue'}) {
+  final String root = resolveSiteApiBase(explicitOverride: base);
+  return '$root/api/workspace/approvals?scope=${Uri.encodeQueryComponent(scope)}';
+}
+
+String siteWorkspaceApprovalUrl({
+  required String requestId,
+  String? base,
+}) {
+  return siteApiPath(
+    '/api/workspace/approvals/${Uri.encodeComponent(requestId)}',
+    base: base,
+  );
+}
+
 String siteTippyChatUrl({String? base}) =>
     siteApiPath('/api/tippy/chat', base: base);
 

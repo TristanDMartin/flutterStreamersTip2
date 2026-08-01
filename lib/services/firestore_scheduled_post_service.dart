@@ -1,5 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../features/content_planning/content_planning_api_client.dart';
+import '../features/content_planning/content_planning_contract.dart';
+import '../features/content_planning/publish_job_mapper.dart';
 import '../features/gamification/emit_gamification_event.dart';
 import '../features/gamification/gamification_event_types.dart';
 import '../models/scheduled_post.dart';
@@ -17,6 +20,65 @@ class FirestoreScheduledPostService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final ContentPlanningApiClient _contentPlanningApi = ContentPlanningApiClient();
+
+  /// Cutover PR2: Worker SoT (contentItems + publishJobs) first — fail closed.
+  Future<({
+    String planId,
+    String itemId,
+    String publishJobId,
+    String idempotencyKey,
+  })> _syncScheduledPostToCanonicalPlanner({
+    required String userId,
+    required String scheduledPostId,
+    required String title,
+    String? caption,
+    String? description,
+    String? videoId,
+    String? thumbnailUrl,
+    String? videoUrl,
+    required String status,
+    DateTime? scheduledAt,
+    String? timezone,
+    List<Map<String, dynamic>>? platforms,
+    String? notes,
+  }) async {
+    final String idempotencyKey =
+        publishIdempotencyKey(userId, scheduledPostId);
+    return _contentPlanningApi.syncScheduledPost(
+      userId: userId,
+      scheduledPostId: scheduledPostId,
+      title: title,
+      caption: caption,
+      description: description,
+      videoId: videoId,
+      thumbnailUrl: thumbnailUrl,
+      videoUrl: videoUrl,
+      status: status,
+      scheduledAt: scheduledAt,
+      timezone: timezone,
+      platforms: platforms,
+      notes: notes,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  Future<void> _deleteScheduledPostFromCanonicalPlanner({
+    required String userId,
+    required String scheduledPostId,
+  }) async {
+    await _contentPlanningApi.deleteSyncedScheduledPost(
+      userId: userId,
+      scheduledPostId: scheduledPostId,
+    );
+  }
+
+  CollectionReference<Map<String, dynamic>> _publishJobsRef(String uid) {
+    return _firestore
+        .collection('workspaces')
+        .doc(personalWorkspaceId(uid))
+        .collection('publishJobs');
+  }
 
   /// Save a scheduled post to Firestore
   Future<String> saveScheduledPost({
@@ -79,6 +141,10 @@ class FirestoreScheduledPostService {
         'visible': false,
         'allowComments': allowComments,
         'schedule': scheduleData,
+        'contentItemId': contentItemIdForScheduledPost(scheduledPostId),
+        'publishJobId': publishJobIdForScheduledPost(scheduledPostId),
+        'idempotencyKey':
+            publishIdempotencyKey(currentUser.uid, scheduledPostId),
         'platforms': platforms
             .map(
               (platform) => {
@@ -108,29 +174,51 @@ class FirestoreScheduledPostService {
         },
       };
 
+      // Cutover PR2: Worker SoT first (fail closed), then mirror scheduled_posts.
+      final ({
+        String planId,
+        String itemId,
+        String publishJobId,
+        String idempotencyKey,
+      }) syncResult = await _syncScheduledPostToCanonicalPlanner(
+        userId: currentUser.uid,
+        scheduledPostId: scheduledPostId,
+        title: caption.trim().isEmpty ? 'Scheduled post' : caption.trim(),
+        caption: caption,
+        description: metadata['description']?.toString(),
+        videoId: videoId,
+        thumbnailUrl: thumbnailUrl,
+        videoUrl: videoUrl,
+        status: PostStatus.scheduled.name,
+        scheduledAt: schedule.scheduledAtUtc,
+        timezone: schedule.timezone,
+        platforms: platforms
+            .map(
+              (PlatformConfig p) => <String, dynamic>{
+                'platform': p.key,
+                if (p.scheduledAtUtc != null)
+                  'scheduledAt': p.scheduledAtUtc!.toUtc().toIso8601String(),
+              },
+            )
+            .toList(growable: false),
+        notes: metadata['notes']?.toString(),
+      );
+
+      scheduledPostData['contentItemId'] = syncResult.itemId.isNotEmpty
+          ? syncResult.itemId
+          : contentItemIdForScheduledPost(scheduledPostId);
+      scheduledPostData['publishJobId'] = syncResult.publishJobId.isNotEmpty
+          ? syncResult.publishJobId
+          : publishJobIdForScheduledPost(scheduledPostId);
+      scheduledPostData['idempotencyKey'] =
+          syncResult.idempotencyKey.isNotEmpty
+              ? syncResult.idempotencyKey
+              : publishIdempotencyKey(currentUser.uid, scheduledPostId);
+
       await _firestore
           .collection('scheduled_posts')
           .doc(scheduledPostId)
           .set(scheduledPostData);
-      await _firestore.collection('contentPlans').doc(scheduledPostId).set({
-        'userId': currentUser.uid,
-        'title': caption.trim().isEmpty ? 'Scheduled post' : caption.trim(),
-        'description': metadata['description'],
-        'platform': platforms.isEmpty ? null : platforms.first.key,
-        'contentType': 'video',
-        'caption': caption,
-        'hashtags': hashtags,
-        'status': 'scheduled',
-        'scheduledAt': Timestamp.fromDate(schedule.scheduledAtUtc),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'source': 'app',
-        'checklist': const <String>[],
-        'notes': metadata['notes'],
-        'draftIdeas': const <String>[],
-        'videoId': videoId,
-        'scheduledPostId': scheduledPostId,
-      }, SetOptions(merge: true));
 
       secureLog('✅ Scheduled post saved: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
@@ -244,24 +332,42 @@ class FirestoreScheduledPostService {
         },
       };
 
+      // Cutover PR2: Worker SoT first, then mirror scheduled_posts.
+      final ({
+        String planId,
+        String itemId,
+        String publishJobId,
+        String idempotencyKey,
+      }) syncResult = await _syncScheduledPostToCanonicalPlanner(
+        userId: currentUser.uid,
+        scheduledPostId: postId,
+        title: caption.trim().isEmpty ? 'Publish follow-up' : caption.trim(),
+        caption: caption,
+        videoId: videoId,
+        thumbnailUrl: thumbnailUrl,
+        videoUrl: videoUrl,
+        status: 'ready_for_review',
+        platforms: crossPostRequests
+            .map(
+              (CrossPostRequest request) => <String, dynamic>{
+                'platform': request.platformName.toLowerCase(),
+                if (request.scheduleAt != null)
+                  'scheduledAt': request.scheduleAt!.toUtc().toIso8601String(),
+              },
+            )
+            .toList(growable: false),
+        notes: 'Cross-post follow-up requires creator attention.',
+      );
+      postData['contentItemId'] = syncResult.itemId.isNotEmpty
+          ? syncResult.itemId
+          : contentItemIdForScheduledPost(postId);
+      postData['publishJobId'] = syncResult.publishJobId.isNotEmpty
+          ? syncResult.publishJobId
+          : publishJobIdForScheduledPost(postId);
+      postData['idempotencyKey'] = syncResult.idempotencyKey.isNotEmpty
+          ? syncResult.idempotencyKey
+          : publishIdempotencyKey(currentUser.uid, postId);
       await _firestore.collection('scheduled_posts').doc(postId).set(postData);
-      await _firestore.collection('contentPlans').doc(postId).set({
-        'userId': currentUser.uid,
-        'title': caption.trim().isEmpty ? 'Publish follow-up' : caption.trim(),
-        'platform': crossPostRequests.isEmpty
-            ? null
-            : crossPostRequests.first.platformName.toLowerCase(),
-        'contentType': 'video',
-        'caption': caption,
-        'hashtags': hashtags,
-        'status': 'needsReview',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'source': 'app',
-        'notes': 'Cross-post follow-up requires creator attention.',
-        'videoId': videoId,
-        'scheduledPostId': postId,
-      }, SetOptions(merge: true));
       secureLog('✅ Immediate publish follow-up saved: $postId',
           name: 'FirestoreScheduledPostService');
       return postId;
@@ -273,6 +379,7 @@ class FirestoreScheduledPostService {
   }
 
   /// Get scheduled posts for current user
+  /// Cutover PR2: prefer workspaces/{uid}/publishJobs, enrich/fallback scheduled_posts.
   Future<List<ScheduledPost>> getScheduledPosts({
     PostStatus? status,
     PlatformKey? platform,
@@ -287,83 +394,97 @@ class FirestoreScheduledPostService {
         return [];
       }
 
-      // Load all posts for the user first (without orderBy to avoid index issues)
-      // Then sort and filter client-side
       const int defaultLimit = 100;
       final int effectiveLimit = (limit ?? defaultLimit) * 2;
+      final Map<String, Map<String, dynamic>> legacyById =
+          await _loadLegacyScheduledPostMaps(
+        uid: currentUser.uid,
+        limit: effectiveLimit,
+      );
+      final List<ScheduledPost> posts = <ScheduledPost>[];
+      final Set<String> seenIds = <String>{};
 
-      Query query = _firestore
-          .collection('scheduled_posts')
-          .where('authorId', isEqualTo: currentUser.uid)
-          .limit(effectiveLimit);
-
-      QuerySnapshot snapshot;
       try {
-        if (status == null) {
-          query = query.orderBy('createdAt', descending: true);
+        final QuerySnapshot<Map<String, dynamic>> jobsSnap =
+            await _publishJobsRef(currentUser.uid).limit(effectiveLimit).get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in jobsSnap.docs) {
+          final Map<String, dynamic> data = doc.data();
+          if (data['deletedAt'] != null) {
+            continue;
+          }
+          final String scheduledPostId =
+              (data['scheduledPostId'] ?? '').toString().trim();
+          final Map<String, dynamic>? legacy =
+              scheduledPostId.isNotEmpty ? legacyById[scheduledPostId] : null;
+          try {
+            final ScheduledPost post = mapPublishJobToScheduledPost(
+              ownerUserId: currentUser.uid,
+              job: <String, dynamic>{...data, 'id': doc.id},
+              legacyScheduledPost: legacy,
+            );
+            posts.add(post);
+            seenIds.add(post.id);
+          } catch (e) {
+            secureLog('❌ Error mapping publish job ${doc.id}: $e',
+                name: 'FirestoreScheduledPostService');
+          }
         }
-        snapshot = await query.get();
+        secureLog(
+          '📋 Loaded ${posts.length} posts from publishJobs (+${legacyById.length} legacy docs)',
+          name: 'FirestoreScheduledPostService',
+        );
       } catch (e) {
-        if (e.toString().contains('permission-denied') ||
-            e.toString().contains('PERMISSION_DENIED')) {
-          return [];
-        }
-        secureLog('⚠️ Could not order by createdAt, loading all: $e',
-            name: 'FirestoreScheduledPostService');
-        Query fallbackQuery = _firestore
-            .collection('scheduled_posts')
-            .where('authorId', isEqualTo: currentUser.uid)
-            .limit(effectiveLimit);
-        snapshot = await fallbackQuery.get();
+        secureLog(
+          '⚠️ publishJobs inventory read failed, falling back to scheduled_posts: $e',
+          name: 'FirestoreScheduledPostService',
+        );
       }
-      secureLog(
-          '📋 Loaded ${snapshot.docs.length} scheduled posts from Firestore',
-          name: 'FirestoreScheduledPostService');
 
-      var posts = <ScheduledPost>[];
-      for (var doc in snapshot.docs) {
+      for (final MapEntry<String, Map<String, dynamic>> entry
+          in legacyById.entries) {
+        if (seenIds.contains(entry.key)) {
+          continue;
+        }
         try {
-          final data = doc.data() as Map<String, dynamic>;
-          final post = _mapToScheduledPost(doc.id, data);
-          posts.add(post);
+          posts.add(_mapToScheduledPost(entry.key, entry.value));
+          seenIds.add(entry.key);
         } catch (e) {
-          secureLog('❌ Error mapping post ${doc.id}: $e',
+          secureLog('❌ Error mapping legacy post ${entry.key}: $e',
               name: 'FirestoreScheduledPostService');
         }
       }
 
-      // Client-side filtering by status (if not already filtered in query)
+      var filtered = posts;
       if (status != null) {
-        posts = posts.where((post) => post.status == status).toList();
+        filtered = filtered.where((post) => post.status == status).toList();
       }
-
-      // Client-side sorting by scheduled time if orderBy failed
-      posts.sort((a, b) {
+      filtered.sort((a, b) {
         final aTime = a.schedule?.scheduledAtUtc ?? a.createdAt;
         final bTime = b.schedule?.scheduledAtUtc ?? b.createdAt;
-        return bTime.compareTo(aTime); // Newest first
+        return bTime.compareTo(aTime);
       });
-
-      // Client-side filtering for platform and searchQuery
       if (platform != null) {
-        posts = posts
+        filtered = filtered
             .where((post) => post.platforms.any((p) => p.key == platform.name))
             .toList();
       }
-
       if (searchQuery != null && searchQuery.isNotEmpty) {
         final lowerQuery = searchQuery.toLowerCase();
-        posts = posts.where((post) {
+        filtered = filtered.where((post) {
           final captionMatch = post.caption.toLowerCase().contains(lowerQuery);
           final tagsMatch =
               post.tags.any((tag) => tag.toLowerCase().contains(lowerQuery));
           return captionMatch || tagsMatch;
         }).toList();
       }
+      if (limit != null && filtered.length > limit) {
+        filtered = filtered.take(limit).toList();
+      }
 
-      secureLog('✅ Returning ${posts.length} scheduled posts',
+      secureLog('✅ Returning ${filtered.length} scheduled posts',
           name: 'FirestoreScheduledPostService');
-      return posts;
+      return filtered;
     } catch (e, stackTrace) {
       if (e.toString().contains('permission-denied') ||
           e.toString().contains('PERMISSION_DENIED')) {
@@ -375,6 +496,40 @@ class FirestoreScheduledPostService {
     }
   }
 
+  Future<Map<String, Map<String, dynamic>>> _loadLegacyScheduledPostMaps({
+    required String uid,
+    required int limit,
+  }) async {
+    final Map<String, Map<String, dynamic>> out =
+        <String, Map<String, dynamic>>{};
+    try {
+      Query query = _firestore
+          .collection('scheduled_posts')
+          .where('authorId', isEqualTo: uid)
+          .limit(limit);
+      QuerySnapshot snapshot;
+      try {
+        snapshot = await query.orderBy('createdAt', descending: true).get();
+      } catch (_) {
+        snapshot = await _firestore
+            .collection('scheduled_posts')
+            .where('authorId', isEqualTo: uid)
+            .limit(limit)
+            .get();
+      }
+      for (final QueryDocumentSnapshot doc in snapshot.docs) {
+        out[doc.id] = Map<String, dynamic>.from(doc.data() as Map);
+      }
+    } catch (e) {
+      if (!(e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED'))) {
+        secureLog('⚠️ legacy scheduled_posts load failed: $e',
+            name: 'FirestoreScheduledPostService');
+      }
+    }
+    return out;
+  }
+
   /// Update scheduled post status
   Future<void> updateScheduledPostStatus(
     String scheduledPostId,
@@ -382,6 +537,16 @@ class FirestoreScheduledPostService {
     String? historyMessage,
   }) async {
     try {
+      final User? user = _auth.currentUser;
+      if (user != null) {
+        // Cutover PR2: Worker SoT first, then mirror scheduled_posts.
+        await _syncScheduledPostToCanonicalPlanner(
+          userId: user.uid,
+          scheduledPostId: scheduledPostId,
+          title: 'Scheduled post',
+          status: _contentPlanStatusForPostStatus(status),
+        );
+      }
       await _firestore
           .collection('scheduled_posts')
           .doc(scheduledPostId)
@@ -389,10 +554,6 @@ class FirestoreScheduledPostService {
         'status': status.name,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      await _firestore.collection('contentPlans').doc(scheduledPostId).set({
-        'status': _contentPlanStatusForPostStatus(status),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
       secureLog('✅ Updated scheduled post status: $scheduledPostId -> $status',
           name: 'FirestoreScheduledPostService');
       await _appendHistoryEntries(scheduledPostId, [
@@ -411,11 +572,18 @@ class FirestoreScheduledPostService {
   /// Delete a scheduled post
   Future<void> deleteScheduledPost(String scheduledPostId) async {
     try {
+      final User? user = _auth.currentUser;
+      if (user != null) {
+        // Cutover PR2: Worker SoT delete first, then mirror.
+        await _deleteScheduledPostFromCanonicalPlanner(
+          userId: user.uid,
+          scheduledPostId: scheduledPostId,
+        );
+      }
       await _firestore
           .collection('scheduled_posts')
           .doc(scheduledPostId)
           .delete();
-      await _firestore.collection('contentPlans').doc(scheduledPostId).delete();
       secureLog('✅ Deleted scheduled post: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
     } catch (e) {
@@ -961,6 +1129,7 @@ class FirestoreScheduledPostService {
   }
 
   /// Get posts ready to publish (scheduled time has passed)
+  /// Cutover PR2: discover due ids from publishJobs; payload still on scheduled_posts.
   Future<List<Map<String, dynamic>>> getPostsReadyToPublish() async {
     try {
       final currentUser = _auth.currentUser;
@@ -970,69 +1139,80 @@ class FirestoreScheduledPostService {
         return [];
       }
 
-      final now = Timestamp.now();
+      final DateTime now = DateTime.now().toUtc();
       secureLog(
-          '🔍 Checking for posts ready to publish for user ${currentUser.uid} (now: ${now.toDate()})',
+          '🔍 Checking for posts ready to publish for user ${currentUser.uid} (now: $now)',
           name: 'FirestoreScheduledPostService');
 
-      // 🔥 CRITICAL FIX: Filter by authorId to comply with Firestore security rules
-      // Try query with nested field first
-      Query query = _firestore
-          .collection('scheduled_posts')
-          .where('authorId', isEqualTo: currentUser.uid)
-          .where('status', isEqualTo: PostStatus.scheduled.name)
-          .where('schedule.scheduledAtUtc', isLessThanOrEqualTo: now);
-
-      QuerySnapshot snapshot;
+      final Set<String> dueIds = <String>{};
       try {
-        snapshot = await query.get();
+        final QuerySnapshot<Map<String, dynamic>> jobsSnap =
+            await _publishJobsRef(currentUser.uid)
+                .where('status', isEqualTo: 'scheduled')
+                .where('scheduledAt', isLessThanOrEqualTo: Timestamp.fromDate(now))
+                .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in jobsSnap.docs) {
+          final Map<String, dynamic> data = doc.data();
+          if (data['deletedAt'] != null) {
+            continue;
+          }
+          final String scheduledPostId =
+              (data['scheduledPostId'] ?? '').toString().trim();
+          if (scheduledPostId.isNotEmpty) {
+            dueIds.add(scheduledPostId);
+          }
+        }
         secureLog(
-            '✅ Found ${snapshot.docs.length} posts ready to publish (using nested query)',
-            name: 'FirestoreScheduledPostService');
+          '✅ Found ${dueIds.length} due publishJobs',
+          name: 'FirestoreScheduledPostService',
+        );
       } catch (e) {
-        // If nested field query fails (missing index), fall back to client-side filtering
         secureLog(
-            '⚠️ Nested field query failed (may need composite index), using fallback: $e',
-            name: 'FirestoreScheduledPostService');
+          '⚠️ publishJobs due query failed, falling back to scheduled_posts: $e',
+          name: 'FirestoreScheduledPostService',
+        );
+      }
 
-        // 🔥 CRITICAL FIX: Filter by authorId to comply with Firestore security rules
-        // Get scheduled posts for current user only and filter client-side
-        final allScheduled = await _firestore
-            .collection('scheduled_posts')
-            .where('authorId', isEqualTo: currentUser.uid)
-            .where('status', isEqualTo: PostStatus.scheduled.name)
-            .get();
-
-        final readyPosts = <Map<String, dynamic>>[];
-        for (final doc in allScheduled.docs) {
-          final data = doc.data();
-          final scheduleData = data['schedule'] as Map<String, dynamic>?;
-          if (scheduleData != null) {
-            final scheduledAtUtc = scheduleData['scheduledAtUtc'] as Timestamp?;
-            if (scheduledAtUtc != null && scheduledAtUtc.compareTo(now) <= 0) {
-              readyPosts.add({
-                'id': doc.id,
-                ...data,
-              });
+      if (dueIds.isEmpty) {
+        // Fallback / unmigrated posts still on scheduled_posts only.
+        final Timestamp nowTs = Timestamp.fromDate(now);
+        try {
+          final QuerySnapshot snapshot = await _firestore
+              .collection('scheduled_posts')
+              .where('authorId', isEqualTo: currentUser.uid)
+              .where('status', isEqualTo: PostStatus.scheduled.name)
+              .where('schedule.scheduledAtUtc', isLessThanOrEqualTo: nowTs)
+              .get();
+          for (final QueryDocumentSnapshot doc in snapshot.docs) {
+            dueIds.add(doc.id);
+          }
+        } catch (_) {
+          final QuerySnapshot allScheduled = await _firestore
+              .collection('scheduled_posts')
+              .where('authorId', isEqualTo: currentUser.uid)
+              .where('status', isEqualTo: PostStatus.scheduled.name)
+              .get();
+          for (final QueryDocumentSnapshot doc in allScheduled.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final scheduleData = data['schedule'] as Map<String, dynamic>?;
+            final scheduledAtUtc = scheduleData?['scheduledAtUtc'] as Timestamp?;
+            if (scheduledAtUtc != null &&
+                !scheduledAtUtc.toDate().toUtc().isAfter(now)) {
+              dueIds.add(doc.id);
             }
           }
         }
-
-        secureLog(
-            '✅ Found ${readyPosts.length} posts ready to publish (using client-side filtering)',
-            name: 'FirestoreScheduledPostService');
-
-        return readyPosts;
       }
 
-      final result = <Map<String, dynamic>>[];
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        result.add({
-          'id': doc.id,
-          ...data,
-        });
+      final List<Map<String, dynamic>> result = <Map<String, dynamic>>[];
+      for (final String id in dueIds) {
+        result.add(<String, dynamic>{'id': id});
       }
+      secureLog(
+        '✅ Returning ${result.length} posts ready to publish',
+        name: 'FirestoreScheduledPostService',
+      );
       return result;
     } catch (e) {
       secureLog('❌ Error getting posts ready to publish: $e',
@@ -1275,10 +1455,11 @@ class FirestoreScheduledPostService {
       case PostStatus.publishing:
         return 'scheduled';
       case PostStatus.published:
-        return 'posted';
+        return 'published';
       case PostStatus.failed:
+        return 'failed';
       case PostStatus.canceled:
-        return 'needsReview';
+        return 'cancelled';
       case PostStatus.draft:
         return 'draft';
     }

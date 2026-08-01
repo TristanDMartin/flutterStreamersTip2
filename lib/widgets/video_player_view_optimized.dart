@@ -16,6 +16,7 @@ import '../constants/playback_owners.dart';
 import '../models/creator_profile_snapshot.dart';
 import '../models/home_video.dart';
 import '../services/creator_cache_service.dart';
+import '../services/public_profile_firestore.dart';
 import '../providers/home_provider.dart';
 import '../services/performance_service.dart';
 import '../services/robust_auth_service.dart';
@@ -364,19 +365,39 @@ class _VideoPlayerViewOptimizedState
     }
 
     try {
-      GlobalPlaybackManager.instance.markControllerDetached(widget.video.id);
+      final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+      // Stay attached through unregister so GPM skips dispose (view owns teardown).
+      // Detaching first caused a double-dispose race: GPM + view both disposed.
+      final VideoPlayerController? pooled =
+          manager.getController(widget.video.id);
+      final bool sameAsPool =
+          pooled != null && identical(pooled, controller);
+      final bool wasAttached = manager.isControllerAttachedToView(
+        widget.video.id,
+        controller.hashCode,
+      );
+      // View disposes when: not in pool, or still attached (GPM skips).
+      // GPM disposes when: in pool and already detached.
+      final bool viewOwnsDispose = !sameAsPool || wasAttached;
       final owner = _ownerKey;
       secureLog(
         '🗑️ VideoPlayer: Unregistering controller '
-        '$controllerHashCode from owner $owner',
+        '$controllerHashCode from owner $owner '
+        'sameAsPool=$sameAsPool wasAttached=$wasAttached '
+        'viewOwnsDispose=$viewOwnsDispose',
       );
       debugPrint(
-        '[VideoPlayer] unregister owner=$owner controller=$controllerHashCode',
+        '[VideoPlayer] unregister owner=$owner controller=$controllerHashCode '
+        'viewOwnsDispose=$viewOwnsDispose',
       );
-      _unregisterFromPlaybackManagerIfSameInstance(
-        videoId: widget.video.id,
-        controller: controller,
-      );
+      if (sameAsPool) {
+        _unregisterFromPlaybackManagerIfSameInstance(
+          videoId: widget.video.id,
+          controller: controller,
+        );
+      } else {
+        manager.markControllerDetached(widget.video.id);
+      }
 
       // 🔥 PRODUCTION-GRADE: Remove listeners with comprehensive error handling
       try {
@@ -399,9 +420,22 @@ class _VideoPlayerViewOptimizedState
             '[VideoPlayer] Could not remove listeners (controller disposed): $e');
       }
 
+      if (!viewOwnsDispose) {
+        secureLog(
+          '📌 VideoPlayer: GPM owns dispose for $controllerHashCode — '
+          'skipping view dispose',
+        );
+        return;
+      }
+
       try {
-        // Only pause/setVolume if controller is still valid
-        if (!controller.value.hasError) {
+        if (_canUseController(controller) &&
+            readVideoControllerOr(
+              controller,
+              (VideoPlayerValue value) => !value.hasError,
+              false,
+              context: '_disposeVideoController',
+            )) {
           await controller.pause().catchError((_) {});
           await controller.setVolume(0.0).catchError((_) {});
         }
@@ -414,6 +448,13 @@ class _VideoPlayerViewOptimizedState
         // Let pending video_player platform play/pause completions settle before
         // the platform texture is torn down.
         await Future<void>.delayed(const Duration(milliseconds: 350));
+        if (!_canUseController(controller)) {
+          secureLog(
+            '📌 VideoPlayer: Controller $controllerHashCode already gone '
+            'before dispose — skipping',
+          );
+          return;
+        }
         await controller.dispose();
       } catch (e, st) {
         debugPrint('[VideoPlayer] dispose error: $e\n$st');
@@ -425,7 +466,7 @@ class _VideoPlayerViewOptimizedState
 
   Future<void> _pauseAndMuteController() async {
     final controller = _videoPlayerController;
-    if (controller == null) return;
+    if (controller == null || !_canUseController(controller)) return;
     try {
       await controller.pause();
       await controller.setVolume(0.0);
@@ -1529,20 +1570,28 @@ class _VideoPlayerViewOptimizedState
   /// - Cancelled on video change, tab switch, dispose
   void _handleFirstFrameTimeout() {
     final VideoPlayerController? c = _videoPlayerController;
-    if (c == null || _isDisposed || !_isInitialized || !mounted) {
+    if (c == null ||
+        _isDisposed ||
+        !_isInitialized ||
+        !mounted ||
+        !_canUseController(c)) {
       secureLog(
           '🚫 VideoPlayer: First frame watchdog timeout but conditions not met (controller: ${c != null}, disposed: $_isDisposed, initialized: $_isInitialized, mounted: $mounted)');
       return;
     }
 
-    VideoPlayerValue v;
-    try {
-      v = c.value;
-    } catch (e) {
+    final VideoPlayerValue? valueOrNull = readVideoControllerOr(
+      c,
+      (VideoPlayerValue value) => value,
+      null,
+      context: '_handleFirstFrameTimeout',
+    );
+    if (valueOrNull == null) {
       secureLog(
-          '⚠️ VideoPlayer: Error accessing controller value in watchdog: $e');
+          '⚠️ VideoPlayer: Controller unreadable in first-frame watchdog');
       return;
     }
+    final VideoPlayerValue v = valueOrNull;
 
     final bool playing = v.isPlaying;
     final bool positionAdvancing = v.position > Duration.zero;
@@ -1569,7 +1618,7 @@ class _VideoPlayerViewOptimizedState
             '🚫 VideoPlayer: First frame watchdog timeout but not playing: ${widget.video.id}');
       } else if (_blackScreenRecoveryState.lastRecoveryAt != null &&
           now.difference(_blackScreenRecoveryState.lastRecoveryAt!) <
-              VideoPlayerBlackScreenRecovery().cooldown) {
+              _blackScreenRecovery.cooldown) {
         secureLog(
             '⏳ VideoPlayer: Black screen recovery throttled (cooldown) for ${widget.video.id}');
       }
@@ -1826,8 +1875,21 @@ class _VideoPlayerViewOptimizedState
 
   void _checkForStall() {
     final controller = _videoPlayerController;
-    if (controller == null || _isDisposed || !_isInitialized) return;
-    final value = controller.value;
+    if (controller == null ||
+        _isDisposed ||
+        !_isInitialized ||
+        !_canUseController(controller)) {
+      return;
+    }
+    final VideoPlayerValue? value = readVideoControllerOr(
+      controller,
+      (VideoPlayerValue v) => v,
+      null,
+      context: '_checkForStall',
+    );
+    if (value == null) {
+      return;
+    }
 
     // If looping naturally reset to the start, just record and continue
     if (value.position < _lastPlaybackPosition) {
@@ -3142,11 +3204,20 @@ class _VideoPlayerViewOptimizedState
       }
 
       final controller = _videoPlayerController;
-      if (controller == null || !controller.value.isInitialized) return;
-
-      final value = controller.value;
-      final duration = value.duration;
-      final position = value.position;
+      if (controller == null || !_canUseController(controller)) {
+        return;
+      }
+      final VideoPlayerValue? value = readVideoControllerOr(
+        controller,
+        (VideoPlayerValue v) => v,
+        null,
+        context: '_startLoopCheckTimer',
+      );
+      if (value == null || !value.isInitialized) {
+        return;
+      }
+      final Duration duration = value.duration;
+      final Duration position = value.position;
 
       if (duration <= Duration.zero) return;
 
@@ -3404,8 +3475,16 @@ class _VideoPlayerViewOptimizedState
       c = _videoPlayerController ?? mgr.getController(widget.video.id);
     }
 
+    final bool? isPlayingSnapshot = readVideoControllerOr(
+      c,
+      (VideoPlayerValue value) => value.isPlaying,
+      null,
+      context: '_togglePlayPause',
+    );
     secureLog(
-        '🎮 _togglePlayPause controller=${c != null} ready=$_controllerReady playing=${c?.value.isPlaying ?? false}');
+      '🎮 _togglePlayPause controller=${c != null} ready=$_controllerReady '
+      'playing=${isPlayingSnapshot ?? false}',
+    );
 
     if (c == null || !_controllerReady) {
       secureLog('❌ Cannot toggle: controller missing or not ready');
@@ -3414,11 +3493,9 @@ class _VideoPlayerViewOptimizedState
 
     if (_isDisposed) return;
 
-    try {
-      final _ = c.value;
-    } catch (e) {
-      secureLog('❌ VideoPlayer: Controller disposed in _togglePlayPause: $e');
-      _markControllerDisposed(error: e, reason: 'togglePlayPause');
+    if (!_canUseController(c) || isPlayingSnapshot == null) {
+      secureLog('❌ VideoPlayer: Controller disposed in _togglePlayPause');
+      _markControllerDisposed(reason: 'togglePlayPause');
       return;
     }
 
@@ -3437,7 +3514,7 @@ class _VideoPlayerViewOptimizedState
       if (mounted) setState(() => _audioUnmuted = true);
     }
 
-    final wasPlaying = c.value.isPlaying;
+    final bool wasPlaying = isPlayingSnapshot;
     mgr.setDesiredFocus(widget.video.id, owner);
     await mgr.requestFocus(widget.video.id, owner);
 
@@ -4506,13 +4583,10 @@ class _VideoPlayerViewOptimizedState
         final taggedUserId = tagData['taggedUserId'] as String?;
         if (taggedUserId == null) continue;
 
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(taggedUserId)
-            .get();
+        final Map<String, dynamic>? userData =
+            await PublicProfileFirestore.instance.getProfileMap(taggedUserId);
 
-        if (userDoc.exists) {
-          final userData = userDoc.data()!;
+        if (userData != null) {
           taggedUsers.add({
             'userId': taggedUserId,
             'username': userData['username'] ?? 'unknown',

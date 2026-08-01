@@ -7,6 +7,7 @@ import '../models/user.dart' as app_user;
 import '../models/user_count_fields.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'logging_service.dart';
+import 'public_profile_firestore.dart';
 
 class InboxServiceOptimized {
   static final InboxServiceOptimized _instance =
@@ -168,21 +169,21 @@ class InboxServiceOptimized {
     }
   }
 
-  /// Get user profile by ID
+  /// Get user profile by ID (publicUsers; own private doc only for self)
   Future<app_user.User?> getUserProfile(String userId) async {
     if (_userCache.containsKey(userId)) {
       return _userCache[userId];
     }
 
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        final user = _mapUser(doc.id, data);
-        _userCache[userId] = user;
-        return user;
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(userId);
+      if (data == null) {
+        return null;
       }
-      return null;
+      final user = _mapUser(userId, data);
+      _userCache[userId] = user;
+      return user;
     } catch (e) {
       LoggingService.instance.error('Error getting user profile: $e');
       return null;
@@ -288,20 +289,21 @@ class InboxServiceOptimized {
     }
   }
 
-  /// Get online status for a user
+  /// Get online status for a user (public profile fields when available)
   Future<bool> isUserOnline(String userId) async {
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        final lastSeen = data['lastSeen'] as Timestamp?;
-        if (lastSeen != null) {
-          final now = Timestamp.now();
-          final difference = now.seconds - lastSeen.seconds;
-          return difference < 300; // Online if last seen within 5 minutes
-        }
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(userId);
+      if (data == null) {
+        return false;
       }
-      return false;
+      final lastSeen = data['lastSeen'];
+      if (lastSeen is Timestamp) {
+        final now = Timestamp.now();
+        final difference = now.seconds - lastSeen.seconds;
+        return difference < 300;
+      }
+      return (data['onlineStatus'] ?? 'offline') == 'online';
     } catch (e) {
       LoggingService.instance.error('Error checking online status: $e');
       return false;
@@ -664,15 +666,16 @@ class InboxServiceOptimized {
 
   /// Stream online status for a user
   Stream<bool> streamUserOnlineStatus(String userId) {
-    return _firestore.collection('users').doc(userId).snapshots().map((doc) {
+    return PublicProfileFirestore.instance.watchProfile(userId).map((doc) {
       if (doc.exists) {
         final data = doc.data()!;
-        final lastSeen = data['lastSeen'] as Timestamp?;
-        if (lastSeen != null) {
+        final lastSeen = data['lastSeen'];
+        if (lastSeen is Timestamp) {
           final now = Timestamp.now();
           final difference = now.seconds - lastSeen.seconds;
-          return difference < 300; // Online if last seen within 5 minutes
+          return difference < 300;
         }
+        return (data['onlineStatus'] ?? 'offline') == 'online';
       }
       return false;
     });

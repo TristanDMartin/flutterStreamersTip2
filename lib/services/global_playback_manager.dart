@@ -507,11 +507,18 @@ class GlobalPlaybackManager {
     if (targetVideoId == null || _controllerPool[targetVideoId] != controller) {
       return;
     }
+    if (!_isControllerSafe(targetVideoId, controller)) {
+      return;
+    }
     try {
       if (_currentlyPlayingController != null &&
           !identical(_currentlyPlayingController, controller)) {
         await _safePauseAndMute(_currentlyPlayingController!);
         _currentlyPlayingController = null;
+      }
+      if (!_isControllerSafe(targetVideoId, controller) ||
+          _controllerPool[targetVideoId] != controller) {
+        return;
       }
       final value = controller.value;
       final bool initialized = value.isInitialized;
@@ -572,9 +579,12 @@ class GlobalPlaybackManager {
       await controller.setVolume(0.0);
       await Future.delayed(probeDelay1);
       if (_focus.activeVideoId != targetVideoId ||
-          _controllerPool[targetVideoId] != controller) {
+          _controllerPool[targetVideoId] != controller ||
+          !_isControllerSafe(targetVideoId, controller)) {
         try {
-          await controller.setVolume(0.0);
+          if (_isControllerSafe(targetVideoId, controller)) {
+            await controller.setVolume(0.0);
+          }
         } catch (e, st) {
           ignorePlaybackTeardownError('global_playback', e, st);
         }
@@ -594,9 +604,12 @@ class GlobalPlaybackManager {
       }
       await Future.delayed(probeDelay2);
       if (_focus.activeVideoId != targetVideoId ||
-          _controllerPool[targetVideoId] != controller) {
+          _controllerPool[targetVideoId] != controller ||
+          !_isControllerSafe(targetVideoId, controller)) {
         try {
-          await controller.setVolume(0.0);
+          if (_isControllerSafe(targetVideoId, controller)) {
+            await controller.setVolume(0.0);
+          }
         } catch (e, st) {
           ignorePlaybackTeardownError('global_playback', e, st);
         }
@@ -618,7 +631,8 @@ class GlobalPlaybackManager {
       if (isAndroid) {
         await Future.delayed(const Duration(milliseconds: 100));
         if (_focus.activeVideoId == targetVideoId &&
-            _controllerPool[targetVideoId] == controller) {
+            _controllerPool[targetVideoId] == controller &&
+            _isControllerSafe(targetVideoId, controller)) {
           final androidProbe = controller.value;
           if (androidProbe.isInitialized &&
               !androidProbe.hasError &&
@@ -629,6 +643,9 @@ class GlobalPlaybackManager {
             return;
           }
         }
+      }
+      if (!_isControllerSafe(targetVideoId, controller)) {
+        return;
       }
       final finalProbe = controller.value;
       if (finalProbe.isInitialized &&
@@ -1176,6 +1193,13 @@ class GlobalPlaybackManager {
     pauseAll();
     block(reason: 'auth_sign_out');
   }
+
+  /// Number of controllers currently held in the playback pool.
+  int get pooledControllerCount => _pool.length;
+
+  /// Last saved Home feed position for [index], if any.
+  Duration? lastKnownPositionAt(int index) =>
+      _feedIndex.lastPositionAt(index);
 
   /// Pin home warm window and retain pooled controllers during main-tab leave.
   void beginHomeTabBackgroundRetention({int? currentIndex}) {

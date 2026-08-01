@@ -19,6 +19,7 @@ abstract final class ProfileUserDocFields {
     'progressionSummary',
     'gamification',
     'contentPlanProfileCalendarEvents',
+    'contentPlanStreamerCalendarEvents',
     'contentPlanCalendarEvents',
     'recentSearches',
     'calendarEvents',
@@ -55,6 +56,7 @@ abstract final class ProfileUserDocFields {
     'bio',
     'aiSelf',
     'followersCount',
+    'followerCount',
     'followingCount',
   };
 

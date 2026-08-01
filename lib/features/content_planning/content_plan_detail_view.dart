@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/support_shell_style.dart';
+import 'content_planning_contract.dart';
 import 'content_planning_models.dart';
 import 'content_planning_provider.dart';
 import 'content_planning_repository.dart';
@@ -38,20 +39,12 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
   late List<ContentPlanItem> _items;
 
   static const List<({String value, String label})> _statusChoices =
-      <({String value, String label})>[
-    (value: 'draft', label: 'Draft'),
-    (value: 'scheduled', label: 'Scheduled'),
-    (value: 'needsReview', label: 'Review'),
-    (value: 'posted', label: 'Posted'),
-  ];
+      kContentItemStatusChoices;
 
   static const List<({String value, String label})> _itemStepStatusChoices =
       <({String value, String label})>[
     (value: '', label: 'Unset'),
-    (value: 'draft', label: 'Draft'),
-    (value: 'scheduled', label: 'Scheduled'),
-    (value: 'needsReview', label: 'Review'),
-    (value: 'posted', label: 'Posted'),
+    ...kContentItemStatusChoices,
   ];
 
   @override
@@ -67,13 +60,18 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
     _notes = TextEditingController(text: plan.notes ?? '');
     _checklist = TextEditingController(text: plan.checklist.join('\n'));
     _draftIdeas = TextEditingController(text: plan.draftIdeas.join('\n'));
-    _status = plan.status;
+    _status = normalizeContentItemStatus(plan.status);
     _scheduledAt = plan.scheduledAt;
     _items = List<ContentPlanItem>.from(plan.items);
-    _title.addListener(_onTitleChanged);
+    _title.addListener(_onPlanSummaryChanged);
+    _platform.addListener(_onPlanSummaryChanged);
+    _contentType.addListener(_onPlanSummaryChanged);
+    _caption.addListener(_onPlanSummaryChanged);
+    _checklist.addListener(_onPlanSummaryChanged);
+    _draftIdeas.addListener(_onPlanSummaryChanged);
   }
 
-  void _onTitleChanged() {
+  void _onPlanSummaryChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -81,7 +79,12 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
 
   @override
   void dispose() {
-    _title.removeListener(_onTitleChanged);
+    _title.removeListener(_onPlanSummaryChanged);
+    _platform.removeListener(_onPlanSummaryChanged);
+    _contentType.removeListener(_onPlanSummaryChanged);
+    _caption.removeListener(_onPlanSummaryChanged);
+    _checklist.removeListener(_onPlanSummaryChanged);
+    _draftIdeas.removeListener(_onPlanSummaryChanged);
     _title.dispose();
     _description.dispose();
     _platform.dispose();
@@ -173,7 +176,7 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
       scheduledAt: _scheduledAt,
       createdAt: widget.plan.createdAt,
       updatedAt: widget.plan.updatedAt,
-      source: widget.plan.source ?? 'app',
+      source: normalizeContentSource(widget.plan.source) ?? 'flutter',
       notes: _emptyToNull(_notes.text),
       checklist: _splitLines(_checklist.text),
       draftIdeas: _splitLines(_draftIdeas.text),
@@ -232,6 +235,14 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
         ? 'Tap to set date & time'
         : '${l10n.formatMediumDate(localSchedule)} · '
             '${l10n.formatTimeOfDay(TimeOfDay.fromDateTime(localSchedule))}';
+    final bool hasPlatform = _platform.text.trim().isNotEmpty;
+    final bool hasCaption = _caption.text.trim().isNotEmpty;
+    final bool hasSchedule = _scheduledAt != null;
+    final int checklistCount = _splitLines(_checklist.text).length;
+    final int ideaCount = _splitLines(_draftIdeas.text).length;
+    final int readyCount = <bool>[hasPlatform, hasCaption, hasSchedule]
+        .where((bool value) => value)
+        .length;
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -295,11 +306,34 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate(<Widget>[
+                    _PlanDetailHero(
+                      shell: shell,
+                      scheme: scheme,
+                      title: _appBarTitle(),
+                      status: _status,
+                      scheduleLabel: scheduleLabel,
+                      platform: _platform.text,
+                      contentType: _contentType.text,
+                      readyCount: readyCount,
+                      totalReadinessCount: 3,
+                      checklistCount: checklistCount,
+                      ideaCount: ideaCount,
+                      stepCount: _items.length,
+                    ),
+                    const SizedBox(height: 14),
+                    _PlanReadinessSection(
+                      shell: shell,
+                      scheme: scheme,
+                      hasPlatform: hasPlatform,
+                      hasCaption: hasCaption,
+                      hasSchedule: hasSchedule,
+                    ),
+                    const SizedBox(height: 14),
                     _PlanEditSection(
                       shell: shell,
                       scheme: scheme,
-                      title: 'Overview',
-                      subtitle: 'Title, description, and placement',
+                      title: 'Plan setup',
+                      subtitle: 'Name, channel, and format',
                       children: <Widget>[
                         _PlanShellField(
                           shell: shell,
@@ -342,18 +376,8 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                       shell: shell,
                       scheme: scheme,
                       title: 'Workflow',
-                      subtitle: 'Status and publish window',
+                      subtitle: contentItemStatusLabel(_status),
                       children: <Widget>[
-                        Text(
-                          'Status',
-                          style: TextStyle(
-                            color: shell.muted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
                         if (!_statusChoices
                             .any((c) => c.value == _status)) ...<Widget>[
                           Container(
@@ -381,113 +405,27 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: <Widget>[
-                            for (final ({String value, String label}) choice
-                                in _statusChoices)
-                              ChoiceChip(
-                                label: Text(choice.label),
-                                selected: _status == choice.value,
-                                onSelected: (_) {
-                                  setState(() => _status = choice.value);
-                                },
-                                selectedColor:
-                                    scheme.primary.withValues(alpha: 0.22),
-                                backgroundColor: shell.chipUnselectedBg,
-                                labelStyle: TextStyle(
-                                  color: _status == choice.value
-                                      ? scheme.primary
-                                      : shell.chipUnselectedFg,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                ),
-                                side: BorderSide(
-                                  color: _status == choice.value
-                                      ? scheme.primary.withValues(alpha: 0.45)
-                                      : shell.chipUnselectedBorder,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                              ),
-                          ],
+                        _PlanStatusSelector(
+                          shell: shell,
+                          scheme: scheme,
+                          status: _status,
+                          choices: _statusChoices,
+                          onChanged: (String status) {
+                            setState(() => _status = status);
+                          },
                         ),
                         const SizedBox(height: 16),
-                        Material(
-                          color: shell.chipUnselectedBg,
-                          borderRadius: BorderRadius.circular(16),
-                          child: InkWell(
-                            onTap: _pickSchedule,
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: shell.surfaceCardBorder,
-                                ),
-                              ),
-                              child: Row(
-                                children: <Widget>[
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      gradient: LinearGradient(
-                                        colors: <Color>[
-                                          scheme.primary,
-                                          scheme.secondary,
-                                        ],
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      Icons.event_rounded,
-                                      color: scheme.onPrimary,
-                                      size: 22,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Text(
-                                          'Schedule',
-                                          style: TextStyle(
-                                            color: shell.muted,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          scheduleLabel,
-                                          style: TextStyle(
-                                            color: shell.onChrome,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.chevron_right_rounded,
-                                    color: shell.iconDim,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                        _PlanScheduleTile(
+                          shell: shell,
+                          scheme: scheme,
+                          scheduleLabel: scheduleLabel,
+                          hasSchedule: hasSchedule,
+                          onTap: _pickSchedule,
+                          onClear: hasSchedule
+                              ? () {
+                                  setState(() => _scheduledAt = null);
+                                }
+                              : null,
                         ),
                       ],
                     ),
@@ -496,7 +434,7 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                       shell: shell,
                       scheme: scheme,
                       title: 'Post copy',
-                      subtitle: 'Caption, tags, and notes',
+                      subtitle: hasCaption ? 'Caption ready' : 'Caption needed',
                       children: <Widget>[
                         _PlanShellField(
                           shell: shell,
@@ -525,8 +463,8 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                     _PlanEditSection(
                       shell: shell,
                       scheme: scheme,
-                      title: 'Ideas & checklist',
-                      subtitle: 'One line per checklist item',
+                      title: 'Prep list',
+                      subtitle: '$checklistCount checklist · $ideaCount ideas',
                       children: <Widget>[
                         _PlanShellField(
                           shell: shell,
@@ -697,6 +635,473 @@ class _PlanEditSection extends StatelessWidget {
           const SizedBox(height: 16),
           ...children,
         ],
+      ),
+    );
+  }
+}
+
+class _PlanDetailHero extends StatelessWidget {
+  const _PlanDetailHero({
+    required this.shell,
+    required this.scheme,
+    required this.title,
+    required this.status,
+    required this.scheduleLabel,
+    required this.platform,
+    required this.contentType,
+    required this.readyCount,
+    required this.totalReadinessCount,
+    required this.checklistCount,
+    required this.ideaCount,
+    required this.stepCount,
+  });
+
+  final StSupportShellStyle shell;
+  final ColorScheme scheme;
+  final String title;
+  final String status;
+  final String scheduleLabel;
+  final String platform;
+  final String contentType;
+  final int readyCount;
+  final int totalReadinessCount;
+  final int checklistCount;
+  final int ideaCount;
+  final int stepCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final double progress = totalReadinessCount == 0
+        ? 0
+        : (readyCount / totalReadinessCount).clamp(0.0, 1.0);
+    final String destination = <String>[
+      if (platform.trim().isNotEmpty) platform.trim(),
+      if (contentType.trim().isNotEmpty) contentType.trim(),
+    ].join(' · ');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        color: shell.surfaceCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: shell.surfaceCardBorder),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: shell.shadowSoft,
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: LinearGradient(
+                    colors: <Color>[scheme.primary, scheme.secondary],
+                  ),
+                ),
+                child: Icon(
+                  Icons.view_agenda_rounded,
+                  color: scheme.onPrimary,
+                  size: 23,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: shell.onChrome,
+                        fontSize: 21,
+                        height: 1.08,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      destination.isEmpty
+                          ? contentItemStatusLabel(status)
+                          : destination,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: shell.muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 5,
+              backgroundColor: shell.muted.withValues(alpha: 0.12),
+              valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PlanHeroStat(
+                  shell: shell,
+                  label: 'Ready',
+                  value: '$readyCount/$totalReadinessCount',
+                ),
+              ),
+              Expanded(
+                child: _PlanHeroStat(
+                  shell: shell,
+                  label: 'Status',
+                  value: contentItemStatusLabel(status),
+                ),
+              ),
+              Expanded(
+                child: _PlanHeroStat(
+                  shell: shell,
+                  label: 'Steps',
+                  value: stepCount == 0 ? '$checklistCount' : '$stepCount',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Icon(Icons.event_rounded, color: shell.iconDim, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  scheduleLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: shell.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (ideaCount > 0)
+                Text(
+                  '$ideaCount ideas',
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanHeroStat extends StatelessWidget {
+  const _PlanHeroStat({
+    required this.shell,
+    required this.label,
+    required this.value,
+  });
+
+  final StSupportShellStyle shell;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: shell.onChrome,
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            color: shell.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanReadinessSection extends StatelessWidget {
+  const _PlanReadinessSection({
+    required this.shell,
+    required this.scheme,
+    required this.hasPlatform,
+    required this.hasCaption,
+    required this.hasSchedule,
+  });
+
+  final StSupportShellStyle shell;
+  final ColorScheme scheme;
+  final bool hasPlatform;
+  final bool hasCaption;
+  final bool hasSchedule;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: _PlanReadinessTile(
+            shell: shell,
+            scheme: scheme,
+            icon: Icons.public_rounded,
+            label: 'Platform',
+            complete: hasPlatform,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _PlanReadinessTile(
+            shell: shell,
+            scheme: scheme,
+            icon: Icons.notes_rounded,
+            label: 'Caption',
+            complete: hasCaption,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _PlanReadinessTile(
+            shell: shell,
+            scheme: scheme,
+            icon: Icons.schedule_rounded,
+            label: 'Time',
+            complete: hasSchedule,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanReadinessTile extends StatelessWidget {
+  const _PlanReadinessTile({
+    required this.shell,
+    required this.scheme,
+    required this.icon,
+    required this.label,
+    required this.complete,
+  });
+
+  final StSupportShellStyle shell;
+  final ColorScheme scheme;
+  final IconData icon;
+  final String label;
+  final bool complete;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = complete ? const Color(0xFF22C55E) : scheme.error;
+    return Container(
+      height: 82,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: shell.surfaceCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: <Widget>[
+          Icon(icon, color: color, size: 20),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: shell.onChrome,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(
+            complete ? 'Set' : 'Missing',
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanStatusSelector extends StatelessWidget {
+  const _PlanStatusSelector({
+    required this.shell,
+    required this.scheme,
+    required this.status,
+    required this.choices,
+    required this.onChanged,
+  });
+
+  final StSupportShellStyle shell;
+  final ColorScheme scheme;
+  final String status;
+  final List<({String value, String label})> choices;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        for (final ({String value, String label}) choice in choices)
+          ChoiceChip(
+            label: Text(choice.label),
+            selected: status == choice.value,
+            onSelected: (_) => onChanged(choice.value),
+            selectedColor: scheme.primary.withValues(alpha: 0.22),
+            backgroundColor: shell.chipUnselectedBg,
+            labelStyle: TextStyle(
+              color: status == choice.value
+                  ? scheme.primary
+                  : shell.chipUnselectedFg,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+            side: BorderSide(
+              color: status == choice.value
+                  ? scheme.primary.withValues(alpha: 0.45)
+                  : shell.chipUnselectedBorder,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PlanScheduleTile extends StatelessWidget {
+  const _PlanScheduleTile({
+    required this.shell,
+    required this.scheme,
+    required this.scheduleLabel,
+    required this.hasSchedule,
+    required this.onTap,
+    this.onClear,
+  });
+
+  final StSupportShellStyle shell;
+  final ColorScheme scheme;
+  final String scheduleLabel;
+  final bool hasSchedule;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: shell.chipUnselectedBg,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: shell.surfaceCardBorder),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: <Color>[scheme.primary, scheme.secondary],
+                  ),
+                ),
+                child: Icon(
+                  Icons.event_rounded,
+                  color: scheme.onPrimary,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      hasSchedule ? 'Publish window' : 'Schedule',
+                      style: TextStyle(
+                        color: shell.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      scheduleLabel,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: shell.onChrome,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onClear != null)
+                IconButton(
+                  tooltip: 'Clear schedule',
+                  onPressed: onClear,
+                  icon: Icon(Icons.close_rounded, color: shell.iconDim),
+                )
+              else
+                Icon(Icons.chevron_right_rounded, color: shell.iconDim),
+            ],
+          ),
+        ),
       ),
     );
   }

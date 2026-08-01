@@ -340,6 +340,12 @@ class VideoUploadService {
           category: category,
           caption: resolvedCaption,
         );
+        scheduleGamificationEvent(
+          GamificationEventTypes.contentVideoUploaded,
+          entityType: 'video',
+          entityId: resolvedVideoId,
+          eventId: 'content.video_uploaded_$resolvedVideoId',
+        );
         unawaited(
           VideoPublishFinalizeService.instance.waitUntilDiscoverable(
             videoId: resolvedVideoId,
@@ -1096,6 +1102,7 @@ class VideoUploadService {
         GamificationEventTypes.contentPublished,
         entityType: 'video',
         entityId: videoId,
+        eventId: 'content.published_$videoId',
       );
       DailyActivityService.instance.maybeEmitDayQualified(
         source: 'publish',

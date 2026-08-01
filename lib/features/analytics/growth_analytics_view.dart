@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/feature_flags.dart';
 import '../../core/theme/support_shell_style.dart';
 import '../../features/billing/subscription_provider.dart';
 import '../../routing/app_navigator.dart';
@@ -390,16 +391,26 @@ class _GrowthAnalyticsViewState extends ConsumerState<GrowthAnalyticsView> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: SelectableText.rich(
-            TextSpan(
-              text: _errorMessage!,
-              style: const TextStyle(
-                color: Colors.redAccent,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SelectableText.rich(
+                TextSpan(
+                  text: _errorMessage!,
+                  style: TextStyle(
+                    color: shell.muted,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-            textAlign: TextAlign.center,
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => _loadData(showLoading: true),
+                child: const Text('Retry'),
+              ),
+            ],
           ),
         ),
       );
@@ -427,7 +438,8 @@ class _GrowthAnalyticsViewState extends ConsumerState<GrowthAnalyticsView> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: <Widget>[
-          if (!hasConnection) _buildConnectBanner(context, shell),
+          if (!hasConnection && FeatureFlags.linkedPlatforms)
+            _buildConnectBanner(context, shell),
           _buildSummaryGrid(
             shell: shell,
             totalNow: totalNow,
@@ -443,7 +455,8 @@ class _GrowthAnalyticsViewState extends ConsumerState<GrowthAnalyticsView> {
             const SizedBox(height: 16),
             _buildTopContent(shell, data),
           ],
-          if (data.crosspost.isNotEmpty) ...<Widget>[
+          if (FeatureFlags.crossPostingEnabled &&
+              data.crosspost.isNotEmpty) ...<Widget>[
             const SizedBox(height: 16),
             _buildCrossPostSection(shell, data),
           ],

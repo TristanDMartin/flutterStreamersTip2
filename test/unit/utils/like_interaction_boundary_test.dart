@@ -4,14 +4,14 @@ import 'package:streamers_tip/utils/like_interaction_boundary.dart';
 void main() {
   tearDown(LikeInteractionBoundary.resetForTest);
 
-  test('shouldDeferHeavyWork stays true during scroll settle window', () async {
+  test('shouldDeferHeavyWork clears quickly after scroll settle', () async {
     LikeInteractionBoundary.beginPageScroll();
     expect(LikeInteractionBoundary.shouldDeferHeavyWork, isTrue);
     LikeInteractionBoundary.endPageScroll();
     expect(LikeInteractionBoundary.shouldDeferHeavyWork, isTrue);
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    await Future<void>.delayed(const Duration(milliseconds: 120));
     expect(LikeInteractionBoundary.shouldDeferHeavyWork, isTrue);
-    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
     expect(LikeInteractionBoundary.shouldDeferHeavyWork, isFalse);
   });
 
@@ -24,7 +24,7 @@ void main() {
     );
     expect(executed, isFalse);
     LikeInteractionBoundary.endPageScroll();
-    await Future<void>.delayed(const Duration(milliseconds: 1600));
+    await Future<void>.delayed(const Duration(milliseconds: 550));
     expect(executed, isTrue);
   });
 

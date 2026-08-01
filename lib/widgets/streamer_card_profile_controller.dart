@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/creator_profile_snapshot.dart';
 import '../services/creator_cache_service.dart';
+import '../services/public_profile_firestore.dart';
 import '../utils/user_profile_firestore.dart';
 
 @immutable
@@ -112,10 +114,8 @@ class StreamerCardProfileController extends ChangeNotifier {
       }
 
       _subscription?.cancel();
-      _subscription = _firestore
-          .collection('users')
-          .doc(resolvedDocId)
-          .snapshots()
+      _subscription = PublicProfileFirestore.instance
+          .watchProfile(resolvedDocId)
           .listen(
         (DocumentSnapshot<Map<String, dynamic>> snapshot) {
           if (!snapshot.exists) {
@@ -199,27 +199,34 @@ class StreamerCardProfileController extends ChangeNotifier {
       return null;
     }
 
-    final DocumentSnapshot<Map<String, dynamic>> directDoc =
-        await _firestore.collection('users').doc(identifier).get();
-    if (directDoc.exists) {
-      return directDoc.id;
+    final DocumentSnapshot<Map<String, dynamic>> directPublic =
+        await _firestore.collection('publicUsers').doc(identifier).get();
+    if (directPublic.exists) {
+      return directPublic.id;
     }
 
     final DocumentSnapshot<Map<String, dynamic>> usernameDoc =
         await _firestore.collection('usernames').doc(identifier).get();
     final String? mappedUid = usernameDoc.data()?['uid'] as String?;
     if (mappedUid != null && mappedUid.trim().isNotEmpty) {
-      final DocumentSnapshot<Map<String, dynamic>> mappedDoc = await _firestore
-          .collection('users')
-          .doc(mappedUid.trim())
-          .get();
-      if (mappedDoc.exists) {
-        return mappedDoc.id;
+      final String uid = mappedUid.trim();
+      final DocumentSnapshot<Map<String, dynamic>> mappedPublic =
+          await _firestore.collection('publicUsers').doc(uid).get();
+      if (mappedPublic.exists) {
+        return mappedPublic.id;
       }
+      if (FirebaseAuth.instance.currentUser?.uid == uid) {
+        final DocumentSnapshot<Map<String, dynamic>> mappedDoc =
+            await _firestore.collection('users').doc(uid).get();
+        if (mappedDoc.exists) {
+          return mappedDoc.id;
+        }
+      }
+      return uid;
     }
 
     final QuerySnapshot<Map<String, dynamic>> usernameQuery = await _firestore
-        .collection('users')
+        .collection('publicUsers')
         .where('username', isEqualTo: identifier)
         .limit(1)
         .get();
@@ -227,11 +234,12 @@ class StreamerCardProfileController extends ChangeNotifier {
       return usernameQuery.docs.first.id;
     }
 
-    final QuerySnapshot<Map<String, dynamic>> displayNameQuery = await _firestore
-        .collection('users')
-        .where('displayName', isEqualTo: identifier)
-        .limit(1)
-        .get();
+    final QuerySnapshot<Map<String, dynamic>> displayNameQuery =
+        await _firestore
+            .collection('publicUsers')
+            .where('displayName', isEqualTo: identifier)
+            .limit(1)
+            .get();
     if (displayNameQuery.docs.isNotEmpty) {
       return displayNameQuery.docs.first.id;
     }

@@ -22,6 +22,8 @@ class CreatorCommandSnapshot {
     this.growthPercent,
     this.nextPostDueAt,
     this.nextPostOverdue = false,
+    this.nextPostTitle,
+    this.nextPostPlanTitle,
   });
 
   final String userId;
@@ -40,6 +42,8 @@ class CreatorCommandSnapshot {
   final double? growthPercent;
   final DateTime? nextPostDueAt;
   final bool nextPostOverdue;
+  final String? nextPostTitle;
+  final String? nextPostPlanTitle;
 
   String get identityLabel =>
       '${displayName.isNotEmpty ? displayName : username} • Level $level';
@@ -57,5 +61,17 @@ class CreatorCommandSnapshot {
             ? ' • $draftCount ${draftCount == 1 ? 'draft' : 'drafts'}'
             : '');
     return '$name • $momentum$work';
+  }
+
+  String get nextDueSummary {
+    final String? title = nextPostTitle?.trim();
+    if (title != null && title.isNotEmpty) {
+      return title;
+    }
+    final String? plan = nextPostPlanTitle?.trim();
+    if (plan != null && plan.isNotEmpty) {
+      return plan;
+    }
+    return '';
   }
 }

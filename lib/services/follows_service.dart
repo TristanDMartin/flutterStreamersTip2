@@ -15,6 +15,7 @@ import 'privacy_settings_service.dart';
 import 'progression_service.dart';
 
 import '../models/user_count_fields.dart';
+import 'public_profile_firestore.dart';
 
 class FollowCounts {
   const FollowCounts({
@@ -847,12 +848,11 @@ class FollowsService {
 
   Future<FollowCounts?> _tryReadFollowCountsFromUserDoc(String userId) async {
     try {
-      final DocumentSnapshot<Map<String, dynamic>> snap =
-          await _firestore.collection('users').doc(userId).get();
-      if (!snap.exists || snap.data() == null) {
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(userId);
+      if (data == null) {
         return null;
       }
-      final Map<String, dynamic> data = snap.data()!;
       final int followersCount = UserCountFields.readFollowersCount(data);
       final int followingCount = UserCountFields.readFollowingCount(data);
       int connectionsCount = UserCountFields.readConnectionsCount(data);
@@ -875,21 +875,11 @@ class FollowsService {
     if (targetUserIds.isEmpty) {
       return <user_model.User>[];
     }
-    final Set<String> existingUserIds =
-        await _filterExistingUserIds(targetUserIds);
-    if (existingUserIds.isEmpty) {
-      return <user_model.User>[];
-    }
-    final List<user_model.User> users = <user_model.User>[];
-    final List<List<String>> chunks = _chunkList(existingUserIds.toList(), 30);
-    for (final List<String> chunk in chunks) {
-      final QuerySnapshot<Map<String, dynamic>> usersQuery = await _firestore
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      users.addAll(usersQuery.docs.map(_userFromDoc));
-    }
-    return users;
+    final Map<String, Map<String, dynamic>> maps =
+        await PublicProfileFirestore.instance.getProfileMaps(targetUserIds);
+    return maps.entries.map((MapEntry<String, Map<String, dynamic>> e) {
+      return user_model.User.fromMap(e.value);
+    }).toList();
   }
 
   Future<FollowCounts> getFollowCountsForCurrentUser() async {
@@ -940,27 +930,31 @@ class FollowsService {
   Future<void> repairFollowCountersForUser(String userId) async {
     try {
       final FollowCounts counts = await getFollowCountsForUser(userId);
-      final DocumentReference<Map<String, dynamic>> userRef =
-          _firestore.collection('users').doc(userId);
-      final DocumentSnapshot<Map<String, dynamic>> snap = await userRef.get();
-      if (!snap.exists || snap.data() == null) {
-        return;
-      }
-      final Map<String, dynamic> data = snap.data()!;
-      final int storedFollowers = UserCountFields.readFollowersCount(data);
-      final int storedFollowing = UserCountFields.readFollowingCount(data);
-      if (storedFollowers == counts.followersCount &&
-          storedFollowing == counts.followingCount) {
-        return;
-      }
-      await userRef.update(<String, dynamic>{
+      final Map<String, dynamic> payload = <String, dynamic>{
         ...UserCountFields.writeCanonicalCounts(
           followersCount: counts.followersCount,
           followingCount: counts.followingCount,
           connectionsCount: counts.connectionsCount,
         ),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      };
+      final DocumentReference<Map<String, dynamic>> userRef =
+          _firestore.collection('users').doc(userId);
+      final DocumentSnapshot<Map<String, dynamic>> snap = await userRef.get();
+      if (snap.exists && snap.data() != null) {
+        final Map<String, dynamic> data = snap.data()!;
+        final int storedFollowers = UserCountFields.readFollowersCount(data);
+        final int storedFollowing = UserCountFields.readFollowingCount(data);
+        if (storedFollowers != counts.followersCount ||
+            storedFollowing != counts.followingCount) {
+          await userRef.update(payload);
+        }
+      }
+      // Always mirror onto publicUsers (peer / streamer reads).
+      await _firestore.collection('publicUsers').doc(userId).set(
+            payload,
+            SetOptions(merge: true),
+          );
       debugPrint(
         '✅ FollowsService: Repaired counters for $userId '
         '(followers ${counts.followersCount}, following ${counts.followingCount})',
@@ -1314,40 +1308,10 @@ class FollowsService {
     return controller.stream;
   }
 
-  user_model.User _userFromDoc(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data();
-    final merged = {...data, 'id': data['id'] ?? doc.id};
-    return user_model.User.fromMap(merged);
-  }
-
   Future<Set<String>> _filterExistingUserIds(Set<String> userIds) async {
     if (userIds.isEmpty) {
       return <String>{};
     }
-    final Set<String> existing = <String>{};
-    final List<String> idList = userIds.toList();
-    for (final List<String> chunk in _chunkList(idList, 30)) {
-      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      existing.addAll(snapshot.docs.map((doc) => doc.id));
-    }
-    return existing;
-  }
-
-  List<List<T>> _chunkList<T>(List<T> list, int chunkSize) {
-    final chunks = <List<T>>[];
-    for (var i = 0; i < list.length; i += chunkSize) {
-      chunks.add(
-        list.sublist(
-          i,
-          i + chunkSize > list.length ? list.length : i + chunkSize,
-        ),
-      );
-    }
-    return chunks;
+    return PublicProfileFirestore.instance.filterExistingIds(userIds);
   }
 }

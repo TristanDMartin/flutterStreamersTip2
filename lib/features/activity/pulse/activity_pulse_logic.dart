@@ -1,6 +1,6 @@
 import '../../../models/activity_notification.dart';
-import '../../gamification/models/gamification_summary_model.dart';
 import '../../gamification/models/user_progress_bundle.dart';
+import '../activity_notification_rules.dart';
 import 'activity_pulse_tokens.dart';
 
 /// Filter chips on Creator Pulse.
@@ -93,7 +93,7 @@ extension ActivityPulseNotificationX on ActivityNotification {
       case ActivityNotificationType.tag:
         return commentText != null && commentText!.isNotEmpty;
       case ActivityNotificationType.adminBroadcast:
-        return _isTippyInsight;
+        return isTippyType || isContentPlanType;
       case ActivityNotificationType.like:
       case ActivityNotificationType.comment:
       case ActivityNotificationType.newVideo:
@@ -101,16 +101,29 @@ extension ActivityPulseNotificationX on ActivityNotification {
     }
   }
 
-  bool get _isTippyInsight {
-    final String blob =
-        '${actionType ?? ''} ${actionUrl ?? ''} ${milestoneType ?? ''} '
-                '${commentText ?? ''}'
-            .toLowerCase();
-    return blob.contains('tippy') || blob.contains('ai_');
-  }
+  String get _typeBlob =>
+      '${actionType ?? ''} ${actionUrl ?? ''} ${milestoneType ?? ''} '
+              '${commentText ?? ''}'
+          .toLowerCase();
 
-  bool get isTippyType =>
-      type == ActivityNotificationType.adminBroadcast && _isTippyInsight;
+  bool get isContentPlanType =>
+      isContentPlanNotificationType(actionType) ||
+      activityActionUrlLooksLikeContentPlan(actionUrl) ||
+      _typeBlob.contains('content_plan') ||
+      _typeBlob.contains('content-planning');
+
+  bool get isTippyType {
+    if (isTippyCoachNotificationType(actionType)) {
+      return true;
+    }
+    if (activityActionUrlLooksLikeTrendDiscovery(actionUrl)) {
+      return type == ActivityNotificationType.adminBroadcast;
+    }
+    if (type != ActivityNotificationType.adminBroadcast) {
+      return false;
+    }
+    return _typeBlob.contains('tippy') || _typeBlob.contains('ai_');
+  }
 
   bool get isMomentumType =>
       type == ActivityNotificationType.milestone || _isStreakMilestone;
@@ -134,6 +147,9 @@ extension ActivityPulseNotificationX on ActivityNotification {
   ActivityPulseAccent get pulseAccent {
     if (isTippyType) {
       return ActivityPulseAccent.tippy;
+    }
+    if (isContentPlanType) {
+      return ActivityPulseAccent.momentum;
     }
     if (isMomentumType || type == ActivityNotificationType.milestone) {
       return ActivityPulseAccent.momentum;
@@ -171,7 +187,7 @@ extension ActivityPulseNotificationX on ActivityNotification {
       case ActivityPulseFilter.follows:
         return type == ActivityNotificationType.follow;
       case ActivityPulseFilter.momentum:
-        return isMomentumType;
+        return isMomentumType || isContentPlanType;
       case ActivityPulseFilter.tippy:
         return isTippyType;
       case ActivityPulseFilter.live:
@@ -197,51 +213,14 @@ extension ActivityPulseNotificationX on ActivityNotification {
 abstract final class ActivityPulseLogic {
   static const List<ActivityPulseFilter> filters = ActivityPulseFilter.values;
 
+  /// Client-side coaching cards. Disabled: they are not written to
+  /// `notifications/{uid}/items`, so the website Activity feed never shows
+  /// them and they reappear on every open (false "new notification" feel).
+  /// Real Tippy / score events should arrive via Firestore notifications.
   static List<ActivityPulseInsight> insightsFromBundle(
     UserProgressBundle? bundle,
   ) {
-    if (bundle == null) {
-      return const <ActivityPulseInsight>[];
-    }
-    final GamificationSummaryModel p = bundle.progress;
-    final List<ActivityPulseInsight> out = <ActivityPulseInsight>[];
-    final DateTime now = DateTime.now();
-    if (p.streakDays >= 3) {
-      out.add(
-        ActivityPulseInsight(
-          id: 'insight_streak',
-          title: 'Momentum building',
-          body: 'Your streak reached ${p.streakDays} days — keep it alive.',
-          emoji: '🔥',
-          accent: ActivityPulseAccent.momentum,
-          timestamp: now,
-        ),
-      );
-    }
-    if (p.creatorScore >= 10) {
-      out.add(
-        ActivityPulseInsight(
-          id: 'insight_score',
-          title: 'Creator score rising',
-          body: 'Your creator score is ${p.creatorScore.toStringAsFixed(0)}. '
-              'Post while engagement is warm.',
-          emoji: '📈',
-          accent: ActivityPulseAccent.momentum,
-          timestamp: now.subtract(const Duration(minutes: 2)),
-        ),
-      );
-    }
-    out.add(
-      ActivityPulseInsight(
-        id: 'insight_tippy',
-        title: 'Tippy recommends',
-        body: 'Posting tonight could improve reach based on your rhythm.',
-        emoji: '🧠',
-        accent: ActivityPulseAccent.tippy,
-        timestamp: now.subtract(const Duration(minutes: 5)),
-      ),
-    );
-    return out;
+    return const <ActivityPulseInsight>[];
   }
 
   static Map<String, List<ActivityPulseEntry>> processGrouped({

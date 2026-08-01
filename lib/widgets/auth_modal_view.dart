@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,11 +5,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/firebase_bootstrap.dart';
-import '../core/theme/st_theme_tokens.dart';
 import '../qa/qa_keys.dart';
 import '../services/robust_auth_service.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../views/terms_and_privacy_view.dart';
+import '../constants/app_colors.dart';
+import 'auth/auth_brand_header.dart';
+import 'auth/auth_cinematic_shell.dart';
+import 'auth/auth_get_started_button.dart';
+import 'auth/auth_glass_panel.dart';
 import 'email_login_view.dart';
 import 'signup_view.dart';
 
@@ -29,7 +31,7 @@ class AuthModalView extends ConsumerStatefulWidget {
 
 class _AuthModalViewState extends ConsumerState<AuthModalView> {
   bool _showAlert = false;
-  String _alertMessage = "";
+  String _alertMessage = '';
   bool _isContentVisible = false;
 
   @override
@@ -51,16 +53,12 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   void _applySystemUiForTheme() {
-    final ThemeData theme = Theme.of(context);
-    final Brightness brightness = theme.brightness;
     SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
+      const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness:
-            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-        systemNavigationBarColor: theme.colorScheme.surface,
-        systemNavigationBarIconBrightness:
-            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
   }
@@ -84,10 +82,8 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
-    final bool isDark = theme.brightness == Brightness.dark;
-    final authService = ref.watch(robustAuthServiceProvider);
+    final RobustAuthenticationService authService =
+        ref.watch(robustAuthServiceProvider);
     ref.listen<RobustAuthenticationService>(
       robustAuthServiceProvider,
       (RobustAuthenticationService? previous, RobustAuthenticationService next) {
@@ -115,147 +111,50 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
       },
     );
 
-    return Material(
-      color: Colors.transparent,
-      child: Scaffold(
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: isDark
-                  ? <Color>[
-                      StThemeColors.darkBackground,
-                      scheme.surfaceContainerLow,
-                      scheme.surface,
-                    ]
-                  : <Color>[
-                      scheme.primary.withValues(alpha: 0.45),
-                      scheme.surfaceContainerLow,
-                      scheme.surface,
-                    ],
-            ),
-          ),
-          child: Stack(
-            children: [
-              _buildBackgroundDecor(),
-              SafeArea(
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 450),
-                  curve: Curves.easeOut,
-                  opacity: _isContentVisible ? 1 : 0,
-                  child: AnimatedSlide(
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeOutCubic,
-                    offset:
-                        _isContentVisible ? Offset.zero : const Offset(0, 0.03),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        children: [
-                          _buildHeader(),
-                          const Spacer(),
-                          _buildAnimatedSection(
-                            delay: 0,
-                            child: _buildAppLogoSection(),
-                          ),
-                          const Spacer(),
-                          _buildAnimatedSection(
-                            delay: 80,
-                            child: _buildAuthButtons(authService),
-                          ),
-                          const Spacer(),
-                          _buildAnimatedSection(
-                            delay: 140,
-                            child: Column(
-                              children: [
-                                _buildTermsAndPrivacy(),
-                                _buildSignUpSection(),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
-                    ),
-                  ),
+    return AuthCinematicShell(
+      showLoading: authService.isAuthSubmitting,
+      loadingText: 'Signing in...',
+      showAlert: _showAlert,
+      alertMessage: _alertMessage,
+      onDismissAlert: () => setState(() => _showAlert = false),
+      header: widget.dismiss == null ? null : _buildDismissHeader(),
+      content: AnimatedOpacity(
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOut,
+        opacity: _isContentVisible ? 1 : 0,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutCubic,
+          offset: _isContentVisible ? Offset.zero : const Offset(0, 0.03),
+          child: Column(
+            children: <Widget>[
+              const SizedBox(height: 12),
+              _buildAnimatedSection(
+                delay: 0,
+                child: const AuthBrandHeader(),
+              ),
+              const SizedBox(height: 28),
+              _buildAnimatedSection(
+                delay: 40,
+                child: _buildWelcomeCopy(),
+              ),
+              const SizedBox(height: 28),
+              _buildAnimatedSection(
+                delay: 80,
+                child: _buildAuthButtons(authService),
+              ),
+              const SizedBox(height: 28),
+              _buildAnimatedSection(
+                delay: 140,
+                child: Column(
+                  children: <Widget>[
+                    _buildTermsAndPrivacy(),
+                    const SizedBox(height: 8),
+                    _buildSignUpSection(),
+                  ],
                 ),
               ),
-
-              // Loading Overlay
-              if (authService.isAuthSubmitting)
-                Container(
-                  color: scheme.scrim.withValues(alpha: 0.35),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            scheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Signing in...",
-                          style: TextStyle(
-                            color: scheme.onSurface,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // ===== Alert Dialog Overlay (added) =====
-              if (_showAlert) ...[
-                // Tap outside to dismiss
-                Positioned.fill(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _showAlert = false),
-                    child: Container(color: Colors.black54),
-                  ),
-                ),
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: AlertDialog(
-                      backgroundColor: scheme.surfaceContainerHigh,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      title: Text(
-                        "Notice",
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      content: Text(
-                        _alertMessage.isEmpty
-                            ? "Something happened."
-                            : _alertMessage,
-                        style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.75),
-                          height: 1.3,
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: scheme.primary,
-                          ),
-                          onPressed: () => setState(() => _showAlert = false),
-                          child: const Text("OK"),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-              // ===== End Alert Dialog Overlay =====
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -263,122 +162,66 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     );
   }
 
-  Widget _buildHeader() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final TextStyle titleStyle = TextStyle(
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-      color: scheme.onSurface,
-    );
-    final Widget title = Text("Sign In", style: titleStyle);
-    if (widget.dismiss == null) {
-      return SizedBox(height: 48, child: Center(child: title));
-    }
-    return Row(
-      children: [
-        TextButton(
+  Widget _buildDismissHeader() {
+    return SizedBox(
+      height: 44,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
           onPressed: widget.dismiss,
-          child: Text(
-            "Cancel",
+          child: const Text(
+            'Cancel',
             style: TextStyle(
-              color: scheme.primary,
+              color: Colors.white,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        const Spacer(),
-        title,
-        const Spacer(),
-        const SizedBox(width: 72),
-      ],
-    );
-  }
-
-  Widget _buildAppLogoSection() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return _buildGlassPanel(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-      child: Column(
-        children: [
-          Image.asset(
-            'assets/logo.png',
-            width: 120,
-            height: 120,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              debugPrint('❌ Error loading logo: $error');
-              debugPrint('❌ Stack trace: $stackTrace');
-              return ShaderMask(
-                shaderCallback: (Rect rect) {
-                  return const LinearGradient(
-                    colors: [
-                      Color(0xFFFFD76A),
-                      Color(0xFF9F80FF),
-                      Color(0xFF52B6FF),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ).createShader(rect);
-                },
-                blendMode: BlendMode.srcIn,
-                child: const Icon(
-                  Icons.play_circle_filled,
-                  size: 120,
-                  color: Colors.white,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 18),
-          Text(
-            "StreamersTip",
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-              color: scheme.onSurface,
-            ),
-          ),
-        ],
       ),
     );
   }
 
+  Widget _buildWelcomeCopy() {
+    return Column(
+      children: <Widget>[
+        const Text(
+          'Welcome Back',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Sign in to continue growing your audience.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.78),
+            fontSize: 15,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildAuthButtons(RobustAuthenticationService authService) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return _buildGlassPanel(
-      padding: const EdgeInsets.all(20),
+    return AuthGlassPanel(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            "Choose a sign-in method",
-            style: TextStyle(
-              color: scheme.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            "Pick email, Apple, or Google to access your account.",
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: 13,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 18),
+        children: <Widget>[
           _buildAuthButton(
             key: QaKeys.authEmailUsernameOption,
-            icon: Icons.person,
-            text: "Sign in with Email/Username",
-            backgroundColor: Colors.white,
-            textColor: Colors.black,
+            icon: Icons.mail_outline_rounded,
+            text: 'Continue with Email',
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => EmailLoginView(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => EmailLoginView(
                     dismiss: () => Navigator.of(context).pop(),
                   ),
                 ),
@@ -392,10 +235,8 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           ],
           const SizedBox(height: 14),
           _buildAuthButton(
-            icon: Icons.language,
-            text: "Continue with Google",
-            backgroundColor: Colors.white,
-            textColor: Colors.black,
+            icon: Icons.g_mobiledata_rounded,
+            text: 'Continue with Google',
             onTap: _signInWithGoogle,
             disabled: authService.isAuthSubmitting,
           ),
@@ -414,8 +255,6 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
       key: QaKeys.authAppleOption,
       icon: Icons.apple,
       text: 'Continue with Apple',
-      backgroundColor: Colors.white,
-      textColor: Colors.black,
       onTap: _signInWithApple,
       disabled: authService.isAuthSubmitting,
     );
@@ -425,8 +264,6 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     Key? key,
     required IconData icon,
     required String text,
-    required Color backgroundColor,
-    required Color textColor,
     required VoidCallback onTap,
     bool disabled = false,
   }) {
@@ -438,37 +275,45 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
         onTap: onTap,
         child: Container(
           width: double.infinity,
-          constraints: const BoxConstraints(minHeight: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+              colors: <Color>[
+                AppColors.primary,
+                Color(0xFF7768DF),
+                Color(0xFF4897D2),
+              ],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: const [
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: <BoxShadow>[
               BoxShadow(
-                color: Color(0x332C8FFF),
+                color: AppColors.primary.withValues(alpha: 0.38),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: const Color(0xFF4897D2).withValues(alpha: 0.28),
                 blurRadius: 18,
-                offset: Offset(0, 8),
+                offset: const Offset(0, 6),
               ),
             ],
           ),
           alignment: Alignment.center,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Icon(icon, size: 20, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
+            children: <Widget>[
+              Icon(icon, size: 22, color: Colors.white),
+              const SizedBox(width: 10),
+              Flexible(
                 child: Text(
                   text,
                   style: TextStyle(
                     fontSize:
                         !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
-                            ? 15.5
+                            ? 16
                             : 17,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.1,
@@ -476,8 +321,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
                     height: 1.15,
                   ),
                   textAlign: TextAlign.center,
-                  maxLines: 2,
-                  softWrap: true,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -492,7 +336,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     required Widget child,
     required int delay,
   }) {
-    final duration = Duration(milliseconds: 420 + delay);
+    final Duration duration = Duration(milliseconds: 420 + delay);
     return AnimatedOpacity(
       duration: duration,
       curve: Curves.easeOut,
@@ -506,130 +350,38 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     );
   }
 
-  Widget _buildBackgroundDecor() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final Color primarySoft = scheme.primary.withValues(alpha: 0.14);
-    final Color secondarySoft = scheme.secondary.withValues(alpha: 0.1);
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            top: -80,
-            right: -30,
-            child: _buildGlowOrb(
-              size: 220,
-              colors: [primarySoft, primarySoft.withValues(alpha: 0)],
-            ),
-          ),
-          Positioned(
-            top: 180,
-            left: -70,
-            child: _buildGlowOrb(
-              size: 180,
-              colors: [secondarySoft, secondarySoft.withValues(alpha: 0)],
-            ),
-          ),
-          Positioned(
-            bottom: -60,
-            right: -10,
-            child: _buildGlowOrb(
-              size: 180,
-              colors: [
-                scheme.primary.withValues(alpha: 0.08),
-                Colors.transparent,
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGlowOrb({
-    required double size,
-    required List<Color> colors,
-  }) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: colors),
-      ),
-    );
-  }
-
-  Widget _buildGlassPanel({
-    required Widget child,
-    EdgeInsetsGeometry padding = const EdgeInsets.all(16),
-  }) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color panelFill = isDark
-        ? scheme.surface.withValues(alpha: 0.42)
-        : scheme.surface.withValues(alpha: 0.72);
-    final Color panelBorder =
-        scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
-    return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            width: double.infinity,
-            padding: padding,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              color: panelFill,
-              border: Border.all(color: panelBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
-                  blurRadius: 32,
-                  offset: const Offset(0, 18),
-                ),
-              ],
-            ),
-            child: child,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildTermsAndPrivacy() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     final TextStyle muted = TextStyle(
       fontSize: 12,
-      color: scheme.onSurfaceVariant,
+      color: Colors.white.withValues(alpha: 0.62),
     );
     return Column(
-      children: [
-        Text("By continuing, you agree to our", style: muted),
-        const SizedBox(height: 8),
+      children: <Widget>[
+        Text('By continuing, you agree to our', style: muted),
+        const SizedBox(height: 4),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+          children: <Widget>[
             TextButton(
               onPressed: _openTermsOfService,
-              child: Text(
-                "Terms of Service",
+              child: const Text(
+                'Terms of Service',
                 style: TextStyle(
                   fontSize: 12,
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-            Text("and", style: muted),
+            Text('and', style: muted),
             TextButton(
               onPressed: _openPrivacyPolicy,
-              child: Text(
-                "Privacy Policy",
+              child: const Text(
+                'Privacy Policy',
                 style: TextStyle(
                   fontSize: 12,
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -640,36 +392,42 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildSignUpSection() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
+    return Column(
+      children: <Widget>[
         Text(
-          "Don't have an account?",
+          'New to StreamersTip?',
           style: TextStyle(
             fontSize: 14,
-            color: scheme.onSurfaceVariant,
+            color: Colors.white.withValues(alpha: 0.72),
           ),
         ),
-        const SizedBox(width: 4),
-        _SignupLink(scheme: scheme),
+        const SizedBox(height: 10),
+        AuthGetStartedButton(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => const SignupView(),
+              ),
+            );
+          },
+        ),
       ],
     );
   }
 
-  // Authentication Methods
   Future<void> _signInWithGoogle() async {
-    debugPrint("🟢 Google sign-in tapped");
+    debugPrint('🟢 Google sign-in tapped');
     final RobustAuthenticationService authService =
         ref.read(robustAuthServiceProvider);
     if (authService.isAuthSubmitting) {
       return;
     }
     try {
-      final result = await authService.debouncedSignInWithGoogle();
+      final AuthRequestResult result =
+          await authService.debouncedSignInWithGoogle();
       await _completeSocialSignIn(result, providerLabel: 'Google');
     } catch (e) {
-      debugPrint("❌ Google sign-in error: $e");
+      debugPrint('❌ Google sign-in error: $e');
       if (mounted) {
         setState(() {
           _alertMessage = _getUserFriendlyErrorMessage(e.toString());
@@ -680,17 +438,18 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Future<void> _signInWithApple() async {
-    debugPrint("🍎 Apple sign-in tapped");
+    debugPrint('🍎 Apple sign-in tapped');
     final RobustAuthenticationService authService =
         ref.read(robustAuthServiceProvider);
     if (authService.isAuthSubmitting) {
       return;
     }
     try {
-      final result = await authService.debouncedSignInWithApple();
+      final AuthRequestResult result =
+          await authService.debouncedSignInWithApple();
       await _completeSocialSignIn(result, providerLabel: 'Apple');
     } catch (e) {
-      debugPrint("❌ Apple sign-in error: $e");
+      debugPrint('❌ Apple sign-in error: $e');
       if (mounted) {
         setState(() {
           _alertMessage = _getUserFriendlyErrorMessage(e.toString());
@@ -728,7 +487,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
         return;
       }
       if (firebaseUser == null) {
-        debugPrint("❌ $providerLabel sign-in failed: $error");
+        debugPrint('❌ $providerLabel sign-in failed: $error');
         setState(() {
           _alertMessage = _getUserFriendlyErrorMessage(error);
           _showAlert = true;
@@ -741,7 +500,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
       );
     }
     debugPrint(
-      "✅ $providerLabel sign-in completed — waiting for auth gate "
+      '✅ $providerLabel sign-in completed — waiting for auth gate '
       'uid=${firebaseUser?.uid ?? 'null'}',
     );
   }
@@ -791,7 +550,9 @@ class _PressableAuthButtonState extends State<_PressableAuthButton> {
   bool _pressed = false;
 
   void _setPressed(bool value) {
-    if (!widget.enabled) return;
+    if (!widget.enabled) {
+      return;
+    }
     setState(() {
       _pressed = value;
     });
@@ -815,27 +576,3 @@ class _PressableAuthButtonState extends State<_PressableAuthButton> {
   }
 }
 
-class _SignupLink extends StatelessWidget {
-  const _SignupLink({required this.scheme});
-
-  final ColorScheme scheme;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => const SignupView()),
-        );
-      },
-      child: Text(
-        "Sign up",
-        style: TextStyle(
-          fontSize: 14,
-          color: scheme.secondary,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}

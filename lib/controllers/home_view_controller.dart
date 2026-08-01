@@ -1,6 +1,9 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
+import 'package:video_player/video_player.dart';
 
 import '../constants/playback_owners.dart';
 import '../models/feed_tab.dart';
@@ -58,6 +61,10 @@ class HomeViewControllerState {
 
 class HomeViewController extends Notifier<HomeViewControllerState> {
   static const Duration _reactivationCooldown = Duration(milliseconds: 500);
+  String? _discoverExitVideoId;
+  int? _discoverExitControllerId;
+  int? _discoverExitPositionMs;
+  int? _discoverExitPoolSize;
 
   @override
   HomeViewControllerState build() {
@@ -149,12 +156,45 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
   void prepareForRouteNavigation({required String reason}) {
     secureLog('🔇 HomeViewController: Navigating away ($reason)');
     if (reason.contains('discover')) {
-      GlobalPlaybackManager.instance.setVisibleOwner(PlaybackOwners.discover);
+      _prepareForDiscoverCover(reason: reason);
+      return;
     }
     _pauseAndBlock(
       reason: reason,
       leaveHomeView: true,
       shouldResumeOnReturn: true,
+    );
+  }
+
+  /// Discover is a pushed route that temporarily covers Home. Keep the current
+  /// Home controller warm (same retention model as IndexedStack tab leave).
+  void _prepareForDiscoverCover({required String reason}) {
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    markAsBackground(shouldResumeOnReturn: true);
+    final int homeIndex = state.currentIndex;
+    final String? homeVideoId = _resolveCurrentHomeVideoId();
+    final VideoPlayerController? controller = homeVideoId == null
+        ? null
+        : manager.getController(homeVideoId);
+    final bool initialized = controller?.value.isInitialized == true;
+    final int? positionMs =
+        initialized ? controller!.value.position.inMilliseconds : null;
+    _discoverExitVideoId = homeVideoId;
+    _discoverExitControllerId = controller?.hashCode;
+    _discoverExitPositionMs = positionMs;
+    _discoverExitPoolSize = manager.pooledControllerCount;
+    manager.beginHomeTabBackgroundRetention(currentIndex: homeIndex);
+    manager.onLeaveHomeView();
+    manager.setVisibleOwner(PlaybackOwners.discover);
+    manager.block(reason: reason);
+    final bool retained = manager.isRetainingHomePoolForTabBackground &&
+        homeVideoId != null &&
+        manager.hasController(homeVideoId);
+    secureLog(
+      'HOME_EXIT_TO_DISCOVER homeVideoId=$homeVideoId homeIndex=$homeIndex '
+      'positionMs=$positionMs controllerId=${controller?.hashCode} '
+      'initialized=$initialized poolSize=${manager.pooledControllerCount} '
+      'retained=$retained',
     );
   }
 
@@ -176,19 +216,66 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     manager.block(reason: reason);
   }
 
-  void resumeFromTabReturn() {
-    secureLog('▶️ HomeViewController: Tab return — instant resume');
+  void resumeFromTabReturn({bool fromDiscover = false}) {
     final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
-    manager.endHomeTabBackgroundRetention();
+    final String? ownerBefore = manager.visibleOwner;
+    final int homeIndex = state.currentIndex;
+    final String? homeVideoId = _resolveCurrentHomeVideoId();
+    final Duration? savedPosition = manager.lastKnownPositionAt(homeIndex);
+    final VideoPlayerController? retainedBefore =
+        homeVideoId == null ? null : manager.getController(homeVideoId);
+    final bool sameController = fromDiscover &&
+        retainedBefore != null &&
+        _discoverExitControllerId != null &&
+        retainedBefore.hashCode == _discoverExitControllerId &&
+        (_discoverExitVideoId == null ||
+            _discoverExitVideoId == homeVideoId);
+    if (fromDiscover) {
+      secureLog(
+        'HOME_RETURN_FROM_DISCOVER homeVideoId=$homeVideoId '
+        'homeIndex=$homeIndex '
+        'savedPositionMs=${savedPosition?.inMilliseconds ?? _discoverExitPositionMs} '
+        'controllerId=${retainedBefore?.hashCode} '
+        'exitControllerId=$_discoverExitControllerId '
+        'controllerFound=${retainedBefore != null} '
+        'sameController=$sameController '
+        'initialized=${retainedBefore?.value.isInitialized == true} '
+        'ownerBefore=$ownerBefore ownerAfter=${PlaybackOwners.home} '
+        'poolSize=${manager.pooledControllerCount} '
+        'exitPoolSize=$_discoverExitPoolSize',
+      );
+    }
+    manager.clearDesiredFocusForOwner(PlaybackOwners.discover);
+    manager.clearDesiredFocusForOwner(PlaybackOwners.discoverPlayer);
     if (manager.isPlaybackBlocked) {
       manager.forceUnblock();
     }
     manager.setVisibleOwner(PlaybackOwners.home);
     manager.setActiveOwner(PlaybackOwners.home);
+    manager.endHomeTabBackgroundRetention();
     pinHomeWarmWindowForCurrentIndex();
     markAsActiveOwner();
     manager.restoreCurrentFeedFocus();
-    _resumeCurrentVideoInstantly();
+    final bool resumedFromRetained = _resumeCurrentVideoInstantly(
+      fromDiscover: fromDiscover,
+      savedPosition: savedPosition,
+      sameController: sameController,
+      exitControllerId: _discoverExitControllerId,
+    );
+    if (fromDiscover) {
+      _discoverExitVideoId = null;
+      _discoverExitControllerId = null;
+      _discoverExitPositionMs = null;
+      _discoverExitPoolSize = null;
+    }
+    if (resumedFromRetained) {
+      secureLog('▶️ HomeViewController: Tab return — instant resume');
+    } else {
+      secureLog(
+        '▶️ HomeViewController: Tab return — queued resume '
+        '(retained controller unavailable)',
+      );
+    }
     state = state.copyWith(shouldResumeOnReturn: false);
   }
 
@@ -224,7 +311,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
   void handleReturnedToHome({required bool isRouteCurrent}) {
     if (!isRouteCurrent) return;
     if (state.isNavigatingToDiscover) return;
-    resumeFromTabReturn();
+    resumeFromTabReturn(fromDiscover: true);
   }
 
   void handleAppLifecycleChanged({
@@ -302,28 +389,85 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     }
   }
 
-  void _resumeCurrentVideoInstantly() {
+  String? _resolveCurrentHomeVideoId() {
     try {
       final hp.HomeState homeState = ref.read(hp.homeProvider);
       final FeedTab activeFeed = ref.read(activeFeedProvider);
       final List<HomeVideo> currentVideos =
           homeState.feedData(activeFeed).videos;
       if (currentVideos.isEmpty) {
-        secureLog('⚠️ HomeViewController: No videos available to resume');
-        return;
+        return null;
       }
       final int safeIndex = state.currentIndex.clamp(
         0,
         currentVideos.length - 1,
       );
-      final HomeVideo currentVideo = currentVideos[safeIndex];
-      final String videoId = currentVideo.id;
+      final String videoId = currentVideos[safeIndex].id;
+      return videoId.isEmpty ? null : videoId;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Returns true when a warm pooled controller was available to focus.
+  bool _resumeCurrentVideoInstantly({
+    bool fromDiscover = false,
+    Duration? savedPosition,
+    bool sameController = false,
+    int? exitControllerId,
+  }) {
+    try {
+      final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+      final String? videoId = _resolveCurrentHomeVideoId();
+      if (videoId == null) {
+        secureLog('⚠️ HomeViewController: No videos available to resume');
+        return false;
+      }
       const String ownerId = PlaybackOwners.home;
-      if (videoId.isEmpty) return;
-      GlobalPlaybackManager.instance.requestFocus(videoId, ownerId);
+      final VideoPlayerController? retained = manager.getController(videoId);
+      final bool controllerFound = retained != null;
+      final bool initialized = retained?.value.isInitialized == true;
+      final String method = controllerFound && initialized
+          ? 'retained_controller'
+          : 'recreated_controller';
+      // Warm retained controllers already have a decoded first frame.
+      final int firstFrameMs = controllerFound && initialized ? 0 : -1;
+      if (retained != null &&
+          retained.value.isInitialized &&
+          savedPosition != null &&
+          savedPosition > Duration.zero) {
+        final Duration current = retained.value.position;
+        final Duration delta = (current - savedPosition).abs();
+        if (delta > const Duration(milliseconds: 750)) {
+          unawaited(retained.seekTo(savedPosition));
+        }
+      }
+      final Stopwatch playWatch = Stopwatch()..start();
+      unawaited(
+        manager.requestFocus(videoId, ownerId).then((_) {
+          playWatch.stop();
+          final VideoPlayerController? after = manager.getController(videoId);
+          final bool sameAfter = exitControllerId != null &&
+              after != null &&
+              after.hashCode == exitControllerId;
+          secureLog(
+            'HOME_RESUME_RESULT method=$method '
+            'playCalled=true '
+            'isPlaying=${after?.value.isPlaying == true} '
+            'positionMs=${after?.value.position.inMilliseconds} '
+            'firstFrameMs=$firstFrameMs '
+            'focusMs=${playWatch.elapsedMilliseconds} '
+            'textureVisible=${after?.value.isInitialized == true} '
+            'sameController=${sameController || sameAfter} '
+            'fromDiscover=$fromDiscover',
+          );
+        }),
+      );
+      return controllerFound && initialized;
     } catch (e, stackTrace) {
       secureLog('❌ HomeViewController: Error resuming current video: $e');
       secureLog('Stack trace: $stackTrace');
+      return false;
     }
   }
 }

@@ -60,4 +60,58 @@ void main() {
       expect(actual.map((HomeVideo v) => v.id), <String>['visible']);
     });
   });
+
+  group('shouldKeepWarmFeedOverEmptyNetwork', () {
+    test('keeps warm when network is empty', () {
+      expect(
+        shouldKeepWarmFeedOverEmptyNetwork(
+          currentVideos: <HomeVideo>[video(id: 'warm')],
+          networkVideos: const <HomeVideo>[],
+        ),
+        isTrue,
+      );
+    });
+
+    test('replaces when network has videos', () {
+      expect(
+        shouldKeepWarmFeedOverEmptyNetwork(
+          currentVideos: <HomeVideo>[video(id: 'warm')],
+          networkVideos: <HomeVideo>[video(id: 'fresh')],
+        ),
+        isFalse,
+      );
+    });
+
+    test('allows empty honest state when nothing warm', () {
+      expect(
+        shouldKeepWarmFeedOverEmptyNetwork(
+          currentVideos: const <HomeVideo>[],
+          networkVideos: const <HomeVideo>[],
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldForceFeedIndexSyncDuringScroll', () {
+    test('forces sync when current index is now out of bounds', () {
+      expect(
+        shouldForceFeedIndexSyncDuringScroll(
+          currentIndex: 4,
+          nextVideoCount: 3,
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not force sync for in-bounds identity reshuffle', () {
+      expect(
+        shouldForceFeedIndexSyncDuringScroll(
+          currentIndex: 1,
+          nextVideoCount: 5,
+        ),
+        isFalse,
+      );
+    });
+  });
 }

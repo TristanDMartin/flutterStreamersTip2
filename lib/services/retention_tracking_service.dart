@@ -94,6 +94,22 @@ class RetentionTrackingService {
     );
   }
 
+  Future<void> trackViewedWeeklyReport({
+    required String uid,
+    String? level,
+    Map<String, dynamic>? metadata,
+  }) {
+    return trackEvent(
+      uid: uid,
+      type: RetentionEventTypes.viewedWeeklyReport,
+      metadata: <String, dynamic>{
+        if (level != null && level.isNotEmpty) 'level': level,
+        'surface': 'weekly_report',
+        ...?metadata,
+      },
+    );
+  }
+
   Future<void> trackEvent({
     required String uid,
     required String type,

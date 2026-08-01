@@ -3,9 +3,10 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/user_count_fields.dart';
+import 'public_profile_firestore.dart';
 
-/// Prefer denormalized `users/{id}` counters (same as profile [UserStats]).
-/// Edge aggregates are a fallback only when the user doc is missing counts.
+/// Prefer denormalized counters on publicUsers / own users doc.
+/// Edge aggregates are a fallback only when the profile doc is missing counts.
 class CreatorFollowerCountService {
   CreatorFollowerCountService._();
   static final CreatorFollowerCountService instance =
@@ -13,16 +14,15 @@ class CreatorFollowerCountService {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// Reads [UserCountFields] from the user doc; falls back to edge count.
+  /// Reads [UserCountFields] from public profile; falls back to edge count.
   Future<int> getCreatorFollowerCount(String creatorId) async {
     final String trimmed = creatorId.trim();
     if (trimmed.isEmpty) {
       return 0;
     }
     try {
-      final DocumentSnapshot<Map<String, dynamic>> snap =
-          await _db.collection('users').doc(trimmed).get();
-      final Map<String, dynamic>? data = snap.data();
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(trimmed);
       if (data != null) {
         return math.max(0, UserCountFields.readFollowersCount(data));
       }

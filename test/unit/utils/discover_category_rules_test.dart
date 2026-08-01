@@ -40,5 +40,20 @@ void main() {
       };
       expect(matchesDiscoverCategory(data, 'gaming'), isTrue);
     });
+
+    test('website Title Case Gaming matches gaming slug', () {
+      final Map<String, dynamic> data = <String, dynamic>{
+        'categoryId': 'Gaming',
+        'category': 'Gaming',
+      };
+      expect(matchesDiscoverCategory(data, 'gaming'), isTrue);
+    });
+
+    test('website Other matches general', () {
+      final Map<String, dynamic> data = <String, dynamic>{
+        'categoryId': 'Other',
+      };
+      expect(matchesDiscoverCategory(data, 'general'), isTrue);
+    });
   });
 }

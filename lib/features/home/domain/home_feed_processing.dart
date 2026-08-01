@@ -61,3 +61,22 @@ List<HomeVideo> prepareForYouFeedDisplayList({
     ),
   ).where(isHomeVideoVisibleInFeed).toList(growable: false);
 }
+
+/// Keep a painted warm feed when network returns empty (avoid blanking Home).
+bool shouldKeepWarmFeedOverEmptyNetwork({
+  required List<HomeVideo> currentVideos,
+  required List<HomeVideo> networkVideos,
+}) {
+  return currentVideos.isNotEmpty && networkVideos.isEmpty;
+}
+
+/// Whether a mid-swipe feed sync must jump immediately (invalid index).
+bool shouldForceFeedIndexSyncDuringScroll({
+  required int currentIndex,
+  required int nextVideoCount,
+}) {
+  if (nextVideoCount <= 0) {
+    return true;
+  }
+  return currentIndex >= nextVideoCount;
+}

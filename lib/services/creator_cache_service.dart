@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../models/creator_profile_snapshot.dart';
 import '../models/trending_creator.dart';
 import '../models/user.dart';
+import 'public_profile_firestore.dart';
 
 /// In-memory cache so StreamerCard can render before Firestore returns.
 class CreatorCacheService {
@@ -16,8 +15,6 @@ class CreatorCacheService {
       <String, CreatorProfileSnapshot>{};
   final List<String> _lruKeys = <String>[];
   final Set<String> _warmInFlight = <String>{};
-
-  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   CreatorProfileSnapshot? get(String userId) {
     final String key = userId.trim();
@@ -72,21 +69,12 @@ class CreatorCacheService {
 
   Future<void> _warmSingleProfile(String userId) async {
     try {
-      DocumentSnapshot<Map<String, dynamic>> doc =
-          await _firestore.collection('users').doc(userId).get();
-      if (!doc.exists) {
-        final QuerySnapshot<Map<String, dynamic>> byUsername =
-            await _firestore
-                .collection('users')
-                .where('username', isEqualTo: userId)
-                .limit(1)
-                .get();
-        if (byUsername.docs.isEmpty) {
-          return;
-        }
-        doc = byUsername.docs.first;
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(userId);
+      if (data == null) {
+        return;
       }
-      setFromUserData(doc.id, doc.data() ?? <String, dynamic>{});
+      setFromUserData(userId, data);
     } finally {
       _warmInFlight.remove(userId);
     }

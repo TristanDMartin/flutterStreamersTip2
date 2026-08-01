@@ -46,6 +46,25 @@ class WeeklyReportBasic {
   }
 }
 
+class WeeklyReportTopContent {
+  const WeeklyReportTopContent({
+    required this.title,
+    this.metricLabel,
+  });
+
+  final String title;
+  final String? metricLabel;
+
+  factory WeeklyReportTopContent.fromJson(Map<String, dynamic> raw) {
+    return WeeklyReportTopContent(
+      title: _str(raw['title'], ''),
+      metricLabel: raw['metricLabel'] is String
+          ? (raw['metricLabel'] as String).trim()
+          : null,
+    );
+  }
+}
+
 class WeeklyReportGrowth {
   const WeeklyReportGrowth({
     required this.creatorScore,
@@ -55,7 +74,7 @@ class WeeklyReportGrowth {
     required this.wins,
     required this.experiments,
     required this.actions,
-    required this.topContentTitles,
+    required this.topContent,
   });
 
   final int? creatorScore;
@@ -65,7 +84,12 @@ class WeeklyReportGrowth {
   final List<String> wins;
   final List<String> experiments;
   final List<String> actions;
-  final List<String> topContentTitles;
+  final List<WeeklyReportTopContent> topContent;
+
+  /// Titles-only accessor for callers that do not need metric labels.
+  List<String> get topContentTitles => topContent
+      .map((WeeklyReportTopContent item) => item.title)
+      .toList(growable: false);
 
   factory WeeklyReportGrowth.fromJson(Map<String, dynamic>? raw) {
     if (raw == null) {
@@ -77,15 +101,27 @@ class WeeklyReportGrowth {
         wins: <String>[],
         experiments: <String>[],
         actions: <String>[],
-        topContentTitles: <String>[],
+        topContent: <WeeklyReportTopContent>[],
       );
     }
-    final List<String> titles = <String>[];
+    final List<WeeklyReportTopContent> topContent = <WeeklyReportTopContent>[];
     final Object? top = raw['topContent'];
     if (top is List) {
       for (final Object? item in top) {
-        if (item is Map && item['title'] is String) {
-          titles.add(item['title'] as String);
+        if (item is Map<String, dynamic>) {
+          final WeeklyReportTopContent parsed =
+              WeeklyReportTopContent.fromJson(item);
+          if (parsed.title.isNotEmpty) {
+            topContent.add(parsed);
+          }
+        } else if (item is Map) {
+          final WeeklyReportTopContent parsed =
+              WeeklyReportTopContent.fromJson(
+            Map<String, dynamic>.from(item),
+          );
+          if (parsed.title.isNotEmpty) {
+            topContent.add(parsed);
+          }
         }
       }
     }
@@ -105,7 +141,7 @@ class WeeklyReportGrowth {
       wins: _stringList(raw['wins']),
       experiments: _stringList(raw['experiments']),
       actions: _stringList(raw['actions']),
-      topContentTitles: titles,
+      topContent: topContent,
     );
   }
 }

@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/backend/http_api_base_url.dart';
+import 'content_planning_api_client.dart';
+import 'content_planning_contract.dart';
 import 'content_planning_models.dart';
 import '../../utils/user_profile_firestore.dart';
 
@@ -50,6 +52,7 @@ class HttpContentPlanningRepository implements ContentPlanningRepository {
   })  : _apiBase = resolveHttpApiBaseUrl(
           explicitOverride: apiBase,
           envDefineValue: _envApiBase,
+          productionDefault: kContentPlanningWorkerBase,
         ),
         _client = client ?? http.Client();
 
@@ -147,6 +150,16 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
 
   final FirebaseFirestore _firestore;
 
+  /// personalWorkspaceId(uid) === uid (Phase 2).
+  CollectionReference<Map<String, dynamic>> _workspaceContentItemsRef(
+    String userId,
+  ) {
+    return _firestore
+        .collection('workspaces')
+        .doc(userId)
+        .collection('contentItems');
+  }
+
   CollectionReference<Map<String, dynamic>> _userContentPlansRef(
     String userId,
   ) {
@@ -167,6 +180,48 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
       'userId': data['userId'] ?? data['ownerUid'] ?? userId,
       'id': doc.id,
     });
+  }
+
+  /// Prefer workspace contentItems over embedded items[] (Phase 2 dual-read).
+  ContentPlan _mergePlanWithWorkspaceItems(
+    ContentPlan plan,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> workspaceDocs,
+  ) {
+    final Map<String, ContentPlanItem> byId = <String, ContentPlanItem>{};
+    for (final ContentPlanItem item in plan.items) {
+      if (item.id.isEmpty) continue;
+      byId[item.id] = item;
+    }
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+        in workspaceDocs) {
+      final Map<String, dynamic> data = doc.data();
+      if (data['deletedAt'] != null) continue;
+      if ((data['planId']?.toString() ?? '') != plan.id) continue;
+      final ContentPlanItem item = ContentPlanItem.fromJson(<String, dynamic>{
+        ...data,
+        'id': doc.id,
+      });
+      if (item.id.isEmpty) continue;
+      byId[item.id] = item;
+    }
+    if (byId.isEmpty) return plan;
+    final List<ContentPlanItem> merged = byId.values.toList(growable: false);
+    return plan.copyWith(
+      items: merged,
+      itemCount: merged.length,
+    );
+  }
+
+  List<ContentPlan> _applyWorkspaceItems(
+    Iterable<ContentPlan> plans,
+    QuerySnapshot<Map<String, dynamic>>? workspaceSnap,
+  ) {
+    final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
+        workspaceSnap?.docs ??
+            const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    return plans
+        .map((ContentPlan plan) => _mergePlanWithWorkspaceItems(plan, docs))
+        .toList(growable: false);
   }
 
   DateTime? _planSortTime(ContentPlan plan) {
@@ -230,6 +285,17 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
     }
   }
 
+  Future<QuerySnapshot<Map<String, dynamic>>?> _queryWorkspaceContentItems(
+    String userId,
+  ) async {
+    try {
+      return await _workspaceContentItemsRef(userId).get();
+    } on FirebaseException catch (error) {
+      debugPrint('Workspace contentItems read skipped: $error');
+      return null;
+    }
+  }
+
   @override
   Future<List<ContentPlan>> listPlans({
     required String idToken,
@@ -240,6 +306,8 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
           await _queryUserSubPlans(userId);
       final QuerySnapshot<Map<String, dynamic>> topSnap =
           await _queryTopLevelPlans(userId);
+      final QuerySnapshot<Map<String, dynamic>>? workspaceSnap =
+          await _queryWorkspaceContentItems(userId);
       final Map<String, ContentPlan> byId = <String, ContentPlan>{};
       void ingest(QuerySnapshot<Map<String, dynamic>> snap) {
         for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
@@ -257,8 +325,10 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
 
       ingest(userSubSnap);
       ingest(topSnap);
-      final List<ContentPlan> plans = byId.values.toList(growable: false);
-      plans.sort(_comparePlans);
+      final List<ContentPlan> plans = _applyWorkspaceItems(
+        byId.values,
+        workspaceSnap,
+      )..sort(_comparePlans);
       UserProfileFirestore.logCalendarRead(
         uid: userId,
         source: 'ContentPlannerView',
@@ -268,7 +338,8 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
       debugPrint(
         'ContentPlannerView loaded ${plans.length} plans; '
         '${plans.where((p) => p.source == 'tippy_ai').length} tippy_ai; '
-        'filters=none path=users/$userId/contentPlans + legacy contentPlans',
+        'filters=none path=users/$userId/contentPlans + '
+        'workspaces/$userId/contentItems',
       );
       return plans;
     } on FirebaseException catch (error) {
@@ -283,12 +354,17 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
   Stream<List<ContentPlan>> watchPlans({
     required String userId,
   }) {
-    debugPrint('ContentPlannerView listening path: users/$userId/contentPlans');
+    debugPrint(
+      'ContentPlannerView listening path: users/$userId/contentPlans + '
+      'workspaces/$userId/contentItems',
+    );
     late final StreamController<List<ContentPlan>> controller;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? userSub;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? topLevelSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? contentItemsSub;
     QuerySnapshot<Map<String, dynamic>>? latestUserSub;
     QuerySnapshot<Map<String, dynamic>>? latestTopLevel;
+    QuerySnapshot<Map<String, dynamic>>? latestContentItems;
 
     void emit() {
       final Map<String, ContentPlan> byId = <String, ContentPlan>{};
@@ -306,8 +382,10 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
 
       ingest(latestUserSub);
       ingest(latestTopLevel);
-      final List<ContentPlan> plans = byId.values.toList(growable: false)
-        ..sort(_comparePlans);
+      final List<ContentPlan> plans = _applyWorkspaceItems(
+        byId.values,
+        latestContentItems,
+      )..sort(_comparePlans);
       if (!controller.isClosed) {
         debugPrint(
           'ContentPlannerView snapshot loaded ${plans.length} plans; '
@@ -340,10 +418,20 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
             debugPrint('Legacy contentPlans listener skipped: $error');
           },
         );
+        contentItemsSub = _workspaceContentItemsRef(userId).snapshots().listen(
+          (QuerySnapshot<Map<String, dynamic>> snap) {
+            latestContentItems = snap;
+            emit();
+          },
+          onError: (Object error, StackTrace stack) {
+            debugPrint('Workspace contentItems listener skipped: $error');
+          },
+        );
       },
       onCancel: () async {
         await userSub?.cancel();
         await topLevelSub?.cancel();
+        await contentItemsSub?.cancel();
       },
     );
     return controller.stream;
@@ -361,30 +449,40 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
     try {
       final DocumentSnapshot<Map<String, dynamic>> userDoc =
           await _userContentPlansRef(userId).doc(planId).get();
+      ContentPlan? plan;
       if (userDoc.exists) {
         final Map<String, dynamic>? data = userDoc.data();
         if (data != null) {
-          return ContentPlan.fromJson(<String, dynamic>{
+          plan = ContentPlan.fromJson(<String, dynamic>{
             ...data,
             'userId': data['userId'] ?? userId,
             'id': userDoc.id,
           });
         }
       }
-      final DocumentSnapshot<Map<String, dynamic>> topDoc =
-          await _firestore.collection('contentPlans').doc(planId).get();
-      if (!topDoc.exists) {
-        return null;
+      if (plan == null) {
+        final DocumentSnapshot<Map<String, dynamic>> topDoc =
+            await _firestore.collection('contentPlans').doc(planId).get();
+        if (!topDoc.exists) {
+          return null;
+        }
+        final Map<String, dynamic>? data = topDoc.data();
+        if (data == null) {
+          return null;
+        }
+        plan = ContentPlan.fromJson(<String, dynamic>{
+          ...data,
+          'userId': data['userId'] ?? userId,
+          'id': topDoc.id,
+        });
       }
-      final Map<String, dynamic>? data = topDoc.data();
-      if (data == null) {
-        return null;
-      }
-      return ContentPlan.fromJson(<String, dynamic>{
-        ...data,
-        'userId': data['userId'] ?? userId,
-        'id': topDoc.id,
-      });
+      final QuerySnapshot<Map<String, dynamic>>? workspaceSnap =
+          await _queryWorkspaceContentItems(userId);
+      return _mergePlanWithWorkspaceItems(
+        plan,
+        workspaceSnap?.docs ??
+            const <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+      );
     } on FirebaseException catch (error) {
       throw ContentPlanningException(
         error.message ?? 'Could not read that content plan.',
@@ -405,21 +503,18 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
       ..addAll(<String, dynamic>{
         'userId': userId,
         'ownerUid': userId,
-        'source': plan.source ?? 'app',
+        'source': normalizeContentSource(plan.source) ?? 'flutter',
         'updatedAt': FieldValue.serverTimestamp(),
       });
-    final DocumentSnapshot<Map<String, dynamic>> userDoc =
-        await _userContentPlansRef(userId).doc(plan.id).get();
-    if (userDoc.exists) {
-      await _userContentPlansRef(userId).doc(plan.id).set(
-            update,
-            SetOptions(merge: true),
-          );
-      return;
+    final DocumentReference<Map<String, dynamic>> userRef =
+        _userContentPlansRef(userId).doc(plan.id);
+    final DocumentSnapshot<Map<String, dynamic>> userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      // Phase 0 freeze: never write top-level contentPlans.
+      throw const ContentPlanningException(
+        'Plan not found in users/{uid}/contentPlans. Legacy top-level plans are read-only.',
+      );
     }
-    await _firestore.collection('contentPlans').doc(plan.id).set(
-          update,
-          SetOptions(merge: true),
-        );
+    await userRef.set(update, SetOptions(merge: true));
   }
 }

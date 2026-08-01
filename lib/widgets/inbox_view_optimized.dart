@@ -13,6 +13,7 @@ import '../services/offline_inbox_service.dart';
 import '../services/chat_service.dart';
 import '../services/draft_sharing_service.dart';
 import '../services/local_draft_service.dart';
+import '../services/public_profile_firestore.dart';
 import '../services/user_blocking_service.dart';
 import 'status_aware_avatar.dart';
 import '../utils/avatar_url_resolver.dart';
@@ -319,11 +320,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     for (final String otherUserId in orderedUserIds) {
       if (_userProfileSubscriptions.containsKey(otherUserId)) continue;
 
-      // Listen to user profile changes
-      final subscription = FirebaseFirestore.instance
-          .collection('users')
-          .doc(otherUserId)
-          .snapshots()
+      // Listen to peer profile changes (publicUsers)
+      final subscription = PublicProfileFirestore.instance
+          .watchProfile(otherUserId)
           .listen((snapshot) {
         if (snapshot.exists && mounted) {
           final data = snapshot.data()!;

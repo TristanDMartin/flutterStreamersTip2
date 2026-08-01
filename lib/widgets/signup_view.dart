@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
@@ -10,6 +9,8 @@ import '../services/robust_auth_service.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../utils/password_validation.dart';
 import '../qa/qa_keys.dart';
+import 'auth/auth_brand_header.dart';
+import 'auth/auth_glass_panel.dart';
 import 'auth_page_shell.dart';
 import 'email_login_view.dart';
 
@@ -146,8 +147,6 @@ class _SignupViewState extends ConsumerState<SignupView> {
   }
 
   Widget _buildTopBarRow() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return SizedBox(
       height: 44,
       width: double.infinity,
@@ -158,7 +157,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
             alignment: Alignment.centerLeft,
             child: IconButton(
               style: IconButton.styleFrom(
-                foregroundColor: scheme.onSurface,
+                foregroundColor: Colors.white,
                 padding: EdgeInsets.zero,
                 minimumSize: const Size(44, 44),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -171,14 +170,14 @@ class _SignupViewState extends ConsumerState<SignupView> {
           Center(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: scheme.surface.withValues(alpha: isDark ? 0.38 : 0.72),
+                color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color: scheme.outline.withValues(alpha: 0.35),
+                  color: Colors.white.withValues(alpha: 0.18),
                 ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
+              child: const Padding(
+                padding: EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 6,
                 ),
@@ -187,17 +186,17 @@ class _SignupViewState extends ConsumerState<SignupView> {
                   children: [
                     Icon(
                       Icons.person_add_alt_1_rounded,
-                      color: scheme.primary,
+                      color: Colors.white,
                       size: 16,
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     Text(
-                      "New account",
+                      'New account',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.25,
-                        color: scheme.onSurface,
+                        color: Colors.white,
                       ),
                     ),
                   ],
@@ -211,65 +210,36 @@ class _SignupViewState extends ConsumerState<SignupView> {
   }
 
   Widget _buildSignupForm() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return _buildGlassPanel(
+    return AuthGlassPanel(
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildTopBarRow(),
-          const SizedBox(height: 20),
-          Image.asset(
-            'assets/logo.png',
-            width: 104,
-            height: 104,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              debugPrint('❌ Error loading logo: $error');
-              debugPrint('❌ Stack trace: $stackTrace');
-              return ShaderMask(
-                shaderCallback: (Rect rect) {
-                  return const LinearGradient(
-                    colors: [
-                      Color(0xFFFFD76A),
-                      Color(0xFF9F80FF),
-                      Color(0xFF52B6FF),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ).createShader(rect);
-                },
-                blendMode: BlendMode.srcIn,
-                child: const Icon(
-                  Icons.play_circle_filled,
-                  size: 104,
-                  color: Colors.white,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          Text(
-            "Create Account",
+          const SizedBox(height: 16),
+          const AuthBrandHeader(logoSize: 88, compact: true),
+          const SizedBox(height: 16),
+          const Text(
+            'Create Account',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 32,
+              fontSize: 28,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.4,
-              color: scheme.onSurface,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            "Join StreamersTip today",
+            'Everything you need to grow as a creator.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               height: 1.45,
-              color: scheme.onSurfaceVariant,
+              color: Colors.white.withValues(alpha: 0.75),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
           _SignupAuthTextField(
             qaFieldKey: QaKeys.authSignupEmail,
             controller: _emailController,
@@ -400,15 +370,14 @@ class _SignupViewState extends ConsumerState<SignupView> {
   }
 
   Widget _buildSignInSection() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          "Already have an account?",
+          'Already have an account?',
           style: TextStyle(
             fontSize: 14,
-            color: scheme.onSurfaceVariant,
+            color: Colors.white.withValues(alpha: 0.72),
           ),
         ),
         TextButton(
@@ -417,54 +386,16 @@ class _SignupViewState extends ConsumerState<SignupView> {
               MaterialPageRoute(builder: (context) => const EmailLoginView()),
             );
           },
-          child: Text(
-            "Sign in",
+          child: const Text(
+            'Sign in',
             style: TextStyle(
               fontSize: 14,
-              color: scheme.secondary,
+              color: Colors.white,
               fontWeight: FontWeight.w700,
             ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildGlassPanel({
-    required Widget child,
-    EdgeInsetsGeometry padding = const EdgeInsets.all(16),
-  }) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color panelFill = isDark
-        ? scheme.surface.withValues(alpha: 0.42)
-        : scheme.surface.withValues(alpha: 0.72);
-    final Color panelBorder =
-        scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
-    return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            width: double.infinity,
-            padding: padding,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              color: panelFill,
-              border: Border.all(color: panelBorder),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
-                  blurRadius: 32,
-                  offset: const Offset(0, 18),
-                ),
-              ],
-            ),
-            child: child,
-          ),
-        ),
-      ),
     );
   }
 

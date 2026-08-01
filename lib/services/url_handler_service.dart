@@ -4,6 +4,7 @@ import '../widgets/streamer_card_view.dart';
 import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart';
 import 'profile_link_service.dart';
+import 'public_profile_firestore.dart';
 import 'unified_avatar_service.dart' as nav;
 // import 'package:firebase_auth/firebase_auth.dart' as fa; // Not used here
 
@@ -118,9 +119,9 @@ class URLHandlerService extends ChangeNotifier {
 
   Future<StreamerCard> _loadUserForStreamerCard(String userId) async {
     try {
-      final doc = await _db.collection("users").doc(userId).get();
-      if (doc.exists) {
-        final data = doc.data()!;
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(userId);
+      if (data != null) {
         return StreamerCard.fromMap(data);
       } else {
         throw Exception("User not found");
@@ -134,13 +135,14 @@ class URLHandlerService extends ChangeNotifier {
   Future<StreamerCard> _loadUserByUsername(String username) async {
     try {
       final query = await _db
-          .collection("users")
+          .collection("publicUsers")
           .where("username", isEqualTo: username)
           .limit(1)
           .get();
 
       if (query.docs.isNotEmpty) {
         final data = query.docs.first.data();
+        data['id'] = query.docs.first.id;
         return StreamerCard.fromMap(data);
       } else {
         throw Exception("User not found");

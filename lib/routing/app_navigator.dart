@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../core/feature_flags.dart';
 import '../services/creator_intelligence_analytics_service.dart';
 import '../services/email_verification_feature_gate.dart';
 import '../models/chat.dart';
@@ -13,6 +14,8 @@ import '../widgets/player_screen.dart';
 import '../utils/home_video_from_firestore.dart';
 import 'app_routes.dart';
 import '../providers/unread_messages_provider.dart';
+import '../features/content_planning/content_planner_view.dart';
+import '../features/approvals/approval_review_view.dart';
 import '../features/tippy/models/tippy_launch_context.dart';
 
 class AppNavigator {
@@ -102,7 +105,8 @@ class AppNavigator {
     Map<String, dynamic>? draftToSend,
     bool fullscreenDialog = true,
   }) async {
-    final bool allowed = await EmailVerificationFeatureGate.ensureCanSendDirectMessage(
+    final bool allowed =
+        await EmailVerificationFeatureGate.ensureCanSendDirectMessage(
       context,
     );
     if (!allowed || !context.mounted) {
@@ -255,9 +259,15 @@ class AppNavigator {
     return Navigator.of(context).pushNamed<T>(AppRoutes.contentScheduler);
   }
 
-  static Future<T?> openContentPlanner<T>(BuildContext context) {
+  static Future<T?> openContentPlanner<T>(
+    BuildContext context, {
+    ContentPlannerInitialScope initialScope = ContentPlannerInitialScope.today,
+  }) {
     _trackToolOpened('content-planner');
-    return Navigator.of(context).pushNamed<T>(AppRoutes.contentPlanner);
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.contentPlanner,
+      arguments: ContentPlannerRouteArgs(initialScope: initialScope),
+    );
   }
 
   static Future<T?> openTippyChat<T>(
@@ -290,6 +300,9 @@ class AppNavigator {
     List<String> initialPlatforms = const [],
     bool fullscreenDialog = false,
   }) {
+    if (!FeatureFlags.linkedPlatforms) {
+      return Future<T?>.value();
+    }
     _trackToolOpened('linked-platforms');
     return Navigator.of(context).pushNamed<T>(
       AppRoutes.linkedPlatforms,
@@ -323,6 +336,21 @@ class AppNavigator {
   static Future<T?> openStudioTeamControl<T>(BuildContext context) {
     _trackToolOpened('studio-team-control');
     return Navigator.of(context).pushNamed<T>(AppRoutes.studioTeamControl);
+  }
+
+  static Future<T?> openApprovalReview<T>(
+    BuildContext context, {
+    required String requestId,
+    required String workspaceId,
+  }) {
+    _trackToolOpened('approval-review');
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.approvalReview,
+      arguments: ApprovalReviewArgs(
+        requestId: requestId,
+        workspaceId: workspaceId,
+      ),
+    );
   }
 
   static Future<T?> openStreamerCard<T>(

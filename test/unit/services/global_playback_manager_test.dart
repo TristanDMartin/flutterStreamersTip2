@@ -177,5 +177,31 @@ void main() {
         expect(manager.isRetainingHomePoolForTabBackground, isFalse);
       },
     );
+
+    test(
+      'discover cover retention keeps home controllers when discover becomes visible',
+      () {
+        const String videoId = 'home-discover-cover-video';
+        manager.registerController(
+          videoId,
+          _FakeVideoController(),
+          owner: PlaybackOwners.home,
+        );
+        expect(manager.hasController(videoId), isTrue);
+        expect(manager.pooledControllerCount, greaterThan(0));
+
+        manager.beginHomeTabBackgroundRetention();
+        manager.setVisibleOwner(PlaybackOwners.discover);
+
+        expect(manager.hasController(videoId), isTrue);
+        expect(manager.isRetainingHomePoolForTabBackground, isTrue);
+        expect(manager.pooledControllerCount, greaterThan(0));
+
+        manager.setVisibleOwner(PlaybackOwners.home);
+        manager.endHomeTabBackgroundRetention();
+        expect(manager.hasController(videoId), isTrue);
+        expect(manager.isRetainingHomePoolForTabBackground, isFalse);
+      },
+    );
   });
 }

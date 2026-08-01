@@ -10,6 +10,7 @@ import '../utils/video_url_resolver.dart';
 import '../widgets/player_screen.dart';
 import 'profile_link_service.dart';
 import 'logging_service.dart';
+import 'public_profile_firestore.dart';
 
 class DeepLinkingService {
   static final DeepLinkingService _instance = DeepLinkingService._internal();
@@ -113,9 +114,9 @@ class DeepLinkingService {
         throw Exception('Invalid username');
       }
 
-      // Find user by username
+      // Find user by username (publicUsers)
       final userQuery = await _firestore
-          .collection('users')
+          .collection('publicUsers')
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
@@ -192,18 +193,18 @@ class DeepLinkingService {
       }
 
       if (identifier.length >= 20) {
-        final userDoc =
-            await _firestore.collection('users').doc(identifier).get();
-        if (!userDoc.exists) {
+        final Map<String, dynamic>? userData =
+            await PublicProfileFirestore.instance.getProfileMap(identifier);
+        if (userData == null) {
           throw Exception('User not found');
         }
-        final user = _buildUser(userDoc.data()!, userDoc.id);
+        final user = _buildUser(userData, identifier);
         if (context.mounted) {
           Navigator.of(context).pushNamed(
             AppRoutes.profile,
             arguments: ProfileRouteArgs(
               user: user,
-              isCurrentUser: _auth.currentUser?.uid == userDoc.id,
+              isCurrentUser: _auth.currentUser?.uid == identifier,
             ),
           );
         }

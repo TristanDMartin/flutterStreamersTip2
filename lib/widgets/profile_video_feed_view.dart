@@ -24,6 +24,7 @@ import '../utils/video_caption_resolver.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/home_video_playback.dart';
 import '../utils/profile_grid_video_order.dart';
+import '../services/public_profile_firestore.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
@@ -80,6 +81,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   bool _isSelectionMode = false;
   final Set<String> _selectedVideoIds = <String>{};
   bool _isBulkDeleting = false;
+  late final VideoService _videoServiceNotifier;
 
   bool get _isViewingOwnProfile {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
@@ -91,6 +93,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   void initState() {
     super.initState();
+    _videoServiceNotifier =
+        ref.read(providers.videoServiceStateProvider.notifier);
     _resetCachedFutures();
     _primeProfileVideoTab();
     _optimisticFeedRefreshSubscription =
@@ -167,9 +171,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   void dispose() {
     _optimisticFeedRefreshSubscription?.cancel();
-    ref
-        .read(providers.videoServiceStateProvider.notifier)
-        .stopOwnerVideosListener();
+    unawaited(_videoServiceNotifier.stopOwnerVideosListener());
     // Cancel all video deletion listeners
     for (final subscription in _videoListeners.values) {
       subscription.cancel();
@@ -434,19 +436,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         return true;
       }
 
-      // If viewing someone else's profile, check their privacy settings
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId!)
-          .get();
+      // Peers: publicUsers only (privacy may be mirrored; else default hide).
+      final Map<String, dynamic>? userData =
+          await PublicProfileFirestore.instance.getProfileMap(widget.userId!);
+      if (userData == null) return false;
 
-      if (!userDoc.exists) return false;
-
-      final userData = userDoc.data();
-      final privacy = userData?['privacy'] as Map<String, dynamic>? ?? {};
+      final privacy = userData['privacy'] as Map<String, dynamic>? ?? {};
       final showFavoritesOnCard = privacy['showFavoritesOnCard'] ?? false;
 
-      return showFavoritesOnCard;
+      return showFavoritesOnCard == true;
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -1938,15 +1936,12 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           if (!isVideoVisibleInFeed(data)) continue;
           final videoCreatorId = data['userId'] ?? data['creatorId'] ?? '';
 
-          // Fetch creator data
-          final creatorDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(videoCreatorId)
-              .get();
+          // Fetch creator data (publicUsers)
+          final Map<String, dynamic>? creatorData =
+              await PublicProfileFirestore.instance
+                  .getProfileMap(videoCreatorId.toString());
 
-          if (!creatorDoc.exists) continue;
-
-          final creatorData = creatorDoc.data()!;
+          if (creatorData == null) continue;
 
           taggedVideos.add({
             'id': doc.id,

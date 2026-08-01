@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/features/feed/domain/discover_category_card_map.dart';
 import 'package:streamers_tip/models/home_video.dart';
 import 'package:streamers_tip/models/user.dart';
+import 'package:streamers_tip/utils/video_url_resolver.dart';
 
 HomeVideo _video({String? thumbnailURL, String videoURL = ''}) {
   return HomeVideo(
@@ -32,6 +33,18 @@ void main() {
     expect(card['creatorUsername'], 'streamer_one');
     expect(card['likes'], 42);
     expect(card['videoUrl'], contains('mux.com'));
+    expect(card['isReadyForFeed'], isTrue);
+    expect(card['status'], 'ready');
+  });
+
+  test('fromHomeVideo cards pass resolveReadyPlaybackUrl for grid filter', () {
+    final Map<String, dynamic> card = DiscoverCategoryCardMap.fromHomeVideo(
+      _video(videoURL: 'https://stream.mux.com/abc123.m3u8'),
+    );
+    expect(resolveReadyPlaybackUrl(card), isNotNull);
+    final Map<String, dynamic> nested =
+        card['data'] as Map<String, dynamic>;
+    expect(resolveReadyPlaybackUrl(nested), isNotNull);
   });
 
   test('resolveDiscoverThumbnailUrl derives mux poster when legacy empty', () {

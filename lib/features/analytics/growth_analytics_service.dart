@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,10 +11,15 @@ import '../../core/backend/site_api_base.dart';
 import 'models/growth_data.dart';
 
 class GrowthAnalyticsException implements Exception {
-  const GrowthAnalyticsException(this.message, {this.statusCode});
+  const GrowthAnalyticsException(
+    this.message, {
+    this.statusCode,
+    this.isTransient = false,
+  });
 
   final String message;
   final int? statusCode;
+  final bool isTransient;
 
   @override
   String toString() => message;
@@ -28,15 +34,35 @@ class GrowthAnalyticsService {
         _siteApiBase = resolveSiteApiBase(explicitOverride: siteApiBase),
         _requestTimeout = requestTimeout;
 
+  static const String _userFacingUnavailable =
+      'Growth analytics are temporarily unavailable. '
+      'Your content and planner data are safe.';
+
   final http.Client _client;
   final String _siteApiBase;
   final Duration _requestTimeout;
+
+  void _logFailure({
+    required String method,
+    required Uri uri,
+    required int? statusCode,
+    String? detail,
+  }) {
+    developer.log(
+      'growth_analytics method=$method url=$uri '
+      'status=${statusCode ?? 'none'} '
+      'env=$_siteApiBase ts=${DateTime.now().toUtc().toIso8601String()}'
+      '${detail == null || detail.isEmpty ? '' : ' detail=$detail'}',
+      name: 'GrowthAnalytics',
+    );
+  }
 
   Future<GrowthData> loadGrowthData({
     required String userId,
     required int days,
   }) async {
-    final String? idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+    final String? idToken =
+        await FirebaseAuth.instance.currentUser?.getIdToken();
     if (idToken == null || idToken.isEmpty) {
       throw const GrowthAnalyticsException('You are not signed in.');
     }
@@ -51,15 +77,25 @@ class GrowthAnalyticsService {
           )
           .timeout(_requestTimeout);
       if (response.statusCode == 401) {
+        _logFailure(method: 'GET', uri: uri, statusCode: 401);
         throw const GrowthAnalyticsException(
           'Session expired. Please sign in again.',
           statusCode: 401,
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw GrowthAnalyticsException(
-          'Growth analytics request failed (${response.statusCode}).',
+        _logFailure(
+          method: 'GET',
+          uri: uri,
           statusCode: response.statusCode,
+          detail: response.body.length > 200
+              ? response.body.substring(0, 200)
+              : response.body,
+        );
+        throw GrowthAnalyticsException(
+          _userFacingUnavailable,
+          statusCode: response.statusCode,
+          isTransient: true,
         );
       }
       final Object? decoded = jsonDecode(response.body);
@@ -68,21 +104,33 @@ class GrowthAnalyticsService {
         if (payload is Map<String, dynamic>) {
           return GrowthData.fromJson(payload);
         }
+        // Explicit null/empty payload from a healthy endpoint.
+        if (payload == null ||
+            (payload is Map && payload.isEmpty) ||
+            decoded['success'] == true) {
+          return GrowthData.empty;
+        }
       }
       return GrowthData.empty;
     } on GrowthAnalyticsException {
       rethrow;
     } on SocketException {
+      _logFailure(method: 'GET', uri: uri, statusCode: null, detail: 'socket');
       throw const GrowthAnalyticsException(
         'Network unavailable. Check your connection and try again.',
+        isTransient: true,
       );
     } on TimeoutException {
+      _logFailure(method: 'GET', uri: uri, statusCode: null, detail: 'timeout');
       throw const GrowthAnalyticsException(
-        'The request timed out. Try again.',
+        _userFacingUnavailable,
+        isTransient: true,
       );
     } on FormatException {
+      _logFailure(method: 'GET', uri: uri, statusCode: null, detail: 'format');
       throw const GrowthAnalyticsException(
-        'Invalid growth analytics response.',
+        _userFacingUnavailable,
+        isTransient: true,
       );
     }
   }
@@ -104,26 +152,40 @@ class GrowthAnalyticsService {
           )
           .timeout(_requestTimeout);
       if (response.statusCode == 401) {
+        _logFailure(method: 'POST', uri: uri, statusCode: 401);
         throw const GrowthAnalyticsException(
           'Session expired. Please sign in again.',
           statusCode: 401,
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw GrowthAnalyticsException(
-          'Refresh failed (${response.statusCode}).',
+        _logFailure(
+          method: 'POST',
+          uri: uri,
           statusCode: response.statusCode,
+          detail: response.body.length > 200
+              ? response.body.substring(0, 200)
+              : response.body,
+        );
+        throw GrowthAnalyticsException(
+          _userFacingUnavailable,
+          statusCode: response.statusCode,
+          isTransient: true,
         );
       }
     } on GrowthAnalyticsException {
       rethrow;
     } on SocketException {
+      _logFailure(method: 'POST', uri: uri, statusCode: null, detail: 'socket');
       throw const GrowthAnalyticsException(
         'Network unavailable. Check your connection and try again.',
+        isTransient: true,
       );
     } on TimeoutException {
+      _logFailure(method: 'POST', uri: uri, statusCode: null, detail: 'timeout');
       throw const GrowthAnalyticsException(
-        'The request timed out. Try again.',
+        _userFacingUnavailable,
+        isTransient: true,
       );
     }
   }

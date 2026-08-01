@@ -17,6 +17,15 @@ const Map<String, String> _categorySlugAliases = <String, String>{
   'shooter': 'fps',
   'chat': 'just-chatting',
   'chatting': 'just-chatting',
+  // Website Discover Title Case / legacy labels → Flutter canonical slugs.
+  'other': 'general',
+  'uncategorized': 'general',
+  'education': 'tutorials',
+  'howto': 'tutorials',
+  'how-to': 'tutorials',
+  'lifestyle': 'irl',
+  'travel': 'irl',
+  'comedy': 'just-chatting',
 };
 
 /// Discover + legacy matching: maps synonyms to canonical upload slugs.

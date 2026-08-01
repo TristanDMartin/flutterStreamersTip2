@@ -1,10 +1,17 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+  // Canonical public profile mirror (must match web contract for cross-user UI)
+  match /publicUsers/{uid} {
+    allow read: if true;
+    allow create, update: if request.auth != null && request.auth.uid == uid;
+    allow delete: if false;
+  }
+
   // Users can read public user profiles and write their own
   match /users/{userId} {
-    // Allow unauthenticated reads for username lookups during login
-    allow read: if true;
+    // Private account doc. Others must use publicUsers (deploy web rules contract).
+    allow read: if request.auth != null && request.auth.uid == userId;
     // Block self-escalation / ban bypass; privileged fields only via Admin SDK / Functions
     allow create: if request.auth != null && request.auth.uid == userId
       && (

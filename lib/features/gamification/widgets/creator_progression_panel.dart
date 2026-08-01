@@ -108,10 +108,12 @@ class _FirstThingsToDoSection extends StatefulWidget {
 
 class _FirstThingsToDoSectionState extends State<_FirstThingsToDoSection> {
   UserProgressionSnapshot? _lastProgress;
+  late Stream<UserProgressionSnapshot> _progressStream;
 
   @override
   void initState() {
     super.initState();
+    _progressStream = ProgressionService.instance.listenToProgress(widget.uid);
     _refresh();
   }
 
@@ -120,6 +122,8 @@ class _FirstThingsToDoSectionState extends State<_FirstThingsToDoSection> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.uid != widget.uid) {
       _lastProgress = null;
+      _progressStream =
+          ProgressionService.instance.listenToProgress(widget.uid);
       _refresh();
     }
   }
@@ -134,7 +138,7 @@ class _FirstThingsToDoSectionState extends State<_FirstThingsToDoSection> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<UserProgressionSnapshot>(
-      stream: ProgressionService.instance.listenToProgress(widget.uid),
+      stream: _progressStream,
       initialData: _lastProgress,
       builder: (
         BuildContext context,
@@ -142,6 +146,9 @@ class _FirstThingsToDoSectionState extends State<_FirstThingsToDoSection> {
       ) {
         final UserProgressionSnapshot? progress =
             progressSnapshot.data ?? _lastProgress;
+        if (progressSnapshot.hasData && progressSnapshot.data != null) {
+          _lastProgress = progressSnapshot.data;
+        }
         return _FirstThingsToDoCard(
           progress: progress,
         );

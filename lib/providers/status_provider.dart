@@ -10,6 +10,7 @@ import 'package:streamers_tip/utils/secure_log.dart';
 
 import '../core/firebase_app_check_startup.dart';
 import '../models/user_status.dart';
+import '../services/public_profile_firestore.dart';
 
 // Provider for current user's status (read-only stream)
 final currentUserStatusProvider = StreamProvider<UserPresence>((ref) {
@@ -69,9 +70,10 @@ final userStatusProvider =
 
   final firestore = FirebaseFirestore.instance;
 
-  // Create streams for both locations
+  // Create streams for both locations.
+  // Peers: publicUsers (via PublicProfileFirestore); own uid: users.
   final mainDocStream =
-      firestore.collection('users').doc(userId).snapshots().map((snapshot) {
+      PublicProfileFirestore.instance.watchProfile(userId).map((snapshot) {
     if (snapshot.exists && snapshot.data() != null) {
       final data = snapshot.data()!;
       final statusValue = data['status'] as String? ??

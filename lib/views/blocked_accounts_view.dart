@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../core/theme/support_shell_style.dart';
 import '../services/user_blocking_service.dart';
+import '../services/public_profile_firestore.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/user_facing_error.dart';
 import '../widgets/screen_feedback_state.dart';
@@ -48,13 +48,10 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
       final users = <BlockedUserInfo>[];
       for (final BlockedUserRecord record in blockedRecords) {
         try {
-          final userDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(record.userId)
-              .get();
+          final Map<String, dynamic>? userData =
+              await PublicProfileFirestore.instance.getProfileMap(record.userId);
 
-          if (userDoc.exists) {
-            final userData = userDoc.data()!;
+          if (userData != null) {
             users.add(BlockedUserInfo(
               id: record.userId,
               displayName: userData['displayName'] ?? 'Unknown User',

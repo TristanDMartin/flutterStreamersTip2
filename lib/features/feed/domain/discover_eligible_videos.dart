@@ -167,7 +167,12 @@ Map<String, dynamic> homeVideoToFirestoreShape(HomeVideo video) {
     'videoUrl': video.videoURL,
     'videoURL': video.videoURL,
     'hlsUrl': video.videoURL,
+    'canonicalPlaybackUrl': video.videoURL,
     'status': video.status,
+    // Eligible HomeVideos already passed feed gates; Discover grid uses
+    // resolveReadyPlaybackUrl which requires isReadyForFeed == true.
+    'isReadyForFeed': true,
+    'visible': true,
     'visibility': video.visibility,
     'isDeleted': video.isDeleted,
     'deletedAt': video.deletedAt,

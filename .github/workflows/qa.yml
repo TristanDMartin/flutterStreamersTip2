@@ -78,6 +78,9 @@ jobs:
       - name: Firestore rules regression - interactions and FCM tokens
         run: npx firebase-tools emulators:exec --only firestore --project demo-interactions-tests "npm --prefix cloud_functions run test:rules:interactions"
 
+      - name: Firestore rules regression - users privacy (web contract)
+        run: npx firebase-tools emulators:exec --only firestore --project demo-users-privacy "npm --prefix cloud_functions run test:rules:users-privacy"
+
   android-feed-e2e:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_feed_e2e == 'true' }}
     runs-on: ubuntu-latest

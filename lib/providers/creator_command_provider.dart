@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../features/content_planning/content_planning_models.dart';
 import '../features/gamification/gamification_providers.dart';
 import '../features/gamification/models/subscription_plan.dart';
 import '../features/gamification/models/user_progress_bundle.dart';
@@ -24,20 +28,53 @@ final StreamProvider<List<Map<String, dynamic>>>
 
   final FirebaseFirestore firestore =
       ref.watch(creatorCommandFirestoreProvider);
-  return firestore
-      .collection('scheduled_posts')
-      .where(
-        Filter.or(
-          Filter('authorId', isEqualTo: userId),
-          Filter('userId', isEqualTo: userId),
-        ),
-      )
-      .snapshots()
-      .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
-    return snapshot.docs
-        .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.data())
-        .toList(growable: false);
-  });
+  final Query<Map<String, dynamic>> query =
+      firestore.collection('scheduled_posts').where(
+            Filter.or(
+              Filter('authorId', isEqualTo: userId),
+              Filter('userId', isEqualTo: userId),
+            ),
+          );
+  return _watchQueryList(
+    query.snapshots(),
+    (QuerySnapshot<Map<String, dynamic>> snapshot) {
+      return snapshot.docs
+          .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.data())
+          .toList(growable: false);
+    },
+  );
+});
+
+final StreamProvider<List<ContentPlan>> creatorCommandContentPlansProvider =
+    StreamProvider<List<ContentPlan>>((Ref ref) {
+  final AsyncValue<Map<String, dynamic>?> identity =
+      ref.watch(currentUserStreamProvider);
+  final String? userId = identity.valueOrNull?['id'] as String?;
+  if (userId == null || userId.isEmpty) {
+    return Stream<List<ContentPlan>>.value(const <ContentPlan>[]);
+  }
+
+  final FirebaseFirestore firestore =
+      ref.watch(creatorCommandFirestoreProvider);
+  return _watchQueryList(
+    firestore
+        .collection('users')
+        .doc(userId)
+        .collection('contentPlans')
+        .snapshots(),
+    (QuerySnapshot<Map<String, dynamic>> snapshot) {
+      return snapshot.docs
+          .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+        final Map<String, dynamic> data = doc.data();
+        return ContentPlan.fromJson(<String, dynamic>{
+          ...data,
+          'id': doc.id,
+          'ownerUid': data['ownerUid'] ?? data['userId'] ?? userId,
+          'userId': data['userId'] ?? data['ownerUid'] ?? userId,
+        });
+      }).toList(growable: false);
+    },
+  );
 });
 
 final StreamProvider<int> creatorCommandDraftCountProvider =
@@ -121,6 +158,8 @@ final Provider<AsyncValue<CreatorCommandSnapshot?>>
       ref.watch(userProgressBundleProvider);
   final AsyncValue<List<Map<String, dynamic>>> scheduledPosts =
       ref.watch(creatorCommandScheduledPostsProvider);
+  final AsyncValue<List<ContentPlan>> contentPlans =
+      ref.watch(creatorCommandContentPlansProvider);
   final AsyncValue<int> draftCount =
       ref.watch(creatorCommandDraftCountProvider);
   final AsyncValue<Map<String, dynamic>?> metrics =
@@ -147,6 +186,7 @@ final Provider<AsyncValue<CreatorCommandSnapshot?>>
   final bool coreDataLoading =
       (progress.isLoading && progress.valueOrNull == null) ||
           (scheduledPosts.isLoading && scheduledPosts.valueOrNull == null) ||
+          (contentPlans.isLoading && contentPlans.valueOrNull == null) ||
           (draftCount.isLoading && draftCount.valueOrNull == null) ||
           (recentVideos.isLoading && recentVideos.valueOrNull == null);
   if (coreDataLoading) {
@@ -157,6 +197,8 @@ final Provider<AsyncValue<CreatorCommandSnapshot?>>
       progress.valueOrNull ?? UserProgressBundle.fallback();
   final List<Map<String, dynamic>> scheduledList =
       scheduledPosts.valueOrNull ?? const <Map<String, dynamic>>[];
+  final List<ContentPlan> plans =
+      contentPlans.valueOrNull ?? const <ContentPlan>[];
   final int safeDraftCount = draftCount.valueOrNull ?? 0;
   final Map<String, dynamic>? metricsMap = metrics.valueOrNull;
   final List<Map<String, dynamic>> videoList =
@@ -167,12 +209,61 @@ final Provider<AsyncValue<CreatorCommandSnapshot?>>
       userData: userData,
       bundle: bundle,
       scheduledPosts: scheduledList,
+      contentPlans: plans,
       draftCount: safeDraftCount,
       metrics: metricsMap,
       recentVideos: videoList,
     ),
   );
 });
+
+String _creatorCommandScoreSeenKey(String userId) {
+  return 'creator_command_seen_score_v1_$userId';
+}
+
+final FutureProvider<bool> creatorCommandScoreUnreadProvider =
+    FutureProvider<bool>((Ref ref) async {
+  final CreatorCommandSnapshot? snapshot =
+      ref.watch(creatorCommandSnapshotProvider).valueOrNull;
+  if (snapshot == null || snapshot.userId.isEmpty) {
+    return false;
+  }
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  final int? seenScore =
+      prefs.getInt(_creatorCommandScoreSeenKey(snapshot.userId));
+  if (seenScore == null) {
+    return false;
+  }
+  return seenScore != snapshot.consistencyScorePercent;
+});
+
+Future<void> markCreatorCommandScoreSeen(WidgetRef ref) async {
+  final CreatorCommandSnapshot? snapshot =
+      ref.read(creatorCommandSnapshotProvider).valueOrNull;
+  if (snapshot == null || snapshot.userId.isEmpty) {
+    return;
+  }
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  await prefs.setInt(
+    _creatorCommandScoreSeenKey(snapshot.userId),
+    snapshot.consistencyScorePercent,
+  );
+  ref.invalidate(creatorCommandScoreUnreadProvider);
+}
+
+class CreatorCommandScheduleSlot {
+  const CreatorCommandScheduleSlot({
+    required this.dueAt,
+    required this.title,
+    this.planTitle,
+    this.requiresAttention = false,
+  });
+
+  final DateTime dueAt;
+  final String title;
+  final String? planTitle;
+  final bool requiresAttention;
+}
 
 CreatorCommandSnapshot buildCreatorCommandSnapshot({
   required Map<String, dynamic> userData,
@@ -181,6 +272,7 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
   required int draftCount,
   required Map<String, dynamic>? metrics,
   required List<Map<String, dynamic>> recentVideos,
+  List<ContentPlan> contentPlans = const <ContentPlan>[],
 }) {
   final String uid = userData['id'] as String? ?? '';
   final List<Map<String, dynamic>> creatorPosts = scheduledPosts
@@ -199,39 +291,22 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
   });
 
   final DateTime now = DateTime.now();
-  final List<Map<String, dynamic>> plannerPosts =
-      creatorPosts.where((Map<String, dynamic> post) {
-    final String status = (post['status'] as String? ?? '').toLowerCase();
-    return status == 'scheduled' || status == 'publishing' || status == 'draft';
-  }).toList(growable: false);
-  final List<Map<String, dynamic>> queuePosts =
-      creatorPosts.where((Map<String, dynamic> post) {
-    final String status = (post['status'] as String? ?? '').toLowerCase();
-    return status == 'scheduled' || status == 'publishing';
-  }).toList(growable: false);
-  final int scheduledQueueCount = queuePosts.length;
-  final List<Map<String, dynamic>> duePosts = queuePosts
-      .where((Map<String, dynamic> post) => _readScheduledAt(post) != null)
-      .toList(growable: false);
-  duePosts.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
-    final DateTime aTime = _readScheduledAt(a)!;
-    final DateTime bTime = _readScheduledAt(b)!;
-    return aTime.compareTo(bTime);
-  });
-  final Map<String, dynamic>? nextPost =
-      duePosts.isEmpty ? null : duePosts.first;
-  final DateTime? nextPostDueAt =
-      nextPost == null ? null : _readScheduledAt(nextPost);
+  final List<CreatorCommandScheduleSlot> slots = <CreatorCommandScheduleSlot>[
+    ..._slotsFromScheduledPosts(creatorPosts),
+    ..._slotsFromContentPlans(contentPlans),
+  ]..sort(
+      (CreatorCommandScheduleSlot a, CreatorCommandScheduleSlot b) =>
+          a.dueAt.compareTo(b.dueAt),
+    );
+
+  final int scheduledQueueCount = slots.length;
+  final CreatorCommandScheduleSlot? nextPost =
+      slots.isEmpty ? null : slots.first;
+  final DateTime? nextPostDueAt = nextPost?.dueAt;
   final bool nextPostOverdue =
       nextPostDueAt != null && nextPostDueAt.isBefore(now);
-  final int alertCount = plannerPosts.where((Map<String, dynamic> post) {
-    final bool requiresAttention =
-        post['metadata']?['requiresCreatorAttention'] as bool? ??
-            post['requiresCreatorAttention'] as bool? ??
-            false;
-    final DateTime? dueAt = _readScheduledAt(post);
-    final bool overdue = dueAt != null && dueAt.isBefore(now);
-    return requiresAttention || overdue;
+  final int alertCount = slots.where((CreatorCommandScheduleSlot slot) {
+    return slot.requiresAttention || slot.dueAt.isBefore(now);
   }).length;
 
   final double? uploadConsistency = _readDouble(
@@ -263,7 +338,98 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
     growthPercent: growthVelocity == null ? null : growthVelocity * 100,
     nextPostDueAt: nextPostDueAt,
     nextPostOverdue: nextPostOverdue,
+    nextPostTitle: nextPost?.title,
+    nextPostPlanTitle: nextPost?.planTitle,
   );
+}
+
+List<CreatorCommandScheduleSlot> _slotsFromScheduledPosts(
+  List<Map<String, dynamic>> posts,
+) {
+  final List<CreatorCommandScheduleSlot> slots = <CreatorCommandScheduleSlot>[];
+  for (final Map<String, dynamic> post in posts) {
+    final String status = (post['status'] as String? ?? '').toLowerCase();
+    if (status != 'scheduled' && status != 'publishing') {
+      continue;
+    }
+    final DateTime? dueAt = _readScheduledAt(post);
+    if (dueAt == null) {
+      continue;
+    }
+    final bool requiresAttention =
+        post['metadata']?['requiresCreatorAttention'] as bool? ??
+            post['requiresCreatorAttention'] as bool? ??
+            false;
+    final String title = _firstNonEmpty(<Object?>[
+          post['title'],
+          post['caption'],
+          post['contentTitle'],
+          post['videoTitle'],
+        ]) ??
+        'Scheduled post';
+    slots.add(
+      CreatorCommandScheduleSlot(
+        dueAt: dueAt,
+        title: title,
+        requiresAttention: requiresAttention,
+      ),
+    );
+  }
+  return slots;
+}
+
+List<CreatorCommandScheduleSlot> _slotsFromContentPlans(
+  List<ContentPlan> plans,
+) {
+  final List<CreatorCommandScheduleSlot> slots = <CreatorCommandScheduleSlot>[];
+  for (final ContentPlan plan in plans) {
+    final String planTitle =
+        plan.title.trim().isEmpty ? 'Content plan' : plan.title.trim();
+    bool addedItemSlot = false;
+    for (final ContentPlanItem item in plan.items) {
+      if (!item.isQueuedSchedule) {
+        continue;
+      }
+      final DateTime dueAt = item.earliestScheduledAt!;
+      slots.add(
+        CreatorCommandScheduleSlot(
+          dueAt: dueAt,
+          title: item.title.trim().isEmpty ? planTitle : item.title.trim(),
+          planTitle: planTitle,
+          requiresAttention: (item.status ?? '').toLowerCase() == 'needsreview',
+        ),
+      );
+      addedItemSlot = true;
+    }
+    if (addedItemSlot) {
+      continue;
+    }
+    final DateTime? planDue = plan.scheduledAt;
+    final String planStatus = plan.status.trim().toLowerCase();
+    if (planDue != null &&
+        (planStatus == 'scheduled' ||
+            planStatus == 'publishing' ||
+            planStatus == 'planned')) {
+      slots.add(
+        CreatorCommandScheduleSlot(
+          dueAt: planDue,
+          title: planTitle,
+          planTitle: planTitle,
+          requiresAttention: planStatus == 'needsreview',
+        ),
+      );
+    }
+  }
+  return slots;
+}
+
+String? _firstNonEmpty(List<Object?> values) {
+  for (final Object? value in values) {
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+  }
+  return null;
 }
 
 DateTime? _readVideoCreatedAt(Map<String, dynamic> video) {
@@ -364,4 +530,23 @@ bool _scheduledPostBelongsToUser(Map<String, dynamic> post, String uid) {
       (post['userId'] as String?) == uid ||
       (post['creatorId'] as String?) == uid ||
       (post['uid'] as String?) == uid;
+}
+
+Stream<List<T>> _watchQueryList<T>(
+  Stream<QuerySnapshot<Map<String, dynamic>>> source,
+  List<T> Function(QuerySnapshot<Map<String, dynamic>> snapshot) mapSnapshot,
+) {
+  return Stream<List<T>>.multi((MultiStreamController<List<T>> controller) {
+    final StreamSubscription<QuerySnapshot<Map<String, dynamic>>> sub =
+        source.listen(
+      (QuerySnapshot<Map<String, dynamic>> snapshot) {
+        controller.add(mapSnapshot(snapshot));
+      },
+      onError: (Object _, StackTrace __) {
+        controller.add(<T>[]);
+      },
+      onDone: controller.close,
+    );
+    controller.onCancel = sub.cancel;
+  });
 }

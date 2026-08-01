@@ -212,7 +212,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   String _caption = '';
   List<String> _hashtags = [];
   String _selectedPrivacy = 'Everyone';
-  String _selectedCategory = 'gaming'; // has default; user can change
+  String _selectedCategory = kDefaultCategoryId;
   bool _allowComments = true;
   bool _isUploading = false;
   double _uploadProgress = 0.0;

@@ -1,12 +1,14 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_colors.dart';
 import '../services/robust_auth_service.dart';
 import '../utils/auth_login_input.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../qa/qa_keys.dart';
+import 'auth/auth_brand_header.dart';
+import 'auth/auth_get_started_button.dart';
+import 'auth/auth_glass_panel.dart';
 import 'auth_page_shell.dart';
 import 'signup_view.dart';
 import 'forgot_password_view.dart';
@@ -133,9 +135,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   Widget _buildLoginForm() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return _buildGlassPanel(
+    return AuthGlassPanel(
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
       child: Form(
         key: _formKey,
@@ -154,7 +154,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                     alignment: Alignment.centerLeft,
                     child: IconButton(
                       style: IconButton.styleFrom(
-                        foregroundColor: scheme.onSurface,
+                        foregroundColor: Colors.white,
                         padding: EdgeInsets.zero,
                         minimumSize: const Size(44, 44),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -167,16 +167,14 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                   Center(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: scheme.surface.withValues(
-                          alpha: isDark ? 0.38 : 0.72,
-                        ),
+                        color: Colors.white.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: scheme.outline.withValues(alpha: 0.35),
+                          color: Colors.white.withValues(alpha: 0.18),
                         ),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 6,
                         ),
@@ -185,17 +183,17 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                           children: [
                             Icon(
                               Icons.lock_open_rounded,
-                              color: scheme.primary,
+                              color: Colors.white,
                               size: 16,
                             ),
-                            const SizedBox(width: 6),
+                            SizedBox(width: 6),
                             Text(
-                              "Secure Login",
+                              'Secure Login',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 0.25,
-                                color: scheme.onSurface,
+                                color: Colors.white,
                               ),
                             ),
                           ],
@@ -206,58 +204,30 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            Image.asset(
-              'assets/logo.png',
-              width: 104,
-              height: 104,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                debugPrint('❌ Error loading logo: $error');
-                debugPrint('❌ Stack trace: $stackTrace');
-                return ShaderMask(
-                  shaderCallback: (Rect rect) {
-                    return const LinearGradient(
-                      colors: [
-                        Color(0xFFFFD76A),
-                        Color(0xFF9F80FF),
-                        Color(0xFF52B6FF),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ).createShader(rect);
-                  },
-                  blendMode: BlendMode.srcIn,
-                  child: const Icon(
-                    Icons.play_circle_filled,
-                    size: 104,
-                    color: Colors.white,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            Text(
-              "Sign In",
-              style: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.4,
-                color: scheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Enter your email or username to jump back into your "
-              "stream community.",
-              style: TextStyle(
-                fontSize: 16,
-                color: scheme.onSurfaceVariant,
-                height: 1.45,
-              ),
+            const SizedBox(height: 16),
+            const AuthBrandHeader(logoSize: 88, compact: true),
+            const SizedBox(height: 16),
+            const Text(
+              'Welcome Back',
               textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                color: Colors.white,
+              ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 6),
+            Text(
+              'Sign in to continue building your creator journey.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.4,
+                color: Colors.white.withValues(alpha: 0.75),
+              ),
+            ),
+            const SizedBox(height: 22),
             AutofillGroup(
               child: Column(
                 children: [
@@ -434,8 +404,15 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: isEnabled
-                    ? const [Color(0xFF955CFF), Color(0xFF3D99F7)]
-                    : const [Color(0xFF7158A6), Color(0xFF4D6690)],
+                    ? const <Color>[
+                        AppColors.primary,
+                        Color(0xFF7768DF),
+                        Color(0xFF4897D2),
+                      ]
+                    : const <Color>[
+                        Color(0xFF5A3A7A),
+                        Color(0xFF3A5A7A),
+                      ],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               ),
@@ -446,14 +423,14 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                     : Colors.white.withValues(alpha: 0.08),
               ),
               boxShadow: isEnabled
-                  ? const [
+                  ? <BoxShadow>[
                       BoxShadow(
-                        color: Color(0x44318FFF),
+                        color: AppColors.primary.withValues(alpha: 0.38),
                         blurRadius: 24,
-                        offset: Offset(0, 10),
+                        offset: const Offset(0, 10),
                       ),
                     ]
-                  : const [],
+                  : const <BoxShadow>[],
             ),
             child: const Center(
               child: Row(
@@ -624,71 +601,24 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   Widget _buildSignUpSection() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       children: [
         Text(
-          "Don't have an account?",
+          'New to StreamersTip?',
           style: TextStyle(
             fontSize: 14,
-            color: scheme.onSurfaceVariant,
+            color: Colors.white.withValues(alpha: 0.72),
           ),
         ),
-        TextButton(
+        const SizedBox(height: 10),
+        AuthGetStartedButton(
           onPressed: () {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (context) => const SignupView()),
             );
           },
-          child: Text(
-            "Sign up",
-            style: TextStyle(
-              fontSize: 14,
-              color: scheme.secondary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
         ),
       ],
-    );
-  }
-
-  Widget _buildGlassPanel({
-    required Widget child,
-    EdgeInsetsGeometry padding = const EdgeInsets.all(16),
-  }) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color panelFill = isDark
-        ? scheme.surface.withValues(alpha: 0.42)
-        : scheme.surface.withValues(alpha: 0.72);
-    final Color panelBorder =
-        scheme.outline.withValues(alpha: isDark ? 0.35 : 0.45);
-    return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            width: double.infinity,
-            padding: padding,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              color: panelFill,
-              border: Border.all(color: panelBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: isDark ? 0.45 : 0.12),
-                  blurRadius: 32,
-                  offset: const Offset(0, 18),
-                ),
-              ],
-            ),
-            child: child,
-          ),
-        ),
-      ),
     );
   }
 

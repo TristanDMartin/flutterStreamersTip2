@@ -29,9 +29,9 @@ class SearchApiService {
       final searchTerm = query.trim().toLowerCase();
       final List<SearchResult> results = [];
 
-      // Search by username (get all users and filter client-side)
+      // Search by username (publicUsers only)
       final usernameQuery = await _firestore
-          .collection('users')
+          .collection('publicUsers')
           .limit(100) // Get more users to filter
           .get();
 
@@ -169,9 +169,9 @@ class SearchApiService {
       final searchTerm = query.trim().toLowerCase();
       final List<SearchResult> results = [];
 
-      // Search for hashtags in user profiles
+      // Search for hashtags in public profiles
       final userHashtagQuery = await _firestore
-          .collection('users')
+          .collection('publicUsers')
           .where('hashtags', arrayContains: searchTerm)
           .limit(limit)
           .get();

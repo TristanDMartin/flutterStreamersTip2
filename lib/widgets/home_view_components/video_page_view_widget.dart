@@ -14,6 +14,7 @@ import '../../constants/playback_owners.dart';
 import '../../services/feed_telemetry_service.dart';
 import '../../services/global_playback_manager.dart';
 import '../android_media3_home_player.dart';
+import '../../features/home/domain/home_feed_processing.dart';
 import 'package:streamers_tip/utils/home_feed_interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/like_interaction_boundary.dart';
@@ -527,6 +528,22 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       return;
     }
 
+    final bool forceSyncDuringScroll = shouldForceFeedIndexSyncDuringScroll(
+      currentIndex: widget.currentIndex,
+      nextVideoCount: widget.videos.length,
+    );
+    // Avoid jumpToPage mid-swipe unless the visible index is now invalid.
+    if (_isPageUserScrolling &&
+        !tabChanged &&
+        !forceSyncDuringScroll &&
+        !feedShrunk) {
+      secureLog(
+        '⏭️ VideoPageView: Deferring feed sync during user scroll '
+        '(index=${widget.currentIndex}, count=${widget.videos.length})',
+      );
+      return;
+    }
+
     final int targetIndex = identityChanged || tabChanged || shouldJumpToNewest
         ? (feedShrunk
             ? _indexForVisibleVideoAfterShrink()
@@ -675,59 +692,66 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
                 onPageChanged: (index) {
                   try {
                     final Stopwatch pageWatch = Stopwatch()..start();
-                    secureLog('🎬 VideoPageView: Page changed to index $index');
-                    _lastPrewarmedIndex = index;
-                    if (index >= 0 && index < widget.videos.length) {
-                      // --- Telemetry: skip detection for the previous video ---
-                      final now = DateTime.now();
-                      final HomeVideo? previousVideo = _lastImpressionVideo;
-                      if (_pageEnteredAt != null && previousVideo != null) {
-                        final watched =
-                            now.difference(_pageEnteredAt!).inMilliseconds /
-                                1000.0;
-                        // video_watch_duration for every page-leave
-                        final totalSecs = previousVideo.duration ?? 0;
-                        final completion = totalSecs > 0
-                            ? (watched / totalSecs).clamp(0.0, 1.0)
-                            : 0.0;
-                        _telemetry.logVideoWatchDuration(
+                    final int safeIndex =
+                        clampHomeVideoIndex(index, widget.videos.length);
+                    if (safeIndex != index) {
+                      secureLog(
+                        '⚠️ VideoPageView: Clamped page index $index → '
+                        '$safeIndex (videos.length: ${widget.videos.length})',
+                      );
+                    }
+                    secureLog(
+                        '🎬 VideoPageView: Page changed to index $safeIndex');
+                    _lastPrewarmedIndex = safeIndex;
+                    if (widget.videos.isEmpty) {
+                      return;
+                    }
+                    // --- Telemetry: skip detection for the previous video ---
+                    final now = DateTime.now();
+                    final HomeVideo? previousVideo = _lastImpressionVideo;
+                    if (_pageEnteredAt != null && previousVideo != null) {
+                      final watched =
+                          now.difference(_pageEnteredAt!).inMilliseconds /
+                              1000.0;
+                      // video_watch_duration for every page-leave
+                      final totalSecs = previousVideo.duration ?? 0;
+                      final completion = totalSecs > 0
+                          ? (watched / totalSecs).clamp(0.0, 1.0)
+                          : 0.0;
+                      _telemetry.logVideoWatchDuration(
+                        videoId: previousVideo.id,
+                        watchedSeconds: watched,
+                        totalSeconds: totalSecs.toDouble(),
+                        completionRate: completion,
+                      );
+                      // video_skip when < 2s watched
+                      if (watched < 2.0) {
+                        _telemetry.logVideoSkip(
                           videoId: previousVideo.id,
                           watchedSeconds: watched,
-                          totalSeconds: totalSecs.toDouble(),
-                          completionRate: completion,
                         );
-                        // video_skip when < 2s watched
-                        if (watched < 2.0) {
-                          _telemetry.logVideoSkip(
-                            videoId: previousVideo.id,
-                            watchedSeconds: watched,
-                          );
-                        }
                       }
-                      // --- Telemetry: impression for the new video ---
-                      _pageEnteredAt = now;
-                      _lastImpressionVideo = widget.videos[index];
-                      _rememberVisibleIndex(index);
-                      _preloadPlaybackWindow(
-                        index,
-                        reason: 'page_changed',
-                        direction: index < widget.currentIndex ? -1 : 1,
-                      );
-                      _maybeContinueFeedAtEnd(index, reason: 'page_changed');
-                      _telemetry.logVideoImpression(
-                        videoId: widget.videos[index].id,
-                        feedPosition: index,
-                      );
-                      widget.onPageChanged(index);
-                      HomeFeedInteractionDiagnostics.logPageChanged(
-                        source: 'page_view',
-                        index: index,
-                        ms: pageWatch.elapsedMilliseconds,
-                      );
-                    } else {
-                      secureLog(
-                          '⚠️ VideoPageView: Invalid index $index (videos.length: ${widget.videos.length})');
                     }
+                    // --- Telemetry: impression for the new video ---
+                    _pageEnteredAt = now;
+                    _lastImpressionVideo = widget.videos[safeIndex];
+                    _rememberVisibleIndex(safeIndex);
+                    _preloadPlaybackWindow(
+                      safeIndex,
+                      reason: 'page_changed',
+                      direction: safeIndex < widget.currentIndex ? -1 : 1,
+                    );
+                    _maybeContinueFeedAtEnd(safeIndex, reason: 'page_changed');
+                    _telemetry.logVideoImpression(
+                      videoId: widget.videos[safeIndex].id,
+                      feedPosition: safeIndex,
+                    );
+                    widget.onPageChanged(safeIndex);
+                    HomeFeedInteractionDiagnostics.logPageChanged(
+                      source: 'page_view',
+                      index: safeIndex,
+                      ms: pageWatch.elapsedMilliseconds,
+                    );
                   } catch (e) {
                     secureLog('❌ VideoPageView: Error in onPageChanged: $e');
                   }

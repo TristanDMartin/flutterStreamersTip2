@@ -6,6 +6,7 @@ import '../constants/app_colors.dart';
 import '../core/theme/support_shell_style.dart';
 import '../features/activity/pulse/activity_pulse_logic.dart';
 import '../features/activity/pulse/activity_pulse_tokens.dart';
+import '../features/activity/activity_notification_rules.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
 import '../services/robust_auth_service.dart';
@@ -389,7 +390,20 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     Color accent,
   ) {
     final ActivityNotification n = widget.notification;
-    final String? preview = n.commentText?.trim();
+    final bool isSystemBroadcast =
+        n.type == ActivityNotificationType.adminBroadcast;
+    final String fullText = n.commentText?.trim() ?? '';
+    final List<String> lines = fullText
+        .split('\n')
+        .map((String line) => line.trim())
+        .where((String line) => line.isNotEmpty)
+        .toList(growable: false);
+    final String headline = isSystemBroadcast && lines.isNotEmpty
+        ? lines.first
+        : _getNotificationMessage();
+    final String? preview = isSystemBroadcast
+        ? (lines.length > 1 ? lines.sublist(1).join(' ') : null)
+        : n.commentText?.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -418,23 +432,38 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                   ),
                 ),
               ),
-              TextSpan(
-                text: ' ${_getNotificationMessage()}',
-                style: TextStyle(
-                  color: shell.muted,
-                  fontWeight: FontWeight.w400,
+              if (!isSystemBroadcast)
+                TextSpan(
+                  text: ' $headline',
+                  style: TextStyle(
+                    color: shell.muted,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-              ),
             ],
           ),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
+        if (isSystemBroadcast && headline.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            headline,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: shell.onChrome.withValues(alpha: 0.92),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+            ),
+          ),
+        ],
         if (preview != null && preview.isNotEmpty) ...<Widget>[
           const SizedBox(height: 6),
           Text(
-            '"$preview"',
-            maxLines: 2,
+            isSystemBroadcast ? preview : '"$preview"',
+            maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: shell.onChrome.withValues(alpha: 0.88),
@@ -465,6 +494,19 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     }
     if (widget.notification.videoId?.isNotEmpty == true) {
       return 'view clip';
+    }
+    if (widget.notification.isContentPlanType) {
+      return 'open Content Planner';
+    }
+    if (widget.notification.isTippyType ||
+        activityActionUrlLooksLikeTrendDiscovery(
+          widget.notification.actionUrl,
+        )) {
+      return activityActionUrlLooksLikeTrendDiscovery(
+            widget.notification.actionUrl,
+          )
+          ? 'open Trend Discovery'
+          : 'ask Tippy';
     }
     return 'open';
   }
@@ -659,11 +701,11 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           return 'is live now! 🔴';
         }
       case ActivityNotificationType.adminBroadcast:
-        if (widget.notification.commentText != null) {
+        if (widget.notification.commentText != null &&
+            widget.notification.commentText!.trim().isNotEmpty) {
           return widget.notification.commentText!;
-        } else {
-          return 'Admin announcement';
         }
+        return 'sent you an update';
     }
   }
 

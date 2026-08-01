@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:freezed_annotation/freezed_annotation.dart';
+import '../features/activity/activity_notification_rules.dart';
 import '../models/activity_notification.dart';
-import '../models/json_converters.dart';
 import '../models/user.dart' as app_user;
+import '../services/public_profile_firestore.dart';
 import '../services/user_blocking_service.dart';
 
 part 'activity_provider.freezed.dart';
@@ -35,18 +36,27 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   final Map<String, app_user.User> _userCache = <String, app_user.User>{};
   final Map<String, ActivityNotification> _primaryItems = {};
   final Map<String, ActivityNotification> _forumItems = {};
-  bool _isInitialized = false; // FIXED: Prevent multiple initializations
+  bool _isMarkingAllRead = false;
+  bool _isInitialized = false;
+  String? _activeUserId;
   VoidCallback? _blockListListener;
 
   bool get isInitialized => _isInitialized;
 
-  Future<void> init(String userId) async {
+  Future<void> init(String userId, {bool forceReload = false}) async {
+    if (_isInitialized &&
+        _activeUserId == userId &&
+        !forceReload) {
+      debugPrint(
+        '⏭️ ActivityNotifier.init skipped — already loaded for $userId',
+      );
+      return;
+    }
     debugPrint('🔄 ActivityNotifier.init called for user: $userId');
     debugPrint('  - _isInitialized: $_isInitialized');
     debugPrint('  - Current state: ${state.grouped.length} notifications');
-    debugPrint('🔍 ActivityNotifier: About to set up Firestore listener...');
-
     _isInitialized = true;
+    _activeUserId = userId;
 
     try {
       await _notifSub?.cancel();
@@ -55,7 +65,6 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         state = state.copyWith(isLoading: true, hasError: false, error: null);
       }
 
-      // Load real data from Firestore
       debugPrint('🔄 Loading real data from Firestore...');
       await _loadFirestoreData(userId);
       _blockListListener ??= () {
@@ -86,26 +95,18 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       _forumItems.clear();
 
       try {
-        final primarySnapshot = await _db
-            .collection('notifications')
-            .doc(userId)
-            .collection('items')
-            .orderBy('timestamp', descending: true)
-            .limit(75)
-            .get();
+        final QuerySnapshot<Map<String, dynamic>> primarySnapshot =
+            await _queryPrimaryNotifications(userId);
         await _replacePrimarySnapshot(primarySnapshot);
+        await _mergeUnreadPrimaryNotifications(userId);
       } catch (e) {
         debugPrint(
             '⚠️ ActivityNotifier: Primary notifications denied/failed: $e');
       }
 
       try {
-        final forumSnapshot = await _db
-            .collection('forumNotifications')
-            .where('userId', isEqualTo: userId)
-            .orderBy('createdAt', descending: true)
-            .limit(75)
-            .get();
+        final QuerySnapshot<Map<String, dynamic>> forumSnapshot =
+            await _queryForumNotifications(userId);
         await _replaceForumSnapshot(forumSnapshot);
       } catch (e) {
         debugPrint(
@@ -114,36 +115,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
 
       unawaited(_rebuildGroupedState());
 
-      _notifSub = _db
-          .collection('notifications')
-          .doc(userId)
-          .collection('items')
-          .orderBy('timestamp', descending: true)
-          .limit(75)
-          .snapshots()
-          .listen(
-        (snap) => unawaited(_handlePrimarySnapshot(snap)),
-        onError: (Object error) {
-          debugPrint('⚠️ ActivityNotifier: Primary listener error: $error');
-          _primaryItems.clear();
-          unawaited(_rebuildGroupedState());
-        },
-      );
-
-      _forumSub = _db
-          .collection('forumNotifications')
-          .where('userId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
-          .limit(75)
-          .snapshots()
-          .listen(
-        (snap) => unawaited(_handleForumSnapshot(snap)),
-        onError: (Object error) {
-          debugPrint('⚠️ ActivityNotifier: Forum listener error: $error');
-          _forumItems.clear();
-          unawaited(_rebuildGroupedState());
-        },
-      );
+      _notifSub = _listenPrimaryNotifications(userId);
+      _forumSub = _listenForumNotifications(userId);
     } catch (e) {
       debugPrint('🚨 Error setting up Firestore listener: $e');
       state = state.copyWith(
@@ -154,10 +127,155 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     }
   }
 
+  CollectionReference<Map<String, dynamic>> _primaryCollection(String userId) {
+    return _db.collection('notifications').doc(userId).collection('items');
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _queryPrimaryNotifications(
+    String userId,
+  ) async {
+    final CollectionReference<Map<String, dynamic>> col =
+        _primaryCollection(userId);
+    try {
+      return await col.orderBy('timestamp', descending: true).limit(75).get();
+    } catch (e) {
+      debugPrint(
+        '⚠️ ActivityNotifier: orderBy timestamp failed, trying createdAt: $e',
+      );
+    }
+    try {
+      return await col.orderBy('createdAt', descending: true).limit(75).get();
+    } catch (e) {
+      debugPrint(
+        '⚠️ ActivityNotifier: orderBy createdAt failed, unordered: $e',
+      );
+    }
+    return col.limit(75).get();
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _queryForumNotifications(
+    String userId,
+  ) async {
+    final Query<Map<String, dynamic>> base = _db
+        .collection('forumNotifications')
+        .where('userId', isEqualTo: userId);
+    try {
+      return await base.orderBy('createdAt', descending: true).limit(75).get();
+    } catch (e) {
+      debugPrint(
+        '⚠️ ActivityNotifier: forum orderBy createdAt failed, unordered: $e',
+      );
+    }
+    return base.limit(75).get();
+  }
+
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
+      _listenPrimaryNotifications(String userId) {
+    return _primaryCollection(userId)
+        .orderBy('timestamp', descending: true)
+        .limit(75)
+        .snapshots()
+        .listen(
+      (QuerySnapshot<Map<String, dynamic>> snap) {
+        unawaited(_handlePrimarySnapshot(snap));
+      },
+      onError: (Object error) {
+        debugPrint(
+          '⚠️ ActivityNotifier: Primary timestamp listener error: $error',
+        );
+        unawaited(_attachPrimaryFallbackListener(userId));
+      },
+    );
+  }
+
+  Future<void> _attachPrimaryFallbackListener(String userId) async {
+    await _notifSub?.cancel();
+    final CollectionReference<Map<String, dynamic>> col =
+        _primaryCollection(userId);
+    try {
+      _notifSub = col
+          .orderBy('createdAt', descending: true)
+          .limit(75)
+          .snapshots()
+          .listen(
+        (QuerySnapshot<Map<String, dynamic>> snap) {
+          unawaited(_handlePrimarySnapshot(snap));
+        },
+        onError: (Object error) {
+          debugPrint(
+            '⚠️ ActivityNotifier: Primary createdAt listener error: $error',
+          );
+          unawaited(_attachPrimaryUnorderedListener(userId));
+        },
+      );
+      return;
+    } catch (e) {
+      debugPrint('⚠️ ActivityNotifier: createdAt listen setup failed: $e');
+    }
+    await _attachPrimaryUnorderedListener(userId);
+  }
+
+  Future<void> _attachPrimaryUnorderedListener(String userId) async {
+    await _notifSub?.cancel();
+    _notifSub = _primaryCollection(userId).limit(75).snapshots().listen(
+      (QuerySnapshot<Map<String, dynamic>> snap) {
+        unawaited(_handlePrimarySnapshot(snap));
+      },
+      onError: (Object error) {
+        debugPrint(
+          '⚠️ ActivityNotifier: Primary unordered listener error: $error',
+        );
+        // Keep last good items — never wipe the feed on a transient error.
+      },
+    );
+  }
+
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
+      _listenForumNotifications(String userId) {
+    return _db
+        .collection('forumNotifications')
+        .where('userId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .limit(75)
+        .snapshots()
+        .listen(
+      (QuerySnapshot<Map<String, dynamic>> snap) {
+        unawaited(_handleForumSnapshot(snap));
+      },
+      onError: (Object error) {
+        debugPrint('⚠️ ActivityNotifier: Forum listener error: $error');
+        unawaited(_attachForumUnorderedListener(userId));
+      },
+    );
+  }
+
+  Future<void> _attachForumUnorderedListener(String userId) async {
+    await _forumSub?.cancel();
+    _forumSub = _db
+        .collection('forumNotifications')
+        .where('userId', isEqualTo: userId)
+        .limit(75)
+        .snapshots()
+        .listen(
+      (QuerySnapshot<Map<String, dynamic>> snap) {
+        unawaited(_handleForumSnapshot(snap));
+      },
+      onError: (Object error) {
+        debugPrint(
+          '⚠️ ActivityNotifier: Forum unordered listener error: $error',
+        );
+      },
+    );
+  }
+
   Future<void> _handlePrimarySnapshot(
       QuerySnapshot<Map<String, dynamic>> snap) async {
     try {
       await _replacePrimarySnapshot(snap);
+      final String? uid = fa.FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await _mergeUnreadPrimaryNotifications(uid);
+      }
       unawaited(_rebuildGroupedState());
     } catch (e) {
       debugPrint('🚨 Primary notification parsing error: $e');
@@ -165,6 +283,41 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         hasError: true,
         error: 'Failed to parse notifications: ${e.toString()}',
       );
+    }
+  }
+
+  /// Retention queue writers store epoch millis for `timestamp`. Those docs
+  /// sort after Firestore Timestamps and can fall outside `limit(75)`. Pull
+  /// unread explicitly so Tippy/planner items still appear (website parity).
+  Future<void> _mergeUnreadPrimaryNotifications(String userId) async {
+    if (_isMarkingAllRead) {
+      return;
+    }
+    try {
+      final QuerySnapshot<Map<String, dynamic>> unread = await _db
+          .collection('notifications')
+          .doc(userId)
+          .collection('items')
+          .where('isRead', isEqualTo: false)
+          .limit(50)
+          .get();
+      if (unread.docs.isEmpty || _isMarkingAllRead) {
+        return;
+      }
+      final List<ActivityNotification?> mapped = await Future.wait(
+        unread.docs.map(_mapPrimaryNotificationDoc),
+      );
+      if (_isMarkingAllRead) {
+        return;
+      }
+      for (final ActivityNotification? item in mapped) {
+        if (item == null) {
+          continue;
+        }
+        _primaryItems[item.id] = item;
+      }
+    } catch (e) {
+      debugPrint('⚠️ ActivityNotifier: Unread merge skipped: $e');
     }
   }
 
@@ -296,22 +449,25 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     }
 
     final notificationType = (data['type'] ?? 'like').toString();
-    final isRead = data['isRead'] == true;
+    if (shouldHideFromActivityFeed(notificationType)) {
+      return null;
+    }
+    final bool isRead = !isActivityNotificationDocUnread(data);
+    final String displayMessage = activityNotificationDisplayMessage(data);
     final thumbnailUrl = await _resolvePrimaryThumbnail(data, videoId);
     return ActivityNotification(
       id: doc.id,
       type: _typeFromString(notificationType),
       user: await _mapToUser(data),
-      timestamp: _getTimestamp(data),
+      timestamp: readActivityTimestamp(data),
       postThumbnailUrl: thumbnailUrl.ifEmpty(null),
-      commentText: _stringField(data, const ['commentText', 'body', 'title'])
-          .ifEmpty(null),
+      commentText: displayMessage.ifEmpty(null),
       status: isRead ? 'delivered' : 'pending',
       videoId: videoId.ifEmpty(null),
       chatId: _stringField(data, const ['chatId']).ifEmpty(null),
       actionUrl: _stringField(data, const ['actionUrl']).ifEmpty(null),
-      actionType:
-          _stringField(data, const ['actionType']).ifEmpty(notificationType),
+      // Keep the Firestore type for Tippy/planner routing + filters.
+      actionType: notificationType,
       threadId: _stringField(data, const ['threadId']).ifEmpty(null),
       postId: _stringField(data, const ['postId']).ifEmpty(null),
       commentId: _stringField(data, const ['commentId']).ifEmpty(null),
@@ -332,20 +488,24 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     }
 
     final notificationType = (data['type'] ?? 'comment').toString();
-    final isRead = data['read'] == true;
+    final bool isRead = !isActivityNotificationDocUnread(data);
+    final String displayMessage = activityNotificationDisplayMessage(data);
     return ActivityNotification(
       id: '$_forumIdPrefix${doc.id}',
       type: _typeFromString(notificationType),
       user: await _mapToUser(data),
-      timestamp: _getTimestamp(data),
+      timestamp: readActivityTimestamp(data),
       postThumbnailUrl: _stringField(data, const [
         'postThumbnailUrl',
         'thumbnailUrl',
         'thumbnailURL',
       ]).ifEmpty(null),
-      commentText: _stringField(data, const ['commentText', 'body', 'title'])
-          .ifEmpty(null),
+      commentText: displayMessage.isNotEmpty
+          ? displayMessage
+          : _stringField(data, const ['commentText', 'body', 'title'])
+              .ifEmpty(null),
       status: isRead ? 'delivered' : 'pending',
+      actionType: notificationType,
       threadId: _stringField(data, const ['threadId', 'postId']).ifEmpty(null),
       postId: _stringField(data, const ['postId', 'threadId']).ifEmpty(null),
       commentId: _stringField(data, const ['commentId']).ifEmpty(null),
@@ -355,8 +515,27 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 
   Future<void> markAllDelivered(String userId) async {
+    if (_isMarkingAllRead) {
+      return;
+    }
+    _isMarkingAllRead = true;
     final previousGrouped = state.grouped;
+    debugPrint('📬 ActivityNotifier: markAllDelivered starting for $userId');
     try {
+      for (final String id in _primaryItems.keys.toList(growable: false)) {
+        final ActivityNotification? item = _primaryItems[id];
+        if (item == null || item.status == 'delivered') {
+          continue;
+        }
+        _primaryItems[id] = item.copyWith(status: 'delivered');
+      }
+      for (final String id in _forumItems.keys.toList(growable: false)) {
+        final ActivityNotification? item = _forumItems[id];
+        if (item == null || item.status == 'delivered') {
+          continue;
+        }
+        _forumItems[id] = item.copyWith(status: 'delivered');
+      }
       state = state.copyWith(
         grouped: {
           for (final entry in state.grouped.entries)
@@ -367,47 +546,19 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         },
       );
       int totalMarked = 0;
-      final batch = _db.batch();
-
       try {
-        final qs = await _db
-            .collection('notifications')
-            .doc(userId)
-            .collection('items')
-            .where('isRead', isEqualTo: false)
-            .limit(100)
-            .get();
-        for (final d in qs.docs) {
-          batch.update(d.reference, {
-            'isRead': true,
-            'readAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
-        totalMarked += qs.docs.length;
+        totalMarked += await _markPrimaryUnreadPages(userId);
       } catch (e) {
         debugPrint('⚠️ Primary mark all failed: $e');
       }
-
       try {
-        final qsForum = await _db
-            .collection('forumNotifications')
-            .where('userId', isEqualTo: userId)
-            .where('read', isEqualTo: false)
-            .limit(100)
-            .get();
-        for (final d in qsForum.docs) {
-          batch.update(d.reference, {'read': true});
-        }
-        totalMarked += qsForum.docs.length;
+        totalMarked += await _markForumUnreadPages(userId);
       } catch (e) {
         debugPrint('⚠️ Forum mark all failed: $e');
       }
-
-      if (totalMarked > 0) {
-        await batch.commit();
-        debugPrint('✅ Marked $totalMarked notifications as read');
-      }
+      debugPrint(
+        '✅ ActivityNotifier: markAllDelivered finished — marked $totalMarked',
+      );
     } catch (e) {
       debugPrint('❌ Error marking all as read: $e');
       state = state.copyWith(
@@ -415,7 +566,70 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         hasError: true,
         error: 'Failed to mark notifications as read: ${e.toString()}',
       );
+    } finally {
+      _isMarkingAllRead = false;
     }
+  }
+
+  Future<int> _markPrimaryUnreadPages(String userId) async {
+    int totalMarked = 0;
+    for (int page = 0; page < 10; page++) {
+      final QuerySnapshot<Map<String, dynamic>> qs = await _db
+          .collection('notifications')
+          .doc(userId)
+          .collection('items')
+          .where('isRead', isEqualTo: false)
+          .limit(100)
+          .get();
+      if (qs.docs.isEmpty) {
+        break;
+      }
+      final WriteBatch batch = _db.batch();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> d in qs.docs) {
+        batch.update(d.reference, {
+          'isRead': true,
+          'read': true,
+          'readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      totalMarked += qs.docs.length;
+      if (qs.docs.length < 100) {
+        break;
+      }
+    }
+    return totalMarked;
+  }
+
+  Future<int> _markForumUnreadPages(String userId) async {
+    int totalMarked = 0;
+    for (int page = 0; page < 10; page++) {
+      final QuerySnapshot<Map<String, dynamic>> qsForum = await _db
+          .collection('forumNotifications')
+          .where('userId', isEqualTo: userId)
+          .where('read', isEqualTo: false)
+          .limit(100)
+          .get();
+      if (qsForum.docs.isEmpty) {
+        break;
+      }
+      final WriteBatch batch = _db.batch();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> d
+          in qsForum.docs) {
+        batch.update(d.reference, {
+          'read': true,
+          'readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      totalMarked += qsForum.docs.length;
+      if (qsForum.docs.length < 100) {
+        break;
+      }
+    }
+    return totalMarked;
   }
 
   Future<bool> markNotificationAsRead(String notificationId) async {
@@ -584,6 +798,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
 
     final fallback = _stringField(data, const <String>[
       'postThumbnailUrl',
+      'videoThumbnailUrl',
       'thumbnailUrl',
       'thumbnailURL',
       'imageUrl',
@@ -613,7 +828,15 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     if (cached != null) return cached;
 
     try {
-      final doc = await _db.collection('users').doc(userId).get();
+      // Prefer public mirror — private users/{uid} is owner-only.
+      DocumentSnapshot<Map<String, dynamic>> doc =
+          await _db.collection('publicUsers').doc(userId).get();
+      if (!doc.exists) {
+        final currentUid = fa.FirebaseAuth.instance.currentUser?.uid;
+        if (currentUid != null && currentUid == userId) {
+          doc = await _db.collection('users').doc(userId).get();
+        }
+      }
       if (!doc.exists) return null;
       final data = <String, dynamic>{
         'id': doc.id,
@@ -747,43 +970,14 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     );
   }
 
-  /// Get timestamp from either createdAt (new) or timestamp (legacy)
-  DateTime _getTimestamp(Map<String, dynamic> data) {
-    if (data.containsKey('createdAt')) {
-      return const TimestampConverter().fromJson(data['createdAt']);
-    }
-    if (data.containsKey('timestamp')) {
-      return const TimestampConverter().fromJson(data['timestamp']);
-    }
-    // Fallback to now if neither exists
-    return DateTime.now();
-  }
-
   /// Check if an account ID is a test/fake account
   bool _isTestAccount(String? accountId) {
-    if (accountId == null || accountId.isEmpty) return false;
-    final id = accountId.toLowerCase();
-    return id.startsWith('test_') ||
-        id.startsWith('test_user_') ||
-        id.startsWith('fake_') ||
-        id == 'test_user_1' ||
-        id == 'test_user_2' ||
-        id == 'test_user_3' ||
-        id == 'test_user_4' ||
-        id == 'test_user_5' ||
-        id.contains('mock') ||
-        id.contains('fake');
+    return isSyntheticTestAccountId(accountId);
   }
 
   /// Check if a video ID is a test video
   bool _isTestVideo(String? videoId) {
-    if (videoId == null || videoId.isEmpty) return false;
-    final id = videoId.toLowerCase();
-    return id.startsWith('video_') &&
-            id.length < 15 || // video_1, video_2, etc.
-        id.startsWith('test_video') ||
-        id.contains('test') ||
-        id.contains('mock');
+    return isSyntheticTestVideoId(videoId);
   }
 
   /// Force refresh notifications from Firestore
@@ -1045,13 +1239,12 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       debugPrint('🧪 Simulating comment notification for user: $userId');
 
       // Get commenter user data
-      final commenterDoc = await _db.collection('users').doc(commenterId).get();
-      if (!commenterDoc.exists) {
+      final Map<String, dynamic>? commenterData =
+          await PublicProfileFirestore.instance.getProfileMap(commenterId);
+      if (commenterData == null) {
         debugPrint('❌ Commenter user not found: $commenterId');
         return;
       }
-
-      final commenterData = commenterDoc.data()!;
 
       // Create notification data
       final notificationData = {
@@ -1087,6 +1280,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   /// Reset the provider to allow re-initialization
   void reset() {
     _isInitialized = false;
+    _activeUserId = null;
     _notifSub?.cancel();
     _forumSub?.cancel();
     _procSub?.cancel();
@@ -1106,18 +1300,19 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     _forumSub?.cancel();
     _procSub?.cancel();
     _isInitialized = false;
+    _activeUserId = null;
     super.dispose();
   }
 
   ActivityNotificationType _typeFromString(String s) {
     final normalized = s.toLowerCase().trim();
-    debugPrint(
-        '🔍 ActivityNotifier: Mapping notification type "$s" (normalized: "$normalized")');
 
     switch (normalized) {
       case 'follow_user':
       case 'follow':
       case 'follows':
+      case 'collab_invite':
+      case 'collabinvite':
         return ActivityNotificationType.follow;
       case 'like_video':
       case 'like_post':
@@ -1166,9 +1361,22 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       case 'content_plan_expired':
       case 'contentplanexpired':
       case 'content_plan':
+      case 'content_plan_queue':
+      case 'content_plan_recap':
       case 'plan_expired':
+      case 'tippy_coach':
+      case 'tippycoach':
+      case 'message':
+      case 'workspace_approval_requested':
+      case 'workspace_approval_decided':
+      case 'content_approval_requested':
+      case 'content_approval_decided':
         return ActivityNotificationType.adminBroadcast;
       default:
+        // Unknown Tippy/system types still render as broadcasts, not likes.
+        if (isGlobalSystemNotificationType(normalized)) {
+          return ActivityNotificationType.adminBroadcast;
+        }
         debugPrint(
             '⚠️ ActivityNotifier: Unknown notification type "$s", defaulting to like');
         return ActivityNotificationType.like;
@@ -1216,7 +1424,13 @@ final unreadActivityCountProvider = StreamProvider.autoDispose<int>((ref) {
       .where('isRead', isEqualTo: false)
       .snapshots()
       .listen((snapshot) {
-    primaryUnread = snapshot.docs.length;
+    primaryUnread = snapshot.docs.where((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+      final Map<String, dynamic> data = doc.data();
+      if (shouldHideFromActivityUnreadBadge(data['type'] as String?)) {
+        return false;
+      }
+      return isActivityNotificationDocUnread(data);
+    }).length;
     emit();
   }, onError: (_) {
     primaryUnread = 0;

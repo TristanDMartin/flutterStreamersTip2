@@ -9,6 +9,7 @@ import '../core/feature_flags.dart';
 import '../services/creator_cache_service.dart';
 import '../services/video_actions_service.dart';
 import '../services/video_deletion_service.dart';
+import '../services/public_profile_firestore.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'streamer_card_view.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
@@ -662,13 +663,10 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
         final taggedUserId = tagData['taggedUserId'] as String?;
         if (taggedUserId == null) continue;
 
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(taggedUserId)
-            .get();
+        final Map<String, dynamic>? userData =
+            await PublicProfileFirestore.instance.getProfileMap(taggedUserId);
 
-        if (userDoc.exists) {
-          final userData = userDoc.data()!;
+        if (userData != null) {
           taggedUsers.add({
             'userId': taggedUserId,
             'username': userData['username'] ?? 'unknown',

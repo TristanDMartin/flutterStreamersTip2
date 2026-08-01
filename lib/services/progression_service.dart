@@ -199,9 +199,15 @@ class ProgressionService {
     Map<String, ProgressionTaskState> remoteTasks =
         <String, ProgressionTaskState>{};
     Map<String, ProgressionTaskState>? summaryTasks;
+    bool isRemoteReady = false;
+    bool isSummaryReady = false;
 
     void emit() {
       if (controller.isClosed) return;
+      // Wait for at least one Firestore source so we never flash an empty
+      // snapshot (which looks like "all incomplete" then "Setup complete").
+      if (!isRemoteReady && !isSummaryReady) return;
+      if (summaryTasks == null && !isRemoteReady) return;
       controller.add(UserProgressionSnapshot(<String, ProgressionTaskState>{
         ...(summaryTasks ?? remoteTasks),
         ...?_optimisticTasksByUid[uid],
@@ -216,6 +222,7 @@ class ProgressionService {
               for (final doc in snapshot.docs)
                 doc.id: ProgressionTaskState.fromDoc(doc),
             };
+            isRemoteReady = true;
             emit();
           },
           onError: controller.addError,
@@ -223,6 +230,7 @@ class ProgressionService {
         summarySub = _userDocument(uid).snapshots().listen(
           (DocumentSnapshot<Map<String, dynamic>> snapshot) {
             summaryTasks = _tasksFromSummary(snapshot.data());
+            isSummaryReady = true;
             emit();
           },
           onError: controller.addError,
@@ -233,7 +241,6 @@ class ProgressionService {
             emit();
           }
         });
-        emit();
       },
       onCancel: () async {
         await remoteSub?.cancel();

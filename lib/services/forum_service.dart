@@ -11,6 +11,7 @@ import '../utils/video_document_rules.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'discussion_author_service.dart';
 import 'progression_service.dart';
+import 'public_profile_firestore.dart';
 
 /// Thread sort options
 enum ThreadSortBy {
@@ -842,21 +843,18 @@ class ForumService {
       }
       for (int i = 0; i < missingIds.length; i += 10) {
         final List<String> batch = missingIds.skip(i).take(10).toList();
-        final List<DocumentSnapshot<Map<String, dynamic>>> userDocs =
-            await Future.wait(
-          batch.map(
-            (String userId) => _firestore.collection('users').doc(userId).get(),
-          ),
-        );
-        for (final DocumentSnapshot<Map<String, dynamic>> doc in userDocs) {
-          if (!doc.exists || doc.data() == null) {
-            _putAvatarInCache(doc.id, null);
+        final Map<String, Map<String, dynamic>> profiles =
+            await PublicProfileFirestore.instance.getProfileMaps(batch);
+        for (final String userId in batch) {
+          final Map<String, dynamic>? data = profiles[userId];
+          if (data == null) {
+            _putAvatarInCache(userId, null);
             continue;
           }
-          final String? avatarUrl = resolveAvatarUrl(doc.data()!);
-          _putAvatarInCache(doc.id, avatarUrl);
+          final String? avatarUrl = resolveAvatarUrl(data);
+          _putAvatarInCache(userId, avatarUrl);
           if (avatarUrl != null && avatarUrl.isNotEmpty) {
-            avatarMap[doc.id] = avatarUrl;
+            avatarMap[userId] = avatarUrl;
           }
         }
       }
@@ -944,17 +942,14 @@ class ForumService {
       for (int i = 0; i < missingUids.length; i += 10) {
         final List<String> chunk =
             missingUids.sublist(i, (i + 10).clamp(0, missingUids.length));
-        final QuerySnapshot<Map<String, dynamic>> usersSnapshot =
-            await _firestore
-                .collection('users')
-                .where(FieldPath.documentId, whereIn: chunk)
-                .get();
-        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-            in usersSnapshot.docs) {
-          final String? avatarUrl = resolveAvatarUrl(doc.data());
-          _putAvatarInCache(doc.id, avatarUrl);
+        final Map<String, Map<String, dynamic>> profiles =
+            await PublicProfileFirestore.instance.getProfileMaps(chunk);
+        for (final MapEntry<String, Map<String, dynamic>> entry
+            in profiles.entries) {
+          final String? avatarUrl = resolveAvatarUrl(entry.value);
+          _putAvatarInCache(entry.key, avatarUrl);
           if (avatarUrl != null && avatarUrl.isNotEmpty) {
-            currentAvatarUrls[doc.id] = avatarUrl;
+            currentAvatarUrls[entry.key] = avatarUrl;
           }
         }
       }

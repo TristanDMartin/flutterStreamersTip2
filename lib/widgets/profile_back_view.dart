@@ -7,6 +7,8 @@ import 'dart:async';
 import '../models/calendar_event.dart';
 import '../core/theme/support_shell_style.dart';
 import '../core/theme/st_theme_tokens.dart';
+import '../features/content_planning/content_planning_api_client.dart';
+import '../features/content_planning/calendar_visibility_contract.dart';
 import '../services/robust_auth_service.dart';
 import '../services/profile_update_service.dart';
 import '../services/calendar_cleanup_service.dart';
@@ -15,6 +17,7 @@ import 'brand_icons.dart';
 import 'adult_external_link_dialog.dart';
 import '../utils/platform_rules.dart';
 import '../utils/user_profile_firestore.dart';
+import '../services/public_profile_firestore.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -31,10 +34,9 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   bool isCalendarExpanded = true;
   String? _selectedHashtag;
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
-      _contentPlansSubscription;
   Map<String, dynamic>? _liveUserData;
-  List<CalendarEvent> _contentPlanCalendarEvents = <CalendarEvent>[];
+  final ContentPlanningApiClient _contentPlanningApi =
+      ContentPlanningApiClient();
 
   @override
   void initState() {
@@ -43,7 +45,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     _runCalendarCleanup();
   }
 
-  /// Run calendar cleanup on initialization
+  /// Run calendar cleanup + projection rebuild on initialization
   void _runCalendarCleanup() {
     final userId = widget.user['id'] as String?;
     if (userId != null && userId.isNotEmpty) {
@@ -51,13 +53,20 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       CalendarCleanupService()
           .cleanupExpiredEvents(userId)
           .catchError((_) => null);
+      // Phase 0: move leftover users.calendarEvents into contentPlans once.
+      _contentPlanningApi
+          .migrateLegacyCalendarEvents(userId: userId)
+          .catchError((_) {});
+      // Phase 4: rebuild contentPlan*CalendarEvents from contentItems.
+      _contentPlanningApi
+          .syncProfileCalendar(userId: userId)
+          .catchError((_) {});
     }
   }
 
   @override
   void dispose() {
     _userDataSubscription?.cancel();
-    _contentPlansSubscription?.cancel();
     super.dispose();
   }
 
@@ -68,10 +77,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       return;
     }
 
-    _userDataSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .snapshots()
+    _userDataSubscription = PublicProfileFirestore.instance
+        .watchProfile(userId)
         .listen(
       (snapshot) {
         if (snapshot.exists && mounted) {
@@ -84,43 +91,19 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
             view: 'ProfileBackView',
             count: platforms.length,
           );
+          final List<CalendarEvent> projected =
+              UserProfileFirestore.parseProfileCalendarProjection(data);
           UserProfileFirestore.logCalendarRead(
             uid: userId,
             source: 'ProfileBackView',
-            count: UserProfileFirestore.parseCalendarEventsFromUserData(data)
-                .length,
+            count: projected.length,
+            readPath:
+                UserProfileFirestore.profileCalendarProjectionPath(userId),
           );
           setState(() {
             _liveUserData = data;
           });
         }
-      },
-      onError: (_) {},
-    );
-    _contentPlansSubscription = FirebaseFirestore.instance
-        .collection(UserProfileFirestore.usersCollection)
-        .doc(userId)
-        .collection(UserProfileFirestore.contentPlansSubcollection)
-        .snapshots()
-        .listen(
-      (QuerySnapshot<Map<String, dynamic>> snapshot) {
-        if (!mounted) {
-          return;
-        }
-        final List<Map<String, dynamic>> docs =
-            snapshot.docs.map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
-          return <String, dynamic>{...d.data(), 'id': d.id};
-        }).toList(growable: false);
-        setState(() {
-          _contentPlanCalendarEvents =
-              UserProfileFirestore.calendarEventsFromContentPlanDocs(docs);
-        });
-        UserProfileFirestore.logCalendarRead(
-          uid: userId,
-          source: 'ProfileBackView',
-          count: _contentPlanCalendarEvents.length,
-          readPath: UserProfileFirestore.contentPlansReadPath(userId),
-        );
       },
       onError: (_) {},
     );
@@ -157,15 +140,19 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         );
       }
       final List<CalendarEvent> events =
-          UserProfileFirestore.mergeCalendarEventLists(
-        UserProfileFirestore.parseCalendarEventsFromUserData(_currentUserData),
-        _contentPlanCalendarEvents,
+          filterActiveUpcomingCalendarEvents(
+        events: UserProfileFirestore.mergeCalendarEventLists(
+          UserProfileFirestore.parseProfileCalendarProjection(_currentUserData),
+          UserProfileFirestore.parseCalendarEventsFromUserData(_currentUserData),
+        ),
+        startsAtOf: (CalendarEvent e) => e.date,
       );
       if (uid.isNotEmpty) {
         UserProfileFirestore.logCalendarRead(
           uid: uid,
           source: 'ProfileBackView',
           count: events.length,
+          readPath: UserProfileFirestore.profileCalendarProjectionPath(uid),
         );
       }
 
@@ -622,29 +609,42 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               subtitle: e.description,
               meta: _formatDate(e.date),
               onDelete: () async {
-                // Save reference for potential rollback
                 final originalEvents = List<CalendarEvent>.from(events);
-
-                // Optimistic UI update - INSTANT deletion from UI
                 setState(() {
                   events.removeWhere((x) => x.id == e.id);
                 });
-
-                // Save to Firestore and WAIT for completion
-                final authService = ref.read(robustAuthServiceProvider);
-                authService.updateUserCalendarEvents(events).then((_) async {
-                  // NOW refresh ProfileUpdateService after save completes
-                  // This ensures we get the updated data, not stale data
+                final String? uid = (_currentUserData['id'] ??
+                        _currentUserData['uid'])
+                    ?.toString();
+                if (uid == null || uid.isEmpty) {
+                  return;
+                }
+                try {
+                  final ({String planId, String itemId})? planRef =
+                      UserProfileFirestore.parseContentPlanEventRef(e.id);
+                  if (planRef != null) {
+                    await _contentPlanningApi.deleteProfileCalendarItem(
+                      userId: uid,
+                      planId: planRef.planId,
+                      itemId: planRef.itemId,
+                    );
+                  } else {
+                    // Legacy array-only row: strip from calendarEvents.
+                    final List<CalendarEvent> legacyOnly =
+                        UserProfileFirestore.parseCalendarEventsFromUserData(
+                      _currentUserData,
+                    ).where((CalendarEvent x) => x.id != e.id).toList();
+                    await ref
+                        .read(robustAuthServiceProvider)
+                        .updateUserCalendarEvents(legacyOnly);
+                  }
                   await ProfileUpdateService().initialize();
-                }).catchError((error) {
-                  // Revert optimistic update on error
+                } catch (error) {
                   if (mounted) {
                     setState(() {
                       events.clear();
                       events.addAll(originalEvents);
                     });
-
-                    // Show error feedback
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Failed to delete event: $error'),
@@ -653,7 +653,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                       ),
                     );
                   }
-                });
+                }
               },
             ),
           const SizedBox(height: 16),
@@ -997,24 +997,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                   date: when,
                                 );
 
-                                // Get current events and add new one
-                                final authService =
-                                    ref.read(robustAuthServiceProvider);
                                 final String? uid = (_currentUserData['id'] ??
                                         _currentUserData['uid'])
                                     ?.toString();
                                 if (uid != null && uid.isNotEmpty) {
-                                  final List<CalendarEvent> next = [
-                                    ...UserProfileFirestore
-                                        .parseCalendarEventsFromUserData(
-                                      _currentUserData,
-                                    ),
-                                    ev,
-                                  ];
                                   UserProfileFirestore.logCalendarSave(
                                     uid: uid,
                                     source: 'ProfileBackView',
-                                    count: next.length,
+                                    count: 1,
                                   );
 
                                   // Dismiss sheet immediately for instant feel
@@ -1032,13 +1022,17 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                     ),
                                   );
 
-                                  // Save to Firestore and WAIT for completion
-                                  authService
-                                      .updateUserCalendarEvents(next)
+                                  // Phase 0: write via Worker → contentPlans
+                                  _contentPlanningApi
+                                      .createProfileCalendarItem(
+                                    userId: uid,
+                                    title: ev.title,
+                                    description: ev.description,
+                                    date: ev.date,
+                                  )
                                       .then((_) async {
                                     await ProfileUpdateService().initialize();
-                                  }).catchError((e) {
-                                    // Show error feedback
+                                  }).catchError((Object e) {
                                     scaffoldMessenger.showSnackBar(
                                       SnackBar(
                                         content:

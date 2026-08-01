@@ -26,6 +26,13 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
+    final String pushedName =
+        route.settings.name ?? route.runtimeType.toString();
+    final String previousName = previousRoute?.settings.name ??
+        previousRoute?.runtimeType.toString() ??
+        'none';
+    debugPrint('🔍 NavigationObserver: didPush $pushedName');
+    debugPrint('   - Previous route: $previousName');
     if (_shouldBlockRoute(route)) {
       _handleRoutePush(route);
       return;
@@ -37,28 +44,21 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
 
-    debugPrint('🔍 NavigationObserver: didPop');
-    if (route.settings.name != null || previousRoute?.settings.name != null) {
-      debugPrint(
-        '   - Popped route: ${route.settings.name} (${route.runtimeType})',
-      );
-      debugPrint(
-        '   - Previous route: ${previousRoute?.settings.name} (${previousRoute?.runtimeType})',
-      );
-    }
+    final String poppedRouteName =
+        route.settings.name ?? route.runtimeType.toString();
+    final String previousRouteName = previousRoute?.settings.name ??
+        previousRoute?.runtimeType.toString() ??
+        'none';
+    debugPrint('🔍 NavigationObserver: didPop $poppedRouteName');
+    debugPrint('   - Previous route: $previousRouteName');
 
     _handleRoutePop(route);
 
-    final String poppedRouteName =
-        route.settings.name ?? route.runtimeType.toString();
     final bool isPoppingDiscoverView =
         poppedRouteName.toLowerCase().contains('discover');
 
     if (isPoppingDiscoverView && previousRoute != null) {
-      final String previousRouteName =
-          previousRoute.settings.name ?? previousRoute.runtimeType.toString();
-      final bool isReturningToHome =
-          previousRouteName.toLowerCase().contains('home');
+      final bool isReturningToHome = _isHomeShellRoute(previousRouteName);
 
       if (isReturningToHome && !_manager.isSuppressedForSignOut) {
         debugPrint(
@@ -70,9 +70,7 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     }
 
     if (previousRoute != null && !_shouldBlockRoute(previousRoute)) {
-      final String previousName =
-          (previousRoute.settings.name ?? previousRoute.runtimeType.toString())
-              .toLowerCase();
+      final String previousName = previousRouteName.toLowerCase();
       // Share/comments sheets used to suppress via route_change_unknown without
       // entering _blockingRoutes, so unblock() on pop never ran. Clear orphaned
       // overlay blocks when returning to the shell feed.
@@ -309,5 +307,13 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       _manager.resumeAfterTabSwitch();
     }
     debugPrint('🎵 NavigationObserver: Modal dismissed — $modalType');
+  }
+
+  /// Home feed lives under the shell root (`/`) or an explicit `/home` route.
+  bool _isHomeShellRoute(String routeName) {
+    final String normalized = routeName.toLowerCase();
+    return PlaybackRoutePolicies.isShellRoute(normalized) ||
+        normalized == '/home' ||
+        normalized.contains('home');
   }
 }

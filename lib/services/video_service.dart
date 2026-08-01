@@ -751,13 +751,29 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         return;
       }
 
-      // Check authentication first
-      final user = _auth.currentUser;
+      // Check authentication first — iOS cold start often restores Auth after
+      // Firebase.apps is already non-empty.
+      User? user = _auth.currentUser;
       if (user == null) {
         debugPrint(
-            '❌ VideoService: User not authenticated, cannot load videos');
-        debugPrint('   💡 User must be logged in to load videos');
-        return;
+          '⏳ VideoService: Waiting for Auth restore before feed load...',
+        );
+        try {
+          user = await _auth
+              .authStateChanges()
+              .where((User? next) => next != null)
+              .map((User? next) => next!)
+              .first
+              .timeout(const Duration(seconds: 12));
+        } on TimeoutException {
+          debugPrint(
+            '❌ VideoService: User not authenticated after Auth wait',
+          );
+          return;
+        } catch (e) {
+          debugPrint('❌ VideoService: Auth wait failed: $e');
+          return;
+        }
       }
       debugPrint('✅ VideoService: User authenticated: ${user.uid}');
 

@@ -3,9 +3,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
+import '../providers/activity_provider.dart';
+import '../providers/current_user_provider.dart';
 import '../providers/unread_messages_provider.dart';
 import '../qa/qa_keys.dart';
+import '../utils/avatar_url_resolver.dart';
 import '../utils/performance_utils.dart';
 import '../utils/responsive_layout.dart';
 import 'navigation/liquid_glass_dock_tokens.dart';
@@ -103,20 +107,20 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
         final Color on = colorScheme.onSurface;
         final List<Color> glassColors = isLight
             ? <Color>[
-                colorScheme.surface.withValues(alpha: 0.34),
-                colorScheme.surface.withValues(alpha: 0.22),
-                colorScheme.surfaceContainerLow.withValues(alpha: 0.18),
-                colorScheme.surface.withValues(alpha: 0.28),
+                colorScheme.surface.withValues(alpha: 0.58),
+                colorScheme.surface.withValues(alpha: 0.42),
+                colorScheme.surfaceContainerLow.withValues(alpha: 0.3),
+                colorScheme.surface.withValues(alpha: 0.5),
               ]
             : <Color>[
-                Colors.white.withValues(alpha: 0.25),
-                Colors.white.withValues(alpha: 0.15),
-                Colors.white.withValues(alpha: 0.05),
-                Colors.black.withValues(alpha: 0.3),
+                Colors.white.withValues(alpha: 0.2),
+                Colors.white.withValues(alpha: 0.11),
+                Colors.white.withValues(alpha: 0.04),
+                Colors.black.withValues(alpha: 0.48),
               ];
         final Color borderGlass = isLight
-            ? colorScheme.outline.withValues(alpha: 0.28)
-            : Colors.white.withValues(alpha: 0.4);
+            ? colorScheme.outline.withValues(alpha: 0.22)
+            : Colors.white.withValues(alpha: 0.32);
         final Color glow = isLight
             ? colorScheme.shadow.withValues(alpha: 0.08)
             : Colors.white.withValues(alpha: 0.1);
@@ -133,6 +137,10 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
             (dockWidth - metrics.contentPadding.horizontal)
                 .clamp(0.0, double.infinity)
                 .toDouble();
+        final double slotWidth = contentWidth / _slotCount;
+        final double indicatorWidth = (slotWidth * metrics.indicatorWidthFactor)
+            .clamp(metrics.indicatorMinWidth, metrics.indicatorMaxWidth)
+            .toDouble();
         return RepaintBoundary(
           child: SafeArea(
             bottom: true,
@@ -190,12 +198,12 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
                                   _indicatorController.isAnimating
                                       ? _indicatorCenterAnimation.value
                                       : _indicatorCenter;
-                              final double rawLeft = center * contentWidth -
-                                  metrics.indicatorWidth / 2;
-                              final double maxLeft = contentWidth >
-                                      metrics.indicatorWidth + 8
-                                  ? contentWidth - metrics.indicatorWidth - 4
-                                  : 4;
+                              final double rawLeft =
+                                  center * contentWidth - indicatorWidth / 2;
+                              final double maxLeft =
+                                  contentWidth > indicatorWidth + 8
+                                      ? contentWidth - indicatorWidth - 4
+                                      : 4;
                               final double left =
                                   rawLeft.clamp(4.0, maxLeft).toDouble();
                               return Stack(
@@ -205,7 +213,7 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
                                     left: left,
                                     top: metrics.indicatorTop,
                                     child: _SlidingGlassIndicator(
-                                      width: metrics.indicatorWidth,
+                                      width: indicatorWidth,
                                       height: metrics.indicatorHeight,
                                     ),
                                   ),
@@ -279,9 +287,13 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
                                         colorScheme: colorScheme,
                                         isLight: isLight,
                                         index: 4,
-                                        icon: Icons.account_circle_outlined,
                                         label: 'Profile',
                                         metrics: metrics,
+                                        customIcon: _buildProfileAvatarNavIcon(
+                                          colorScheme: colorScheme,
+                                          isLight: isLight,
+                                          metrics: metrics,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -306,9 +318,10 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
     required ColorScheme colorScheme,
     required bool isLight,
     required int index,
-    required IconData icon,
+    IconData? icon,
     required String label,
     required _NavMetrics metrics,
+    Widget? customIcon,
     GlobalKey? tourKey,
   }) {
     final bool isSelected = widget.currentIndex == index;
@@ -320,15 +333,24 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
           )
         : on.withValues(alpha: LiquidGlassDockTokens.inactiveIconOpacity);
     final Color contentColor = isSelected ? activeColor : inactiveColor;
+    final Widget renderedIcon = customIcon ??
+        Icon(
+          icon,
+          color: contentColor,
+          size: metrics.iconSize,
+        );
     final Widget iconWidget = AnimatedScale(
       scale: isSelected ? LiquidGlassDockTokens.activeIconScale : 1,
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       child: AnimatedOpacity(
-        opacity: isSelected ? 1 : 0.72,
+        opacity: isSelected ? 1 : 0.84,
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        child: Icon(icon, color: contentColor, size: metrics.iconSize),
+        child: IconTheme(
+          data: IconThemeData(color: contentColor, size: metrics.iconSize),
+          child: renderedIcon,
+        ),
       ),
     );
     final Widget iconSlot = tourKey != null
@@ -402,7 +424,7 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
                     duration: const Duration(milliseconds: 220),
                     curve: Curves.easeOutCubic,
                     child: AnimatedOpacity(
-                      opacity: isSelected ? 1 : 0.72,
+                      opacity: isSelected ? 1 : 0.84,
                       duration: const Duration(milliseconds: 180),
                       curve: Curves.easeOutCubic,
                       child: Icon(
@@ -499,6 +521,89 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
       ),
     );
   }
+
+  Widget _buildProfileAvatarNavIcon({
+    required ColorScheme colorScheme,
+    required bool isLight,
+    required _NavMetrics metrics,
+  }) {
+    final Map<String, dynamic>? userData =
+        ref.watch(currentUserStreamProvider).valueOrNull;
+    final String? resolvedAvatarUrl = resolveAvatarUrl(userData) ??
+        normalizeAvatarPhotoUrl(
+          firebase_auth.FirebaseAuth.instance.currentUser?.photoURL,
+        );
+    final bool isSelected = widget.currentIndex == 4;
+    final int unreadActivityCount =
+        ref.watch(unreadActivityCountProvider).valueOrNull ?? 0;
+    final bool showNotificationDot = unreadActivityCount > 0;
+    final Color borderColor = isSelected
+        ? Colors.white.withValues(alpha: isLight ? 0.92 : 0.84)
+        : Colors.white.withValues(alpha: isLight ? 0.58 : 0.24);
+    final double avatarSize = metrics.avatarSize;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          width: avatarSize,
+          height: avatarSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isLight
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.82)
+                : Colors.black.withValues(alpha: 0.62),
+            border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
+            boxShadow: <BoxShadow>[
+              if (isSelected)
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  blurRadius: 14,
+                  spreadRadius: 1,
+                ),
+            ],
+            image: resolvedAvatarUrl != null && resolvedAvatarUrl.isNotEmpty
+                ? DecorationImage(
+                    image: NetworkImage(resolvedAvatarUrl),
+                    fit: BoxFit.cover,
+                    onError: (_, __) {},
+                  )
+                : null,
+          ),
+          child: resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty
+              ? Icon(
+                  Icons.person,
+                  color: isLight
+                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.78)
+                      : Colors.white.withValues(alpha: 0.82),
+                  size: avatarSize * 0.58,
+                )
+              : null,
+        ),
+        if (showNotificationDot)
+          Positioned(
+            right: -1,
+            top: -1,
+            child: Semantics(
+              label: '$unreadActivityCount unread activity notifications',
+              child: Container(
+                width: metrics.avatarStatusSize,
+                height: metrics.avatarStatusSize,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF0F56),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.72),
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _NavMetrics {
@@ -512,10 +617,14 @@ class _NavMetrics {
     required this.iconSize,
     required this.createIconSize,
     required this.tapTargetSize,
+    required this.avatarSize,
+    required this.avatarStatusSize,
     required this.badgePadding,
     required this.badgeMinSize,
     required this.badgeFontSize,
-    required this.indicatorWidth,
+    required this.indicatorMinWidth,
+    required this.indicatorMaxWidth,
+    required this.indicatorWidthFactor,
     required this.indicatorHeight,
     required this.indicatorTop,
     required this.shadowBlur,
@@ -532,10 +641,14 @@ class _NavMetrics {
   final double iconSize;
   final double createIconSize;
   final double tapTargetSize;
+  final double avatarSize;
+  final double avatarStatusSize;
   final double badgePadding;
   final double badgeMinSize;
   final double badgeFontSize;
-  final double indicatorWidth;
+  final double indicatorMinWidth;
+  final double indicatorMaxWidth;
+  final double indicatorWidthFactor;
   final double indicatorHeight;
   final double indicatorTop;
   final double shadowBlur;
@@ -551,29 +664,33 @@ class _NavMetrics {
     final bool small = responsive.isSmallPhone || availableWidth < 390;
     final bool tight = availableWidth / 5 < 58;
     return _NavMetrics(
-      height: compact ? 58 : (small ? 60 : 62),
-      horizontalMargin: compact ? 12 : 16,
-      outerBottomGap: hasSystemNavBar ? 6 : 10,
-      radius: responsive.radius(26),
+      height: compact ? 64 : (small ? 68 : 70),
+      horizontalMargin: compact ? 10 : (small ? 14 : 18),
+      outerBottomGap: hasSystemNavBar ? 8 : 12,
+      radius: responsive.radius(40),
       contentPadding: EdgeInsets.fromLTRB(
-        tight ? 6 : (compact ? 10 : 16),
-        compact ? 6 : 8,
-        tight ? 6 : (compact ? 10 : 16),
-        compact ? 6 : 8,
+        tight ? 6 : (compact ? 8 : 12),
+        compact ? 7 : 8,
+        tight ? 6 : (compact ? 8 : 12),
+        compact ? 7 : 8,
       ),
-      itemPadding: tight ? 1 : 2,
-      iconSize: tight ? 22 : (compact ? 24 : 25),
-      createIconSize: compact ? 27 : 29,
-      tapTargetSize: compact ? 42 : 44,
+      itemPadding: 0,
+      iconSize: tight ? 27 : (compact ? 29 : 31),
+      createIconSize: compact ? 34 : 36,
+      tapTargetSize: compact ? 46 : 48,
+      avatarSize: compact ? 34 : 38,
+      avatarStatusSize: compact ? 11 : 13,
       badgePadding: compact ? 3 : 4,
       badgeMinSize: compact ? 15 : 16,
       badgeFontSize: compact ? 9 : 10,
-      indicatorWidth: compact ? 48 : 52,
-      indicatorHeight: compact ? 38 : 40,
-      indicatorTop: compact ? 4 : 5,
-      shadowBlur: compact ? 22 : 26,
-      glowBlur: compact ? 12 : 14,
-      shadowOffset: compact ? 6 : 8,
+      indicatorMinWidth: compact ? 50 : 54,
+      indicatorMaxWidth: compact ? 62 : 68,
+      indicatorWidthFactor: compact ? 0.82 : 0.78,
+      indicatorHeight: compact ? 50 : 54,
+      indicatorTop: compact ? 0 : 0,
+      shadowBlur: compact ? 28 : 34,
+      glowBlur: compact ? 14 : 18,
+      shadowOffset: compact ? 9 : 12,
     );
   }
 }

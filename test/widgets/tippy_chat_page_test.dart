@@ -186,14 +186,15 @@ void main() {
     await tester.pumpWidget(buildApp(service));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'hello');
-    await tester.tap(find.byIcon(Icons.send_rounded));
     await tester.pump();
-    final FilledButton button = tester.widget<FilledButton>(
-      find.byType(FilledButton),
-    );
-    expect(button.onPressed, isNull);
+    await tester.tap(find.byKey(const Key('tippy-send')));
+    await tester.pump();
+    expect(service.sendCount, 1);
+    await tester.tap(find.byKey(const Key('tippy-send')));
+    await tester.pump();
+    expect(service.sendCount, 1);
     blocker.complete();
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 50));
   });
 
   testWidgets('retry button appears and input preserved on network failure',
@@ -204,8 +205,10 @@ void main() {
     await tester.pumpWidget(buildApp(service));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'keep me');
-    await tester.tap(find.byIcon(Icons.send_rounded));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('tippy-send')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Retry last request'), findsOneWidget);
     final TextField field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller?.text, 'keep me');
@@ -220,9 +223,11 @@ void main() {
     await tester.pumpWidget(buildApp(service));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'hello');
-    await tester.tap(find.byIcon(Icons.send_rounded));
-    await tester.tap(find.byIcon(Icons.send_rounded));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('tippy-send')));
+    await tester.tap(find.byKey(const Key('tippy-send')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
     expect(service.sendCount, 1);
     expect(find.text('assistant reply'), findsOneWidget);
   });
@@ -238,12 +243,15 @@ void main() {
       find.byType(TextField),
       'Build a launch week plan for my coffee podcast',
     );
-    await tester.tap(find.byIcon(Icons.send_rounded));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('tippy-send')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(find.text('Tools'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create + Sync Plan').last);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
 
     expect(service.planCount, 1);
     expect(

@@ -166,8 +166,11 @@ class VideoPlayerActionRailButton extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: onTap != null
-                    ? () {
+                // Fire on press-down so rail actions don't wait on the
+                // PageView scroll gesture arena (InkWell onTap is late).
+                onTap: null,
+                onTapDown: onTap != null
+                    ? (_) {
                         HapticFeedback.lightImpact();
                         onTap!();
                       }

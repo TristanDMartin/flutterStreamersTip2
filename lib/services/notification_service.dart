@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'public_profile_firestore.dart';
 import 'push_notification_service.dart';
 
 class NotificationService {
@@ -91,13 +92,12 @@ class NotificationService {
       debugPrint('   FollowingId: $followingId');
 
       // Get follower user data
-      final followerDoc = await _db.collection('users').doc(followerId).get();
-      if (!followerDoc.exists) {
+      final followerData =
+          await PublicProfileFirestore.instance.getProfileMap(followerId);
+      if (followerData == null) {
         debugPrint('❌ Follower document not found: $followerId');
         return;
       }
-
-      final followerData = followerDoc.data()!;
       debugPrint(
           '📝 Follower data: ${followerData['username']} (${followerData['displayName']})');
 
@@ -162,13 +162,12 @@ class NotificationService {
       }
 
       // Get liker user data
-      final likerDoc = await _db.collection('users').doc(likerId).get();
-      if (!likerDoc.exists) {
+      final likerData =
+          await PublicProfileFirestore.instance.getProfileMap(likerId);
+      if (likerData == null) {
         debugPrint('🔔 Skipping notification - liker user not found: $likerId');
         return;
       }
-
-      final likerData = likerDoc.data()!;
       debugPrint(
           '🔔 Got liker data: ${likerData['username']} (${likerData['displayName']})');
 
@@ -229,10 +228,9 @@ class NotificationService {
       if (commenterId == videoOwnerId) return;
 
       // Get commenter user data
-      final commenterDoc = await _db.collection('users').doc(commenterId).get();
-      if (!commenterDoc.exists) return;
-
-      final commenterData = commenterDoc.data()!;
+      final commenterData =
+          await PublicProfileFirestore.instance.getProfileMap(commenterId);
+      if (commenterData == null) return;
 
       // Create notification for the video owner
       await _db
@@ -286,10 +284,9 @@ class NotificationService {
   }) async {
     try {
       // Get tagger user data
-      final taggerDoc = await _db.collection('users').doc(taggerId).get();
-      if (!taggerDoc.exists) return;
-
-      final taggerData = taggerDoc.data()!;
+      final taggerData =
+          await PublicProfileFirestore.instance.getProfileMap(taggerId);
+      if (taggerData == null) return;
 
       // Create notification for the tagged user
       await _db
@@ -341,10 +338,9 @@ class NotificationService {
   }) async {
     try {
       // Get mentioner user data
-      final mentionerDoc = await _db.collection('users').doc(mentionerId).get();
-      if (!mentionerDoc.exists) return;
-
-      final mentionerData = mentionerDoc.data()!;
+      final mentionerData =
+          await PublicProfileFirestore.instance.getProfileMap(mentionerId);
+      if (mentionerData == null) return;
 
       // Create notification for the mentioned user
       await _db

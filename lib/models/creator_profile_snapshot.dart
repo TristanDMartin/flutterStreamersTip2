@@ -5,6 +5,7 @@ import 'home_video.dart';
 import 'streamer_card.dart';
 import 'trending_creator.dart';
 import 'user.dart';
+import 'user_count_fields.dart';
 import 'user_model.dart' as network_user;
 
 /// Lightweight creator profile used to open [StreamerCardView] instantly.
@@ -200,16 +201,11 @@ class CreatorProfileSnapshot {
   }
 
   static int _readFollowers(Map<String, dynamic> data) {
-    final Object? raw = data['followerCount'] ??
-        data['followersCount'] ??
-        (data['stats'] as Map?)?['followersCount'];
-    return parseInteger(raw);
+    return UserCountFields.readFollowersCount(data);
   }
 
   static int _readFollowing(Map<String, dynamic> data) {
-    final Object? raw = data['followingCount'] ??
-        (data['stats'] as Map?)?['followingCount'];
-    return parseInteger(raw);
+    return UserCountFields.readFollowingCount(data);
   }
 
   static int _readPosts(Map<String, dynamic> data) {

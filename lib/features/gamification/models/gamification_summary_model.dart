@@ -60,7 +60,6 @@ class GamificationSummaryModel {
     final double score = _readDouble(raw, <String>[
           'creatorScore',
           'creator_score',
-          'consistencyScore',
         ]) ??
         0;
     final String? storedRank = _readString(raw, <String>[

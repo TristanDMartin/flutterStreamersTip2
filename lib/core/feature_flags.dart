@@ -9,7 +9,7 @@ class FeatureFlags {
   static const bool chatReplies = true;
   static const bool trendingInvite = false;
   static const bool advancedShare = false;
-  static const bool linkedPlatforms = true;
+  static const bool linkedPlatforms = false;
   static const bool tippyPlannerSync = true;
   static const bool progression = true;
 }

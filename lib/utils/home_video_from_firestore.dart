@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../models/user_count_fields.dart';
+import '../services/public_profile_firestore.dart';
 import 'category_schema.dart';
 import 'avatar_url_resolver.dart';
 import 'firestore_map_readers.dart';
@@ -96,13 +97,12 @@ Future<User?> _loadUserProfile(String uid) async {
     return null;
   }
   try {
-    final DocumentSnapshot<Map<String, dynamic>> snap =
-        await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    if (!snap.exists) {
+    final Map<String, dynamic>? m =
+        await PublicProfileFirestore.instance.getProfileMap(uid);
+    if (m == null) {
       return null;
     }
-    final Map<String, dynamic> m = snap.data() ?? <String, dynamic>{};
-    return User.fromMap(<String, dynamic>{...m, 'id': uid, 'uid': uid});
+    return User.fromMap(m);
   } catch (_) {
     return null;
   }

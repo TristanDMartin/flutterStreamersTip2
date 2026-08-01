@@ -29,6 +29,7 @@ import '../features/academy/views/academy_path_view.dart';
 import '../features/academy/views/academy_progress_view.dart';
 import '../features/academy/views/academy_saved_view.dart';
 import '../features/academy/views/academy_search_view.dart';
+import '../features/approvals/approval_review_view.dart';
 import '../features/reports/weekly_report_view.dart';
 import '../features/studio/studio_team_control_view.dart';
 import '../features/tippy/models/tippy_launch_context.dart';
@@ -75,6 +76,7 @@ class AppRoutes {
   static const String creatorIntelligence = '/creator-intelligence';
   static const String weeklyReport = '/weekly-report';
   static const String studioTeamControl = '/studio-team-control';
+  static const String approvalReview = '/approval-review';
 
   static Route<dynamic> onGenerateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
@@ -134,9 +136,14 @@ class AppRoutes {
           ),
         );
       case contentPlanner:
+        final args = routeSettings.arguments;
         return _buildRoute(
           settings: routeSettings,
-          builder: (_) => const ContentPlannerView(),
+          builder: (_) => ContentPlannerView(
+            initialScope: args is ContentPlannerRouteArgs
+                ? args.initialScope
+                : ContentPlannerInitialScope.today,
+          ),
           fullscreenDialog: true,
         );
       case contentScheduler:
@@ -336,6 +343,25 @@ class AppRoutes {
           settings: routeSettings,
           builder: (_) => const StudioTeamControlView(),
         );
+      case approvalReview:
+        final Object? args = routeSettings.arguments;
+        final ApprovalReviewArgs? reviewArgs =
+            args is ApprovalReviewArgs ? args : null;
+        if (reviewArgs == null ||
+            reviewArgs.requestId.isEmpty ||
+            reviewArgs.workspaceId.isEmpty) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => const StudioTeamControlView(),
+          );
+        }
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => ApprovalReviewView(
+            requestId: reviewArgs.requestId,
+            workspaceId: reviewArgs.workspaceId,
+          ),
+        );
     }
 
     return _buildRoute(
@@ -433,6 +459,14 @@ class ManagePostsRouteArgs {
 
   final ManagePostsInitialTab initialTab;
   final ManagePostsLaunchSource launchSource;
+}
+
+class ContentPlannerRouteArgs {
+  const ContentPlannerRouteArgs({
+    this.initialScope = ContentPlannerInitialScope.today,
+  });
+
+  final ContentPlannerInitialScope initialScope;
 }
 
 class SettingsRouteArgs {

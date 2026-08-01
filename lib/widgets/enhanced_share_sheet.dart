@@ -14,6 +14,7 @@ import '../services/chat_service.dart';
 import '../services/chat_service_optimized.dart';
 import '../services/connections_service.dart';
 import '../services/enhanced_share_service.dart';
+import '../services/public_profile_firestore.dart';
 import '../utils/swallow_non_fatal.dart';
 import '../services/report_service.dart';
 import '../services/video_actions_service.dart';
@@ -178,12 +179,10 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
           continue;
         }
         try {
-          final DocumentSnapshot<Map<String, dynamic>> userDoc =
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(connection.userId)
-                  .get();
-          resolvedConnections.add(connection.mergeUserData(userDoc.data()));
+          final Map<String, dynamic>? userData =
+              await PublicProfileFirestore.instance
+                  .getProfileMap(connection.userId);
+          resolvedConnections.add(connection.mergeUserData(userData));
         } catch (_) {
           resolvedConnections.add(connection);
         }

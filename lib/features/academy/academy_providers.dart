@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../gamification/gamification_providers.dart';
@@ -77,7 +78,12 @@ final academyCategoriesProvider =
 });
 
 final academyPathsProvider = FutureProvider<List<AcademyPath>>((Ref ref) async {
-  return ref.watch(academyRepositoryProvider).fetchPaths();
+  try {
+    return await ref.watch(academyRepositoryProvider).fetchPaths();
+  } catch (e) {
+    debugPrint('Academy providers: paths fallback: $e');
+    return const <AcademyPath>[];
+  }
 });
 
 final academyUserProgressProvider =
@@ -116,8 +122,7 @@ final academyDiscoverCardStatusProvider =
       actionLabel: 'Start Learning',
     );
   }
-  final DateTime weekStart =
-      DateTime.now().subtract(const Duration(days: 7));
+  final DateTime weekStart = DateTime.now().subtract(const Duration(days: 7));
   final int completedThisWeek = progress
       .where(
         (AcademyUserProgress p) =>
@@ -155,17 +160,32 @@ final academyDiscoverCardStatusProvider =
 final academyHomeSnapshotProvider =
     FutureProvider<AcademyHomeSnapshot>((Ref ref) async {
   final AcademyRepository repo = ref.watch(academyRepositoryProvider);
-  final List<Object?> results = await Future.wait(<Future<Object?>>[
-    ref.watch(academyCategoriesProvider.future),
-    ref.watch(academyGuideSummariesProvider.future),
-    repo.fetchPaths(),
-    repo.fetchXpRewards(),
-  ]);
+  final List<AcademyCategory> categories =
+      await ref.watch(academyCategoriesProvider.future).catchError((Object e) {
+    debugPrint('Academy providers: categories fallback: $e');
+    return const <AcademyCategory>[];
+  });
+  final List<AcademyGuideSummary> guides = await ref
+      .watch(academyGuideSummariesProvider.future)
+      .catchError((Object e) {
+    debugPrint('Academy providers: guides fallback: $e');
+    return const <AcademyGuideSummary>[];
+  });
+  final List<AcademyPath> paths =
+      await repo.fetchPaths().catchError((Object e) {
+    debugPrint('Academy providers: home paths fallback: $e');
+    return const <AcademyPath>[];
+  });
+  final AcademyXpRewards xpRewards =
+      await repo.fetchXpRewards().catchError((Object e) {
+    debugPrint('Academy providers: xp rewards fallback: $e');
+    return AcademyXpRewards.defaults();
+  });
   return AcademyHomeSnapshot(
-    categories: results[0]! as List<AcademyCategory>,
-    guides: results[1]! as List<AcademyGuideSummary>,
-    paths: results[2]! as List<AcademyPath>,
-    xpRewards: results[3]! as AcademyXpRewards,
+    categories: categories,
+    guides: guides,
+    paths: paths,
+    xpRewards: xpRewards,
   );
 });
 
@@ -211,8 +231,7 @@ int academyCompletedLessonCount({
   return progress
       .where(
         (AcademyUserProgress p) =>
-            p.isCompleted &&
-            (ids.isEmpty || ids.contains(p.lessonId)),
+            p.isCompleted && (ids.isEmpty || ids.contains(p.lessonId)),
       )
       .length;
 }
@@ -236,9 +255,15 @@ Map<String, AcademyCategory> academyCategoriesById(
 }
 
 final academyGuideProvider =
-    FutureProvider.family<AcademyGuideSummary?, String>((Ref ref, String id) async {
+    FutureProvider.family<AcademyGuideSummary?, String>(
+        (Ref ref, String id) async {
   final AcademyRepository repo = ref.watch(academyRepositoryProvider);
-  final AcademyGuideSummary? fromFirestore = await repo.fetchGuideById(id);
+  AcademyGuideSummary? fromFirestore;
+  try {
+    fromFirestore = await repo.fetchGuideById(id);
+  } catch (e) {
+    debugPrint('Academy providers: guide fallback for $id: $e');
+  }
   if (fromFirestore != null) {
     return fromFirestore;
   }
@@ -254,10 +279,15 @@ final academyGuideProvider =
 
 final academyGuideLessonsProvider =
     FutureProvider.family<List<AcademyLessonSummary>, String>(
-        (Ref ref, String guideId) {
-  return ref
-      .watch(academyRepositoryProvider)
-      .fetchLessonSummariesForGuide(guideId);
+        (Ref ref, String guideId) async {
+  try {
+    return await ref
+        .watch(academyRepositoryProvider)
+        .fetchLessonSummariesForGuide(guideId);
+  } catch (e) {
+    debugPrint('Academy providers: lessons fallback for $guideId: $e');
+    return const <AcademyLessonSummary>[];
+  }
 });
 
 final academyLessonProvider =
@@ -266,6 +296,11 @@ final academyLessonProvider =
 });
 
 final academyPathProvider =
-    FutureProvider.family<AcademyPath?, String>((Ref ref, String id) {
-  return ref.watch(academyRepositoryProvider).fetchPathById(id);
+    FutureProvider.family<AcademyPath?, String>((Ref ref, String id) async {
+  try {
+    return await ref.watch(academyRepositoryProvider).fetchPathById(id);
+  } catch (e) {
+    debugPrint('Academy providers: path fallback for $id: $e');
+    return null;
+  }
 });

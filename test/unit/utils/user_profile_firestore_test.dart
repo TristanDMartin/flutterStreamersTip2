@@ -52,6 +52,40 @@ void main() {
       expect(events.first.description, '');
     });
 
+    test('parseProfileCalendarProjection reads Phase 4 mirrors', () {
+      final events = UserProfileFirestore.parseProfileCalendarProjection(
+        <String, dynamic>{
+          'contentPlanProfileCalendarEvents': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'cp-plan1-item1',
+              'title': 'Tippy stream',
+              'description': 'plan · stream',
+              'date': Timestamp.fromDate(DateTime(2026, 7, 1)),
+            },
+          ],
+        },
+      );
+      expect(events.length, 1);
+      expect(events.first.id, 'cp-plan1-item1');
+      expect(events.first.title, 'Tippy stream');
+    });
+
+    test('parseStreamerCalendarProjection reads Phase 4 mirrors', () {
+      final events = UserProfileFirestore.parseStreamerCalendarProjection(
+        <String, dynamic>{
+          'contentPlanStreamerCalendarEvents': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'cp-plan1-item2',
+              'title': 'Public clip',
+              'date': Timestamp.fromDate(DateTime(2026, 7, 2)),
+            },
+          ],
+        },
+      );
+      expect(events.length, 1);
+      expect(events.first.id, 'cp-plan1-item2');
+    });
+
     test('parsePlatforms falls back to onboarding platform selection', () {
       final List<Map<String, dynamic>> platforms =
           UserProfileFirestore.parsePlatformsFromUserData(<String, dynamic>{

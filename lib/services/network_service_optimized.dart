@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user.dart' as app_user;
 import '../models/user_count_fields.dart';
+import 'public_profile_firestore.dart';
 
 class NetworkServiceOptimized {
   static final NetworkServiceOptimized _instance =
@@ -222,7 +223,7 @@ class NetworkServiceOptimized {
       final followingIds = following.map((u) => u.id).toSet();
 
       final query = await _firestore
-          .collection('users')
+          .collection('publicUsers')
           .where(FieldPath.documentId, isNotEqualTo: currentUser.uid)
           .limit(limit * 2) // Get more to filter out following
           .get();
@@ -307,14 +308,13 @@ class NetworkServiceOptimized {
             limitedIds.sublist(i, (i + batchSize).clamp(0, limitedIds.length));
 
         try {
-          final query = await _firestore
-              .collection('users')
-              .where(FieldPath.documentId, whereIn: batch)
-              .get();
+          final Map<String, Map<String, dynamic>> profiles =
+              await PublicProfileFirestore.instance.getProfileMaps(batch);
 
-          for (final doc in query.docs) {
-            final user = _mapUser(doc.id, doc.data());
-            _userCache[doc.id] = user; // Cache the user
+          for (final MapEntry<String, Map<String, dynamic>> entry
+              in profiles.entries) {
+            final user = _mapUser(entry.key, entry.value);
+            _userCache[entry.key] = user; // Cache the user
             fetchedUsers.add(user);
           }
         } catch (e) {
@@ -360,9 +360,10 @@ class NetworkServiceOptimized {
     }
 
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (doc.exists) {
-        final user = _mapUser(doc.id, doc.data()!);
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(userId);
+      if (data != null) {
+        final user = _mapUser(userId, data);
         _userCache[userId] = user;
         return user;
       }

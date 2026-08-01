@@ -663,12 +663,31 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
 
     secureLog('🚀 Starting video loading...');
-
-    // Show loading state initially
     state = state.copyWith(isLoading: true);
 
     try {
+      // Warm-first: paint disk/memory feed before waiting on network.
+      await warmStartFromCache();
+      if (!mounted) {
+        return;
+      }
+      if (state.forYouVideos.isNotEmpty) {
+        secureLog(
+          '⚡ Warm feed painted (${state.forYouVideos.length}) — '
+          'network refresh deferred after first frame',
+        );
+        state = state.copyWith(isLoading: false, hasLoaded: true);
+        GlobalPlaybackManager.instance.preloadStartupWindow(state.forYouVideos);
+        HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+          unawaited(runDeferredBackgroundRefresh());
+        });
+        return;
+      }
+
       await _loadCachedVideos();
+      if (!mounted) {
+        return;
+      }
       state = state.copyWith(hasLoaded: true);
       HomeFirstFrameGate.instance.runAfterFirstFrame(() {
         unawaited(runDeferredBackgroundRefresh());
@@ -767,9 +786,29 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> _loadCachedVideos() async {
     final String? userId = FirebaseAuth.instance.currentUser?.uid;
+    // Prefer painting warm feed before the network round-trip when possible.
+    if (state.forYouVideos.isEmpty) {
+      await _restoreWarmForYouFeed(userId);
+    }
     try {
       final HomeFeedStartupSuccess result =
           await _startupLoader.loadFreshStartupFeed(cacheUserId: userId);
+      if (shouldKeepWarmFeedOverEmptyNetwork(
+        currentVideos: state.forYouVideos,
+        networkVideos: result.videos,
+      )) {
+        secureLog(
+          '⚡ Keeping warm feed (${state.forYouVideos.length}) after empty '
+          'network startup result',
+        );
+        state = state.copyWith(
+          isLoading: false,
+          error: result.error ??
+              'Could not refresh videos. Showing your last loaded feed.',
+        );
+        GlobalPlaybackManager.instance.preloadStartupWindow(state.forYouVideos);
+        return;
+      }
       _updateForYouFeed(
         videos: result.videos,
         isLoading: false,
@@ -824,6 +863,40 @@ class HomeViewModel extends StateNotifier<HomeState> {
             error: recovery.errorMessage,
           );
           state = state.copyWith(followingVideos: const <HomeVideo>[]);
+          // Auth/network often catches up right after cold-start timeout.
+          HomeFirstFrameGate.instance.runAfterFirstFrame(() {
+            unawaited(_retryStartupFeedAfterEmptyError());
+          });
+      }
+    }
+  }
+
+  Future<void> _retryStartupFeedAfterEmptyError() async {
+    if (!mounted || state.forYouVideos.isNotEmpty) {
+      return;
+    }
+    try {
+      final User? user =
+          await HomeFeedStartupLoader.waitForFirebaseSignedInUser();
+      if (!mounted || user == null) {
+        return;
+      }
+      secureLog('🔄 HomeProvider: Retrying startup feed after empty error');
+      state = state.copyWith(isLoading: true, error: null, hasLoaded: false);
+      await _loadCachedVideos();
+      if (!mounted) {
+        return;
+      }
+      if (state.forYouVideos.isNotEmpty) {
+        state = state.copyWith(hasLoaded: true, error: null);
+        GlobalPlaybackManager.instance.preloadStartupWindow(state.forYouVideos);
+      } else {
+        state = state.copyWith(hasLoaded: true, isLoading: false);
+      }
+    } catch (e) {
+      secureLog('⚠️ HomeProvider: Startup feed retry failed: $e');
+      if (mounted && state.forYouVideos.isEmpty) {
+        state = state.copyWith(isLoading: false, hasLoaded: true);
       }
     }
   }

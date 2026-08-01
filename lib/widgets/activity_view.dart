@@ -4,18 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'package:url_launcher/url_launcher.dart';
 import '../features/activity/pulse/activity_pulse_logic.dart';
 import '../features/activity/pulse/activity_pulse_tokens.dart';
 import '../features/activity/pulse/widgets/activity_pulse_grouped_card.dart';
 import '../features/activity/pulse/widgets/activity_pulse_insight_card.dart';
+import '../features/activity/activity_notification_rules.dart';
 import '../features/gamification/gamification_providers.dart';
 import '../features/gamification/models/user_progress_bundle.dart';
+import '../features/tippy/models/tippy_launch_context.dart';
 import '../providers/activity_provider.dart';
 import '../providers/home_provider.dart' as hp;
 import '../services/auth_service.dart';
 import '../services/notification_navigation_service.dart';
 import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
+import '../features/approvals/approval_queue_contract.dart';
 import '../widgets/activity_row_view.dart';
 import '../widgets/threads/thread_detail_screen.dart';
 import '../models/activity_notification.dart';
@@ -40,6 +44,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   final ScrollController _scrollController = ScrollController();
   bool _isInitialized = false;
   bool _isInitializationQueued = false;
+  bool _isMarkingVisibleAsRead = false;
 
   @override
   void initState() {
@@ -70,8 +75,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     if (userId != null) {
       debugPrint('🔄 Initializing ActivityView for user: $userId');
       notifier.startProcessingListener(userId);
-      notifier.init(userId);
       _isInitialized = true;
+      unawaited(() async {
+        await notifier.init(userId);
+        if (!mounted) return;
+        await notifier.markAllDelivered(userId);
+      }());
     }
   }
 
@@ -91,6 +100,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   Widget build(BuildContext context) {
     final auth = ref.watch(authServiceProvider);
     final state = ref.watch(activityProvider);
+    final int unreadActivityCount =
+        ref.watch(unreadActivityCountProvider).valueOrNull ?? 0;
 
     if (auth.isLoading) {
       return _buildLoadingScaffold(context);
@@ -108,6 +119,35 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         _isInitializationQueued = false;
         if (!mounted || _isInitialized) return;
         _initializeActivityView();
+      });
+    }
+    // Keep badge clear while Activity is open: retry until Firestore unread is 0.
+    final bool hasLocalPending = state.grouped.values.any(
+      (List<ActivityNotification> list) => list.any(
+        (ActivityNotification n) => n.status == 'pending',
+      ),
+    );
+    if (!_isMarkingVisibleAsRead &&
+        !state.isLoading &&
+        (unreadActivityCount > 0 || hasLocalPending)) {
+      _isMarkingVisibleAsRead = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final String? activeUserId =
+            ref.read(authServiceProvider).currentUser?.id;
+        if (activeUserId == null) {
+          _isMarkingVisibleAsRead = false;
+          return;
+        }
+        try {
+          await ref.read(activityProvider.notifier).markAllDelivered(
+                activeUserId,
+              );
+        } finally {
+          if (mounted) {
+            _isMarkingVisibleAsRead = false;
+          }
+        }
       });
     }
 
@@ -887,7 +927,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     if (userId == null) return;
     notifier.reset();
     notifier.startProcessingListener(userId);
-    await notifier.init(userId);
+    await notifier.init(userId, forceReload: true);
+    await notifier.markAllDelivered(userId);
   }
 
   void _handleMarkAllAsRead() {
@@ -1006,6 +1047,39 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     HapticFeedback.lightImpact();
     _markNotificationAsRead(notification);
 
+    final String? approvalId = parseApprovalRequestIdFromDeepLink(
+      actionUrl: notification.actionUrl,
+      actionType: notification.actionType,
+      commentText: notification.commentText,
+    );
+    if (approvalId != null && approvalId.isNotEmpty) {
+      final String workspaceId =
+          parseWorkspaceIdFromDeepLink(
+            actionUrl: notification.actionUrl,
+            actionType: notification.actionType,
+          ) ??
+          fa.FirebaseAuth.instance.currentUser?.uid ??
+          '';
+      if (workspaceId.isNotEmpty) {
+        unawaited(
+          AppNavigator.openApprovalReview(
+            context,
+            requestId: approvalId,
+            workspaceId: workspaceId,
+          ),
+        );
+        return;
+      }
+    }
+    if (looksLikeApprovalNotification(
+      actionUrl: notification.actionUrl,
+      actionType: notification.actionType,
+      typeName: notification.type.name,
+    )) {
+      unawaited(AppNavigator.openStudioTeamControl(context));
+      return;
+    }
+
     final String? threadId = notification.effectiveThreadId;
     if (notification.type == ActivityNotificationType.commentReply &&
         threadId != null) {
@@ -1020,8 +1094,30 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       return;
     }
 
+    // Website parity: trend coach notifs open Trend Discovery, not blank Tippy.
+    if (activityActionUrlLooksLikeTrendDiscovery(notification.actionUrl)) {
+      unawaited(_openWebsiteActionUrl(notification.actionUrl));
+      return;
+    }
+
     if (notification.isTippyType) {
-      AppNavigator.openTippyChat(context);
+      AppNavigator.openTippyChat(
+        context,
+        launchContext: TippyLaunchContext(
+          surface: 'activity_tippy_coach',
+          prefilledPrompt: tippyPromptFromActivityNotification(
+            titleAndBody: notification.commentText,
+            actionUrl: notification.actionUrl,
+          ),
+          insightPrompt: notification.commentText,
+        ),
+      );
+      return;
+    }
+
+    if (notification.isContentPlanType ||
+        _looksLikeContentPlanAction(notification)) {
+      unawaited(AppNavigator.openContentPlanner(context));
       return;
     }
 
@@ -1061,16 +1157,57 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           Navigator.of(context).pushNamed(AppRoutes.inbox);
           return;
         }
-        if (_looksLikeContentPlanAction(notification)) {
-          AppNavigator.openManagePosts(context);
+        if (activityActionUrlLooksLikeTrendDiscovery(notification.actionUrl)) {
+          unawaited(_openWebsiteActionUrl(notification.actionUrl));
           return;
         }
         if (_isSystemActor(notification.user)) {
-          Navigator.of(context).pushNamed(AppRoutes.inbox);
+          AppNavigator.openTippyChat(
+            context,
+            launchContext: TippyLaunchContext(
+              surface: 'activity_system',
+              prefilledPrompt: tippyPromptFromActivityNotification(
+                titleAndBody: notification.commentText,
+                actionUrl: notification.actionUrl,
+              ),
+            ),
+          );
           return;
         }
         _handleProfileTap(notification.user);
         break;
+    }
+  }
+
+  Future<void> _openWebsiteActionUrl(String? actionUrl) async {
+    final String url = resolveActivityWebsiteActionUrl(actionUrl);
+    final Uri? uri = Uri.tryParse(url);
+    if (uri == null) {
+      return;
+    }
+    try {
+      final bool launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open Trend Discovery.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open Trend Discovery.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 

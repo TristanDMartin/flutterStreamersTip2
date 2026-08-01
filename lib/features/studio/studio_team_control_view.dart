@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/support_shell_style.dart';
+import '../../routing/app_navigator.dart';
 import '../../routing/app_routes.dart';
 import '../tippy/models/tippy_launch_context.dart';
 import 'models/studio_team_control_models.dart';
@@ -81,6 +82,35 @@ class _StudioTeamControlViewState extends ConsumerState<StudioTeamControlView> {
         setState(() => _exporting = false);
       }
     }
+  }
+
+  Future<void> _openApproval(
+    StudioApprovalItem item,
+    StudioTeamControl control,
+  ) async {
+    final String workspaceId =
+        (control.workspaceId ?? '').trim().isNotEmpty
+            ? control.workspaceId!.trim()
+            : '';
+    if (item.canOpenReview && workspaceId.isNotEmpty && item.id.isNotEmpty) {
+      final Object? result = await AppNavigator.openApprovalReview(
+        context,
+        requestId: item.id,
+        workspaceId: workspaceId,
+      );
+      if (result != null && mounted) {
+        await _load();
+      }
+      return;
+    }
+    // Legacy Tippy plan rows without an approvalRequests mirror.
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushNamed(
+      AppRoutes.tippyChat,
+      arguments: const TippyLaunchContext(),
+    );
   }
 
   @override
@@ -305,13 +335,13 @@ class _StudioTeamControlViewState extends ConsumerState<StudioTeamControlView> {
             _card(
               shell,
               title: 'Approvals',
-              child: control.approvals.isEmpty
+              child: control.reviewQueue.isEmpty
                   ? Text(
                       'Approval queue is clear.',
                       style: TextStyle(color: shell.mutedStrong),
                     )
                   : Column(
-                      children: control.approvals
+                      children: control.reviewQueue
                           .map(
                             (StudioApprovalItem a) => ListTile(
                               contentPadding: EdgeInsets.zero,
@@ -320,16 +350,12 @@ class _StudioTeamControlViewState extends ConsumerState<StudioTeamControlView> {
                                 style: TextStyle(color: shell.onChrome),
                               ),
                               subtitle: Text(
-                                a.kind.replaceAll('_', ' '),
+                                '${a.status.replaceAll('_', ' ')}'
+                                ' · ${a.kind.replaceAll('_', ' ')}',
                                 style: TextStyle(color: shell.muted),
                               ),
                               trailing: const Icon(Icons.chevron_right),
-                              onTap: () {
-                                Navigator.of(context).pushNamed(
-                                  AppRoutes.tippyChat,
-                                  arguments: const TippyLaunchContext(),
-                                );
-                              },
+                              onTap: () => _openApproval(a, control),
                             ),
                           )
                           .toList(growable: false),

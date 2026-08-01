@@ -175,34 +175,32 @@ class _OptimizedButtonState extends State<OptimizedButton>
   }
 
   void _handleTapDown(TapDownDetails details) {
-    if (widget.onPressed != null) {
-      setState(() => _isPressed = true);
-      _animationController.forward();
+    if (widget.onPressed == null || _isPressed) {
+      return;
     }
+    setState(() => _isPressed = true);
+    _animationController.forward();
+    PerformanceUtils.instantTap(
+      onTap: widget.onPressed!,
+      buttonId: widget.buttonId,
+      enableHaptic: widget.enableHaptic,
+    );
   }
 
   void _handleTapUp(TapUpDetails details) {
-    if (widget.onPressed != null) {
-      setState(() => _isPressed = false);
-      _animationController.reverse();
+    if (!_isPressed) {
+      return;
     }
+    setState(() => _isPressed = false);
+    _animationController.reverse();
   }
 
   void _handleTapCancel() {
-    if (widget.onPressed != null) {
-      setState(() => _isPressed = false);
-      _animationController.reverse();
+    if (!_isPressed) {
+      return;
     }
-  }
-
-  void _handleTap() {
-    if (widget.onPressed != null) {
-      PerformanceUtils.instantTap(
-        onTap: widget.onPressed!,
-        buttonId: widget.buttonId,
-        enableHaptic: widget.enableHaptic,
-      );
-    }
+    setState(() => _isPressed = false);
+    _animationController.reverse();
   }
 
   @override
@@ -211,7 +209,7 @@ class _OptimizedButtonState extends State<OptimizedButton>
       onTapDown: _handleTapDown,
       onTapUp: _handleTapUp,
       onTapCancel: _handleTapCancel,
-      onTap: _handleTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedBuilder(
         animation: _scaleAnimation,
         builder: (context, child) {

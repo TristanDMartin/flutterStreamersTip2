@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'content_planning_contract.dart';
+
 /// One row inside a saved content plan (Firestore / Tippy).
 class ContentPlanItem {
   const ContentPlanItem({
@@ -12,6 +14,7 @@ class ContentPlanItem {
     this.notes,
     this.tags = const <String>[],
     this.platforms = const <Map<String, dynamic>>[],
+    this.version,
   });
 
   final String id;
@@ -23,6 +26,8 @@ class ContentPlanItem {
   final String? notes;
   final List<String> tags;
   final List<Map<String, dynamic>> platforms;
+  /// Workspace optimistic concurrency counter (Phase 5).
+  final int? version;
 
   factory ContentPlanItem.fromJson(dynamic raw) {
     if (raw == null) {
@@ -52,11 +57,12 @@ class ContentPlanItem {
       title: _readString(m['title']) ?? 'Untitled step',
       description: _readString(m['description']),
       caption: _readString(m['caption']),
-      type: _readString(m['type'] ?? m['contentType']),
-      status: _readString(m['status']),
+      type: normalizeContentItemType(m['type'] ?? m['contentType']),
+      status: normalizeContentItemStatus(m['status']),
       notes: _readString(m['notes']),
       tags: _readStringList(m['tags']),
       platforms: plats,
+      version: _readNullableInt(m['version']),
     );
   }
 
@@ -70,6 +76,7 @@ class ContentPlanItem {
     String? notes,
     List<String>? tags,
     List<Map<String, dynamic>>? platforms,
+    int? version,
   }) {
     return ContentPlanItem(
       id: id ?? this.id,
@@ -81,6 +88,7 @@ class ContentPlanItem {
       notes: notes ?? this.notes,
       tags: tags ?? this.tags,
       platforms: platforms ?? this.platforms,
+      version: version ?? this.version,
     );
   }
 
@@ -96,6 +104,7 @@ class ContentPlanItem {
       if (notes != null && notes!.trim().isNotEmpty) 'notes': notes,
       if (tags.isNotEmpty) 'tags': tags,
       'platforms': platforms.map(_platformEntryToFirestore).toList(),
+      if (version != null) 'version': version,
     };
   }
 
@@ -114,6 +123,36 @@ class ContentPlanItem {
       }
       return when.isEmpty ? plat : '$plat · $when';
     }).join('\n');
+  }
+
+  /// Earliest platform schedule time for this plan item.
+  DateTime? get earliestScheduledAt {
+    final List<DateTime> candidates = <DateTime>[];
+    for (final Map<String, dynamic> platform in platforms) {
+      final DateTime? at = _readDate(
+        platform['scheduledAt'] ?? platform['scheduledAtUtc'],
+      );
+      if (at != null) {
+        candidates.add(at);
+      }
+    }
+    if (candidates.isEmpty) {
+      return null;
+    }
+    candidates.sort((DateTime a, DateTime b) => a.compareTo(b));
+    return candidates.first;
+  }
+
+  bool get isClosed {
+    return isClosedContentItemStatus(status);
+  }
+
+  /// Open item with a concrete schedule (Tippy plans keep these on platforms).
+  bool get isQueuedSchedule {
+    if (!isQueuedScheduleStatus(status)) {
+      return false;
+    }
+    return earliestScheduledAt != null;
   }
 }
 
@@ -185,18 +224,19 @@ class ContentPlan {
       description: _readString(json['description']),
       platform: _readString(json['platform']) ??
           _firstString(_readStringList(json['platformTargets'])),
-      contentType: _readString(json['contentType'] ?? json['type']),
+      contentType: normalizeContentItemType(json['contentType'] ?? json['type']),
       caption: _readString(json['caption']),
       hashtags: _readStringList(
           json['hashtags'] ?? json['tags'] ?? json['platformTargets']),
-      status: _readString(json['status']) ?? 'planned',
+      status: normalizeContentItemStatus(json['status']),
       scheduledAt: _readDate(
         json['scheduledFor'] ?? json['scheduledAt'] ?? json['scheduledAtUtc'],
       ),
       createdAt: _readDate(json['createdAt']),
       itemCount: count,
       updatedAt: _readDate(json['updatedAt'] ?? json['createdAt']),
-      source: _readString(json['source']),
+      source: normalizeContentSource(json['source']) ??
+          _readString(json['source']),
       checklist: _readStringList(json['checklist']),
       notes: _readString(json['notes']),
       draftIdeas: _readStringList(json['draftIdeas'] ?? json['ideas']),
@@ -314,6 +354,22 @@ int _readInt(Object? raw) {
     return int.tryParse(raw) ?? 0;
   }
   return 0;
+}
+
+int? _readNullableInt(Object? raw) {
+  if (raw == null) {
+    return null;
+  }
+  if (raw is int) {
+    return raw;
+  }
+  if (raw is num) {
+    return raw.round();
+  }
+  if (raw is String) {
+    return int.tryParse(raw);
+  }
+  return null;
 }
 
 DateTime? _readDate(Object? raw) {

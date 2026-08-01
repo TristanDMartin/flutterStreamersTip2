@@ -4,24 +4,32 @@ import 'package:streamers_tip/features/gamification/gamification_mapper.dart';
 void main() {
   group('GamificationMapper', () {
     test('parses fallback-friendly user doc values', () {
-      final bundle = GamificationMapper.userDocToBundle(<String, dynamic>{
-        'gamification': <String, dynamic>{
-          'creatorLevel': '4',
-          'total_xp': 320,
-          'streak_days': 6,
-          'creator_score': '87.5',
-          'rank_title': 'Momentum Builder',
-          'next_action': 'Post one more clip today',
+      final bundle = GamificationMapper.userDocToBundle(
+        <String, dynamic>{
+          'gamification': <String, dynamic>{
+            'creatorLevel': '4',
+            'total_xp': 320,
+            'streak_days': 6,
+            // Stale legacy map score must not win over Worker state.
+            'creator_score': '90',
+            'rank_title': 'Momentum Builder',
+            'next_action': 'Post one more clip today',
+          },
+          'entitlements': <String, dynamic>{
+            'tippyAi': true,
+            'advancedAnalytics': true,
+          },
+          'usage': <String, dynamic>{
+            'aiCreditsUsed': 2,
+            'aiCreditsLimit': 10,
+          },
         },
-        'entitlements': <String, dynamic>{
-          'tippyAi': true,
-          'advancedAnalytics': true,
+        gamificationState: <String, dynamic>{
+          'creatorScore': 87.5,
+          'totalXp': 320,
+          'level': 4,
         },
-        'usage': <String, dynamic>{
-          'aiCreditsUsed': 2,
-          'aiCreditsLimit': 10,
-        },
-      });
+      );
 
       expect(bundle.progress.level, 4);
       expect(bundle.progress.totalXp, 320);

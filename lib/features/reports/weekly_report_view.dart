@@ -1,9 +1,13 @@
+import 'dart:async' show unawaited;
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/support_shell_style.dart';
 import '../../routing/app_navigator.dart';
 import '../../routing/app_routes.dart';
+import '../../services/retention_tracking_service.dart';
 import 'models/weekly_report_models.dart';
 import 'weekly_report_service.dart';
 
@@ -19,6 +23,7 @@ class _WeeklyReportViewState extends ConsumerState<WeeklyReportView> {
   WeeklyReportResponse? _data;
   String? _error;
   bool _loading = true;
+  bool _didTrackView = false;
 
   @override
   void initState() {
@@ -46,6 +51,7 @@ class _WeeklyReportViewState extends ConsumerState<WeeklyReportView> {
         _data = data;
         _loading = false;
       });
+      _trackWeeklyReportViewed(data.report.level);
     } catch (error) {
       if (!mounted) {
         return;
@@ -55,6 +61,23 @@ class _WeeklyReportViewState extends ConsumerState<WeeklyReportView> {
         _loading = false;
       });
     }
+  }
+
+  void _trackWeeklyReportViewed(String level) {
+    if (_didTrackView) {
+      return;
+    }
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      return;
+    }
+    _didTrackView = true;
+    unawaited(
+      RetentionTrackingService.instance.trackViewedWeeklyReport(
+        uid: uid,
+        level: level,
+      ),
+    );
   }
 
   @override
@@ -216,6 +239,7 @@ class _WeeklyReportViewState extends ConsumerState<WeeklyReportView> {
                   _bulletBlock(shell, 'What worked', report.growth!.wins),
                   _bulletBlock(shell, 'Experiments', report.growth!.experiments),
                   _bulletBlock(shell, 'Next actions', report.growth!.actions),
+                  _topContentBlock(shell, report.growth!.topContent),
                 ],
               ),
             ),
@@ -384,6 +408,60 @@ class _WeeklyReportViewState extends ConsumerState<WeeklyReportView> {
               child: Text(
                 '· $item',
                 style: TextStyle(color: shell.mutedStrong),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _topContentBlock(
+    StSupportShellStyle shell,
+    List<WeeklyReportTopContent> items,
+  ) {
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Top content',
+            style: TextStyle(
+              color: shell.onChrome,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ...items.map(
+            (WeeklyReportTopContent item) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: TextStyle(color: shell.mutedStrong),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (item.metricLabel != null &&
+                      item.metricLabel!.isNotEmpty) ...<Widget>[
+                    const SizedBox(width: 8),
+                    Text(
+                      item.metricLabel!,
+                      style: TextStyle(
+                        color: shell.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),

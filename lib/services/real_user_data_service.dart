@@ -10,6 +10,7 @@ import '../models/video_thumbnails.dart';
 import '../models/trending_creator.dart';
 import '../services/logging_service.dart';
 import 'follows_service.dart';
+import 'public_profile_firestore.dart';
 
 /// Helper class to track trending scores for creators
 class TrendingCreatorScore {
@@ -142,21 +143,16 @@ class RealUserDataService {
     }
   }
 
-  /// Get user by ID
+  /// Get user by ID (publicUsers; private users doc only for self)
   Future<User?> getUserById(String userId) async {
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (!doc.exists) {
+      final Map<String, dynamic>? data =
+          await PublicProfileFirestore.instance.getProfileMap(userId);
+      if (data == null) {
         LoggingService.instance
             .error('User not found: $userId', tag: 'RealUserDataService');
         return null;
       }
-
-      final data = <String, dynamic>{
-        ...doc.data()!,
-        'id': userId,
-        'uid': userId,
-      };
       return User.fromMap(data);
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error getting user by ID',
@@ -220,19 +216,18 @@ class RealUserDataService {
       final List<TrendingCreator?> candidates = await Future.wait(
         sortedScores.take(limit * 2).map((TrendingCreatorScore score) async {
           try {
-            final creatorDoc =
-                await _firestore.collection('users').doc(score.creatorId).get();
+            final Map<String, dynamic>? creatorData =
+                await PublicProfileFirestore.instance
+                    .getProfileMap(score.creatorId);
 
-            if (!creatorDoc.exists) return null;
-
-            final creatorData = creatorDoc.data()!;
+            if (creatorData == null) return null;
 
             return TrendingCreator(
               id: score.creatorId,
               username: creatorData['username'] ?? 'Unknown',
               displayName:
                   creatorData['displayName'] ?? creatorData['username'],
-              avatarURL: creatorData['avatarURL'],
+              avatarURL: creatorData['avatarURL'] ?? creatorData['avatarUrl'],
               followerCount: UserCountFields.readFollowersCount(creatorData),
               isActive: true,
               creatorLevel: _readTrendingCreatorLevel(creatorData),
@@ -363,13 +358,12 @@ class RealUserDataService {
     return trendingCategories[categoryId] ?? 1.0; // Default boost
   }
 
-  /// Fallback method to get active users when no trending videos are found
+  /// Fallback method when no trending videos are found
   Future<List<TrendingCreator>> _getFallbackTrendingCreators(int limit) async {
     try {
       final snapshot = await _firestore
-          .collection('users')
-          .where('isActive', isEqualTo: true)
-          .orderBy('followerCount', descending: true)
+          .collection('publicUsers')
+          .orderBy('updatedAt', descending: true)
           .limit(limit)
           .get();
 

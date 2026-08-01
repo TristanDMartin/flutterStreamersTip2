@@ -1,27 +1,17 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/forum_author.dart';
 import '../models/user.dart' as app_user;
 import '../utils/avatar_url_resolver.dart';
+import 'public_profile_firestore.dart';
 
 class DiscussionAuthorService {
   static final DiscussionAuthorService _instance =
       DiscussionAuthorService._internal();
   factory DiscussionAuthorService() => _instance;
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   DiscussionAuthorService._internal();
 
   Future<Map<String, dynamic>?> loadUserData(String userId) async {
-    try {
-      final userDoc = await _firestore.collection('users').doc(userId).get();
-      if (!userDoc.exists || userDoc.data() == null) {
-        return null;
-      }
-      return userDoc.data();
-    } catch (_) {
-      return null;
-    }
+    return PublicProfileFirestore.instance.getProfileMap(userId);
   }
 
   Future<ForumAuthor> loadForumAuthor(String userId) async {
@@ -33,7 +23,7 @@ class DiscussionAuthorService {
   }
 
   Stream<ForumAuthor?> watchForumAuthor(String userId) {
-    return _firestore.collection('users').doc(userId).snapshots().map((doc) {
+    return PublicProfileFirestore.instance.watchProfile(userId).map((doc) {
       final data = doc.data();
       if (!doc.exists || data == null) {
         return null;

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamerstip.com/contracts/content-planning.v1.json",
+  "title": "StreamersTip Content Planning Contract v1",
+  "description": "Shared vocabulary for website + Flutter. Phase 3 — contentItems + publishJobs dual-write with scheduled_posts until cutover.",
+  "version": "1.0.0",
+  "canonicalPaths": {
+    "plans": "users/{uid}/contentPlans/{planId}",
+    "items": "workspaces/{workspaceId}/contentItems/{itemId} (dual-write with embedded items[])",
+    "publishJobs": "workspaces/{workspaceId}/publishJobs/{jobId}",
+    "calendarProjections": {
+      "profile": "users/{uid}.contentPlanProfileCalendarEvents",
+      "streamer": "users/{uid}.contentPlanStreamerCalendarEvents",
+      "publicStreamer": "publicUsers/{uid}.streamerCalendarEvents"
+    },
+    "scheduledPostsPublishQueue": "scheduled_posts/{id} (kept until cutover; links contentItemId + publishJobId + idempotencyKey)",
+    "approvals": "workspaces/{workspaceId}/approvalRequests/{id}",
+    "idLinks": {
+      "contentItemId": "sp_{scheduledPostId}",
+      "publishJobId": "pj_{scheduledPostId}",
+      "idempotencyKey": "publish:{ownerUserId}:{scheduledPostId}"
+    }
+  },
+  "contentItemStatus": [
+    "idea",
+    "draft",
+    "in_progress",
+    "ready_for_review",
+    "changes_requested",
+    "approved",
+    "scheduled",
+    "publishing",
+    "published",
+    "missed",
+    "failed",
+    "archived",
+    "cancelled"
+  ],
+  "contentItemStatusLabels": {
+    "idea": "Idea",
+    "draft": "Draft",
+    "in_progress": "In Progress",
+    "ready_for_review": "Ready for Review",
+    "changes_requested": "Changes Requested",
+    "approved": "Approved",
+    "scheduled": "Scheduled",
+    "publishing": "Publishing",
+    "published": "Published",
+    "missed": "Missed",
+    "failed": "Failed",
+    "archived": "Archived",
+    "cancelled": "Cancelled"
+  },
+  "legacyStatusAliases": {
+    "planned": "draft",
+    "todo": "draft",
+    "pending": "draft",
+    "recording": "in_progress",
+    "editing": "in_progress",
+    "needsReview": "ready_for_review",
+    "needs_review": "ready_for_review",
+    "posted": "published",
+    "completed": "published",
+    "done": "published",
+    "repurpose": "archived",
+    "canceled": "cancelled"
+  },
+  "contentType": [
+    "stream",
+    "clip",
+    "video",
+    "short",
+    "story",
+    "post",
+    "collab",
+    "image",
+    "carousel",
+    "thread",
+    "other"
+  ],
+  "legacyContentTypeAliases": {
+    "livestream": "stream",
+    "live": "stream",
+    "vod": "video"
+  },
+  "visibility": ["private", "team", "public"],
+  "profileCalendarVisibility": ["public", "private", "hidden"],
+  "streamerCalendarVisibility": ["public", "private", "hidden", "off"],
+  "visibilityMappingNotes": "Storage still uses profileCalendar + streamerCalendar. Map visibility private→profile private / streamer off or private; team→profile private / streamer off; public→profile public / streamer inherit or public.",
+  "source": ["web", "flutter", "tippy", "tippy_ai", "team", "import", "system", "app"],
+  "legacySourceAliases": {
+    "app": "flutter",
+    "tippy_ai": "tippy",
+    "mobile": "flutter"
+  },
+  "platforms": [
+    "streamerstip",
+    "twitch",
+    "youtube",
+    "kick",
+    "tiktok",
+    "instagram",
+    "twitter",
+    "linkedin",
+    "facebook",
+    "custom"
+  ],
+  "requiredItemFields": [
+    "id",
+    "title",
+    "type",
+    "status",
+    "platforms",
+    "createdAt",
+    "updatedAt"
+  ],
+  "timestampRules": {
+    "store": "Firestore Timestamp (UTC instant)",
+    "timezoneField": "platforms[].timezone IANA string when scheduling wall-clock time"
+  }
+}

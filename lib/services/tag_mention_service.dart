@@ -204,7 +204,7 @@ class TagMentionService {
       String username) async {
     try {
       final query = await _firestore
-          .collection('users')
+          .collection('publicUsers')
           .where('username', isEqualTo: username.toLowerCase())
           .limit(1)
           .get();

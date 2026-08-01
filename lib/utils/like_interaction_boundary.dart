@@ -17,9 +17,9 @@ abstract final class LikeInteractionBoundary {
   static Timer? _flushTimer;
   static Timer? _scrollSettleTimer;
 
-  static const Duration _watchWindowAfterTap = Duration(seconds: 2);
-  static const Duration _postGestureDeferWindow = Duration(seconds: 1);
-  static const Duration _scrollSettleDelay = Duration(milliseconds: 450);
+  static const Duration _watchWindowAfterTap = Duration(milliseconds: 300);
+  static const Duration _postGestureDeferWindow = Duration(milliseconds: 250);
+  static const Duration _scrollSettleDelay = Duration(milliseconds: 200);
 
   static bool get isActive =>
       _activeLikeTaps > 0 ||

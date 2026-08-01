@@ -394,21 +394,25 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
       'playbackId',
       'mux_playback_id',
     ]);
-    final hlsUrl = _firstString(data, const [
-      'hlsUrl',
-      'playbackUrl',
-      'streamUrl',
-      'hls_url',
-      'playbackURL',
-    ]);
-    final videoUrl = _firstString(data, const [
-      'videoUrl',
-      'downloadUrl',
-      'url',
-      'fileUrl',
-      'videoURL',
-      'video_url',
-    ]);
+    final String? readyPlayback = resolveReadyPlaybackUrl(data);
+    final hlsUrl = readyPlayback ??
+        _firstString(data, const [
+          'hlsUrl',
+          'playbackUrl',
+          'streamUrl',
+          'hls_url',
+          'playbackURL',
+          'canonicalPlaybackUrl',
+        ]);
+    final videoUrl = readyPlayback ??
+        _firstString(data, const [
+          'videoUrl',
+          'downloadUrl',
+          'url',
+          'fileUrl',
+          'videoURL',
+          'video_url',
+        ]);
     final thumbnailUrl = _firstString(data, const [
       'thumbnailUrl',
       'thumbnail',
@@ -431,10 +435,18 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
           (data['metadata'] is Map ? data['metadata']['title'] : null) ??
           'Untitled',
     );
-    final categoryValue =
-        _firstString(data, const ['category', 'categoryId', 'category_id']);
-    final categoryIdValue =
-        _firstString(data, const ['categoryId', 'category', 'category_id']);
+    final CanonicalCategory canonical = readCanonicalCategoryFromVideo(data);
+    final String categoryValue = canonical.isPopulated
+        ? canonical.categoryId
+        : _firstString(data, const ['category', 'categoryId', 'category_id']);
+    final String categoryIdValue = canonical.isPopulated
+        ? canonical.categoryId
+        : _firstString(data, const ['categoryId', 'category', 'category_id']);
+    final String categoryNameValue = canonical.isPopulated
+        ? canonical.categoryName
+        : categoryDisplayNameForId(
+            categoryIdValue.isNotEmpty ? categoryIdValue : categoryId,
+          );
 
     return {
       'id': docId,
@@ -447,18 +459,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
       'muxPlaybackId': muxPlaybackId,
       'hlsUrl': hlsUrl,
       'videoUrl': videoUrl,
+      'videoURL': videoUrl,
+      'canonicalPlaybackUrl': readyPlayback ?? hlsUrl,
       'thumbnailUrl': thumbnailUrl,
       'thumbnail': thumbnailUrl,
       'thumbnailURL': thumbnailUrl,
       'status': DiscoverFieldMapper.safeString(data['status']),
+      'isReadyForFeed': data['isReadyForFeed'] == true,
       'isDeleted': data['isDeleted'] == true || data['deleted'] == true,
       'deleted': data['isDeleted'] == true || data['deleted'] == true,
       'deletedAt': data['deletedAt'],
       'visible': data['visible'],
-      'isReadyForFeed': data['isReadyForFeed'],
       'createdAt': data['createdAt'],
       'category': categoryValue.isNotEmpty ? categoryValue : categoryId,
       'categoryId': categoryIdValue.isNotEmpty ? categoryIdValue : categoryId,
+      'categoryName': categoryNameValue,
       'likeCount': DiscoverFieldMapper.safeCount(
           data, const ['likeCount', 'likesCount', 'likes']),
       'bookmarkCount': DiscoverFieldMapper.safeCount(data, const [
@@ -864,17 +879,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
       tag: 'DiscoverView',
     );
     try {
-      // Mark all notifications as read when opening ActivityView
-      final currentUser = fa.FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {
-        final activityNotifier = ref.read(activityProvider.notifier);
-        activityNotifier.markAllDelivered(currentUser.uid);
-        LoggingService.instance.debug(
-          'Marked all notifications as read',
-          tag: 'DiscoverView',
-        );
-      }
-
+      // Mark-as-read happens inside ActivityView after items load so the
+      // badge never clears while the list is still empty.
       AppNavigator.openActivity(context);
       LoggingService.instance.debug(
         'Navigation push completed',
@@ -1135,31 +1141,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
 
   Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
     final unreadCountAsync = ref.watch(unreadMessagesProvider);
+    final int activityUnreadCount =
+        ref.watch(unreadActivityCountProvider).valueOrNull ?? 0;
     final activityState = ref.watch(activityProvider);
 
-    // Calculate total unread count (messages + activity notifications)
-    int totalUnreadCount = 0;
+    // Messages + Firestore activity unread (same source as profile avatar).
+    int totalUnreadCount = activityUnreadCount;
     unreadCountAsync.whenOrNull(
       data: (unreadCount) => totalUnreadCount += unreadCount,
     );
-
-    // Add activity notification count
-    int pendingCount = 0;
-    for (final notifications in activityState.grouped.values) {
-      for (final notification in notifications) {
-        if (notification.status == 'pending') {
-          pendingCount++;
-          totalUnreadCount++;
-        }
-      }
-    }
-
-    // Debug badge calculation
-    if (pendingCount > 0 || totalUnreadCount > 0) {
-      LoggingService.instance.debug(
-          '🔔 DiscoverView Badge: total=$totalUnreadCount, pending=$pendingCount, sections=${activityState.grouped.length}',
-          tag: 'DiscoverView');
-    }
 
     // Ensure ActivityProvider is initialized for current user
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2437,13 +2427,14 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
     );
   }
 
-  /// Category grids use the same eligible For You list as Home (no extra query).
+  /// Category grids: Home For You first (hydrated), then Firestore when thin —
+  /// same idea as website Discover querying by categoryId/category.
   Future<List<Map<String, dynamic>>> _getCategoryVideosForFeed(
     String categoryId,
   ) async {
     try {
       LoggingService.instance.debug(
-        'Loading category feed from Home source: $categoryId',
+        'Loading category feed: $categoryId',
         tag: 'DiscoverView',
       );
       final List<HomeVideo> eligible =
@@ -2456,11 +2447,24 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
         eligible: eligible,
         matching: matching,
       );
-      final List<Map<String, dynamic>> videos =
+      final List<Map<String, dynamic>> fromHome =
           await DiscoverCategoryCardMap.buildFromHomeVideos(matching);
+      List<Map<String, dynamic>> videos = fromHome;
+      if (!isAllCategorySlug(categoryId) &&
+          fromHome.length < _videosPerPage) {
+        final List<Map<String, dynamic>> fromFirestore =
+            await _loadCategoryVideosFromFirestoreCanonical(categoryId);
+        if (fromFirestore.isNotEmpty) {
+          videos = _mergeCategoryFeedMaps(
+            preferred: fromHome,
+            extra: fromFirestore,
+          );
+        }
+      }
       if (kDebugMode) {
         debugPrint(
-          'Discover category feed built: id=$categoryId playableCount=${videos.length}',
+          'Discover category feed built: id=$categoryId '
+          'home=${fromHome.length} playableCount=${videos.length}',
         );
       }
       ref.read(discoverCategoryVideosProvider.notifier).cacheVideos(
@@ -2477,6 +2481,64 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
       );
       return <Map<String, dynamic>>[];
     }
+  }
+
+  List<Map<String, dynamic>> _mergeCategoryFeedMaps({
+    required List<Map<String, dynamic>> preferred,
+    required List<Map<String, dynamic>> extra,
+  }) {
+    final Map<String, Map<String, dynamic>> byId =
+        <String, Map<String, dynamic>>{};
+    void ingest(Map<String, dynamic> video) {
+      final String id = DiscoverFieldMapper.safeString(
+        video['id'] ?? video['docId'] ?? video['videoId'],
+      );
+      if (id.isEmpty) {
+        return;
+      }
+      byId[id] = video;
+    }
+
+    for (final Map<String, dynamic> video in extra) {
+      ingest(video);
+    }
+    for (final Map<String, dynamic> video in preferred) {
+      ingest(video);
+    }
+    return byId.values.toList(growable: false);
+  }
+
+  /// Firestore category fetch mapped to grid cards (website parity).
+  Future<List<Map<String, dynamic>>> _loadCategoryVideosFromFirestoreCanonical(
+    String categoryId,
+  ) async {
+    final List<Map<String, dynamic>> candidates =
+        await _fetchCategoryVideoCandidatesFromFirestore(categoryId);
+    if (candidates.isEmpty) {
+      return <Map<String, dynamic>>[];
+    }
+    final List<Map<String, dynamic>> videos = <Map<String, dynamic>>[];
+    for (final Map<String, dynamic> candidate in candidates) {
+      final String docId =
+          DiscoverFieldMapper.safeString(candidate['docId']);
+      final Object? rawData = candidate['data'];
+      if (docId.isEmpty || rawData is! Map) {
+        continue;
+      }
+      final Map<String, dynamic> data =
+          Map<String, dynamic>.from(rawData);
+      videos.add(
+        _fullCategoryVideoMap(
+          docId: docId,
+          data: data,
+          categoryId: categoryId,
+          isNew: candidate['isNew'] == true,
+          trendingScore:
+              DiscoverFieldMapper.safeDouble(candidate['trendingScore']),
+        ),
+      );
+    }
+    return videos;
   }
 
   Widget _buildEmptyCategoryState() {
@@ -2521,7 +2583,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
 
   /// Direct Firestore reads by canonical / legacy category fields (no orderBy
   /// to reduce composite index requirements). Results are de-duplicated by doc id.
-  // ignore: unused_element
   Future<List<Map<String, dynamic>>> _fetchCategoryVideoCandidatesFromFirestore(
     String categoryId,
   ) async {
@@ -2579,57 +2640,49 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
     final CollectionReference<Map<String, dynamic>> col =
         FirebaseFirestore.instance.collection('videos');
     final String canonicalId = normalizeCategorySlug(categoryId);
-    final List<String> arrayValues = _getCategoryQueryValues(categoryId);
-    final List<Future<void>> tasks = <Future<void>>[
-      runQuery(
-        col.where('categoryId', isEqualTo: canonicalId).where(
-              'status',
-              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
-            ),
-      ),
-      runQuery(
-        col.where('category_id', isEqualTo: canonicalId).where(
-              'status',
-              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
-            ),
-      ),
-      runQuery(
-        col.where('categoryId', isEqualTo: categoryId).where(
-              'status',
-              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
-            ),
-      ),
-      runQuery(
-        col.where('category', isEqualTo: categoryId).where(
-              'status',
-              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
-            ),
-      ),
-      runQuery(
-        col.where('contentCategory', isEqualTo: categoryId).where(
-              'status',
-              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
-            ),
-      ),
-      runQuery(
-        col.where('game', isEqualTo: categoryId).where(
-              'status',
-              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
-            ),
-      ),
-      runQuery(
-        col.where('gameTitle', isEqualTo: categoryId).where(
-              'status',
-              whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
-            ),
-      ),
-    ];
-    if (arrayValues.isNotEmpty) {
+    final String displayName = categoryDisplayNameForId(canonicalId);
+    final List<String> scalarValues = <String>{
+      canonicalId,
+      categoryId,
+      displayName,
+      displayName.toLowerCase(),
+      ..._getCategoryQueryValues(categoryId),
+    }.where((String value) => value.trim().isNotEmpty).take(10).toList();
+    final List<String> feedStatuses =
+        kVideoVisibleInFeedStatuses.toList(growable: false);
+    final List<Future<void>> tasks = <Future<void>>[];
+    for (final String value in scalarValues) {
       tasks.add(
         runQuery(
-          col.where('categories', arrayContainsAny: arrayValues).where(
+          col.where('categoryId', isEqualTo: value).where(
                 'status',
-                whereIn: kVideoVisibleInFeedStatuses.toList(growable: false),
+                whereIn: feedStatuses,
+              ),
+        ),
+      );
+      tasks.add(
+        runQuery(
+          col.where('category_id', isEqualTo: value).where(
+                'status',
+                whereIn: feedStatuses,
+              ),
+        ),
+      );
+      tasks.add(
+        runQuery(
+          col.where('category', isEqualTo: value).where(
+                'status',
+                whereIn: feedStatuses,
+              ),
+        ),
+      );
+    }
+    if (scalarValues.isNotEmpty) {
+      tasks.add(
+        runQuery(
+          col.where('categories', arrayContainsAny: scalarValues).where(
+                'status',
+                whereIn: feedStatuses,
               ),
         ),
       );
@@ -2978,7 +3031,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
 
       try {
         final snapshot = await FirebaseFirestore.instance
-            .collection('users')
+            .collection('publicUsers')
             .where(FieldPath.documentId, whereIn: batch)
             .get();
 
