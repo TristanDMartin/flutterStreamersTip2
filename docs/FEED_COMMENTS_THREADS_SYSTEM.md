@@ -28,6 +28,12 @@ This document provides comprehensive documentation for the **For You page**, **F
 
 ### Related Documentation
 - **Avatar sync (web + app + Firestore)**: `docs/AVATAR_UPLOAD_APP_WEBSITE_SYNC.md`
+- **Creator Threads v2 (canonical SoT)**: `contracts/threads.v2.json`
+- **Threads v2 architecture**: `docs/architecture/THREADS_CONTRACT_V2.md`
+- **Threads migration / dual-read**: `docs/architecture/THREADS_MIGRATION_PLAN.md`
+- **Legacy forumPosts audit**: `docs/architecture/THREADS_LEGACY_AUDIT.md`
+
+> **Note (2026-08):** New Creator Threads work must target Threads v2. Legacy `forumPosts` paths in this document remain valid until cutover; do not add new product behavior only on the legacy model.
 
 ---
 

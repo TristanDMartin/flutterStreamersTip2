@@ -18,11 +18,24 @@ import 'adult_external_link_dialog.dart';
 import '../utils/platform_rules.dart';
 import '../utils/user_profile_firestore.dart';
 import '../services/public_profile_firestore.dart';
+import '../constants/app_colors.dart';
+import '../features/creator_score/creator_score_widgets.dart';
+import 'profile/profile_username_utils.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
   final VoidCallback? onFlip;
-  const ProfileBackView({super.key, required this.user, this.onFlip});
+
+  /// When true, skip Firestore listeners and keep [user] as the source of truth
+  /// (Tippy onboarding review preview before profile is written).
+  final bool useInitialDataOnly;
+
+  const ProfileBackView({
+    super.key,
+    required this.user,
+    this.onFlip,
+    this.useInitialDataOnly = false,
+  });
 
   @override
   ConsumerState<ProfileBackView> createState() => _ProfileBackViewState();
@@ -41,6 +54,9 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   @override
   void initState() {
     super.initState();
+    if (widget.useInitialDataOnly) {
+      return;
+    }
     _setupRealtimeListener();
     _runCalendarCleanup();
   }
@@ -167,15 +183,11 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        DecoratedBox(
+        const DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: shell.pageGradient,
-            ),
+            color: AppColors.profileViewBackground,
           ),
-          child: const SizedBox.expand(),
+          child: SizedBox.expand(),
         ),
         Scaffold(
           backgroundColor: Colors.transparent,
@@ -220,19 +232,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
   Widget _buildContent(
       List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
-    final StSupportShellStyle shell = _shell;
     return Stack(
       fit: StackFit.expand,
       children: [
-        DecoratedBox(
+        const DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: shell.pageGradient,
-            ),
+            color: AppColors.profileViewBackground,
           ),
-          child: const SizedBox.expand(),
+          child: SizedBox.expand(),
         ),
         Scaffold(
           backgroundColor: Colors.transparent,
@@ -282,78 +289,93 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _buildHeader() {
-    final StSupportShellStyle shell = _shell;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: shell.surfaceCard,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: shell.surfaceCardBorder,
-            width: 1,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Row(
+        children: <Widget>[
+          IconButton(
+            onPressed: widget.onFlip,
+            icon: const Icon(
+              Icons.flip,
+              color: Colors.white,
+              size: 22,
+            ),
+            tooltip: 'Flip',
           ),
-        ),
-        child: Row(
-          children: [
-            Text(
+          const Expanded(
+            child: Text(
               'Profile Details',
+              textAlign: TextAlign.center,
               style: TextStyle(
-                color: shell.onChrome.withValues(alpha: 0.92),
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const Spacer(),
-            IconButton(
-              onPressed: widget.onFlip,
-              icon: Icon(
-                Icons.flip,
-                color: shell.onChrome,
-                size: 22,
-              ),
-              tooltip: 'Flip',
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 48),
+        ],
       ),
     );
   }
 
   Widget _buildIdentity() {
-    final StSupportShellStyle shell = _shell;
+    final String displayName =
+        ProfileUsernameUtils.resolveDisplayName(_currentUserData);
+    final String atHandle =
+        ProfileUsernameUtils.formatAtHandle(_currentUserData);
+    final String profileUserId =
+        (_currentUserData['id'] ?? _currentUserData['uid'] ?? '').toString();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
+        children: <Widget>[
           _SmallAvatar(imageUrl: resolveAvatarUrl(_currentUserData)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _currentUserData['displayName'] ?? 'Techniques',
-                  style: TextStyle(
-                    color: shell.onChrome,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
+              children: <Widget>[
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    displayName.isNotEmpty ? displayName : 'Creator',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.05,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '@${_currentUserData['username'] ?? 'techniques'}',
-                  style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                if (atHandle.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    atHandle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.68),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
+          if (profileUserId.isNotEmpty) ...<Widget>[
+            const SizedBox(width: 12),
+            CreatorScoreBadge(
+              userId: profileUserId,
+              compact: true,
+            ),
+          ],
         ],
       ),
     );
@@ -384,16 +406,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       _selectedHashtag = tags.first;
     }
 
-    final StSupportShellStyle shell = _shell;
     return SizedBox(
       height: 42,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         scrollDirection: Axis.horizontal,
-        itemBuilder: (context, index) {
+        itemBuilder: (BuildContext context, int index) {
           final String tag = tags[index];
           final bool isSelected = _selectedHashtag == tag;
-
           return GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
@@ -405,72 +425,69 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 gradient: isSelected
-                    ? LinearGradient(
-                        colors: _accentGradientColors,
+                    ? const LinearGradient(
+                        colors: <Color>[
+                          AppColors.primary,
+                          Color(0xFF7768DF),
+                          Color(0xFF4897D2),
+                        ],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       )
                     : null,
-                color: isSelected ? null : shell.chipUnselectedBg,
-                borderRadius: BorderRadius.circular(20),
+                color: isSelected
+                    ? null
+                    : Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isSelected
-                      ? _onPrimary.withValues(alpha: 0.25)
-                      : shell.chipUnselectedBorder,
-                  width: 1,
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : Colors.white.withValues(alpha: 0.10),
                 ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: _scheme.primary.withValues(alpha: 0.28),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : null,
               ),
               alignment: Alignment.center,
               child: Text(
                 '#$tag',
                 style: TextStyle(
-                  color: isSelected ? _onPrimary : shell.chipUnselectedFg,
-                  fontSize: 16,
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.68),
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           );
         },
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (BuildContext context, int index) =>
+            const SizedBox(width: 12),
         itemCount: tags.length,
       ),
     );
   }
 
   Widget _buildSectionHeader(String title, bool expanded, VoidCallback onTap) {
-    final StSupportShellStyle shell = _shell;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: shell.surfaceCard,
-            borderRadius: BorderRadius.circular(20),
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: shell.surfaceCardBorder,
-              width: 1,
+              color: Colors.white.withValues(alpha: 0.10),
             ),
           ),
           child: Row(
-            children: [
+            children: <Widget>[
               Text(
                 title,
-                style: TextStyle(
-                  color: shell.onChrome,
-                  fontSize: 22,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -479,7 +496,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 expanded
                     ? Icons.keyboard_arrow_down
                     : Icons.keyboard_arrow_right,
-                color: shell.muted,
+                color: Colors.white.withValues(alpha: 0.55),
                 size: 24,
               ),
             ],
@@ -540,15 +557,15 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget _buildBioBody() {
     final String bio = (_currentUserData['bio'] ?? '') as String;
     if (bio.isEmpty) return const SizedBox.shrink();
-    final StSupportShellStyle shell = _shell;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Text(
         bio,
         style: TextStyle(
-          color: shell.muted,
+          color: Colors.white.withValues(alpha: 0.72),
           fontSize: 16,
           fontWeight: FontWeight.w600,
+          height: 1.35,
         ),
       ),
     );

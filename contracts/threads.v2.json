@@ -1,0 +1,503 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamerstip.com/contracts/threads.v2.json",
+  "title": "StreamersTip Creator Threads Contract v2",
+  "description": "Single source of truth for website + Flutter Creator Threads. Typed threads, reactions, resolution, momentum, feed modules, Tippy, gamification, analytics. Legacy forumPosts are adapter-only until cutover.",
+  "version": "2.0.0",
+  "productName": "Creator Threads",
+  "productSubtitle": "Ask questions, share what’s working, and build alongside other creators.",
+  "canonicalPaths": {
+    "threads": "threads/{threadId}",
+    "replies": "threads/{threadId}/replies/{replyId}",
+    "reactions": "threads/{threadId}/reactions/{reactionId}",
+    "participants": "threads/{threadId}/participants/{userId}",
+    "resolutions": "threads/{threadId}/resolution",
+    "categories": "threadCategories/{categoryId}",
+    "categoryFollows": "threadCategoryFollows/{userId}_{categoryId}",
+    "interestSignals": "threadInterestSignals/{signalId}",
+    "tippySummaries": "threads/{threadId}/tippySummary",
+    "legacyForumPosts": "forumPosts/{postId} (dual-read adapter until cutover)",
+    "legacyComments": "forumPosts/{postId}/comments/{commentId}",
+    "legacyThreadFollows": "threadFollows/{postId}_{userId}",
+    "legacyForumNotifications": "forumNotifications/{id}",
+    "idLinks": {
+      "legacyPostIdEqualsThreadId": "Backfill keeps the same document id when projecting forumPosts → threads",
+      "reactionId": "{targetType}_{targetId}_{userId}_{reactionType}"
+    }
+  },
+  "schemaVersion": 2,
+  "threadTypes": [
+    "question",
+    "feedback_request",
+    "creator_win",
+    "debate",
+    "collaboration",
+    "build_in_public"
+  ],
+  "threadTypeLabels": {
+    "question": "Ask a question",
+    "feedback_request": "Request feedback",
+    "creator_win": "Share a win",
+    "debate": "Start a debate",
+    "collaboration": "Find collaborators",
+    "build_in_public": "Post an update"
+  },
+  "threadTypePayloads": {
+    "question": ["question", "context", "tried", "platform", "mediaUrls"],
+    "feedback_request": ["artifactType", "focusAreas", "context", "mediaUrls"],
+    "creator_win": ["whatHappened", "whatContributed", "lesson"],
+    "debate": ["prompt", "positions"],
+    "collaboration": ["roleNeeded", "availability", "platform", "niche"],
+    "build_in_public": ["projectName", "updateBody", "dayNumber", "mediaUrls"]
+  },
+  "feedbackFocusAreas": [
+    "hook",
+    "editing",
+    "thumbnail",
+    "audio",
+    "caption",
+    "branding"
+  ],
+  "feedbackArtifactTypes": [
+    "thumbnail",
+    "clip",
+    "title",
+    "bio",
+    "branding",
+    "stream_layout",
+    "other"
+  ],
+  "categories": [
+    {
+      "id": "growth",
+      "label": "Growth",
+      "icon": "trending_up"
+    },
+    {
+      "id": "streaming",
+      "label": "Streaming",
+      "icon": "live_tv"
+    },
+    {
+      "id": "content_ideas",
+      "label": "Content Ideas",
+      "icon": "lightbulb"
+    },
+    {
+      "id": "video_feedback",
+      "label": "Video Feedback",
+      "icon": "rate_review"
+    },
+    {
+      "id": "gear_setup",
+      "label": "Gear & Setup",
+      "icon": "settings_input_component"
+    },
+    {
+      "id": "gaming",
+      "label": "Gaming",
+      "icon": "sports_esports"
+    },
+    {
+      "id": "monetization",
+      "label": "Monetization",
+      "icon": "payments"
+    },
+    {
+      "id": "collaboration",
+      "label": "Collaboration",
+      "icon": "group_add"
+    },
+    {
+      "id": "creator_life",
+      "label": "Creator Life",
+      "icon": "favorite"
+    }
+  ],
+  "legacyCategoryAliases": {
+    "general": "creator_life",
+    "general_gaming": "gaming",
+    "streaming_tips": "streaming",
+    "lfg": "collaboration",
+    "competitive": "gaming",
+    "growth_advice": "growth",
+    "setup": "gear_setup",
+    "video": "video_feedback",
+    "clip": "video_feedback"
+  },
+  "platformTags": [
+    "streamerstip",
+    "twitch",
+    "youtube",
+    "kick",
+    "tiktok",
+    "instagram",
+    "twitter",
+    "linkedin",
+    "facebook",
+    "other"
+  ],
+  "threadStatuses": [
+    "open",
+    "answered",
+    "resolved",
+    "still_need_help",
+    "locked",
+    "deleted"
+  ],
+  "threadStatusLabels": {
+    "open": "Open",
+    "answered": "Answered",
+    "resolved": "Resolved",
+    "still_need_help": "Still need help",
+    "locked": "Locked",
+    "deleted": "Deleted"
+  },
+  "legacyStatusAliases": {
+    "published": "open",
+    "active": "open",
+    "closed": "resolved",
+    "archived": "resolved"
+  },
+  "momentumStates": [
+    "new",
+    "picking_up",
+    "trending",
+    "active_now",
+    "resolved"
+  ],
+  "momentumLabels": {
+    "new": "New",
+    "picking_up": "Picking up",
+    "trending": "Trending",
+    "active_now": "Active now",
+    "resolved": "Resolved"
+  },
+  "momentumIcons": {
+    "new": "fiber_new",
+    "picking_up": "local_fire_department",
+    "trending": "trending_up",
+    "active_now": "bolt",
+    "resolved": "check_circle"
+  },
+  "momentumPulse": {
+    "new": { "tone": "neutral", "label": "New discussion" },
+    "picking_up": { "tone": "purple", "label": "Gaining momentum" },
+    "trending": { "tone": "purple", "label": "Trending discussion" },
+    "active_now": { "tone": "orange", "label": "Active debate" },
+    "resolved": { "tone": "green", "label": "Resolved" },
+    "followed_participant": { "tone": "blue", "label": "Someone you follow joined" },
+    "mention": { "tone": "blue", "label": "You were mentioned" },
+    "helpful": { "tone": "green", "label": "Helpful answer" }
+  },
+  "momentumThresholds": {
+    "newMaxAgeHours": 24,
+    "pickingUp": {
+      "minRepliesInWindow": 5,
+      "windowHours": 6,
+      "minUniqueParticipants": 3
+    },
+    "trending": {
+      "minRepliesInWindow": 12,
+      "windowHours": 24,
+      "minUniqueParticipants": 8,
+      "minSavesInWindow": 3
+    },
+    "activeNow": {
+      "minRepliesInWindow": 3,
+      "windowMinutes": 30,
+      "minUniqueParticipants": 2
+    },
+    "resolvedOverridesMomentum": true,
+    "calculationOwner": "server",
+    "clientsMustNotInventMomentum": true
+  },
+  "reactionTypes": [
+    "helpful",
+    "relatable",
+    "great_idea",
+    "congratulations",
+    "agree",
+    "different_take"
+  ],
+  "reactionLabels": {
+    "helpful": "Helpful",
+    "relatable": "Relatable",
+    "great_idea": "Great idea",
+    "congratulations": "Congratulations",
+    "agree": "Agree",
+    "different_take": "Different take"
+  },
+  "reactionAllowedByThreadType": {
+    "question": ["helpful", "relatable", "great_idea"],
+    "feedback_request": ["helpful", "great_idea", "relatable"],
+    "creator_win": ["congratulations", "relatable", "great_idea", "helpful"],
+    "debate": ["agree", "different_take", "helpful", "relatable"],
+    "collaboration": ["helpful", "great_idea", "relatable"],
+    "build_in_public": ["helpful", "relatable", "great_idea", "congratulations"]
+  },
+  "reactionTargetTypes": ["thread", "reply"],
+  "legacyReactionAliases": {
+    "like": "helpful",
+    "heart": "helpful",
+    "dislike": null
+  },
+  "visibility": ["public", "followers", "invite_only"],
+  "legacyVisibilityAliases": {
+    "inviteOnly": "invite_only",
+    "private": "invite_only"
+  },
+  "participantRoles": ["author", "participant", "follower", "mentioned"],
+  "notificationPreferences": ["all", "major_only", "mute"],
+  "feedFilters": [
+    "for_you",
+    "following",
+    "trending",
+    "unanswered",
+    "live"
+  ],
+  "feedFilterLabels": {
+    "for_you": "For You",
+    "following": "Following",
+    "trending": "Trending",
+    "unanswered": "Unanswered",
+    "live": "Live"
+  },
+  "feedModules": [
+    "continue_conversation",
+    "creator_goals",
+    "need_your_input",
+    "trending_in_space",
+    "creator_wins",
+    "featured"
+  ],
+  "feedModuleLabels": {
+    "continue_conversation": "Continue the conversation",
+    "creator_goals": "For your creator goals",
+    "need_your_input": "Creators need your input",
+    "trending_in_space": "Trending in your space",
+    "creator_wins": "Creator wins",
+    "featured": "Community spotlight"
+  },
+  "featuredLabels": [
+    "tippy_discussion_of_the_day",
+    "community_spotlight",
+    "most_helpful_this_week",
+    "creator_debate",
+    "needs_your_perspective"
+  ],
+  "tippyStarterPresets": [
+    {
+      "id": "ask_feedback",
+      "label": "Ask for feedback",
+      "threadType": "feedback_request",
+      "defaultCategoryId": "video_feedback",
+      "prompt": "What are you working on?",
+      "structure": [
+        "What I’m trying to do",
+        "What I’ve tried",
+        "Where I’m stuck"
+      ]
+    },
+    {
+      "id": "share_win",
+      "label": "Share a win",
+      "threadType": "creator_win",
+      "defaultCategoryId": "growth",
+      "prompt": "What happened?",
+      "structure": [
+        "The result",
+        "What changed",
+        "What others can learn"
+      ]
+    },
+    {
+      "id": "start_debate",
+      "label": "Start a debate",
+      "threadType": "debate",
+      "defaultCategoryId": "creator_life",
+      "prompt": "What should creators weigh in on?",
+      "structure": [
+        "The question",
+        "Position A",
+        "Position B"
+      ]
+    },
+    {
+      "id": "get_help",
+      "label": "Get help",
+      "threadType": "question",
+      "defaultCategoryId": "growth",
+      "prompt": "What do you need help with?",
+      "structure": [
+        "The question",
+        "Context",
+        "What you already tried"
+      ]
+    },
+    {
+      "id": "post_update",
+      "label": "Post an update",
+      "threadType": "build_in_public",
+      "defaultCategoryId": "content_ideas",
+      "prompt": "What are you building?",
+      "structure": [
+        "Project",
+        "This week’s update",
+        "What’s next"
+      ]
+    }
+  ],
+  "counters": [
+    "replyCount",
+    "participantCount",
+    "helpfulCount",
+    "saveCount",
+    "followCount",
+    "reportCount"
+  ],
+  "interestSignalTypes": [
+    "category_follow",
+    "topic_follow",
+    "thread_view",
+    "thread_reply",
+    "thread_save",
+    "thread_react",
+    "module_click",
+    "tippy_starter_used"
+  ],
+  "reputationLabels": [
+    "helpful_voice",
+    "growth_contributor",
+    "setup_specialist",
+    "feedback_regular",
+    "community_builder",
+    "collaboration_starter"
+  ],
+  "reputationLabelLabels": {
+    "helpful_voice": "Helpful Voice",
+    "growth_contributor": "Growth Contributor",
+    "setup_specialist": "Setup Specialist",
+    "feedback_regular": "Feedback Regular",
+    "community_builder": "Community Builder",
+    "collaboration_starter": "Collaboration Starter"
+  },
+  "gamificationEvents": {
+    "threadCreated": "content.thread_created",
+    "threadParticipated": "community.thread_participated",
+    "helpfulReactionReceived": "community.helpful_reaction_received",
+    "answerMarkedHelpful": "community.answer_marked_helpful",
+    "unansweredHelped": "community.unanswered_helped"
+  },
+  "analyticsEvents": [
+    "thread_viewed",
+    "thread_created",
+    "thread_reply_created",
+    "reaction_added",
+    "reaction_removed",
+    "resolution_set",
+    "thread_followed",
+    "category_followed",
+    "module_impressed",
+    "module_clicked",
+    "feed_filter_selected",
+    "tippy_starter_used",
+    "tippy_summary_viewed",
+    "comment_promoted_to_thread"
+  ],
+  "moderationReportReasons": [
+    "spam",
+    "harassment",
+    "hate",
+    "sexual_content",
+    "misinformation",
+    "off_topic",
+    "other"
+  ],
+  "deletedReasons": [
+    "author_deleted",
+    "moderator_deleted",
+    "source_video_deleted",
+    "policy_violation",
+    "spam"
+  ],
+  "repositoryMethods": [
+    "listFeed",
+    "listModules",
+    "getThread",
+    "createThread",
+    "updateThread",
+    "softDeleteThread",
+    "addReply",
+    "react",
+    "unreact",
+    "resolveThread",
+    "markViewed",
+    "followThread",
+    "unfollowThread",
+    "followCategory",
+    "unfollowCategory",
+    "getTippySummary",
+    "getTippyStarters",
+    "reportThread"
+  ],
+  "threadEntityRequiredFields": [
+    "id",
+    "schemaVersion",
+    "authorId",
+    "type",
+    "title",
+    "body",
+    "categoryId",
+    "status",
+    "momentumState",
+    "visibility",
+    "replyCount",
+    "participantCount",
+    "helpfulCount",
+    "saveCount",
+    "followCount",
+    "lastActivityAt",
+    "createdAt",
+    "updatedAt"
+  ],
+  "legacyFieldMap": {
+    "category": "categoryId",
+    "content": "body",
+    "linkedVideoId": "sourceVideoId",
+    "linkedCommentId": "sourceCommentId",
+    "likes": "legacyLikeCount",
+    "likedBy": "legacyLikedBy",
+    "bookmarkedBy": "legacyBookmarkedBy",
+    "followedBy": "legacyFollowedBy",
+    "commentCount": "replyCount",
+    "author.uid": "authorId",
+    "authorId": "authorId",
+    "sourceType": "sourceType",
+    "sourceVideoId": "sourceVideoId",
+    "sourceCommentId": "sourceCommentId",
+    "isDeleted": "deleted",
+    "deleted": "deleted"
+  },
+  "legacyDefaultType": "question",
+  "dualRead": {
+    "strategy": "prefer_threads_collection_then_project_forumPosts",
+    "newWritesTarget": "threads",
+    "legacyWritesAllowedUntil": "cutover_flag_threads_v2_writes_only",
+    "projectionSets": {
+      "type": "legacyDefaultType or inferred from tags",
+      "momentumState": "server_or_adapter_using_momentumThresholds",
+      "status": "legacyStatusAliases",
+      "categoryId": "legacyCategoryAliases or passthrough id"
+    }
+  },
+  "cutoverCriteria": [
+    "All create/react/resolve/list paths use repositoryMethods",
+    "Web and Flutter counters match for same threadId",
+    "Momentum computed only by calculationOwner=server",
+    "Backfill script forumPosts→threads completed for non-deleted posts",
+    "Feature flag threads_v2_reads enabled in production for both clients",
+    "Legacy client write paths gated off",
+    "Parity checklist signed in THREADS_MIGRATION_PLAN.md"
+  ]
+}

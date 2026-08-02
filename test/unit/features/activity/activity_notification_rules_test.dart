@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/features/activity/activity_notification_rules.dart';
+import 'package:streamers_tip/models/activity_notification.dart';
 
 void main() {
   group('isSyntheticTestVideoId', () {
@@ -102,6 +103,57 @@ void main() {
         ),
         contains('Ranked climb live'),
       );
+    });
+  });
+
+  group('activityNotificationTypeFromString', () {
+    test('maps retention prompts to adminBroadcast not like', () {
+      expect(
+        activityNotificationTypeFromString('retention_prompt'),
+        ActivityNotificationType.adminBroadcast,
+      );
+      expect(
+        activityNotificationTypeFromString('retention'),
+        ActivityNotificationType.adminBroadcast,
+      );
+    });
+
+    test('keeps real likes as like', () {
+      expect(
+        activityNotificationTypeFromString('like'),
+        ActivityNotificationType.like,
+      );
+      expect(
+        activityNotificationTypeFromString('LIKE_VIDEO'),
+        ActivityNotificationType.like,
+      );
+    });
+
+    test('unknown and empty types default to adminBroadcast', () {
+      expect(
+        activityNotificationTypeFromString(null),
+        ActivityNotificationType.adminBroadcast,
+      );
+      expect(
+        activityNotificationTypeFromString(''),
+        ActivityNotificationType.adminBroadcast,
+      );
+      expect(
+        activityNotificationTypeFromString('some_new_xp_event'),
+        ActivityNotificationType.adminBroadcast,
+      );
+    });
+
+    test('retention display uses title and message', () {
+      final String actual = activityNotificationDisplayMessage(
+        <String, dynamic>{
+          'type': 'retention_prompt',
+          'title': 'Post your first clip',
+          'message': 'Creators who post early get more discovery.',
+        },
+      );
+      expect(actual, contains('Post your first clip'));
+      expect(actual, contains('Creators who post early'));
     });
   });
 }

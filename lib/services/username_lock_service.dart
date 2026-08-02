@@ -1,7 +1,13 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
+import '../core/app_check_http_headers.dart';
+import '../core/backend/site_api_base.dart';
 import '../widgets/profile/profile_username_rules.dart';
 
 /// Thrown when a username is already owned by another account.
@@ -14,12 +20,30 @@ class UsernameTakenException implements Exception {
   String toString() => 'Username "$username" is already taken.';
 }
 
+/// Thrown when the backend rejects a username claim for a clear reason.
+class UsernameClaimException implements Exception {
+  const UsernameClaimException(this.message, {this.code});
+
+  final String message;
+  final String? code;
+
+  @override
+  String toString() => message;
+}
+
 /// Service to manage reserved usernames that cannot be taken by new users
 class UsernameLockService {
-  UsernameLockService({FirebaseFirestore? firestore})
-      : _firestoreOverride = firestore;
+  UsernameLockService({
+    FirebaseFirestore? firestore,
+    http.Client? httpClient,
+    String? siteApiBase,
+  })  : _firestoreOverride = firestore,
+        _http = httpClient ?? http.Client(),
+        _siteApiBase = resolveSiteApiBase(explicitOverride: siteApiBase);
 
   final FirebaseFirestore? _firestoreOverride;
+  final http.Client _http;
+  final String _siteApiBase;
   FirebaseFirestore? _firestoreCache;
 
   FirebaseFirestore get _firestore {
@@ -94,10 +118,10 @@ class UsernameLockService {
       if (mappingResult != null) {
         return mappingResult;
       }
-      return _lookupUsernameOnUserProfiles(
-        normalizedUsername: normalizedUsername,
-        userId: userId,
-      );
+      // No usernames/{name} doc → treat as available.
+      // Do not query users by usernameLowercase: private user docs are
+      // owner-read-only, so that fallback always throws permission-denied.
+      return true;
     } catch (error, stackTrace) {
       if (kDebugMode) {
         debugPrint(
@@ -121,103 +145,276 @@ class UsernameLockService {
         return null;
       }
       final String? ownerUid = usernameDoc.data()?['uid'] as String?;
+      if (ownerUid == null || ownerUid.isEmpty) {
+        return false;
+      }
       return ownerUid == userId;
     } on FirebaseException catch (error) {
       if (error.code == 'permission-denied') {
         if (kDebugMode) {
           debugPrint(
-            'UsernameLockService: usernames/$normalizedUsername read denied, '
-            'falling back to users query',
+            'UsernameLockService: usernames/$normalizedUsername read denied',
           );
         }
-        return null;
+        // Registry unreadable — do not fall back to private users queries.
+        // Optimistic available; final claim still revalidates server-side.
+        return true;
       }
       rethrow;
     }
   }
 
-  Future<bool> _lookupUsernameOnUserProfiles({
-    required String normalizedUsername,
-    required String userId,
-  }) async {
-    final QuerySnapshot<Map<String, dynamic>> lowercaseQuery = await _firestore
-        .collection('users')
-        .where('usernameLowercase', isEqualTo: normalizedUsername)
-        .limit(1)
-        .get();
-    if (lowercaseQuery.docs.isNotEmpty) {
-      return lowercaseQuery.docs.first.id == userId;
-    }
-    final QuerySnapshot<Map<String, dynamic>> legacyQuery = await _firestore
-        .collection('users')
-        .where('username', isEqualTo: normalizedUsername)
-        .limit(1)
-        .get();
-    if (legacyQuery.docs.isEmpty) {
-      return true;
-    }
-    return legacyQuery.docs.first.id == userId;
-  }
-
-  /// Atomically reserves [username] for [userId].
+  /// Claims [username] for [userId] via the same site API as web
+  /// (`/api/username/change`, with claim fallback). Client writes to
+  /// `usernames/` are denied by Firestore rules.
+  ///
+  /// When [allowSoftSkip] is true (Tippy create profile), server 5xx / auth
+  /// gaps do not block saving users/{uid} — registry lock can retry later.
   Future<void> reserveUsername({
     required String username,
     required String userId,
     String? previousUsername,
+    bool allowSoftSkip = false,
   }) async {
     final String normalizedUsername =
         ProfileUsernameRules.normalize(username);
     final UsernameValidationResult validation =
         await validateUsernameForUser(normalizedUsername, userId);
     if (!validation.isValid) {
-      throw Exception(validation.errorMessage ?? 'Invalid username');
+      throw UsernameClaimException(
+        validation.errorMessage ?? 'Invalid username',
+        code: 'invalid',
+      );
     }
-    final String? previousNormalized = previousUsername == null
-        ? null
-        : ProfileUsernameRules.normalize(previousUsername);
-    final DocumentReference<Map<String, dynamic>> usernameRef =
-        _firestore.collection('usernames').doc(normalizedUsername);
-    final DocumentReference<Map<String, dynamic>> userRef =
-        _firestore.collection('users').doc(userId);
-    await _firestore.runTransaction((Transaction transaction) async {
-      final DocumentSnapshot<Map<String, dynamic>> existingUsername =
-          await transaction.get(usernameRef);
-      if (existingUsername.exists) {
-        final String? ownerUid = existingUsername.data()?['uid'] as String?;
-        if (ownerUid != null && ownerUid != userId) {
-          throw UsernameTakenException(normalizedUsername);
-        }
-      }
-      transaction.set(
-        usernameRef,
-        <String, dynamic>{
-          'uid': userId,
-          'username': normalizedUsername,
-          'createdAt': FieldValue.serverTimestamp(),
-        },
+    final User? authUser = FirebaseAuth.instance.currentUser;
+    if (authUser == null || authUser.uid != userId) {
+      throw const UsernameClaimException(
+        'Sign in required to claim a username.',
+        code: 'auth',
       );
-      transaction.set(
-        userRef,
-        <String, dynamic>{
-          'username': normalizedUsername,
-          'usernameLowercase': normalizedUsername,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
+    }
+    try {
+      await authUser.reload();
+    } catch (_) {}
+    final User resolvedUser =
+        FirebaseAuth.instance.currentUser ?? authUser;
+    String currentNormalized = ProfileUsernameRules.normalize(
+      previousUsername ?? '',
+    );
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> userSnap =
+          await _firestore.collection('users').doc(userId).get();
+      final Map<String, dynamic>? data = userSnap.data();
+      final String fromDoc = ProfileUsernameRules.normalize(
+        (data?['usernameNormalized'] as String?) ??
+            (data?['usernameLowercase'] as String?) ??
+            (data?['username'] as String?) ??
+            '',
       );
-      if (previousNormalized != null &&
-          previousNormalized.isNotEmpty &&
-          previousNormalized != normalizedUsername) {
-        final DocumentReference<Map<String, dynamic>> previousRef =
-            _firestore.collection('usernames').doc(previousNormalized);
-        final DocumentSnapshot<Map<String, dynamic>> previousSnap =
-            await transaction.get(previousRef);
-        if (previousSnap.exists &&
-            previousSnap.data()?['uid'] == userId) {
-          transaction.delete(previousRef);
-        }
+      if (fromDoc.isNotEmpty) {
+        currentNormalized = fromDoc;
       }
-    });
+    } catch (_) {}
+    if (currentNormalized.isNotEmpty &&
+        currentNormalized == normalizedUsername) {
+      return;
+    }
+    final bool isInitialClaim = currentNormalized.isEmpty;
+    if (!resolvedUser.emailVerified) {
+      if (kDebugMode) {
+        debugPrint(
+          'UsernameLockService: skip registry lock until email verified '
+          '($normalizedUsername, initial=$isInitialClaim)',
+        );
+      }
+      return;
+    }
+    final String? idToken = await resolvedUser.getIdToken(true);
+    if (idToken == null || idToken.isEmpty) {
+      throw const UsernameClaimException(
+        'Sign in required to claim a username.',
+        code: 'auth',
+      );
+    }
+    try {
+      // Prefer change: Tippy/new accounts often fail claim (provisioning /
+      // "already claimed" when users/ has a provisional name).
+      await _postUsernameApi(
+        uri: Uri.parse(siteUsernameChangeUrl(base: _siteApiBase)),
+        idToken: idToken,
+        username: normalizedUsername,
+        action: 'change',
+      );
+      return;
+    } on UsernameClaimException catch (changeError) {
+      if (!isInitialClaim) {
+        if (allowSoftSkip && _canSoftSkipUsernameLock(changeError)) {
+          debugPrint(
+            'UsernameLockService: soft-skip change lock: $changeError',
+          );
+          return;
+        }
+        rethrow;
+      }
+      try {
+        await _postUsernameApi(
+          uri: Uri.parse(siteUsernameClaimUrl(base: _siteApiBase)),
+          idToken: idToken,
+          username: normalizedUsername,
+          action: 'claim',
+        );
+        return;
+      } on UsernameTakenException {
+        rethrow;
+      } on UsernameClaimException catch (claimError) {
+        if (allowSoftSkip && _canSoftSkipUsernameLock(claimError)) {
+          debugPrint(
+            'UsernameLockService: soft-skip claim lock: $claimError',
+          );
+          return;
+        }
+        if (_canSoftSkipUsernameLock(claimError)) {
+          throw changeError;
+        }
+        rethrow;
+      }
+    } on UsernameTakenException {
+      rethrow;
+    }
+  }
+
+  bool _canSoftSkipUsernameLock(UsernameClaimException error) {
+    final String code = (error.code ?? '').toLowerCase();
+    return code == 'username_api' ||
+        code == 'server' ||
+        code == 'auth' ||
+        code == 'account_not_provisioned' ||
+        code == 'email_verification';
+  }
+
+  Future<void> _postUsernameApi({
+    required Uri uri,
+    required String idToken,
+    required String username,
+    required String action,
+  }) async {
+    final Map<String, String> headers =
+        await buildAuthenticatedHttpHeaders(
+      idToken: idToken,
+      extra: const <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    );
+    final http.Response response = await _http
+        .post(
+          uri,
+          headers: headers,
+          body: jsonEncode(<String, dynamic>{'username': username}),
+        )
+        .timeout(const Duration(seconds: 25));
+    final Map<String, dynamic> body = _decodeJsonMap(response.body);
+    if (kDebugMode) {
+      final String bodyPreview = response.body.length > 240
+          ? '${response.body.substring(0, 240)}…'
+          : response.body;
+      debugPrint(
+        'UsernameLockService: $action status=${response.statusCode} '
+        'code=${body['code'] ?? body['error']} body=$bodyPreview',
+      );
+    }
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (body['success'] == false) {
+        _throwFromUsernameBody(body, username);
+      }
+      return;
+    }
+    _throwFromUsernameBody(body, username, statusCode: response.statusCode);
+  }
+
+  Map<String, dynamic> _decodeJsonMap(String raw) {
+    try {
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return <String, dynamic>{};
+  }
+
+  Never _throwFromUsernameBody(
+    Map<String, dynamic> body,
+    String username, {
+    int? statusCode,
+  }) {
+    final Object? errorObj = body['error'];
+    final Map<String, dynamic>? errorMap = errorObj is Map
+        ? Map<String, dynamic>.from(errorObj)
+        : null;
+    final String code = (
+      (errorMap?['code'] as String?) ??
+          (body['code'] as String?) ??
+          ''
+    ).trim();
+    final String message = (
+      (errorMap?['message'] as String?) ??
+          (body['message'] as String?) ??
+          ''
+    ).trim();
+    final String lowerMessage = message.toLowerCase();
+    final String lowerCode = code.toLowerCase();
+    if (statusCode == 401 ||
+        lowerCode.contains('auth') ||
+        lowerMessage.contains('unauthenticated')) {
+      throw const UsernameClaimException(
+        'Session expired. Sign in again, then create your profile.',
+        code: 'auth',
+      );
+    }
+    if (statusCode != null && statusCode >= 500) {
+      throw const UsernameClaimException(
+        'Username service temporarily unavailable. Try again in a moment.',
+        code: 'server',
+      );
+    }
+    if (lowerCode.contains('email_verification') ||
+        lowerMessage.contains('email verification') ||
+        lowerMessage.contains('verify your email')) {
+      throw const UsernameClaimException(
+        'Verify your email before choosing a username.',
+        code: 'email_verification',
+      );
+    }
+    if (lowerCode.contains('account_not_provisioned') ||
+        lowerMessage.contains('account activation') ||
+        lowerMessage.contains('not provisioned')) {
+      throw const UsernameClaimException(
+        'Complete account activation before claiming a username.',
+        code: 'account_not_provisioned',
+      );
+    }
+    if (lowerMessage.contains('already claimed') ||
+        lowerMessage.contains('use changeusername')) {
+      throw const UsernameClaimException(
+        'Username already claimed. Use changeUsername instead.',
+        code: 'already_claimed',
+      );
+    }
+    if (statusCode == 409 ||
+        lowerCode.contains('unavailable') ||
+        lowerMessage.contains('taken') ||
+        lowerMessage.contains('unavailable')) {
+      throw UsernameTakenException(username);
+    }
+    throw UsernameClaimException(
+      message.isNotEmpty
+          ? message
+          : 'Could not claim username. Try again.',
+      code: code.isNotEmpty ? code : 'username_api',
+    );
   }
 
   /// Get all reserved usernames

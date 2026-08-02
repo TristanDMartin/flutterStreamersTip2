@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
-import '../providers/activity_provider.dart';
 import '../providers/current_user_provider.dart';
 import '../providers/unread_messages_provider.dart';
 import '../qa/qa_keys.dart';
@@ -534,74 +533,46 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
           firebase_auth.FirebaseAuth.instance.currentUser?.photoURL,
         );
     final bool isSelected = widget.currentIndex == 4;
-    final int unreadActivityCount =
-        ref.watch(unreadActivityCountProvider).valueOrNull ?? 0;
-    final bool showNotificationDot = unreadActivityCount > 0;
     final Color borderColor = isSelected
         ? Colors.white.withValues(alpha: isLight ? 0.92 : 0.84)
         : Colors.white.withValues(alpha: isLight ? 0.58 : 0.24);
     final double avatarSize = metrics.avatarSize;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: <Widget>[
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          width: avatarSize,
-          height: avatarSize,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isLight
-                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.82)
-                : Colors.black.withValues(alpha: 0.62),
-            border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
-            boxShadow: <BoxShadow>[
-              if (isSelected)
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  blurRadius: 14,
-                  spreadRadius: 1,
-                ),
-            ],
-            image: resolvedAvatarUrl != null && resolvedAvatarUrl.isNotEmpty
-                ? DecorationImage(
-                    image: NetworkImage(resolvedAvatarUrl),
-                    fit: BoxFit.cover,
-                    onError: (_, __) {},
-                  )
-                : null,
-          ),
-          child: resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty
-              ? Icon(
-                  Icons.person,
-                  color: isLight
-                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.78)
-                      : Colors.white.withValues(alpha: 0.82),
-                  size: avatarSize * 0.58,
-                )
-              : null,
-        ),
-        if (showNotificationDot)
-          Positioned(
-            right: -1,
-            top: -1,
-            child: Semantics(
-              label: '$unreadActivityCount unread activity notifications',
-              child: Container(
-                width: metrics.avatarStatusSize,
-                height: metrics.avatarStatusSize,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF0F56),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.black.withValues(alpha: 0.72),
-                    width: 1.5,
-                  ),
-                ),
-              ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      width: avatarSize,
+      height: avatarSize,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isLight
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.82)
+            : Colors.black.withValues(alpha: 0.62),
+        border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
+        boxShadow: <BoxShadow>[
+          if (isSelected)
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.18),
+              blurRadius: 14,
+              spreadRadius: 1,
             ),
-          ),
-      ],
+        ],
+        image: resolvedAvatarUrl != null && resolvedAvatarUrl.isNotEmpty
+            ? DecorationImage(
+                image: NetworkImage(resolvedAvatarUrl),
+                fit: BoxFit.cover,
+                onError: (_, __) {},
+              )
+            : null,
+      ),
+      child: resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty
+          ? Icon(
+              Icons.person,
+              color: isLight
+                  ? colorScheme.onSurfaceVariant.withValues(alpha: 0.78)
+                  : Colors.white.withValues(alpha: 0.82),
+              size: avatarSize * 0.58,
+            )
+          : null,
     );
   }
 }
@@ -618,7 +589,6 @@ class _NavMetrics {
     required this.createIconSize,
     required this.tapTargetSize,
     required this.avatarSize,
-    required this.avatarStatusSize,
     required this.badgePadding,
     required this.badgeMinSize,
     required this.badgeFontSize,
@@ -642,7 +612,6 @@ class _NavMetrics {
   final double createIconSize;
   final double tapTargetSize;
   final double avatarSize;
-  final double avatarStatusSize;
   final double badgePadding;
   final double badgeMinSize;
   final double badgeFontSize;
@@ -679,7 +648,6 @@ class _NavMetrics {
       createIconSize: compact ? 34 : 36,
       tapTargetSize: compact ? 46 : 48,
       avatarSize: compact ? 34 : 38,
-      avatarStatusSize: compact ? 11 : 13,
       badgePadding: compact ? 3 : 4,
       badgeMinSize: compact ? 15 : 16,
       badgeFontSize: compact ? 9 : 10,

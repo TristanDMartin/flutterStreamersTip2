@@ -1141,8 +1141,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
 
   Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
     final unreadCountAsync = ref.watch(unreadMessagesProvider);
-    final int activityUnreadCount =
-        ref.watch(unreadActivityCountProvider).valueOrNull ?? 0;
+    final int activityUnreadCount = ref.watch(activityNavUnreadCountProvider);
     final activityState = ref.watch(activityProvider);
 
     // Messages + Firestore activity unread (same source as profile avatar).

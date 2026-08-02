@@ -7,10 +7,10 @@ import '../utils/auth_login_input.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../qa/qa_keys.dart';
 import 'auth/auth_brand_header.dart';
+import '../features/onboarding_tippy/tippy_onboarding_view.dart';
 import 'auth/auth_get_started_button.dart';
 import 'auth/auth_glass_panel.dart';
 import 'auth_page_shell.dart';
-import 'signup_view.dart';
 import 'forgot_password_view.dart';
 import 'two_factor_verification_view.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -614,7 +614,9 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         AuthGetStartedButton(
           onPressed: () {
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const SignupView()),
+              MaterialPageRoute(
+                builder: (context) => const TippyOnboardingView(),
+              ),
             );
           },
         ),

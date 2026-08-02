@@ -125,73 +125,17 @@ class ContactsService {
     }
   }
 
-  /// Find matching users by hashed contact data
+  /// Contact matching against other users requires Admin SDK / Cloud Functions.
+  /// Client queries on `users.phoneHashes` / `users.emailHashes` are denied by
+  /// Firestore rules — do not query from the app.
   Future<List<ContactMatch>> findMatchingUsers(
       List<ContactHash> contacts) async {
-    try {
-      final List<ContactMatch> matches = [];
-
-      for (final contact in contacts) {
-        try {
-          // Search for users with matching phone hashes
-          if (contact.phoneHashes.isNotEmpty) {
-            final phoneMatches =
-                await _findUsersByPhoneHashes(contact.phoneHashes);
-            for (final match in phoneMatches) {
-              matches.add(ContactMatch(
-                contactId: contact.id,
-                contactName: contact.displayName,
-                userId: match['userId'],
-                username: match['username'],
-                displayName: match['displayName'],
-                avatarUrl: match['avatarUrl'],
-                matchType: 'phone',
-                matchValue: match['phoneHash'],
-              ));
-            }
-          }
-
-          // Search for users with matching email hashes
-          if (contact.emailHashes.isNotEmpty) {
-            final emailMatches =
-                await _findUsersByEmailHashes(contact.emailHashes);
-            for (final match in emailMatches) {
-              matches.add(ContactMatch(
-                contactId: contact.id,
-                contactName: contact.displayName,
-                userId: match['userId'],
-                username: match['username'],
-                displayName: match['displayName'],
-                avatarUrl: match['avatarUrl'],
-                matchType: 'email',
-                matchValue: match['emailHash'],
-              ));
-            }
-          }
-        } catch (e) {
-          LoggingService.instance.warning(
-              'Error finding matches for contact: ${contact.displayName}',
-              tag: 'ContactsService',
-              error: e);
-          continue;
-        }
-      }
-
-      // Remove duplicates based on userId
-      final uniqueMatches = <String, ContactMatch>{};
-      for (final match in matches) {
-        uniqueMatches[match.userId] = match;
-      }
-
-      LoggingService.instance.debug(
-          'Found ${uniqueMatches.length} unique contact matches',
-          tag: 'ContactsService');
-      return uniqueMatches.values.toList();
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error finding matching users',
-          tag: 'ContactsService', error: e, stackTrace: stackTrace);
-      rethrow;
-    }
+    LoggingService.instance.debug(
+      'Contact match lookup skipped on client '
+      '(${contacts.length} hashed contacts uploaded for server matching)',
+      tag: 'ContactsService',
+    );
+    return <ContactMatch>[];
   }
 
   /// Normalize phone number (remove formatting, add country code if missing)
@@ -261,70 +205,6 @@ class ContactsService {
     final bytes = utf8.encode(identifier);
     final digest = sha256.convert(bytes);
     return digest.toString().substring(0, 16);
-  }
-
-  /// Find users by phone hashes
-  Future<List<Map<String, dynamic>>> _findUsersByPhoneHashes(
-      List<String> phoneHashes) async {
-    try {
-      final List<Map<String, dynamic>> matches = [];
-
-      for (final phoneHash in phoneHashes) {
-        final query = await _firestore
-            .collection('users')
-            .where('phoneHashes', arrayContains: phoneHash)
-            .limit(10)
-            .get();
-
-        for (final doc in query.docs) {
-          matches.add({
-            'userId': doc.id,
-            'username': doc.data()['username'] ?? '',
-            'displayName': doc.data()['displayName'] ?? '',
-            'avatarUrl': doc.data()['avatarUrl'],
-            'phoneHash': phoneHash,
-          });
-        }
-      }
-
-      return matches;
-    } catch (e) {
-      LoggingService.instance.error('Error finding users by phone hashes',
-          tag: 'ContactsService', error: e);
-      return [];
-    }
-  }
-
-  /// Find users by email hashes
-  Future<List<Map<String, dynamic>>> _findUsersByEmailHashes(
-      List<String> emailHashes) async {
-    try {
-      final List<Map<String, dynamic>> matches = [];
-
-      for (final emailHash in emailHashes) {
-        final query = await _firestore
-            .collection('users')
-            .where('emailHashes', arrayContains: emailHash)
-            .limit(10)
-            .get();
-
-        for (final doc in query.docs) {
-          matches.add({
-            'userId': doc.id,
-            'username': doc.data()['username'] ?? '',
-            'displayName': doc.data()['displayName'] ?? '',
-            'avatarUrl': doc.data()['avatarUrl'],
-            'emailHash': emailHash,
-          });
-        }
-      }
-
-      return matches;
-    } catch (e) {
-      LoggingService.instance.error('Error finding users by email hashes',
-          tag: 'ContactsService', error: e);
-      return [];
-    }
   }
 }
 

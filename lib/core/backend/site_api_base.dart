@@ -80,3 +80,12 @@ String siteTippyChatsUrl({String? base}) =>
 
 String siteTippyChatByIdUrl(String chatId, {String? base}) =>
     siteApiPath('/api/tippy/chats/${Uri.encodeComponent(chatId)}', base: base);
+
+String siteUsernameClaimUrl({String? base}) =>
+    siteApiPath('/api/username/claim', base: base);
+
+String siteUsernameChangeUrl({String? base}) =>
+    siteApiPath('/api/username/change', base: base);
+
+String siteProfileDisplayNameUrl({String? base}) =>
+    siteApiPath('/api/profile/display-name', base: base);

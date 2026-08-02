@@ -116,6 +116,10 @@ extension ActivityPulseNotificationX on ActivityNotification {
     if (isTippyCoachNotificationType(actionType)) {
       return true;
     }
+    final String at = (actionType ?? '').trim().toLowerCase();
+    if (at == 'retention_prompt' || at == 'retention') {
+      return true;
+    }
     if (activityActionUrlLooksLikeTrendDiscovery(actionUrl)) {
       return type == ActivityNotificationType.adminBroadcast;
     }

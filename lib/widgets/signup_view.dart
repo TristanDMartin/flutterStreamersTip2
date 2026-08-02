@@ -17,9 +17,17 @@ import 'email_login_view.dart';
 class SignupView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
 
+  /// When set, skips default post-auth navigation so Tippy onboarding can continue.
+  final VoidCallback? onAuthenticatedStay;
+
+  /// Tippy guided profile chooses @username later — collect email/password only.
+  final bool deferUsernameSelection;
+
   const SignupView({
     super.key,
     this.dismiss,
+    this.onAuthenticatedStay,
+    this.deferUsernameSelection = false,
   });
 
   @override
@@ -48,12 +56,18 @@ class _SignupViewState extends ConsumerState<SignupView> {
         }
         final firebase_auth.User? user =
             firebase_auth.FirebaseAuth.instance.currentUser;
-        if (user != null && !user.emailVerified) {
+        if (user != null &&
+            !user.emailVerified &&
+            widget.onAuthenticatedStay == null) {
           return;
         }
         debugPrint('✅ User authenticated, resolving post-auth destination');
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) {
+            return;
+          }
+          if (widget.onAuthenticatedStay != null) {
+            widget.onAuthenticatedStay!();
             return;
           }
           await navigateAfterAuthenticated(context);
@@ -126,6 +140,60 @@ class _SignupViewState extends ConsumerState<SignupView> {
         (RobustAuthenticationService auth) => auth.shouldShowLoading,
       ),
     );
+    final Widget formContent = Column(
+      children: <Widget>[
+        _buildSignupForm(),
+        const SizedBox(height: 20),
+        _buildSignInSection(),
+        const SizedBox(height: 20),
+      ],
+    );
+    // Tippy onboarding must not reuse the cinematic sign-in video background.
+    if (widget.deferUsernameSelection) {
+      return Material(
+        color: const Color(0xFF0B1224),
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0B1224),
+          body: SafeArea(
+            child: Stack(
+              children: <Widget>[
+                SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                  child: formContent,
+                ),
+                if (showLoading)
+                  const ColoredBox(
+                    color: Color(0x99000000),
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  ),
+                if (_showAlert)
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    top: 8,
+                    child: Material(
+                      color: const Color(0xFF2A1520),
+                      borderRadius: BorderRadius.circular(12),
+                      child: ListTile(
+                        title: Text(
+                          _alertMessage,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white70),
+                          onPressed: () => setState(() => _showAlert = false),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return AuthPageShell(
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
@@ -135,14 +203,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
       showAlert: _showAlert,
       alertMessage: _alertMessage,
       onDismissAlert: () => setState(() => _showAlert = false),
-      content: Column(
-        children: <Widget>[
-          _buildSignupForm(),
-          const SizedBox(height: 20),
-          _buildSignInSection(),
-          const SizedBox(height: 20),
-        ],
-      ),
+      content: formContent,
     );
   }
 
@@ -248,14 +309,16 @@ class _SignupViewState extends ConsumerState<SignupView> {
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: 16),
-          _SignupAuthTextField(
-            qaFieldKey: QaKeys.authSignupUsername,
-            controller: _usernameController,
-            hint: 'Username',
-            icon: Icons.person_outline_rounded,
-            textInputAction: TextInputAction.next,
-          ),
+          if (!widget.deferUsernameSelection) ...<Widget>[
+            const SizedBox(height: 16),
+            _SignupAuthTextField(
+              qaFieldKey: QaKeys.authSignupUsername,
+              controller: _usernameController,
+              hint: 'Username',
+              icon: Icons.person_outline_rounded,
+              textInputAction: TextInputAction.next,
+            ),
+          ],
           const SizedBox(height: 16),
           _SignupAuthTextField(
             qaFieldKey: QaKeys.authSignupPassword,
@@ -284,6 +347,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
             usernameController: _usernameController,
             passwordController: _passwordController,
             confirmPasswordController: _confirmPasswordController,
+            requireUsername: !widget.deferUsernameSelection,
             onSubmit: _handleSignUp,
           ),
         ],
@@ -292,43 +356,49 @@ class _SignupViewState extends ConsumerState<SignupView> {
   }
 
   Future<void> _handleSignUp() async {
-    final email = _emailController.text.trim();
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text;
-    final confirmPassword = _confirmPasswordController.text;
-    if (email.isEmpty || username.isEmpty || password.isEmpty) {
+    final String email = _emailController.text.trim();
+    final String password = _passwordController.text;
+    final String confirmPassword = _confirmPasswordController.text;
+    final String username = widget.deferUsernameSelection
+        ? _provisionalUsernameFromEmail(email)
+        : _usernameController.text.trim();
+    if (email.isEmpty ||
+        password.isEmpty ||
+        (!widget.deferUsernameSelection && username.isEmpty)) {
       setState(() {
-        _alertMessage = "Please fill in all fields";
+        _alertMessage = 'Please fill in all fields';
         _showAlert = true;
       });
       return;
     }
     if (!_isValidEmail(email)) {
       setState(() {
-        _alertMessage = "Please enter a valid email address";
+        _alertMessage = 'Please enter a valid email address';
         _showAlert = true;
       });
       return;
     }
-    if (username.length < 3) {
-      setState(() {
-        _alertMessage = "Username must be at least 3 characters";
-        _showAlert = true;
-      });
-      return;
-    }
-    final RegExp usernameChars = RegExp(r'^[a-zA-Z0-9_]+$');
-    if (!usernameChars.hasMatch(username)) {
-      setState(() {
-        _alertMessage =
-            'Username can only contain letters, numbers, and underscores.';
-        _showAlert = true;
-      });
-      return;
+    if (!widget.deferUsernameSelection) {
+      if (username.length < 3) {
+        setState(() {
+          _alertMessage = 'Username must be at least 3 characters';
+          _showAlert = true;
+        });
+        return;
+      }
+      final RegExp usernameChars = RegExp(r'^[a-zA-Z0-9_]+$');
+      if (!usernameChars.hasMatch(username)) {
+        setState(() {
+          _alertMessage =
+              'Username can only contain letters, numbers, and underscores.';
+          _showAlert = true;
+        });
+        return;
+      }
     }
     if (password != confirmPassword) {
       setState(() {
-        _alertMessage = "Passwords do not match";
+        _alertMessage = 'Passwords do not match';
         _showAlert = true;
       });
       return;
@@ -343,7 +413,8 @@ class _SignupViewState extends ConsumerState<SignupView> {
     }
 
     try {
-      final authService = ref.read(robustAuthServiceProvider);
+      final RobustAuthenticationService authService =
+          ref.read(robustAuthServiceProvider);
       final result = await authService.debouncedSignUpWithEmail(
         email: email,
         password: password,
@@ -356,10 +427,14 @@ class _SignupViewState extends ConsumerState<SignupView> {
           _showAlert = true;
         });
       } else if (result.success && mounted) {
+        if (widget.onAuthenticatedStay != null) {
+          widget.onAuthenticatedStay!();
+          return;
+        }
         await navigateAfterAuthenticated(context);
       }
     } catch (e) {
-      debugPrint("❌ Sign-up error: $e");
+      debugPrint('❌ Sign-up error: $e');
       if (mounted) {
         setState(() {
           _alertMessage = _getUserFriendlyErrorMessage(e.toString());
@@ -367,6 +442,23 @@ class _SignupViewState extends ConsumerState<SignupView> {
         });
       }
     }
+  }
+
+  String _provisionalUsernameFromEmail(String email) {
+    final String local = email.split('@').first.toLowerCase().replaceAll(
+          RegExp(r'[^a-z0-9_]'),
+          '',
+        );
+    final String base = local.length >= 3
+        ? local.substring(0, local.length > 16 ? 16 : local.length)
+        : 'creator';
+    final String suffix =
+        DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+    final String candidate = '${base}_$suffix';
+    if (candidate.length <= 30) {
+      return candidate;
+    }
+    return candidate.substring(0, 30);
   }
 
   Widget _buildSignInSection() {
@@ -725,6 +817,7 @@ class _SignupSubmitButton extends ConsumerWidget {
     required this.passwordController,
     required this.confirmPasswordController,
     required this.onSubmit,
+    this.requireUsername = true,
   });
 
   final TextEditingController emailController;
@@ -732,6 +825,7 @@ class _SignupSubmitButton extends ConsumerWidget {
   final TextEditingController passwordController;
   final TextEditingController confirmPasswordController;
   final VoidCallback onSubmit;
+  final bool requireUsername;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -751,7 +845,7 @@ class _SignupSubmitButton extends ConsumerWidget {
         final PasswordStrength strength =
             _calculateSignupPasswordStrength(passwordController.text);
         final bool isEnabled = emailController.text.isNotEmpty &&
-            usernameController.text.isNotEmpty &&
+            (!requireUsername || usernameController.text.isNotEmpty) &&
             passwordController.text.isNotEmpty &&
             confirmPasswordController.text.isNotEmpty &&
             strength == PasswordStrength.strong &&

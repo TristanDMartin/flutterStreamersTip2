@@ -52,6 +52,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>StreamersTip uses the camera to record videos and capture profile media.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>StreamersTip uses your contacts to suggest creators you may already know. Contact data is hashed before syncing.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>StreamersTip uses your location only when needed to support location-aware creator discovery and safety features.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

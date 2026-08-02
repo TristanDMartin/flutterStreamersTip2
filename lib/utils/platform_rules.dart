@@ -8,6 +8,7 @@ abstract final class PlatformRules {
     'kick',
     'tiktok',
     'instagram',
+    'facebook',
     'x',
     'discord',
     'patreon',
@@ -48,23 +49,25 @@ abstract final class PlatformRules {
     final String normalized = normalizePlatformType(type);
     switch (normalized) {
       case 'twitch':
-        return 'twitch.tv/';
+        return 'https://www.twitch.tv/';
       case 'youtube':
-        return 'youtube.com/@';
+        return 'https://www.youtube.com/@';
       case 'kick':
-        return 'kick.com/';
+        return 'https://www.kick.com/';
       case 'tiktok':
-        return 'tiktok.com/@';
+        return 'https://www.tiktok.com/@';
       case 'instagram':
-        return 'instagram.com/';
+        return 'https://www.instagram.com/';
+      case 'facebook':
+        return 'https://www.facebook.com/';
       case 'x':
-        return 'x.com/';
+        return 'https://www.x.com/';
       case 'discord':
-        return 'discord.com/';
+        return 'https://www.discord.com/';
       case 'patreon':
-        return 'patreon.com/';
+        return 'https://www.patreon.com/';
       case 'onlyfans':
-        return 'onlyfans.com/';
+        return 'https://www.onlyfans.com/';
       case 'other':
         return 'https://';
       default:
@@ -78,25 +81,36 @@ abstract final class PlatformRules {
       return null;
     }
     final String normalized = normalizePlatformType(type);
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
     switch (normalized) {
       case 'twitch':
-        return 'https://twitch.tv/$trimmed';
+        return 'https://www.twitch.tv/$trimmed';
       case 'youtube':
-        return 'https://youtube.com/@$trimmed';
+        return 'https://www.youtube.com/@$trimmed';
       case 'kick':
-        return 'https://kick.com/$trimmed';
+        return 'https://www.kick.com/$trimmed';
       case 'tiktok':
-        return 'https://tiktok.com/@$trimmed';
+        return 'https://www.tiktok.com/@$trimmed';
       case 'instagram':
-        return 'https://instagram.com/$trimmed';
+        return 'https://www.instagram.com/$trimmed';
+      case 'facebook':
+        return 'https://www.facebook.com/$trimmed';
       case 'x':
-        return 'https://x.com/$trimmed';
+        return 'https://www.x.com/$trimmed';
       case 'discord':
-        return 'https://discord.com';
+        if (trimmed.contains('/') || trimmed.contains('.')) {
+          final String asUrl = trimmed.startsWith('http')
+              ? trimmed
+              : 'https://$trimmed';
+          return asUrl;
+        }
+        return 'https://www.discord.com/invite/$trimmed';
       case 'patreon':
-        return 'https://patreon.com/$trimmed';
+        return 'https://www.patreon.com/$trimmed';
       case 'onlyfans':
-        return 'https://onlyfans.com/$trimmed';
+        return 'https://www.onlyfans.com/$trimmed';
       case 'other':
         if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
           return trimmed;
@@ -105,6 +119,46 @@ abstract final class PlatformRules {
       default:
         return null;
     }
+  }
+
+  /// Edit-links / Tippy shared row shape for Firestore `platforms`.
+  static Map<String, dynamic> buildEditablePlatformEntry({
+    required String type,
+    required String username,
+    String url = '',
+    String? id,
+    bool? isConnected,
+  }) {
+    final String normalized = normalizePlatformType(type);
+    String handle = username.trim();
+    String resolvedUrl = url.trim();
+    if (handle.startsWith('http://') || handle.startsWith('https://')) {
+      if (resolvedUrl.isEmpty) {
+        resolvedUrl = handle;
+      }
+      handle = '';
+    }
+    if (handle.startsWith('@')) {
+      handle = handle.substring(1);
+    }
+    if (resolvedUrl.isEmpty && handle.isNotEmpty) {
+      resolvedUrl = previewPlatformUrl(normalized, handle) ?? '';
+    }
+    if (resolvedUrl.isNotEmpty &&
+        !resolvedUrl.startsWith('http://') &&
+        !resolvedUrl.startsWith('https://')) {
+      resolvedUrl = 'https://$resolvedUrl';
+    }
+    final bool linked = handle.isNotEmpty || resolvedUrl.isNotEmpty;
+    return <String, dynamic>{
+      'id': id ?? 'platform_${normalized}_${DateTime.now().millisecondsSinceEpoch}',
+      'type': normalized,
+      'platformType': normalized,
+      'username': handle,
+      'url': resolvedUrl.isEmpty ? null : resolvedUrl,
+      'followers': 0,
+      'isConnected': isConnected ?? linked,
+    };
   }
 
   static String handleHintForType(String type) {
@@ -272,6 +326,10 @@ abstract final class PlatformRules {
         'username': username,
         'followers': (raw['followers'] as num?)?.toInt() ?? 0,
         'url': url.isEmpty ? null : url,
+        // Preserve Tippy/onboarding stubs (empty handle, not yet linked).
+        if (raw.containsKey('isConnected')) 'isConnected': raw['isConnected'],
+        if (raw.containsKey('platformType'))
+          'platformType': raw['platformType'],
       });
     }
     return normalized;

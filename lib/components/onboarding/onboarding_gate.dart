@@ -6,6 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/playback_owners.dart';
 import '../../controllers/home_view_controller.dart';
+import '../../features/onboarding_tippy/tippy_onboarding_attach_pending.dart';
+import '../../features/onboarding_tippy/tippy_onboarding_contract.dart';
+import '../../features/onboarding_tippy/tippy_onboarding_session.dart';
+import '../../features/onboarding_tippy/tippy_onboarding_view.dart';
 import '../../services/global_playback_manager.dart';
 import '../../utils/auth_post_login_navigation.dart';
 import '../../utils/secure_log.dart';
@@ -55,6 +59,20 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
   bool _emailGateDismissed = false;
   bool _onboardingStatusConfirmed = false;
   StreamSubscription<OnboardingState>? _subscription;
+  TippyOnboardingGuestSession? _localTippySession;
+  bool _resumeLocalTippy = false;
+
+  bool get _shouldShowTippyOnboarding {
+    // Server-confirmed Tippy completion always wins over a stale local resume
+    // flag (landing used to remount Tippy via nested Navigator → old stage).
+    if (_state.tippyFunnelCompleted && _state.essentialProfileComplete) {
+      return false;
+    }
+    if (_state.completed && !_state.isTippyFunnelIncomplete) {
+      return false;
+    }
+    return _state.isTippyFunnelIncomplete || _resumeLocalTippy;
+  }
 
   bool get _shouldShowMainApp {
     if (!_isReady) {
@@ -62,6 +80,11 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     }
     if (_isTesterSession) {
       return _testerSessionDismissed;
+    }
+    // Tippy funnel owns the rest of setup — never drop into classic onboarding
+    // or the feed after Google/Apple until landing choice is done.
+    if (_shouldShowTippyOnboarding) {
+      return false;
     }
     // Keep Home visible until Firestore confirms onboarding is incomplete.
     if (!_onboardingStatusConfirmed) {
@@ -168,6 +191,39 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     OnboardingState? base,
   }) {
     final OnboardingState seed = base ?? _state;
+    // Never promote Tippy / slim-7 users into the main app without an
+    // essential creator identity (display name + unique username).
+    if (seed.needsTippyGuidedProfile ||
+        seed.isTippyFunnelIncomplete ||
+        !seed.essentialProfileComplete) {
+      final String username = widget.username?.trim() ?? '';
+      if (username.isEmpty ||
+          seed.slim7Completed ||
+          seed.tippyOnboardingV1Attached ||
+          seed.isTippyFunnelIncomplete) {
+        return OnboardingState(
+          version: seed.version,
+          status: OnboardingStatus.inProgress,
+          completed: false,
+          currentStep: seed.currentStep,
+          hasSeenIntro: seed.hasSeenIntro,
+          creatorGoals: seed.creatorGoals,
+          platforms: seed.platforms,
+          premiumOfferDismissed: seed.premiumOfferDismissed,
+          completedAt: seed.completedAt,
+          lastSeenAt: seed.lastSeenAt,
+          emailBannerDismissed: seed.emailBannerDismissed,
+          softRatingDismissed: seed.softRatingDismissed,
+          hasRated: seed.hasRated,
+          hasSeenMissionBannerOnHome: seed.hasSeenMissionBannerOnHome,
+          missionBannerDismissed: seed.missionBannerDismissed,
+          slim7Completed: seed.slim7Completed,
+          tippyOnboardingV1Attached: seed.tippyOnboardingV1Attached,
+          tippyFunnelCompleted: seed.tippyFunnelCompleted,
+          essentialProfileComplete: false,
+        );
+      }
+    }
     return OnboardingState(
       version: OnboardingV1Constants.version,
       status: OnboardingStatus.completed,
@@ -184,17 +240,36 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
       hasRated: seed.hasRated,
       hasSeenMissionBannerOnHome: seed.hasSeenMissionBannerOnHome,
       missionBannerDismissed: seed.missionBannerDismissed,
+      slim7Completed: seed.slim7Completed,
+      tippyOnboardingV1Attached: seed.tippyOnboardingV1Attached,
+      tippyFunnelCompleted: seed.tippyFunnelCompleted,
+      essentialProfileComplete: seed.essentialProfileComplete,
     );
   }
 
   OnboardingState _resolveBootstrapTimeoutState() {
     final OnboardingState? cached =
         AppSessionCache.instance.peekOnboarding(widget.userId);
-    if (cached != null && cached.completed) {
+    if (cached != null) {
+      if (cached.needsTippyGuidedProfile || !cached.completed) {
+        secureLog(
+          'ONBOARDING_KEEP_INCOMPLETE reason=cached_incomplete',
+        );
+        return cached;
+      }
+      if (cached.completed && cached.essentialProfileComplete) {
+        secureLog(
+          'ONBOARDING_CONFIRMED_SKIPPED_EXISTING_USER reason=cached_completed',
+        );
+        return cached;
+      }
+    }
+    final String username = widget.username?.trim() ?? '';
+    if (username.isEmpty) {
       secureLog(
-        'ONBOARDING_CONFIRMED_SKIPPED_EXISTING_USER reason=cached_completed',
+        'ONBOARDING_KEEP_INCOMPLETE reason=missing_username_bootstrap',
       );
-      return cached;
+      return OnboardingState.initial();
     }
     final fa.User? user = fa.FirebaseAuth.instance.currentUser;
     if (user != null && user.uid == widget.userId) {
@@ -211,6 +286,7 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
   }
 
   Future<void> _bootstrap() async {
+    await _refreshLocalTippyResume();
     final OnboardingState? cached =
         AppSessionCache.instance.peekOnboarding(widget.userId);
     if (cached != null && mounted) {
@@ -233,6 +309,7 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
       if (!mounted) {
         return;
       }
+      await _refreshLocalTippyResume();
       setState(() {
         _state = migrated;
         _isReady = true;
@@ -241,7 +318,7 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
       AppSessionCache.instance.putOnboarding(widget.userId, migrated);
       debugPrint(
         'OnboardingGate: ready completed=${migrated.completed} '
-        'step=${migrated.currentStep}',
+        'step=${migrated.currentStep} tippy=$_shouldShowTippyOnboarding',
       );
       _syncOnboardingPlaybackState();
       _subscription?.cancel();
@@ -251,8 +328,14 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
             return;
           }
           final bool wasShowingOnboarding = _isShowingOnboarding;
+          final bool tippyDone = state.tippyFunnelCompleted &&
+              state.essentialProfileComplete;
           setState(() {
             _state = state;
+            if (tippyDone || (state.completed && !state.isTippyFunnelIncomplete)) {
+              _resumeLocalTippy = false;
+              _localTippySession = null;
+            }
           });
           AppSessionCache.instance.putOnboarding(widget.userId, state);
           if (wasShowingOnboarding && _shouldShowMainApp) {
@@ -268,12 +351,35 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
       if (!mounted) {
         return;
       }
+      await _refreshLocalTippyResume();
       setState(() {
         _state = _resolveBootstrapFailureState();
         _isReady = true;
         _onboardingStatusConfirmed = true;
       });
       _syncOnboardingPlaybackState();
+    }
+  }
+
+  Future<void> _refreshLocalTippyResume() async {
+    try {
+      final TippyOnboardingSessionStore store = TippyOnboardingSessionStore();
+      final TippyOnboardingGuestSession? session = await store.loadActive();
+      final bool resume = tippySessionNeedsResume(session) ||
+          (session != null &&
+              session.landingChoice == null &&
+              (session.hasCompletedQuestions ||
+                  TippyOnboardingStages.isPostQuizStage(session.stage)));
+      if (!mounted) {
+        _localTippySession = session;
+        _resumeLocalTippy = resume;
+        return;
+      }
+      _localTippySession = session;
+      _resumeLocalTippy = resume;
+    } catch (_) {
+      _localTippySession = null;
+      _resumeLocalTippy = false;
     }
   }
 
@@ -352,7 +458,13 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
         hasRated: _state.hasRated,
         hasSeenMissionBannerOnHome: _state.hasSeenMissionBannerOnHome,
         missionBannerDismissed: _state.missionBannerDismissed,
+        slim7Completed: true,
+        tippyOnboardingV1Attached: true,
+        tippyFunnelCompleted: true,
+        essentialProfileComplete: true,
       );
+      _resumeLocalTippy = false;
+      _localTippySession = null;
     });
     _scheduleHomePlaybackRestoreAfterOnboarding();
     unawaited(_refreshOnboardingAfterCompletion());
@@ -403,14 +515,20 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
                     onContinueToSetup: _onEmailGateContinue,
                     onVerified: _onEmailGateContinue,
                   )
-                : OnboardingView(
-                    key: ValueKey<String>('onboarding-${widget.userId}'),
-                    userId: widget.userId,
-                    initialState: _state,
-                    service: _service,
-                    showTesterSkip: _isTesterSession,
-                    onCompleted: _onOnboardingCompleted,
-                  ),
+                : _shouldShowTippyOnboarding
+                    ? TippyOnboardingView(
+                        startAtWelcome: false,
+                        initialSession: _localTippySession,
+                        onCompleted: _onOnboardingCompleted,
+                      )
+                    : OnboardingView(
+                        key: ValueKey<String>('onboarding-${widget.userId}'),
+                        userId: widget.userId,
+                        initialState: _state,
+                        service: _service,
+                        showTesterSkip: _isTesterSession,
+                        onCompleted: _onOnboardingCompleted,
+                      ),
           ),
         ),
       ],

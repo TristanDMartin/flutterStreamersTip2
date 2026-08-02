@@ -30,6 +30,7 @@ import '../services/creator_cache_service.dart';
 import '../services/creator_intelligence_analytics_service.dart';
 import '../routing/app_navigator.dart';
 import '../constants/app_colors.dart';
+import 'profile/profile_username_utils.dart';
 import '../core/theme/support_shell_style.dart';
 import '../features/creator_score/creator_score.dart';
 import '../features/creator_score/creator_score_service.dart';
@@ -617,22 +618,18 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return _buildErrorState(context);
     }
 
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
+      value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness:
-            shell.isLight ? Brightness.dark : Brightness.light,
-        statusBarBrightness: shell.isLight ? Brightness.light : Brightness.dark,
-        systemNavigationBarColor: shell.scaffold,
-        systemNavigationBarIconBrightness:
-            shell.isLight ? Brightness.dark : Brightness.light,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppColors.profileViewBackground,
+        systemNavigationBarIconBrightness: Brightness.light,
       ),
       child: Scaffold(
-        backgroundColor: shell.scaffold,
-        extendBody: true,
-        extendBodyBehindAppBar:
-            false, // SAFE AREA FIX: Don't extend behind system UI
+        backgroundColor: AppColors.profileViewBackground,
+        extendBody: false,
+        extendBodyBehindAppBar: false,
         body: Stack(
           children: [
             // Main StreamerCardView
@@ -664,20 +661,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildLoadingState(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    return Scaffold(
-      backgroundColor: shell.scaffold,
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: shell.pageGradient,
-          ),
-        ),
+    return const Scaffold(
+      backgroundColor: AppColors.profileViewBackground,
+      body: ColoredBox(
+        color: AppColors.profileViewBackground,
         child: Center(
           child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(shell.refreshColor),
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
           ),
         ),
       ),
@@ -685,31 +675,24 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildErrorState(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
-      backgroundColor: shell.scaffold,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: shell.pageGradient,
-          ),
-        ),
+      backgroundColor: AppColors.profileViewBackground,
+      body: ColoredBox(
+        color: AppColors.profileViewBackground,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              const Icon(
                 Icons.error_outline,
-                color: shell.onChrome,
+                color: Colors.white,
                 size: 64,
               ),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 'Error Loading Profile',
                 style: TextStyle(
-                  color: shell.onChrome,
+                  color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
@@ -718,7 +701,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               Text(
                 _error ?? 'Unknown error',
                 style: TextStyle(
-                  color: shell.muted,
+                  color: Colors.white.withValues(alpha: 0.68),
                   fontSize: 16,
                 ),
                 textAlign: TextAlign.center,
@@ -2064,25 +2047,20 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildAvatarWithOnlineIndicator() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final Color avatarInner = shell.isLight
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
-        : Colors.black.withValues(alpha: 0.2);
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
           width: 112,
           height: 112,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
             gradient: SweepGradient(
               colors: <Color>[
-                scheme.primary,
-                scheme.secondary,
-                scheme.primary,
-                scheme.secondary,
+                Color(0xFFFF6CAB),
+                Color(0xFF8E54E9),
+                Color(0xFF3D99F7),
+                Color(0xFFFF6CAB),
               ],
             ),
           ),
@@ -2092,7 +2070,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               height: 104,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: avatarInner,
+                color: Colors.black.withValues(alpha: 0.35),
               ),
               child: ClipOval(
                 child: buildCachedAvatarCircle(
@@ -2123,7 +2101,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         color: _getStatusColor(presence.status),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: scheme.surface,
+                          color: AppColors.profileViewBackground,
                           width: 2,
                         ),
                         boxShadow: [
@@ -2149,26 +2127,31 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildProfileTextInfo() {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final String resolvedName =
+        ProfileUsernameUtils.resolveDisplayName(_userData);
+    final String atHandle = ProfileUsernameUtils.formatAtHandle(_userData);
     return Column(
       children: [
         Text(
-          displayName,
-          style: TextStyle(
-            color: shell.onChrome,
-            fontSize: 34,
-            fontWeight: FontWeight.w800,
+          resolvedName.isNotEmpty ? resolvedName : displayName,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+            height: 1.05,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          '@$username',
-          style: TextStyle(
-            color: shell.muted,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+        if (atHandle.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            atHandle,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -2192,7 +2175,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildIdentity() {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final String resolvedName =
+        ProfileUsernameUtils.resolveDisplayName(_userData);
+    final String atHandle = ProfileUsernameUtils.formatAtHandle(_userData);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -2204,25 +2189,36 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _userData?['displayName'] ?? 'User',
-                  style: TextStyle(
-                    color: shell.onChrome,
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
-                    height: 1.0,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    resolvedName.isNotEmpty ? resolvedName : 'Creator',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.05,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '@${_userData?['username'] ?? 'username'}',
-                  style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    height: 1.0,
+                if (atHandle.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    atHandle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.68),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      height: 1.0,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -2237,7 +2233,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildCreatorScoreBreakdown() {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final AsyncValue<CreatorScore> scoreAsync =
         ref.watch(creatorScoreProvider(_effectiveUserId));
     final CreatorScore score = scoreAsync.value ?? CreatorScore.fallback;
@@ -2249,31 +2244,33 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: shell.surfaceCard,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: shell.surfaceCardBorder),
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.10),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
               children: <Widget>[
-                Expanded(
+                const Expanded(
                   child: Text(
                     'Creator Score Breakdown',
                     style: TextStyle(
-                      color: shell.onChrome,
+                      color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
                 if (scoreAsync.isLoading)
-                  SizedBox.square(
+                  const SizedBox.square(
                     dimension: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: AppColors.primary,
                     ),
                   ),
               ],
@@ -2318,13 +2315,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
 
     if (hashtags.isEmpty) return const SizedBox.shrink();
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final LinearGradient selectedGradient = LinearGradient(
-      colors: <Color>[scheme.primary, scheme.secondary],
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Wrap(
@@ -2335,31 +2325,40 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           return GestureDetector(
             onTap: () {
               setState(() {
-                _selectedHashtag = isSelected ? "" : hashtag;
+                _selectedHashtag = isSelected ? '' : hashtag;
               });
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                gradient: isSelected ? selectedGradient : null,
-                color: isSelected ? null : shell.chipUnselectedBg,
-                borderRadius: BorderRadius.circular(20),
+                gradient: isSelected
+                    ? const LinearGradient(
+                        colors: <Color>[
+                          AppColors.primary,
+                          Color(0xFF7768DF),
+                          Color(0xFF4897D2),
+                        ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      )
+                    : null,
+                color: isSelected
+                    ? null
+                    : Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isSelected
-                      ? Theme.of(context).colorScheme.onPrimary.withValues(
-                            alpha: 0.25,
-                          )
-                      : shell.chipUnselectedBorder,
-                  width: 1,
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : Colors.white.withValues(alpha: 0.10),
                 ),
               ),
               child: Text(
                 '#$hashtag',
                 style: TextStyle(
                   color: isSelected
-                      ? Theme.of(context).colorScheme.onPrimary
-                      : shell.chipUnselectedFg,
-                  fontSize: 16,
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.68),
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -2371,15 +2370,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildBioBody() {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final String bio = (_userData?['bio'] as String?)?.trim() ?? '';
+    if (bio.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Text(
-        _userData?['bio'] ?? 'No bio available',
+        bio,
         style: TextStyle(
-          color: shell.muted,
+          color: Colors.white.withValues(alpha: 0.72),
           fontSize: 16,
           fontWeight: FontWeight.w600,
+          height: 1.35,
         ),
       ),
     );
@@ -2397,23 +2400,21 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         debugPrint(
             '🔗 _buildPlatforms: No platforms found, showing empty state');
       }
-      final StSupportShellStyle shell = StSupportShellStyle.of(context);
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: shell.surfaceCard,
+            color: Colors.white.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: shell.surfaceCardBorder,
-              width: 1,
+              color: Colors.white.withValues(alpha: 0.10),
             ),
           ),
           child: Text(
             'No platforms added yet.',
             style: TextStyle(
-              color: shell.muted,
+              color: Colors.white.withValues(alpha: 0.68),
               fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
@@ -3094,10 +3095,8 @@ class _ClickablePlatformRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final platformType = platform['type'] as String? ?? '';
     final username = platform['username'] as String? ?? '';
-    // final url = platform['url'] as String? ?? '';
 
     debugPrint(
         '🔗 _ClickablePlatformRow: Building platform card - type: $platformType, username: $username');
@@ -3110,11 +3109,10 @@ class _ClickablePlatformRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: shell.surfaceCard,
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: shell.surfaceCardBorder,
-            width: 1,
+            color: Colors.white.withValues(alpha: 0.10),
           ),
         ),
         child: Row(
@@ -3130,17 +3128,17 @@ class _ClickablePlatformRow extends StatelessWidget {
                 children: [
                   Text(
                     _getPlatformDisplayName(platformType),
-                    style: TextStyle(
-                      color: shell.onChrome,
+                    style: const TextStyle(
+                      color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   if (username.isNotEmpty)
                     Text(
-                      '@$username',
+                      username.startsWith('@') ? username : '@$username',
                       style: TextStyle(
-                        color: shell.muted,
+                        color: Colors.white.withValues(alpha: 0.68),
                         fontSize: 14,
                       ),
                     ),
@@ -3149,7 +3147,7 @@ class _ClickablePlatformRow extends StatelessWidget {
             ),
             Icon(
               Icons.arrow_forward_ios,
-              color: shell.muted,
+              color: Colors.white.withValues(alpha: 0.55),
               size: 16,
             ),
           ],

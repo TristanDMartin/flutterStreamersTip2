@@ -12,10 +12,10 @@ import '../views/terms_and_privacy_view.dart';
 import '../constants/app_colors.dart';
 import 'auth/auth_brand_header.dart';
 import 'auth/auth_cinematic_shell.dart';
+import '../features/onboarding_tippy/tippy_onboarding_view.dart';
 import 'auth/auth_get_started_button.dart';
 import 'auth/auth_glass_panel.dart';
 import 'email_login_view.dart';
-import 'signup_view.dart';
 
 class AuthModalView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
@@ -406,7 +406,8 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (BuildContext context) => const SignupView(),
+                builder: (BuildContext context) =>
+                    const TippyOnboardingView(),
               ),
             );
           },

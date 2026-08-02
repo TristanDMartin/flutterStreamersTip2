@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/st_theme_tokens.dart';
 import '../../models/feed_tab.dart';
+import '../../providers/activity_provider.dart';
 import '../../qa/qa_keys.dart';
 import 'feed_dropdown_widget.dart';
 
@@ -135,6 +136,7 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
 
   @override
   Widget build(BuildContext context) {
+    final int unreadActivityCount = ref.watch(activityNavUnreadCountProvider);
     return SafeArea(
       top: true,
       child: Container(
@@ -202,28 +204,61 @@ class _FeedSelectorWidgetState extends ConsumerState<FeedSelectorWidget>
                 ),
               ),
             GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  widget.onDiscoverTap();
-                },
-                child: Container(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                widget.onDiscoverTap();
+              },
+              child: Semantics(
+                label: unreadActivityCount > 0
+                    ? 'Discover, $unreadActivityCount unread notifications'
+                    : 'Discover',
+                button: true,
+                child: SizedBox(
                   width: 52,
                   height: 52,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: StThemeColors.darkSurface.withValues(alpha: 0.72),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-                    boxShadow: StShadows.glass(Colors.black),
-                  ),
-                  child: Icon(
-                    Icons.explore_rounded,
-                    color: Colors.white.withValues(alpha: 0.96),
-                    size: 24,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: <Widget>[
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: StThemeColors.darkSurface
+                              .withValues(alpha: 0.72),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.10),
+                          ),
+                          boxShadow: StShadows.glass(Colors.black),
+                        ),
+                        child: Icon(
+                          Icons.explore_rounded,
+                          color: Colors.white.withValues(alpha: 0.96),
+                          size: 24,
+                        ),
+                      ),
+                      if (unreadActivityCount > 0)
+                        Positioned(
+                          right: -1,
+                          top: -1,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF0F56),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.black.withValues(alpha: 0.72),
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),

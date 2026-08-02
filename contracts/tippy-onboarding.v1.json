@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamerstip.com/contracts/tippy-onboarding.v1.json",
+  "title": "StreamersTip Tippy Onboarding Contract v1",
+  "description": "Shared vocabulary for website + Flutter Tippy-first onboarding. Slim 7 questions, guided creator profile, guest session, funnel stages, analytics.",
+  "version": "1.0.0",
+  "sessionSchemaVersion": 1,
+  "sessionStorageKey": "tippy_onboarding_v1",
+  "totalQuestions": 7,
+  "canonicalCopy": {
+    "welcomeHi": "Hi there! I'm Tippy!",
+    "welcome": "Hi there! I'm Tippy. Welcome to StreamersTip!",
+    "questionsIntro": "I have seven quick questions so I can personalize your creator workspace and help you grow.",
+    "preSignup": "Perfect — I've started building your creator profile. Create your free account so I can save your answers and personalize StreamersTip for you.",
+    "notificationsExplain": "I can remind you when it's time to create content, celebrate your milestones, and let you know when your posts perform well.",
+    "notificationsDeclined": "No problem! You can always enable reminders later.",
+    "trialIntro": "Based on what you've shared... I've already started building your creator workspace. I'd love to unlock everything for your first 7 days.",
+    "verifyEmail": "One last step. Check your email so I know it's really you.",
+    "accountSecured": "Great! Your account is secure. Now let's build the creator profile people will see on StreamersTip.",
+    "avatarPrompt": "Let's add a profile picture so creators can recognize you.",
+    "displayNamePrompt": "What should people call you?",
+    "usernamePrompt": "Now choose your unique @username. People will use this to find and mention you.",
+    "bioPrompt": "Tell creators what you make and what you're working toward.",
+    "platformsPrompt": "Where do you create content?",
+    "categoriesPrompt": "Which content areas best describe you?",
+    "profileReviewPrompt": "Here's how your creator profile will appear. You can change any of this later.",
+    "findFriends": "Want to see creators you already know? I can check your contacts and recommend people to follow.",
+    "success": "Your creator profile is ready! I've also used your answers to personalize StreamersTip around your goals.",
+    "landingChoice": "Great! Where would you like to start?"
+  },
+  "funnelStages": [
+    "welcome",
+    "questions",
+    "notifications",
+    "trial",
+    "signup",
+    "verify_email",
+    "account_secured",
+    "avatar",
+    "display_name",
+    "username",
+    "bio",
+    "platforms",
+    "categories",
+    "profile_review",
+    "find_friends",
+    "success",
+    "landing_choice"
+  ],
+  "legacyStageAliases": {
+    "creator_profile": "account_secured"
+  },
+  "completionRules": {
+    "essentialProfileComplete": [
+      "authenticated_account",
+      "display_name",
+      "unique_username",
+      "public_profile_document",
+      "accepted_terms"
+    ],
+    "optionalEnrichment": [
+      "custom_avatar",
+      "bio",
+      "platform_links",
+      "connected_integrations",
+      "creator_categories",
+      "contact_syncing",
+      "first_content_plan"
+    ]
+  },
+  "questions": [
+    {
+      "id": "creator_type",
+      "prompt": "What kind of creator are you?",
+      "tippySpeech": "First — how do you usually show up as a creator?",
+      "why": "So I can tailor coaching and templates to your creator style.",
+      "inputType": "single_select",
+      "fieldPath": "identity.creatorType",
+      "required": true,
+      "options": [
+        { "id": "streamer", "label": "Live streamer" },
+        { "id": "video_creator", "label": "Video creator" },
+        { "id": "clipper", "label": "Clipper / highlighter" },
+        { "id": "hybrid", "label": "Hybrid (stream + video)" },
+        { "id": "exploring", "label": "Still exploring" }
+      ]
+    },
+    {
+      "id": "platforms",
+      "prompt": "Which platforms do you focus on most?",
+      "tippySpeech": "Where do you publish most right now? (No need to connect accounts yet.)",
+      "why": "So recommendations and planners match your platforms.",
+      "inputType": "multi_select",
+      "fieldPath": "platforms.primary",
+      "required": true,
+      "minSelections": 1,
+      "options": [
+        { "id": "youtube", "label": "YouTube" },
+        { "id": "twitch", "label": "Twitch" },
+        { "id": "tiktok", "label": "TikTok" },
+        { "id": "instagram", "label": "Instagram" },
+        { "id": "kick", "label": "Kick" }
+      ]
+    },
+    {
+      "id": "niche",
+      "prompt": "How would you describe your niche?",
+      "tippySpeech": "In one short line — what's your niche?",
+      "why": "So Tippy can suggest ideas that fit your world.",
+      "inputType": "text",
+      "fieldPath": "identity.niche",
+      "required": true,
+      "maxLength": 60,
+      "placeholder": "e.g. Competitive FPS with chill vibes"
+    },
+    {
+      "id": "experience",
+      "prompt": "How experienced are you as a creator?",
+      "tippySpeech": "How experienced do you feel as a creator today?",
+      "why": "So coaching depth matches where you are now.",
+      "inputType": "single_select",
+      "fieldPath": "identity.experienceLevel",
+      "required": true,
+      "options": [
+        { "id": "beginner", "label": "Just starting" },
+        { "id": "intermediate", "label": "Some experience" },
+        { "id": "advanced", "label": "Experienced" },
+        { "id": "pro", "label": "Full-time / pro" }
+      ]
+    },
+    {
+      "id": "goals",
+      "prompt": "What are your main creator goals right now?",
+      "tippySpeech": "What do you want help with most?",
+      "why": "So your dashboard and Tippy focus on the right outcomes.",
+      "inputType": "multi_select",
+      "fieldPath": "goals.goalIds",
+      "required": true,
+      "minSelections": 1,
+      "maxSelections": 5,
+      "options": [
+        { "id": "build_audience", "label": "Build an audience" },
+        { "id": "multi_platform", "label": "Grow on multiple platforms" },
+        { "id": "consistent_content", "label": "Create consistent content" },
+        { "id": "network_creators", "label": "Connect with other creators" },
+        { "id": "monetize", "label": "Monetize my content" }
+      ]
+    },
+    {
+      "id": "schedule",
+      "prompt": "How often do you usually post?",
+      "tippySpeech": "How often are you posting or streaming right now?",
+      "why": "So reminders and plans match your real rhythm.",
+      "inputType": "single_select",
+      "fieldPath": "behavior.postingFrequency",
+      "required": true,
+      "options": [
+        { "id": "daily", "label": "Daily" },
+        { "id": "few_week", "label": "A few times a week" },
+        { "id": "weekly", "label": "Weekly" },
+        { "id": "rarely", "label": "Rarely / inconsistently" }
+      ]
+    },
+    {
+      "id": "content_formats",
+      "prompt": "Which content formats do you create most?",
+      "tippySpeech": "What formats do you create most?",
+      "why": "So templates and ideas match how you publish.",
+      "inputType": "multi_select",
+      "fieldPath": "content.contentFormats",
+      "required": true,
+      "minSelections": 1,
+      "options": [
+        { "id": "livestreams", "label": "Livestreams" },
+        { "id": "shorts", "label": "Shorts / Reels" },
+        { "id": "clips", "label": "Clips highlights" },
+        { "id": "longform", "label": "Long-form video" },
+        { "id": "posts", "label": "Posts / threads" }
+      ]
+    }
+  ],
+  "analyticsEvents": [
+    "tippy_onboarding_started",
+    "tippy_onboarding_step_completed",
+    "tippy_onboarding_questions_completed",
+    "tippy_onboarding_notifications_choice",
+    "tippy_onboarding_trial_intent",
+    "tippy_onboarding_signup_started",
+    "tippy_onboarding_signup_attached",
+    "tippy_onboarding_completed",
+    "tippy_onboarding_landing_choice"
+  ],
+  "guestSessionShape": {
+    "schemaVersion": 1,
+    "sessionId": "string",
+    "stage": "funnelStages value",
+    "questionIndex": "0-6 while in questions",
+    "answers": "Record<questionId, string | string[]>",
+    "trialIntent": "boolean",
+    "notificationsChoice": "enabled | declined | skipped | null",
+    "landingChoice": "recommended | explore | null",
+    "profileDraft": "avatar, displayName, username, bio, platforms, categories",
+    "updatedAt": "ISO-8601",
+    "completedQuestionsAt": "ISO-8601 | null",
+    "hasSeenTippyIntro": "boolean"
+  }
+}

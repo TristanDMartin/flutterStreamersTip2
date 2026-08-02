@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../features/gamification/create_gamification_event.dart';
 import '../../features/gamification/gamification_event_types.dart';
@@ -326,6 +327,101 @@ class OnboardingService {
     );
   }
 
+  /// Tippy guided profile commit — client-writable fields only.
+  /// Username + displayName are Admin SDK / site API only (Firestore rules).
+  Future<void> saveGuidedTippyProfile({
+    required String userId,
+    required String displayName,
+    required String username,
+    required String bio,
+    required String categoryId,
+    required List<String> categoryIds,
+    String? avatarUrl,
+    List<Map<String, dynamic>>? platforms,
+  }) async {
+    // Identity fields intentionally omitted — reserved for claim/change +
+    // /api/profile/display-name. Writing them client-side is permission-denied.
+    final Map<String, dynamic> profile = <String, dynamic>{
+      'bio': bio.trim(),
+      'categoryId': categoryId,
+      'category': categoryId,
+      'categories': categoryIds,
+    };
+    if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
+      profile['avatarURL'] = avatarUrl.trim();
+      profile['photoURL'] = avatarUrl.trim();
+    }
+    if (platforms != null) {
+      profile[UserProfileFirestore.platformsField] =
+          UserProfileFirestore.normalizePlatformsForFirestore(platforms);
+    }
+    final List<String> platformTypes = platforms == null
+        ? <String>[]
+        : platforms
+            .map(
+              (Map<String, dynamic> p) => UserProfileFirestore.readPlatformType(p),
+            )
+            .where((String t) => t.isNotEmpty)
+            .toList();
+    await _userRef(userId).set(
+      <String, dynamic>{
+        ...profile,
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': 'profile_complete',
+          'currentStep': 3,
+          'hasSeenIntro': true,
+          'creatorCardCompleted': true,
+          'essentialProfileComplete': true,
+          'slim7Completed': true,
+          'tippyOnboardingV1Attached': true,
+          if (platformTypes.isNotEmpty) 'platforms': platformTypes,
+          'guidedProfileCompletedAt': FieldValue.serverTimestamp(),
+          'lastSeenAt': FieldValue.serverTimestamp(),
+          // Stash chosen identity for post-verify Admin claim/sync.
+          'tippyPendingDisplayName': displayName.trim(),
+          'tippyPendingUsername': username.trim().toLowerCase(),
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    try {
+      await _firestore.collection('publicUsers').doc(userId).set(
+        <String, dynamic>{
+          'uid': userId,
+          if (bio.trim().isNotEmpty) 'bio': bio.trim(),
+          if (avatarUrl != null && avatarUrl.trim().isNotEmpty) ...<String, dynamic>{
+            'avatarURL': avatarUrl.trim(),
+            'photoURL': avatarUrl.trim(),
+          },
+          if (platforms != null)
+            UserProfileFirestore.platformsField:
+                UserProfileFirestore.normalizePlatformsForFirestore(platforms),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (error) {
+      debugPrint('OnboardingService: publicUsers mirror skipped: $error');
+    }
+    _scheduleOnboardingGamificationEvent(
+      type: GamificationEventTypes.creatorCardCompleted,
+      entityType: 'user',
+      entityId: userId,
+      metadata: <String, dynamic>{
+        'rewardXp': OnboardingV1Constants.creatorCardRewardXp,
+        'source': 'tippy_onboarding_v1',
+      },
+    );
+    _scheduleOnboardingGamificationEvent(
+      type: GamificationEventTypes.profileCompleted,
+      entityType: 'user',
+      entityId: userId,
+      metadata: <String, dynamic>{'source': 'tippy_onboarding_v1'},
+    );
+  }
+
   Future<void> completeOnboarding(
     String userId, {
     bool skippedByTester = false,
@@ -370,6 +466,203 @@ class OnboardingService {
         'source': 'onboarding_v1',
         if (skippedByTester) 'skippedByTester': true,
       },
+    );
+  }
+
+  /// Marks this account as Tippy-owned so OnboardingGate never shows classic
+  /// "What's your creator focus?" — even if the attach API fails.
+  Future<void> markTippyFunnelInProgress(String userId) async {
+    final OnboardingState? cached =
+        AppSessionCache.instance.peekOnboarding(userId);
+    final OnboardingState next = OnboardingState(
+      version: OnboardingV1Constants.version,
+      status: OnboardingStatus.inProgress,
+      completed: false,
+      currentStep: cached?.currentStep ?? 0,
+      hasSeenIntro: true,
+      creatorGoals: cached?.creatorGoals ?? const <String>[],
+      platforms: cached?.platforms ?? const <String>[],
+      premiumOfferDismissed: cached?.premiumOfferDismissed ?? false,
+      completedAt: cached?.completedAt,
+      lastSeenAt: cached?.lastSeenAt,
+      emailBannerDismissed: cached?.emailBannerDismissed ?? false,
+      softRatingDismissed: cached?.softRatingDismissed ?? false,
+      hasRated: cached?.hasRated ?? false,
+      hasSeenMissionBannerOnHome:
+          cached?.hasSeenMissionBannerOnHome ?? false,
+      missionBannerDismissed: cached?.missionBannerDismissed ?? false,
+      slim7Completed: true,
+      tippyOnboardingV1Attached: true,
+      tippyFunnelCompleted: cached?.tippyFunnelCompleted ?? false,
+      essentialProfileComplete: cached?.essentialProfileComplete ?? false,
+    );
+    AppSessionCache.instance.putOnboarding(userId, next);
+    await _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.inProgress,
+          'completed': false,
+          'hasSeenIntro': true,
+          'slim7Completed': true,
+          'tippyOnboardingV1Attached': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+  }
+
+  /// Tippy slim-7 + guided profile replace classic steps 1–3.
+  /// Awards the same XP once, then marks classic onboarding complete so the
+  /// "creator focus" / creator-card screens never appear after Tippy.
+  Future<void> completeClassicOnboardingReplacedByTippy(String userId) async {
+    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+        await _userRef(userId).get();
+    final Map<String, dynamic> data =
+        snapshot.data() ?? <String, dynamic>{};
+    final Map<String, dynamic> onboarding =
+        (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+    if (onboarding['completed'] == true ||
+        data['hasCompletedOnboarding'] == true) {
+      AppSessionCache.instance.putOnboarding(
+        userId,
+        OnboardingState.fromUserMap(data),
+      );
+      return;
+    }
+    final bool awardedPersonalize =
+        onboarding['tippyPersonalizeXpAwarded'] == true;
+    final bool awardedCreatorCard =
+        onboarding['creatorCardCompleted'] == true ||
+            onboarding['tippyCreatorCardXpAwarded'] == true;
+    await _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'hasCompletedOnboarding': true,
+        'onboardingCompleted': true,
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.completed,
+          'completed': true,
+          'currentStep': OnboardingV1Constants.completedStepMarker,
+          'hasSeenIntro': true,
+          'creatorCardCompleted': true,
+          'essentialProfileComplete': true,
+          'tippyFunnelCompleted': true,
+          'tippyPersonalizeXpAwarded': true,
+          'tippyCreatorCardXpAwarded': true,
+          'classicReplacedByTippy': true,
+          'completedAt': FieldValue.serverTimestamp(),
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+      },
+    );
+    AppSessionCache.instance.putOnboarding(
+      userId,
+      const OnboardingState(
+        version: OnboardingV1Constants.version,
+        completed: true,
+        status: OnboardingStatus.completed,
+        currentStep: OnboardingV1Constants.completedStepMarker,
+        hasSeenIntro: true,
+        creatorGoals: <String>[],
+        platforms: <String>[],
+        premiumOfferDismissed: false,
+        slim7Completed: true,
+        tippyOnboardingV1Attached: true,
+        tippyFunnelCompleted: true,
+        essentialProfileComplete: true,
+      ),
+    );
+    if (!awardedPersonalize) {
+      _scheduleOnboardingGamificationEvent(
+        type: GamificationEventTypes.onboardingPersonalized,
+        entityType: 'user',
+        entityId: userId,
+        metadata: <String, dynamic>{
+          'rewardXp': OnboardingV1Constants.personalizeRewardXp,
+          'source': 'tippy_onboarding_v1',
+        },
+      );
+    }
+    if (!awardedCreatorCard) {
+      _scheduleOnboardingGamificationEvent(
+        type: GamificationEventTypes.creatorCardCompleted,
+        entityType: 'user',
+        entityId: userId,
+        metadata: <String, dynamic>{
+          'rewardXp': OnboardingV1Constants.creatorCardRewardXp,
+          'source': 'tippy_onboarding_v1',
+        },
+      );
+      _scheduleOnboardingGamificationEvent(
+        type: GamificationEventTypes.profileCompleted,
+        entityType: 'user',
+        entityId: userId,
+        metadata: <String, dynamic>{'source': 'tippy_onboarding_v1'},
+      );
+    }
+    _scheduleOnboardingGamificationEvent(
+      type: GamificationEventTypes.userOnboardingCompleted,
+      entityType: 'user',
+      entityId: userId,
+      metadata: <String, dynamic>{
+        'rewardXp': OnboardingV1Constants.levelOneUnlockRewardXp,
+        'source': 'tippy_onboarding_v1',
+      },
+    );
+  }
+
+  /// Final Tippy landing choice — marks funnel complete for OnboardingGate.
+  /// Always updates [AppSessionCache] so the overlay can dismiss even when
+  /// Firestore client writes are soft-skipped (permission-denied).
+  Future<void> completeTippyLanding({
+    required String userId,
+    required String landingChoice,
+  }) async {
+    await completeClassicOnboardingReplacedByTippy(userId);
+    await _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'hasCompletedOnboarding': true,
+        'onboardingCompleted': true,
+        'onboarding': <String, dynamic>{
+          'version': OnboardingV1Constants.version,
+          'status': OnboardingStatus.completed,
+          'completed': true,
+          'currentStep': OnboardingV1Constants.completedStepMarker,
+          'hasSeenIntro': true,
+          'creatorCardCompleted': true,
+          'essentialProfileComplete': true,
+          'tippyFunnelCompleted': true,
+          'landingChoice': landingChoice,
+          'classicReplacedByTippy': true,
+          'completedAt': FieldValue.serverTimestamp(),
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    );
+    final OnboardingState? cached =
+        AppSessionCache.instance.peekOnboarding(userId);
+    AppSessionCache.instance.putOnboarding(
+      userId,
+      OnboardingState(
+        version: OnboardingV1Constants.version,
+        completed: true,
+        status: OnboardingStatus.completed,
+        currentStep: OnboardingV1Constants.completedStepMarker,
+        hasSeenIntro: true,
+        creatorGoals: cached?.creatorGoals ?? const <String>[],
+        platforms: cached?.platforms ?? const <String>[],
+        premiumOfferDismissed: cached?.premiumOfferDismissed ?? false,
+        slim7Completed: true,
+        tippyOnboardingV1Attached: true,
+        tippyFunnelCompleted: true,
+        essentialProfileComplete: true,
+      ),
     );
   }
 

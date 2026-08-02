@@ -56,14 +56,20 @@ class _LinksEditViewState extends State<LinksEditView> {
         <String, Map<String, dynamic>>{};
     for (final Map<String, dynamic> platform in widget.platforms) {
       final String type = PlatformRules.normalizePlatformType(
-        platform['type'] as String? ?? '',
+        platform['type'] as String? ?? platform['platformType'] as String? ?? '',
       );
+      if (type.isEmpty) {
+        continue;
+      }
       existingPlatforms[type] = platform;
     }
     _platformLinks = _allowedPlatforms.map((String type) {
       final Map<String, dynamic>? existing = existingPlatforms[type];
-      final String username = existing?['username']?.toString() ?? '';
-      final String url = existing?['url']?.toString() ?? '';
+      String username = existing?['username']?.toString() ?? '';
+      String url = existing?['url']?.toString() ?? '';
+      if (url.isEmpty && username.isNotEmpty) {
+        url = PlatformRules.previewPlatformUrl(type, username) ?? '';
+      }
       _usernameControllers[type] = TextEditingController(text: username);
       _urlControllers[type] = TextEditingController(text: url);
       _usernameControllers[type]!.addListener(
@@ -76,14 +82,18 @@ class _LinksEditViewState extends State<LinksEditView> {
         type: type,
         username: username,
         url: url,
+        isSetupSelected: existing != null,
       );
     }).toList();
     _expandedPlatformTypes
       ..clear()
       ..addAll(
-        _platformLinks.where((PlatformLink link) => !link.isLinked).map(
-              (PlatformLink link) => link.type,
-            ),
+        _platformLinks
+            .where(
+              (PlatformLink link) =>
+                  link.isLinked || link.isSetupSelected,
+            )
+            .map((PlatformLink link) => link.type),
       );
   }
 
@@ -93,6 +103,21 @@ class _LinksEditViewState extends State<LinksEditView> {
     final bool wasLinked = link.isLinked;
     link.username = _usernameControllers[type]!.text;
     link.url = _urlControllers[type]!.text;
+    // Auto-fill full profile URL from username when URL is empty.
+    if (link.username.trim().isNotEmpty && link.url.trim().isEmpty) {
+      final String? preview =
+          PlatformRules.previewPlatformUrl(type, link.username);
+      if (preview != null && preview.isNotEmpty) {
+        link.url = preview;
+        final TextEditingController urlController = _urlControllers[type]!;
+        if (urlController.text != preview) {
+          urlController.value = TextEditingValue(
+            text: preview,
+            selection: TextSelection.collapsed(offset: preview.length),
+          );
+        }
+      }
+    }
     if (wasLinked != link.isLinked) {
       setState(() {});
     }
@@ -102,17 +127,32 @@ class _LinksEditViewState extends State<LinksEditView> {
     for (final PlatformLink link in _platformLinks) {
       link.username = _usernameControllers[link.type]!.text.trim();
       link.url = _urlControllers[link.type]!.text.trim();
+      if (link.username.isNotEmpty && link.url.isEmpty) {
+        link.url =
+            PlatformRules.previewPlatformUrl(link.type, link.username) ?? '';
+      }
     }
     final List<Map<String, dynamic>> draft = <Map<String, dynamic>>[];
     for (final PlatformLink link in _platformLinks) {
       if (link.username.isNotEmpty || link.url.isNotEmpty) {
-        draft.add(<String, dynamic>{
-          'id': DateTime.now().millisecondsSinceEpoch.toString(),
-          'type': link.type,
-          'username': link.username,
-          'followers': 0,
-          'url': link.url,
-        });
+        draft.add(
+          PlatformRules.buildEditablePlatformEntry(
+            type: link.type,
+            username: link.username,
+            url: link.url,
+          ),
+        );
+      } else if (link.isSetupSelected) {
+        // Keep Tippy/onboarding selections until the user fills a handle/URL.
+        draft.add(
+          PlatformRules.buildEditablePlatformEntry(
+            type: link.type,
+            username: '',
+            url: '',
+            id: 'tippy_${link.type}',
+            isConnected: false,
+          ),
+        );
       }
     }
     final String? validationError = PlatformRules.validatePlatformsList(draft);
@@ -252,7 +292,7 @@ class _LinksEditViewState extends State<LinksEditView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GestureDetector(
-            onTap: link.isLinked
+            onTap: (link.isLinked || link.isSetupSelected)
                 ? () {
                     setState(() {
                       if (isExpanded) {
@@ -296,7 +336,9 @@ class _LinksEditViewState extends State<LinksEditView> {
                       Text(
                         link.isLinked
                             ? _linkedSubtitle(link)
-                            : 'Add a username and direct profile link',
+                            : link.isSetupSelected
+                                ? 'Selected in setup — add username or full URL'
+                                : 'Add a username and full profile URL',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.62),
                           fontSize: 13,
@@ -308,7 +350,7 @@ class _LinksEditViewState extends State<LinksEditView> {
                     ],
                   ),
                 ),
-                if (link.isLinked) ...[
+                if (link.isLinked || link.isSetupSelected) ...[
                   const SizedBox(width: 10),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -323,9 +365,9 @@ class _LinksEditViewState extends State<LinksEditView> {
                       ),
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: const Text(
-                      'Linked',
-                      style: TextStyle(
+                    child: Text(
+                      link.isLinked ? 'Linked' : 'Selected',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -353,7 +395,7 @@ class _LinksEditViewState extends State<LinksEditView> {
                       _buildInputField(
                         label: 'Username',
                         controller: usernameController,
-                        hintText: 'Enter username',
+                        hintText: PlatformRules.handleHintForType(link.type),
                         onClear: () {
                           usernameController.clear();
                           _onFieldChanged(link.type);
@@ -363,7 +405,8 @@ class _LinksEditViewState extends State<LinksEditView> {
                       _buildInputField(
                         label: 'URL',
                         controller: urlController,
-                        hintText: 'Enter URL',
+                        hintText:
+                            'Full profile URL (${PlatformRules.displayUrlPrefix(link.type)})',
                         keyboardType: TextInputType.url,
                         onClear: () {
                           urlController.clear();
@@ -467,11 +510,13 @@ class PlatformLink {
   final String type;
   String username;
   String url;
+  final bool isSetupSelected;
 
   PlatformLink({
     required this.type,
     required this.username,
     required this.url,
+    this.isSetupSelected = false,
   });
 
   bool get isLinked => username.trim().isNotEmpty || url.trim().isNotEmpty;

@@ -40,6 +40,10 @@ class OnboardingState {
     this.hasRated = false,
     this.hasSeenMissionBannerOnHome = false,
     this.missionBannerDismissed = false,
+    this.slim7Completed = false,
+    this.tippyOnboardingV1Attached = false,
+    this.tippyFunnelCompleted = false,
+    this.essentialProfileComplete = false,
   });
 
   factory OnboardingState.initial() {
@@ -85,16 +89,54 @@ class OnboardingState {
     final bool hasSeenIntro = completed ||
         onboarding['hasSeenIntro'] == true ||
         onboarding['hasCompletedProductTour'] == true;
+    final String username =
+        (data['username'] as String?)?.trim() ??
+            (data['usernameLowercase'] as String?)?.trim() ??
+            '';
+    final String displayName =
+        (data['displayName'] as String?)?.trim() ?? '';
+    final bool hasPublicIdentity =
+        username.isNotEmpty && displayName.isNotEmpty;
+    final bool tippyAttached = onboarding['tippyOnboardingV1Attached'] == true;
+    final bool slim7Completed = onboarding['slim7Completed'] == true;
+    final bool tippyFunnelCompleted =
+        onboarding['tippyFunnelCompleted'] == true ||
+            onboarding['landingChoice'] != null;
+    // New Tippy accounts keep going through Tippy until landing — do not treat
+    // a provisional Google username as "essential profile complete".
+    final bool essentialProfileComplete =
+        onboarding['essentialProfileComplete'] == true ||
+            onboarding['creatorCardCompleted'] == true ||
+            (hasPublicIdentity &&
+                !tippyAttached &&
+                !slim7Completed &&
+                (completed || legacyCompleted));
+    // Tippy funnel is only "done" for the main app after essential identity +
+    // landing choice. Classic onboarding still uses [completed].
+    final bool tippyPathActive = tippyAttached || slim7Completed;
+    final bool tippyPathDone =
+        tippyFunnelCompleted && essentialProfileComplete;
+    bool resolvedCompleted = completed || tippyPathDone;
+    // While Tippy owns setup, never hand off to classic onboarding or feed.
+    if (tippyPathActive &&
+        (!tippyFunnelCompleted || !essentialProfileComplete)) {
+      resolvedCompleted = false;
+    }
     return OnboardingState(
       version: resolvedVersion,
-      status: completed ? OnboardingStatus.completed : status,
-      completed: completed,
+      status: resolvedCompleted ? OnboardingStatus.completed : status,
+      completed: resolvedCompleted,
       currentStep: currentStep,
-      hasSeenIntro: hasSeenIntro,
+      hasSeenIntro: hasSeenIntro || slim7Completed,
       creatorGoals: _readStringList(
-        onboarding['creatorGoals'] ?? onboarding['creatorGoal'],
+        onboarding['creatorGoals'] ??
+            onboarding['creatorGoal'] ??
+            data['creatorGoals'] ??
+            data['goals'],
       ),
-      platforms: _readStringList(onboarding['platforms']),
+      platforms: _readStringList(
+        onboarding['platforms'] ?? data['platforms'],
+      ),
       premiumOfferDismissed: onboarding['premiumOfferDismissed'] == true,
       completedAt: onboarding['completedAt'] is Timestamp
           ? onboarding['completedAt'] as Timestamp
@@ -108,6 +150,10 @@ class OnboardingState {
       hasSeenMissionBannerOnHome:
           onboarding['hasSeenMissionBannerOnHome'] == true,
       missionBannerDismissed: onboarding['missionBannerDismissed'] == true,
+      slim7Completed: slim7Completed,
+      tippyOnboardingV1Attached: tippyAttached,
+      tippyFunnelCompleted: tippyFunnelCompleted,
+      essentialProfileComplete: essentialProfileComplete,
     );
   }
 
@@ -126,6 +172,24 @@ class OnboardingState {
   final bool hasRated;
   final bool hasSeenMissionBannerOnHome;
   final bool missionBannerDismissed;
+  final bool slim7Completed;
+  final bool tippyOnboardingV1Attached;
+  final bool tippyFunnelCompleted;
+  final bool essentialProfileComplete;
+
+  bool get needsTippyGuidedProfile =>
+      !essentialProfileComplete &&
+      (tippyOnboardingV1Attached || slim7Completed);
+
+  /// Tippy path started (slim-7 and/or attach).
+  bool get isTippyPathActive =>
+      tippyOnboardingV1Attached || slim7Completed;
+
+  /// Tippy owns post-auth setup until landing + essential profile — never
+  /// stack classic "creator focus" / creator-card onboarding.
+  bool get isTippyFunnelIncomplete =>
+      isTippyPathActive &&
+      (!tippyFunnelCompleted || !essentialProfileComplete);
 
   bool get isInProgress =>
       !completed && status == OnboardingStatus.inProgress;
@@ -154,7 +218,11 @@ class OnboardingState {
             softRatingDismissed == other.softRatingDismissed &&
             hasRated == other.hasRated &&
             hasSeenMissionBannerOnHome == other.hasSeenMissionBannerOnHome &&
-            missionBannerDismissed == other.missionBannerDismissed;
+            missionBannerDismissed == other.missionBannerDismissed &&
+            slim7Completed == other.slim7Completed &&
+            tippyOnboardingV1Attached == other.tippyOnboardingV1Attached &&
+            tippyFunnelCompleted == other.tippyFunnelCompleted &&
+            essentialProfileComplete == other.essentialProfileComplete;
   }
 
   @override
@@ -172,6 +240,10 @@ class OnboardingState {
         hasRated,
         hasSeenMissionBannerOnHome,
         missionBannerDismissed,
+        slim7Completed,
+        tippyOnboardingV1Attached,
+        tippyFunnelCompleted,
+        essentialProfileComplete,
       );
 }
 

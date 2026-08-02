@@ -98,6 +98,49 @@ void main() {
       expect(platforms.first['isConnected'], false);
     });
 
+    test('normalizePlatformsForFirestore preserves Tippy empty stubs', () {
+      final List<Map<String, dynamic>> normalized =
+          UserProfileFirestore.normalizePlatformsForFirestore(
+        <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'tippy_twitch',
+            'type': 'twitch',
+            'platformType': 'twitch',
+            'username': '',
+            'url': null,
+            'isConnected': false,
+            'followers': 0,
+          },
+        ],
+      );
+      expect(normalized.length, 1);
+      expect(normalized.first['isConnected'], false);
+      final List<Map<String, dynamic>> parsed =
+          UserProfileFirestore.parsePlatformsFromUserData(<String, dynamic>{
+        'platforms': normalized,
+      });
+      expect(parsed.length, 1);
+      expect(parsed.first['type'], 'twitch');
+      expect(parsed.first['isConnected'], false);
+    });
+
+    test('parsePlatforms keeps tippy stubs even when isConnected was lost', () {
+      final List<Map<String, dynamic>> platforms =
+          UserProfileFirestore.parsePlatformsFromUserData(<String, dynamic>{
+        'platforms': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'tippy_youtube',
+            'type': 'youtube',
+            'username': '',
+            'url': null,
+            'isConnected': true,
+          },
+        ],
+      });
+      expect(platforms.length, 1);
+      expect(platforms.first['type'], 'youtube');
+    });
+
     test('normalizePlatformsForFirestore avoids serverTimestamp in arrays', () {
       final List<Map<String, dynamic>> normalized =
           UserProfileFirestore.normalizePlatformsForFirestore(

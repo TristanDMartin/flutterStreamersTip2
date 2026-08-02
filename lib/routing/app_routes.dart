@@ -32,6 +32,7 @@ import '../features/academy/views/academy_search_view.dart';
 import '../features/approvals/approval_review_view.dart';
 import '../features/reports/weekly_report_view.dart';
 import '../features/studio/studio_team_control_view.dart';
+import '../features/onboarding_tippy/tippy_onboarding_view.dart';
 import '../features/tippy/models/tippy_launch_context.dart';
 import '../features/tippy/tippy_chat_page.dart';
 
@@ -316,6 +317,12 @@ class AppRoutes {
         return _buildRoute(
           settings: routeSettings,
           builder: (_) => TippyChatPage(launchContext: launchContext),
+          fullscreenDialog: true,
+        );
+      case onboarding:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const TippyOnboardingView(),
           fullscreenDialog: true,
         );
       case growthAnalytics:

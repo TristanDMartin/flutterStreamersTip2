@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/backend/site_api_base.dart';
+import '../../models/activity_notification.dart';
 
 /// Match website `HIDE_CONTENT_PLAN_EXPIRED_IN_ACTIVITY`.
 const bool kHideContentPlanExpiredInActivity = true;
@@ -28,7 +29,106 @@ const Set<String> kGlobalSystemNotificationTypes = <String>{
   'message',
   'newevent',
   'new_event',
+  'retention_prompt',
+  'retention',
+  'session_summary',
+  'sessionsummary',
+  'coaching_report',
+  'coachingreport',
+  'agent_plan_outcome',
+  'agentplanoutcome',
+  'workspace_automation',
+  'workspaceautomation',
 };
+
+/// Canonical Activity row type. Unknown / system prompts must NOT default to
+/// [ActivityNotificationType.like] (that produces false "liked your clip" UI).
+ActivityNotificationType activityNotificationTypeFromString(String? raw) {
+  final String normalized = (raw ?? '').trim().toLowerCase();
+  switch (normalized) {
+    case 'follow_user':
+    case 'follow':
+    case 'follows':
+    case 'collab_invite':
+    case 'collabinvite':
+      return ActivityNotificationType.follow;
+    case 'like_video':
+    case 'like_post':
+    case 'like':
+    case 'likes':
+    case 'like_comment':
+    case 'liked_comment':
+      return ActivityNotificationType.like;
+    case 'comment_video':
+    case 'comment_post':
+    case 'comment':
+    case 'comments':
+      return ActivityNotificationType.comment;
+    case 'commentreply':
+    case 'comment_reply':
+    case 'reply_video_comment':
+    case 'replyvideocomment':
+    case 'video_comment_reply':
+    case 'comment_video_reply':
+    case 'reply':
+    case 'replies':
+      return ActivityNotificationType.commentReply;
+    case 'tag':
+    case 'tags':
+      return ActivityNotificationType.tag;
+    case 'mention_user':
+    case 'mention':
+    case 'mentions':
+      return ActivityNotificationType.mention;
+    case 'newvideo':
+    case 'new_video':
+    case 'video':
+      return ActivityNotificationType.newVideo;
+    case 'milestone':
+    case 'milestones':
+      return ActivityNotificationType.milestone;
+    case 'livestream':
+    case 'live_stream':
+    case 'live':
+    case 'new_event':
+    case 'newevent':
+      return ActivityNotificationType.liveStream;
+    case 'admin_broadcast':
+    case 'adminbroadcast':
+    case 'broadcast':
+    case 'content_plan_expired':
+    case 'contentplanexpired':
+    case 'content_plan':
+    case 'content_plan_queue':
+    case 'content_plan_recap':
+    case 'plan_expired':
+    case 'tippy_coach':
+    case 'tippycoach':
+    case 'message':
+    case 'retention_prompt':
+    case 'retention':
+    case 'session_summary':
+    case 'sessionsummary':
+    case 'coaching_report':
+    case 'coachingreport':
+    case 'agent_plan_outcome':
+    case 'agentplanoutcome':
+    case 'workspace_approval_requested':
+    case 'workspace_approval_decided':
+    case 'content_approval_requested':
+    case 'content_approval_decided':
+    case 'workspace_automation':
+    case 'workspaceautomation':
+      return ActivityNotificationType.adminBroadcast;
+    default:
+      if (normalized.isEmpty || isGlobalSystemNotificationType(normalized)) {
+        return ActivityNotificationType.adminBroadcast;
+      }
+      // Prefer broadcast over like so Tippy/retention/XP prompts never look
+      // like "creators liked your clip" for brand-new accounts.
+      return ActivityNotificationType.adminBroadcast;
+  }
+}
 
 /// Website hides these from the Activity feed and unread badge.
 bool shouldHideFromActivityFeed(String? type) {
@@ -159,7 +259,8 @@ String activityNotificationDisplayMessage(Map<String, dynamic> data) {
     data['messagePreview'],
   ]);
   if (isTippyCoachNotificationType(type) ||
-      isContentPlanNotificationType(type)) {
+      isContentPlanNotificationType(type) ||
+      isGlobalSystemNotificationType(type)) {
     if (title.isNotEmpty && body.isNotEmpty && title != body) {
       return '$title\n$body';
     }

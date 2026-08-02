@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../constants/app_colors.dart';
 import '../../routing/app_routes.dart';
 import '../../views/menu_view.dart';
 import 'profile_view_header_section.dart';
@@ -39,9 +40,8 @@ class ProfileViewFrontShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
-    final Color onSurface = Theme.of(context).colorScheme.onSurface;
     return ColoredBox(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      color: AppColors.profileViewBackground,
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
@@ -52,22 +52,22 @@ class ProfileViewFrontShell extends StatelessWidget {
             automaticallyImplyLeading: false,
             elevation: 0,
             scrolledUnderElevation: 0,
-            backgroundColor: Colors.transparent,
+            backgroundColor: AppColors.profileViewBackground,
             surfaceTintColor: Colors.transparent,
             actions: <Widget>[
               IconButton(
-                icon: Icon(
+                icon: const Icon(
                   Icons.flip,
-                  color: onSurface,
+                  color: Colors.white,
                   size: 24,
                 ),
                 onPressed: onFlip,
               ),
               if (showStreamerCardButton)
                 IconButton(
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.card_membership,
-                    color: onSurface,
+                    color: Colors.white,
                     size: 24,
                   ),
                   onPressed: onStreamerCard,
@@ -75,7 +75,7 @@ class ProfileViewFrontShell extends StatelessWidget {
               IconButton(
                 icon: Icon(
                   Icons.more_horiz,
-                  color: onSurface.withValues(alpha: 0.7),
+                  color: Colors.white.withValues(alpha: 0.72),
                   size: 24,
                 ),
                 onPressed: () {
@@ -90,7 +90,7 @@ class ProfileViewFrontShell extends StatelessWidget {
               ),
             ],
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: ProfileViewHeaderSection(
               userData: userData,
@@ -98,7 +98,7 @@ class ProfileViewFrontShell extends StatelessWidget {
               isCurrentUser: isCurrentUser,
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
           SliverToBoxAdapter(
             child: ProfileViewTabbedSection(
               selectedTabIndex: selectedTabIndex,

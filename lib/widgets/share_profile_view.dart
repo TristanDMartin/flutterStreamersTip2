@@ -7,6 +7,7 @@ import '../constants/app_colors.dart';
 import '../services/profile_link_service.dart';
 import '../services/url_handler_service.dart';
 import '../utils/playback_route_suppression.dart';
+import 'profile/profile_username_utils.dart';
 // Removed qr_flutter to avoid missing dependency for now
 
 class ShareProfileView extends StatefulWidget {
@@ -28,7 +29,8 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   bool _isLoadingQR = true;
 
   String _buildProfileUrl() {
-    final String username = (widget.user['username'] ?? '').toString().trim();
+    final String username =
+        ProfileUsernameUtils.resolveUsername(widget.user);
     final String userId = (widget.user['id'] ?? '').toString().trim();
     return ProfileLinkService.publicProfileUrl(
       username: username,
@@ -37,14 +39,16 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   }
 
   String _buildShareText() {
-    final displayName = (widget.user['displayName'] ?? '').toString().trim();
-    final username = (widget.user['username'] ?? '').toString().trim();
-    final profileLabel = displayName.isNotEmpty
+    final String displayName =
+        ProfileUsernameUtils.resolveDisplayName(widget.user);
+    final String username =
+        ProfileUsernameUtils.resolveUsername(widget.user);
+    final String profileLabel = displayName.isNotEmpty
         ? displayName
         : username.isNotEmpty
             ? '@$username'
             : 'this creator';
-    final link = _shareURL ?? _buildProfileUrl();
+    final String link = _shareURL ?? _buildProfileUrl();
     return 'Check out $profileLabel on StreamersTip!\n$link';
   }
 
@@ -407,20 +411,31 @@ class _ShareProfileViewState extends State<ShareProfileView> {
         Column(
           children: [
             Text(
-              widget.user['displayName'] ?? '',
+              ProfileUsernameUtils.resolveDisplayName(widget.user),
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '@${widget.user['username'] ?? ''}',
-              style: TextStyle(
-                color: cs.onSurface.withValues(alpha: 0.72),
-                fontSize: 14,
-              ),
+            Builder(
+              builder: (BuildContext context) {
+                final String atHandle =
+                    ProfileUsernameUtils.formatAtHandle(widget.user);
+                if (atHandle.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    atHandle,
+                    style: TextStyle(
+                      color: cs.onSurface.withValues(alpha: 0.72),
+                      fontSize: 14,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),

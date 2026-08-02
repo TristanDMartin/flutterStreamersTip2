@@ -243,7 +243,7 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     return switch (index) {
       0 => PlaybackOwners.home,
       1 => PlaybackOwners.network,
-      3 => PlaybackOwners.profile,
+      4 => PlaybackOwners.profile,
       _ => null,
     };
   }

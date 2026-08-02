@@ -6,7 +6,6 @@ import '../../constants/app_colors.dart';
 import '../../models/home_video.dart';
 import '../../providers/video_service_provider.dart';
 import '../../utils/post_count_rules.dart';
-import '../../core/theme/support_shell_style.dart';
 import '../../features/creator_score/creator_score_widgets.dart';
 import '../../models/user_status.dart' show UserPresence, UserStatus;
 import '../../providers/status_provider.dart';
@@ -15,9 +14,11 @@ import '../../utils/avatar_url_resolver.dart';
 import '../edit_profile_view.dart';
 import '../share_profile_view.dart';
 import '../user_stats_row.dart';
+import '../profile/profile_username_utils.dart';
 import 'user_status_color.dart';
 
-/// Avatar, name, stats card, and primary actions for the profile header.
+/// Tippy-aligned identity header: avatar, name, handle, quiet stats, CTAs.
+/// Bio lives on the flip-side [ProfileBackView], matching Streamer Card.
 class ProfileViewHeaderSection extends StatelessWidget {
   const ProfileViewHeaderSection({
     super.key,
@@ -32,21 +33,40 @@ class ProfileViewHeaderSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        _ProfileAvatarRing(
-          userData: userData,
-          isCurrentUser: isCurrentUser,
-        ),
-        const SizedBox(height: 18),
-        _ProfileNameAndHandle(userData: userData),
-        const SizedBox(height: 22),
-        _ProfileStatsSystemCard(
-          userData: userData,
-          profileUserId: profileUserId,
-          isCurrentUser: isCurrentUser,
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Column(
+            children: <Widget>[
+              const SizedBox(height: 14),
+              _ProfileAvatarRing(
+                userData: userData,
+                isCurrentUser: isCurrentUser,
+              ),
+              const SizedBox(height: 16),
+              _ProfileNameAndHandle(userData: userData),
+              const SizedBox(height: 18),
+              _ProfileQuietStats(
+                profileUserId: profileUserId,
+              ),
+              if (isCurrentUser) ...<Widget>[
+                const SizedBox(height: 18),
+                _ProfilePrimaryButtonsRow(userData: userData),
+              ],
+            ],
+          ),
+          Positioned(
+            top: 10,
+            right: 0,
+            child: CreatorScoreBadge(
+              userId: profileUserId,
+              compact: true,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -62,13 +82,7 @@ class _ProfileAvatarRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final String? avatarUrl = resolveAvatarUrl(userData);
-    final Color avatarInnerRing = shell.isLight
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
-        : Colors.black.withValues(alpha: 0.2);
-    final Color placeholderIcon = shell.iconDim;
     return Stack(
       clipBehavior: Clip.none,
       children: <Widget>[
@@ -92,7 +106,7 @@ class _ProfileAvatarRing extends StatelessWidget {
               height: 104,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: avatarInnerRing,
+                color: Colors.black.withValues(alpha: 0.35),
               ),
               child: ClipOval(
                 child: avatarUrl != null && avatarUrl.isNotEmpty
@@ -101,15 +115,16 @@ class _ProfileAvatarRing extends StatelessWidget {
                         key: ValueKey<String>(avatarUrl),
                         fit: BoxFit.cover,
                         errorBuilder:
-                            (BuildContext c, Object e, StackTrace? s) => Icon(
+                            (BuildContext c, Object e, StackTrace? s) =>
+                                Icon(
                           Icons.person,
-                          color: placeholderIcon,
+                          color: Colors.white.withValues(alpha: 0.55),
                           size: 48,
                         ),
                       )
                     : Icon(
                         Icons.person,
-                        color: placeholderIcon,
+                        color: Colors.white.withValues(alpha: 0.55),
                         size: 48,
                       ),
               ),
@@ -138,7 +153,7 @@ class _ProfileAvatarRing extends StatelessWidget {
                         color: c,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.surface,
+                          color: AppColors.profileViewBackground,
                           width: 2,
                         ),
                         boxShadow: <BoxShadow>[
@@ -168,51 +183,49 @@ class _ProfileNameAndHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final String displayName =
+        ProfileUsernameUtils.resolveDisplayName(userData);
+    final String atHandle = ProfileUsernameUtils.formatAtHandle(userData);
     return Column(
       children: <Widget>[
         Text(
-          userData['displayName'] as String? ?? 'Unknown User',
-          style: TextStyle(
-            color: scheme.onSurface,
-            fontSize: 34,
+          displayName.isNotEmpty ? displayName : 'Unknown User',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 30,
             fontWeight: FontWeight.w900,
-            height: 1.0,
+            height: 1.05,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          '@${userData['username'] ?? 'unknown'}',
-          style: TextStyle(
-            color: scheme.onSurface.withValues(alpha: 0.72),
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            height: 1.0,
+        if (atHandle.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 4),
+          Text(
+            atHandle,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 }
 
-class _ProfileStatsSystemCard extends ConsumerWidget {
-  const _ProfileStatsSystemCard({
-    required this.userData,
+class _ProfileQuietStats extends ConsumerWidget {
+  const _ProfileQuietStats({
     required this.profileUserId,
-    required this.isCurrentUser,
   });
 
-  final Map<String, dynamic> userData;
   final String profileUserId;
-  final bool isCurrentUser;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final List<HomeVideo> allVideos =
-        ref.watch(videoServiceStateProvider);
-    final bool isVideoServiceLoading =
-        ref.watch(videoServiceLoadingProvider);
+    final List<HomeVideo> allVideos = ref.watch(videoServiceStateProvider);
+    final bool isVideoServiceLoading = ref.watch(videoServiceLoadingProvider);
     final List<HomeVideo> userVideos =
         ref.watch(userVideosProvider(profileUserId));
     final int? postsCountOverride = resolvePostsCountOverride(
@@ -220,65 +233,21 @@ class _ProfileStatsSystemCard extends ConsumerWidget {
       allVideos: allVideos,
       isVideoServiceLoading: isVideoServiceLoading,
     );
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: <Widget>[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: scheme.outline.withValues(alpha: 0.35),
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: 0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              children: <Widget>[
-                UserStatsRow(
-                  userId: profileUserId,
-                  postsCountOverride: postsCountOverride,
-                  spacing: 28,
-                  valueTextStyle: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    height: 1.0,
-                  ),
-                  labelTextStyle: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: 0.62),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 1.0,
-                  ),
-                ),
-                if (isCurrentUser) ...<Widget>[
-                  const SizedBox(height: 18),
-                  Container(
-                    height: 1,
-                    color: scheme.outline.withValues(alpha: 0.25),
-                  ),
-                  const SizedBox(height: 18),
-                  _ProfilePrimaryButtonsRow(userData: userData),
-                ],
-              ],
-            ),
-          ),
-          Positioned(
-            top: -24,
-            right: -10,
-            child: CreatorScoreBadge(userId: profileUserId),
-          ),
-        ],
+    return UserStatsRow(
+      userId: profileUserId,
+      postsCountOverride: postsCountOverride,
+      spacing: 28,
+      valueTextStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+        height: 1.0,
+      ),
+      labelTextStyle: TextStyle(
+        color: Colors.white.withValues(alpha: 0.55),
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        height: 1.0,
       ),
     );
   }
@@ -357,8 +326,6 @@ class _ProfileHeaderActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final Color fg = isPrimary ? scheme.onPrimary : scheme.onSurface;
     return GestureDetector(
       onTap: onPressed,
       child: Container(
@@ -366,28 +333,43 @@ class _ProfileHeaderActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: isPrimary
               ? const LinearGradient(
-                  colors: AppColors.supportAccentGradient,
+                  colors: <Color>[
+                    AppColors.primary,
+                    Color(0xFF7768DF),
+                    Color(0xFF4897D2),
+                  ],
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 )
               : null,
-          color: isPrimary ? null : scheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(22),
+          color: isPrimary
+              ? null
+              : Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: isPrimary
-                ? scheme.onPrimary.withValues(alpha: 0.22)
-                : scheme.outline.withValues(alpha: 0.35),
+                ? Colors.white.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.12),
           ),
+          boxShadow: isPrimary
+              ? <BoxShadow>[
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.32),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon, color: fg, size: 18),
+            Icon(icon, color: Colors.white, size: 18),
             const SizedBox(width: 8),
             Text(
               text,
-              style: TextStyle(
-                color: fg,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),

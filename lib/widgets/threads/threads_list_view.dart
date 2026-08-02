@@ -6,17 +6,26 @@ import '../../services/forum_service.dart';
 import '../../utils/user_facing_error.dart';
 import '../../models/forum_category.dart';
 import '../../core/theme/support_shell_style.dart';
+import '../../features/threads/creator_threads_shell.dart';
+import '../../features/threads/threads_repository.dart';
 import 'thread_detail_screen.dart';
 import 'create_thread_screen.dart';
 import 'forum_post_card.dart';
 
 /// Threads list view for the Threads tab
 class ThreadsListView extends ConsumerStatefulWidget {
-  const ThreadsListView({super.key, this.embeddedInHome = true});
+  const ThreadsListView({
+    super.key,
+    this.embeddedInHome = true,
+    this.threadsV2UiEnabled,
+  });
 
   /// When false, shows a standalone header with back navigation (e.g. from
   /// CommentView onboarding).
   final bool embeddedInHome;
+
+  /// Override for tests / remote config. Defaults to compile-time flag.
+  final bool? threadsV2UiEnabled;
 
   @override
   ConsumerState<ThreadsListView> createState() => _ThreadsListViewState();
@@ -102,6 +111,32 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
 
   @override
   Widget build(BuildContext context) {
+    const bool envUi = bool.fromEnvironment(
+      'THREADS_V2_UI',
+      defaultValue: false,
+    );
+    final bool useV2Ui = widget.threadsV2UiEnabled ?? envUi;
+    if (useV2Ui) {
+      return CreatorThreadsShell(
+        repository: FirestoreThreadsRepository(
+          flags: const ThreadsFeatureFlags(
+            readsEnabled: false,
+            writesEnabled: false,
+            uiEnabled: true,
+          ),
+        ),
+        embeddedInHome: widget.embeddedInHome,
+        onOpenThread: (thread) {
+          Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (BuildContext context) =>
+                  ThreadDetailScreen(postId: thread.id),
+            ),
+          ).then((_) => _loadThreads());
+        },
+      );
+    }
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
     // Calculate header height: SafeArea top + FeedSelector height (50) + margins (8*2)

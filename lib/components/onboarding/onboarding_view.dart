@@ -54,7 +54,34 @@ class _OnboardingViewState extends State<OnboardingView> {
     _emailBannerDismissed = widget.initialState.emailBannerDismissed;
     _profileSeed = _buildFallbackProfileSeed();
     _pageController = PageController(initialPage: _step);
+    // Tippy already collected focus + creator identity — never replay classic.
+    // If funnel is still incomplete, gate should show Tippy; do not force
+    // tippyFunnelCompleted via classic replacement.
+    if (widget.initialState.isTippyFunnelIncomplete) {
+      return;
+    }
+    if (widget.initialState.slim7Completed ||
+        widget.initialState.tippyOnboardingV1Attached ||
+        widget.initialState.tippyFunnelCompleted) {
+      unawaited(_finishBecauseTippyAlreadyCompleted());
+      return;
+    }
     unawaited(_loadProfileSeedOnce());
+  }
+
+  Future<void> _finishBecauseTippyAlreadyCompleted() async {
+    if (_isCompleting) {
+      return;
+    }
+    setState(() {
+      _isCompleting = true;
+    });
+    try {
+      await _service.completeClassicOnboardingReplacedByTippy(widget.userId);
+    } catch (_) {}
+    if (mounted) {
+      widget.onCompleted();
+    }
   }
 
   Map<String, dynamic> _buildFallbackProfileSeed() {
@@ -99,6 +126,10 @@ class _OnboardingViewState extends State<OnboardingView> {
       return 3;
     }
     if (state.currentStep >= 2) {
+      return 2;
+    }
+    // Slim 7 Tippy answers replace the personalize (goals/platforms) step.
+    if (state.slim7Completed || state.tippyOnboardingV1Attached) {
       return 2;
     }
     if (state.currentStep >= 1 || state.hasSeenIntro) {
@@ -220,6 +251,20 @@ class _OnboardingViewState extends State<OnboardingView> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.initialState.isTippyFunnelIncomplete) {
+      return const SizedBox.shrink();
+    }
+    if (_isCompleting &&
+        (widget.initialState.slim7Completed ||
+            widget.initialState.tippyOnboardingV1Attached ||
+            widget.initialState.tippyFunnelCompleted)) {
+      return const Scaffold(
+        backgroundColor: OnboardingStyle.background,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: OnboardingStyle.background,
       resizeToAvoidBottomInset: true,

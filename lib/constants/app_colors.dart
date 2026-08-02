@@ -14,8 +14,9 @@ class AppColors {
   // MARK: - Support/Profile Palette
   static const Color supportBackground = Color(0xFF1C135D);
 
-  /// Profile tab, front/back, edit, and share — solid black.
-  static const Color profileViewBackground = Color(0xFF000000);
+  /// Profile tab + Tippy-aligned creator surfaces — solid navy (matches Tippy).
+  static const Color tippyBackground = Color(0xFF0B1224);
+  static const Color profileViewBackground = tippyBackground;
   static const Color supportTopSurface = Color(0xFF6137EB);
   static const Color supportAccent = primary;
   static const List<Color> supportAccentGradient = [

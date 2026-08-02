@@ -6,6 +6,7 @@ import 'dart:async';
 
 import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart' as app_user;
+import '../constants/app_colors.dart';
 import '../providers/follow_refresh_provider.dart';
 import '../providers/main_tab_provider.dart';
 import '../utils/interaction_diagnostics.dart';
@@ -254,9 +255,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       _viewerDataForStreamerCardGate(),
     );
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      extendBody: true,
-      extendBodyBehindAppBar: true,
+      backgroundColor: AppColors.profileViewBackground,
+      extendBody: false,
+      extendBodyBehindAppBar: false,
       body: KeyedSubtree(
         child: AnimatedBuilder(
           animation: _flipAnimation,

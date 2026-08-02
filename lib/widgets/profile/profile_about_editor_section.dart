@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'editable_profile_field.dart';
+import 'profile_username_utils.dart';
 
 class ProfileAboutEditorSection extends StatelessWidget {
   const ProfileAboutEditorSection({
@@ -67,7 +68,7 @@ class ProfileAboutEditorSection extends StatelessWidget {
                 ],
                 if (showUsernameRow) ...<Widget>[
                   _UsernameRow(
-                    username: (user['username'] as String?) ?? '',
+                    username: ProfileUsernameUtils.resolveUsername(user),
                   ),
                   _ProfileSectionDivider(),
                 ],
@@ -252,7 +253,7 @@ class _UsernameRow extends StatelessWidget {
           ),
           const Spacer(),
           Text(
-            username.isEmpty ? '@' : '@$username',
+            username.isEmpty ? 'Not set' : '@$username',
             style: TextStyle(
               color: on.withValues(alpha: 0.72),
               fontSize: 15,

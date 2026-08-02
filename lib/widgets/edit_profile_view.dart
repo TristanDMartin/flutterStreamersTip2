@@ -757,9 +757,8 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   void _showLinksEditor() {
-    final currentPlatforms = List<Map<String, dynamic>>.from(
-      _user['platforms'] ?? [],
-    );
+    final List<Map<String, dynamic>> currentPlatforms =
+        UserProfileFirestore.parsePlatformsFromUserData(_user);
 
     Navigator.push(
       context,
@@ -1321,6 +1320,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     final ColorScheme cs = Theme.of(context).colorScheme;
     final Color on = cs.onSurface;
     final Color muted = on.withValues(alpha: 0.45);
+    final String atHandle = ProfileUsernameUtils.formatAtHandle(_user);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -1338,7 +1338,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           ),
           const Spacer(),
           Text(
-            '@${_user['username'] ?? ''}',
+            atHandle.isNotEmpty ? atHandle : 'Not set',
             style: TextStyle(
               color: on.withValues(alpha: 0.72),
               fontSize: 15,
@@ -1357,8 +1357,9 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Widget _buildPlatformsRow() {
-    final platforms = _user['platforms'] as List<dynamic>? ?? [];
-    final platformCount = platforms.length;
+    final List<Map<String, dynamic>> platforms =
+        UserProfileFirestore.parsePlatformsFromUserData(_user);
+    final int platformCount = platforms.length;
 
     final ColorScheme cs = Theme.of(context).colorScheme;
     final Color on = cs.onSurface;

@@ -197,13 +197,20 @@ abstract final class UserProfileFirestore {
       final String type = readPlatformType(map);
       final String username = (map['username']?.toString() ?? '').trim();
       final String url = (map['url']?.toString() ?? '').trim();
-      final bool isOnboardingStub = map['isConnected'] == false;
+      final String id = map['id']?.toString() ?? '';
+      final bool isOnboardingStub = map['isConnected'] == false ||
+          id.startsWith('tippy_') ||
+          id.startsWith('onboarding_') ||
+          (username.isEmpty &&
+              url.isEmpty &&
+              PlatformRules.editablePlatformTypes.contains(type));
       if (username.isEmpty && url.isEmpty && !isOnboardingStub) {
         continue;
       }
       out.add(<String, dynamic>{
-        'id': map['id']?.toString() ??
-            '${type}_${out.length}_${DateTime.now().millisecondsSinceEpoch}',
+        'id': id.isNotEmpty
+            ? id
+            : '${type}_${out.length}_${DateTime.now().millisecondsSinceEpoch}',
         'type': type,
         'platformType': type,
         'displayName':
@@ -211,7 +218,7 @@ abstract final class UserProfileFirestore {
         'username': username,
         'followers': (map['followers'] as num?)?.toInt() ?? 0,
         'url': url.isEmpty ? null : url,
-        'isConnected': map['isConnected'] ?? true,
+        'isConnected': map['isConnected'] ?? !isOnboardingStub,
         'isVerified': map['isVerified'] ?? false,
         'isAdultGated': map['isAdultGated'] ?? PlatformRules.isAgeRestrictedType(type),
       });
@@ -405,12 +412,16 @@ abstract final class UserProfileFirestore {
     final DateTime now = DateTime.now();
     for (final Map<String, dynamic> raw in base) {
       final String type = readPlatformType(raw);
+      final String username = (raw['username']?.toString() ?? '').trim();
+      final String url = (raw['url']?.toString() ?? '').trim();
+      final bool isStub =
+          raw['isConnected'] == false || (username.isEmpty && url.isEmpty);
       enriched.add(<String, dynamic>{
         ...raw,
         'type': type,
         'platformType': type,
         'displayName': PlatformRules.displayNameForType(type),
-        'isConnected': raw['isConnected'] ?? true,
+        'isConnected': raw['isConnected'] ?? !isStub,
         'isVerified': raw['isVerified'] ?? false,
         'isAdultGated': PlatformRules.isAgeRestrictedType(type),
         'updatedAt': Timestamp.fromDate(now),

@@ -37,6 +37,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   final Map<String, ActivityNotification> _primaryItems = {};
   final Map<String, ActivityNotification> _forumItems = {};
   bool _isMarkingAllRead = false;
+  Completer<void>? _markAllCompleter;
+  final Set<String> _forceDeliveredIds = <String>{};
   bool _isInitialized = false;
   String? _activeUserId;
   VoidCallback? _blockListListener;
@@ -314,6 +316,17 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         if (item == null) {
           continue;
         }
+        if (_forceDeliveredIds.contains(item.id)) {
+          _primaryItems[item.id] = item.copyWith(status: 'delivered');
+          continue;
+        }
+        final ActivityNotification? existing = _primaryItems[item.id];
+        if (existing != null &&
+            existing.status == 'delivered' &&
+            item.status == 'pending') {
+          // Stale unread get after mark-as-read — keep delivered.
+          continue;
+        }
         _primaryItems[item.id] = item;
       }
     } catch (e) {
@@ -448,16 +461,17 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       return null;
     }
 
-    final notificationType = (data['type'] ?? 'like').toString();
+    final notificationType = (data['type'] ?? '').toString();
     if (shouldHideFromActivityFeed(notificationType)) {
       return null;
     }
-    final bool isRead = !isActivityNotificationDocUnread(data);
+    final bool isRead = !isActivityNotificationDocUnread(data) ||
+        _forceDeliveredIds.contains(doc.id);
     final String displayMessage = activityNotificationDisplayMessage(data);
-    final thumbnailUrl = await _resolvePrimaryThumbnail(data, videoId);
+    final String thumbnailUrl = await _resolvePrimaryThumbnail(data, videoId);
     return ActivityNotification(
       id: doc.id,
-      type: _typeFromString(notificationType),
+      type: activityNotificationTypeFromString(notificationType),
       user: await _mapToUser(data),
       timestamp: readActivityTimestamp(data),
       postThumbnailUrl: thumbnailUrl.ifEmpty(null),
@@ -467,7 +481,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       chatId: _stringField(data, const ['chatId']).ifEmpty(null),
       actionUrl: _stringField(data, const ['actionUrl']).ifEmpty(null),
       // Keep the Firestore type for Tippy/planner routing + filters.
-      actionType: notificationType,
+      actionType: notificationType.isEmpty ? 'admin_broadcast' : notificationType,
       threadId: _stringField(data, const ['threadId']).ifEmpty(null),
       postId: _stringField(data, const ['postId']).ifEmpty(null),
       commentId: _stringField(data, const ['commentId']).ifEmpty(null),
@@ -487,12 +501,15 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       return null;
     }
 
-    final notificationType = (data['type'] ?? 'comment').toString();
-    final bool isRead = !isActivityNotificationDocUnread(data);
+    final notificationType = (data['type'] ?? '').toString();
+    final String forumId = '$_forumIdPrefix${doc.id}';
+    final bool isRead = !isActivityNotificationDocUnread(data) ||
+        _forceDeliveredIds.contains(forumId) ||
+        _forceDeliveredIds.contains(doc.id);
     final String displayMessage = activityNotificationDisplayMessage(data);
     return ActivityNotification(
-      id: '$_forumIdPrefix${doc.id}',
-      type: _typeFromString(notificationType),
+      id: forumId,
+      type: activityNotificationTypeFromString(notificationType),
       user: await _mapToUser(data),
       timestamp: readActivityTimestamp(data),
       postThumbnailUrl: _stringField(data, const [
@@ -505,7 +522,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           : _stringField(data, const ['commentText', 'body', 'title'])
               .ifEmpty(null),
       status: isRead ? 'delivered' : 'pending',
-      actionType: notificationType,
+      actionType:
+          notificationType.isEmpty ? 'admin_broadcast' : notificationType,
       threadId: _stringField(data, const ['threadId', 'postId']).ifEmpty(null),
       postId: _stringField(data, const ['postId', 'threadId']).ifEmpty(null),
       commentId: _stringField(data, const ['commentId']).ifEmpty(null),
@@ -515,13 +533,19 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 
   Future<void> markAllDelivered(String userId) async {
-    if (_isMarkingAllRead) {
-      return;
+    final Completer<void>? inFlight = _markAllCompleter;
+    if (inFlight != null) {
+      return inFlight.future;
     }
+    final Completer<void> completer = Completer<void>();
+    _markAllCompleter = completer;
     _isMarkingAllRead = true;
     final previousGrouped = state.grouped;
     debugPrint('📬 ActivityNotifier: markAllDelivered starting for $userId');
     try {
+      _forceDeliveredIds
+        ..addAll(_primaryItems.keys)
+        ..addAll(_forumItems.keys);
       for (final String id in _primaryItems.keys.toList(growable: false)) {
         final ActivityNotification? item = _primaryItems[id];
         if (item == null || item.status == 'delivered') {
@@ -568,6 +592,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       );
     } finally {
       _isMarkingAllRead = false;
+      _markAllCompleter = null;
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
     }
   }
 
@@ -586,6 +614,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       }
       final WriteBatch batch = _db.batch();
       for (final QueryDocumentSnapshot<Map<String, dynamic>> d in qs.docs) {
+        _forceDeliveredIds.add(d.id);
         batch.update(d.reference, {
           'isRead': true,
           'read': true,
@@ -617,6 +646,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       final WriteBatch batch = _db.batch();
       for (final QueryDocumentSnapshot<Map<String, dynamic>> d
           in qsForum.docs) {
+        _forceDeliveredIds.add('$_forumIdPrefix${d.id}');
+        _forceDeliveredIds.add(d.id);
         batch.update(d.reference, {
           'read': true,
           'readAt': FieldValue.serverTimestamp(),
@@ -736,6 +767,11 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 
   String _notificationVideoId(Map<String, dynamic> data) {
+    final String type = (data['type'] ?? '').toString();
+    // Retention / Tippy system prompts store targetId=uid — never treat as video.
+    if (isGlobalSystemNotificationType(type)) {
+      return _stringField(data, const <String>['videoId', 'mediaId']);
+    }
     final metadata = data['metadata'];
     final metadataMap = metadata is Map ? metadata : null;
     return _stringField(data, const <String>[
@@ -1286,6 +1322,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     _procSub?.cancel();
     _primaryItems.clear();
     _forumItems.clear();
+    _forceDeliveredIds.clear();
     state = const ActivityState();
   }
 
@@ -1305,82 +1342,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 
   ActivityNotificationType _typeFromString(String s) {
-    final normalized = s.toLowerCase().trim();
-
-    switch (normalized) {
-      case 'follow_user':
-      case 'follow':
-      case 'follows':
-      case 'collab_invite':
-      case 'collabinvite':
-        return ActivityNotificationType.follow;
-      case 'like_video':
-      case 'like_post':
-      case 'like':
-      case 'likes':
-      case 'like_comment':
-      case 'liked_comment':
-        return ActivityNotificationType.like;
-      case 'comment_video':
-      case 'comment_post':
-      case 'comment':
-      case 'comments':
-        return ActivityNotificationType.comment;
-      case 'commentreply':
-      case 'comment_reply':
-      case 'reply_video_comment':
-      case 'replyvideocomment':
-      case 'video_comment_reply':
-      case 'comment_video_reply':
-      case 'reply':
-      case 'replies':
-        return ActivityNotificationType.commentReply;
-      case 'tag':
-      case 'tags':
-        return ActivityNotificationType.tag;
-      case 'mention_user':
-      case 'mention':
-      case 'mentions':
-        return ActivityNotificationType.mention;
-      case 'newvideo':
-      case 'new_video':
-      case 'video':
-        return ActivityNotificationType.newVideo;
-      case 'milestone':
-      case 'milestones':
-        return ActivityNotificationType.milestone;
-      case 'livestream':
-      case 'live_stream':
-      case 'live':
-      case 'new_event':
-      case 'newevent':
-        return ActivityNotificationType.liveStream;
-      case 'admin_broadcast':
-      case 'adminbroadcast':
-      case 'broadcast':
-      case 'content_plan_expired':
-      case 'contentplanexpired':
-      case 'content_plan':
-      case 'content_plan_queue':
-      case 'content_plan_recap':
-      case 'plan_expired':
-      case 'tippy_coach':
-      case 'tippycoach':
-      case 'message':
-      case 'workspace_approval_requested':
-      case 'workspace_approval_decided':
-      case 'content_approval_requested':
-      case 'content_approval_decided':
-        return ActivityNotificationType.adminBroadcast;
-      default:
-        // Unknown Tippy/system types still render as broadcasts, not likes.
-        if (isGlobalSystemNotificationType(normalized)) {
-          return ActivityNotificationType.adminBroadcast;
-        }
-        debugPrint(
-            '⚠️ ActivityNotifier: Unknown notification type "$s", defaulting to like');
-        return ActivityNotificationType.like;
-    }
+    return activityNotificationTypeFromString(s);
   }
 
   String _groupKey(DateTime dt) {
@@ -1400,8 +1362,76 @@ final activityProvider =
   return ActivityNotifier();
 });
 
+/// Suppresses Discover/nav unread after Activity is viewed until Firestore
+/// confirms zero, or until unread grows past what was already acknowledged.
+class ActivityNavUnreadBadge extends Notifier<int> {
+  bool _suppressed = false;
+  bool _awaitingBaseline = false;
+  int _acknowledgedCount = 0;
+  int _firestoreCount = 0;
+
+  @override
+  int build() {
+    ref.keepAlive();
+    ref.listen<AsyncValue<int>>(
+      unreadActivityCountProvider,
+      (AsyncValue<int>? previous, AsyncValue<int> next) {
+        if (!next.hasValue) {
+          return;
+        }
+        _firestoreCount = next.value ?? 0;
+        _recompute();
+      },
+      fireImmediately: true,
+    );
+    return 0;
+  }
+
+  void clearAfterActivityViewed() {
+    _suppressed = true;
+    _awaitingBaseline = true;
+    state = 0;
+    _recompute();
+  }
+
+  void _recompute() {
+    if (!_suppressed) {
+      state = _firestoreCount;
+      return;
+    }
+    if (_awaitingBaseline) {
+      // Don't lock a 0 baseline before the unread stream has real data —
+      // that would treat the first N as "brand new" and revive the badge.
+      if (_firestoreCount > 0) {
+        _acknowledgedCount = _firestoreCount;
+        _awaitingBaseline = false;
+      }
+      state = 0;
+      return;
+    }
+    if (_firestoreCount == 0) {
+      _suppressed = false;
+      _acknowledgedCount = 0;
+      state = 0;
+      return;
+    }
+    if (_firestoreCount <= _acknowledgedCount) {
+      _acknowledgedCount = _firestoreCount;
+      state = 0;
+      return;
+    }
+    _suppressed = false;
+    _acknowledgedCount = 0;
+    state = _firestoreCount;
+  }
+}
+
+final activityNavUnreadCountProvider =
+    NotifierProvider<ActivityNavUnreadBadge, int>(ActivityNavUnreadBadge.new);
+
 /// Live unread Activity badge count, matching the website contract.
-final unreadActivityCountProvider = StreamProvider.autoDispose<int>((ref) {
+final unreadActivityCountProvider = StreamProvider<int>((ref) {
+  ref.keepAlive();
   final currentUser = fa.FirebaseAuth.instance.currentUser;
   if (currentUser == null) {
     return Stream<int>.value(0);
@@ -1410,11 +1440,14 @@ final unreadActivityCountProvider = StreamProvider.autoDispose<int>((ref) {
   final controller = StreamController<int>();
   var primaryUnread = 0;
   var forumUnread = 0;
+  var primaryReady = false;
+  var forumReady = false;
 
-  void emit() {
-    if (!controller.isClosed) {
-      controller.add(primaryUnread + forumUnread);
+  void emitIfReady() {
+    if (!primaryReady || !forumReady || controller.isClosed) {
+      return;
     }
+    controller.add(primaryUnread + forumUnread);
   }
 
   final primarySub = FirebaseFirestore.instance
@@ -1431,10 +1464,12 @@ final unreadActivityCountProvider = StreamProvider.autoDispose<int>((ref) {
       }
       return isActivityNotificationDocUnread(data);
     }).length;
-    emit();
+    primaryReady = true;
+    emitIfReady();
   }, onError: (_) {
     primaryUnread = 0;
-    emit();
+    primaryReady = true;
+    emitIfReady();
   });
 
   final forumSub = FirebaseFirestore.instance
@@ -1444,13 +1479,14 @@ final unreadActivityCountProvider = StreamProvider.autoDispose<int>((ref) {
       .snapshots()
       .listen((snapshot) {
     forumUnread = snapshot.docs.length;
-    emit();
+    forumReady = true;
+    emitIfReady();
   }, onError: (_) {
     forumUnread = 0;
-    emit();
+    forumReady = true;
+    emitIfReady();
   });
 
-  emit();
   ref.onDispose(() {
     primarySub.cancel();
     forumSub.cancel();

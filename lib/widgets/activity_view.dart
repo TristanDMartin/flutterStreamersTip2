@@ -76,10 +76,16 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       debugPrint('🔄 Initializing ActivityView for user: $userId');
       notifier.startProcessingListener(userId);
       _isInitialized = true;
+      // Clear Discover/nav indicator as soon as Activity is opened.
+      ref.read(activityNavUnreadCountProvider.notifier).clearAfterActivityViewed();
       unawaited(() async {
         await notifier.init(userId);
         if (!mounted) return;
         await notifier.markAllDelivered(userId);
+        if (!mounted) return;
+        ref
+            .read(activityNavUnreadCountProvider.notifier)
+            .clearAfterActivityViewed();
       }());
     }
   }
@@ -131,6 +137,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         !state.isLoading &&
         (unreadActivityCount > 0 || hasLocalPending)) {
       _isMarkingVisibleAsRead = true;
+      // Clear Discover/nav indicator as soon as the user is viewing Activity.
+      ref.read(activityNavUnreadCountProvider.notifier).clearAfterActivityViewed();
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         final String? activeUserId =
@@ -143,6 +151,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           await ref.read(activityProvider.notifier).markAllDelivered(
                 activeUserId,
               );
+          if (mounted) {
+            ref
+                .read(activityNavUnreadCountProvider.notifier)
+                .clearAfterActivityViewed();
+          }
         } finally {
           if (mounted) {
             _isMarkingVisibleAsRead = false;
