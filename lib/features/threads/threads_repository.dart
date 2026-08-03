@@ -1,7 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/feature_flags.dart';
+import '../../models/forum_author.dart';
+import '../../models/forum_comment.dart';
 import '../../services/forum_service.dart';
+import '../gamification/emit_gamification_event.dart';
 import 'threads_contract.dart';
+import 'threads_gamification.dart';
 import 'threads_legacy_adapter.dart';
 import 'threads_models.dart';
 
@@ -20,6 +25,16 @@ class ThreadsFeatureFlags {
   final bool cutover;
 
   static const ThreadsFeatureFlags defaults = ThreadsFeatureFlags();
+
+  /// Compile-time flags from `--dart-define` / [FeatureFlags].
+  static ThreadsFeatureFlags fromEnvironment() {
+    return const ThreadsFeatureFlags(
+      readsEnabled: FeatureFlags.threadsV2Reads,
+      writesEnabled: FeatureFlags.threadsV2Writes,
+      uiEnabled: FeatureFlags.threadsV2Ui,
+      cutover: FeatureFlags.threadsV2Cutover,
+    );
+  }
 }
 
 /// Shared repository port — website implements the same method names.
@@ -28,6 +43,7 @@ abstract class ThreadsRepository {
     required String filter,
     String? categoryId,
     String? searchQuery,
+    String? viewerId,
     int pageSize = 20,
   });
 
@@ -39,9 +55,26 @@ abstract class ThreadsRepository {
 
   Future<String> createThread(CreateThreadRequest request);
 
+  Future<List<ThreadReplyDto>> listReplies({
+    required String threadId,
+    int pageSize = 100,
+  });
+
+  Future<String> createReply(CreateReplyRequest request);
+
+  Future<void> deleteReply({
+    required String threadId,
+    required String replyId,
+    required String userId,
+  });
+
   Future<void> markViewed({
     required String threadId,
     required String userId,
+  });
+
+  Future<List<ThreadReactionDto>> listReactions({
+    required String threadId,
   });
 
   Future<void> react({
@@ -57,6 +90,18 @@ abstract class ThreadsRepository {
     required String resolvedBy,
     required List<String> selectedReplyIds,
     String? resolutionNote,
+  });
+
+  Future<void> followThread({
+    required String threadId,
+    required String userId,
+    bool follow = true,
+  });
+
+  Future<void> saveThread({
+    required String threadId,
+    required String userId,
+    bool save = true,
   });
 
   List<TippyStarterPreset> getTippyStarters();
@@ -78,12 +123,26 @@ class FirestoreThreadsRepository implements ThreadsRepository {
   final ForumService _forumService;
   final ThreadsLegacyAdapter _adapter;
   final ThreadsFeatureFlags _flags;
+  final Map<String, bool> _v2Presence = <String, bool>{};
+
+  Future<bool> _isV2Thread(String threadId) async {
+    final bool? cached = _v2Presence[threadId];
+    if (cached != null) {
+      return cached;
+    }
+    final DocumentSnapshot<Map<String, dynamic>> snap =
+        await _firestore.collection('threads').doc(threadId).get();
+    final bool exists = snap.exists;
+    _v2Presence[threadId] = exists;
+    return exists;
+  }
 
   @override
   Future<List<ThreadDto>> listFeed({
     required String filter,
     String? categoryId,
     String? searchQuery,
+    String? viewerId,
     int pageSize = 20,
   }) async {
     final String normalizedFilter = normalizeFeedFilter(filter);
@@ -94,7 +153,11 @@ class FirestoreThreadsRepository implements ThreadsRepository {
         pageSize: pageSize,
       );
       if (fromV2.isNotEmpty) {
-        return _applyFilterHeuristic(fromV2, normalizedFilter);
+        return _applyFilterHeuristic(
+          fromV2,
+          normalizedFilter,
+          viewerId: viewerId,
+        );
       }
     }
     final legacy = await _forumService.getPosts(
@@ -105,14 +168,21 @@ class FirestoreThreadsRepository implements ThreadsRepository {
     );
     final List<ThreadDto> projected =
         legacy.map(_adapter.fromForumPost).toList(growable: false);
-    return _applyFilterHeuristic(projected, normalizedFilter);
+    return _applyFilterHeuristic(
+      projected,
+      normalizedFilter,
+      viewerId: viewerId,
+    );
   }
 
   @override
   Future<List<ThreadFeedModuleDto>> listModules({
     required String viewerId,
   }) async {
-    final List<ThreadDto> feed = await listFeed(filter: 'for_you');
+    final List<ThreadDto> feed = await listFeed(
+      filter: 'for_you',
+      viewerId: viewerId,
+    );
     if (feed.isEmpty) {
       return const <ThreadFeedModuleDto>[];
     }
@@ -182,8 +252,10 @@ class FirestoreThreadsRepository implements ThreadsRepository {
       final DocumentSnapshot<Map<String, dynamic>> v2 =
           await _firestore.collection('threads').doc(threadId).get();
       if (v2.exists && v2.data() != null) {
+        _v2Presence[threadId] = true;
         return _fromV2Map(threadId, v2.data()!);
       }
+      _v2Presence[threadId] = false;
     }
     final legacy = await _forumService.getPost(threadId);
     if (legacy == null) {
@@ -234,14 +306,19 @@ class FirestoreThreadsRepository implements ThreadsRepository {
           .collection('participants')
           .doc(request.authorId)
           .set(<String, dynamic>{
+        'userId': request.authorId,
         'role': 'author',
         'joinedAt': Timestamp.fromDate(now),
         'lastViewedAt': Timestamp.fromDate(now),
         'notificationPreference': 'all',
       });
+      scheduleGamificationEvent(
+        ThreadsGamification.threadCreated,
+        entityType: 'thread',
+        entityId: ref.id,
+      );
       return ref.id;
     }
-    // Legacy write path until threads_v2_writes is enabled.
     return _forumService.createPost(
       title: request.title,
       content: request.body,
@@ -258,6 +335,162 @@ class FirestoreThreadsRepository implements ThreadsRepository {
   }
 
   @override
+  Future<List<ThreadReplyDto>> listReplies({
+    required String threadId,
+    int pageSize = 100,
+  }) async {
+    if (_flags.readsEnabled) {
+      try {
+        final QuerySnapshot<Map<String, dynamic>> snap = await _firestore
+            .collection('threads')
+            .doc(threadId)
+            .collection('replies')
+            .where('deleted', isEqualTo: false)
+            .orderBy('createdAt', descending: false)
+            .limit(pageSize)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          return snap.docs
+              .map(
+                (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+                    _replyFromV2Map(threadId, doc.id, doc.data()),
+              )
+              .toList(growable: false);
+        }
+      } catch (_) {
+        // Fall through to legacy comments.
+      }
+    }
+    final QuerySnapshot<Map<String, dynamic>> legacy = await _firestore
+        .collection('forumPosts')
+        .doc(threadId)
+        .collection('comments')
+        .where('deleted', isEqualTo: false)
+        .limit(pageSize)
+        .get();
+    final List<ForumComment> comments = legacy.docs
+        .map(
+          (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+              ForumComment.fromFirestore(doc, threadId),
+        )
+        .toList(growable: false)
+      ..sort(
+        (ForumComment a, ForumComment b) =>
+            a.createdAt.compareTo(b.createdAt),
+      );
+    return comments
+        .map(_replyFromLegacyComment)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<String> createReply(CreateReplyRequest request) async {
+    final String body = request.body.trim();
+    if (body.isEmpty) {
+      throw ArgumentError('Reply body is required');
+    }
+    final DateTime now = DateTime.now().toUtc();
+    final bool useV2 =
+        _flags.writesEnabled && await _isV2Thread(request.threadId);
+    if (useV2) {
+      final DocumentReference<Map<String, dynamic>> ref = _firestore
+          .collection('threads')
+          .doc(request.threadId)
+          .collection('replies')
+          .doc();
+      await ref.set(<String, dynamic>{
+        'authorId': request.authorId,
+        'body': body,
+        'parentReplyId': request.parentReplyId,
+        'authorDisplayName': request.authorDisplayName,
+        'authorUsername': request.authorUsername,
+        'authorAvatarUrl': request.authorAvatarUrl,
+        'helpfulCount': 0,
+        'deleted': false,
+        'createdAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      });
+      await _firestore.collection('threads').doc(request.threadId).update(
+        <String, dynamic>{
+          'replyCount': FieldValue.increment(1),
+          'lastActivityAt': Timestamp.fromDate(now),
+          'updatedAt': Timestamp.fromDate(now),
+        },
+      );
+      await _firestore
+          .collection('threads')
+          .doc(request.threadId)
+          .collection('participants')
+          .doc(request.authorId)
+          .set(
+        <String, dynamic>{
+          'userId': request.authorId,
+          'role': 'participant',
+          'joinedAt': Timestamp.fromDate(now),
+          'lastViewedAt': Timestamp.fromDate(now),
+          'notificationPreference': 'all',
+        },
+        SetOptions(merge: true),
+      );
+      scheduleGamificationEvent(
+        ThreadsGamification.threadParticipated,
+        entityType: 'thread',
+        entityId: request.threadId,
+      );
+      return ref.id;
+    }
+    final ForumAuthor author = ForumAuthor(
+      uid: request.authorId,
+      username: request.authorUsername ?? 'user',
+      displayName: request.authorDisplayName ?? 'User',
+      avatarUrl: request.authorAvatarUrl,
+    );
+    return _forumService.addComment(
+      request.threadId,
+      body,
+      author,
+      parentCommentId: request.parentReplyId,
+    );
+  }
+
+  @override
+  Future<void> deleteReply({
+    required String threadId,
+    required String replyId,
+    required String userId,
+  }) async {
+    final bool useV2 = _flags.writesEnabled && await _isV2Thread(threadId);
+    if (useV2) {
+      final DocumentReference<Map<String, dynamic>> replyRef = _firestore
+          .collection('threads')
+          .doc(threadId)
+          .collection('replies')
+          .doc(replyId);
+      final DocumentSnapshot<Map<String, dynamic>> snap = await replyRef.get();
+      if (!snap.exists || snap.data() == null) {
+        throw StateError('Reply not found');
+      }
+      final Map<String, dynamic> data = snap.data()!;
+      if (data['authorId']?.toString() != userId) {
+        throw StateError('You can only delete your own replies.');
+      }
+      await replyRef.update(<String, dynamic>{
+        'deleted': true,
+        'body': '[deleted]',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await _firestore.collection('threads').doc(threadId).update(
+        <String, dynamic>{
+          'replyCount': FieldValue.increment(-1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      );
+      return;
+    }
+    await _forumService.deleteComment(threadId, replyId);
+  }
+
+  @override
   Future<void> markViewed({
     required String threadId,
     required String userId,
@@ -265,21 +498,57 @@ class FirestoreThreadsRepository implements ThreadsRepository {
     if (!_flags.writesEnabled) {
       return;
     }
-    final DateTime now = DateTime.now().toUtc();
-    await _firestore
-        .collection('threads')
-        .doc(threadId)
-        .collection('participants')
-        .doc(userId)
-        .set(
-      <String, dynamic>{
-        'lastViewedAt': Timestamp.fromDate(now),
-        'joinedAt': Timestamp.fromDate(now),
-        'role': 'participant',
-        'notificationPreference': 'all',
-      },
-      SetOptions(merge: true),
-    );
+    if (!await _isV2Thread(threadId)) {
+      return;
+    }
+    try {
+      final DateTime now = DateTime.now().toUtc();
+      await _firestore
+          .collection('threads')
+          .doc(threadId)
+          .collection('participants')
+          .doc(userId)
+          .set(
+        <String, dynamic>{
+          'userId': userId,
+          'lastViewedAt': Timestamp.fromDate(now),
+          'joinedAt': Timestamp.fromDate(now),
+          'role': 'participant',
+          'notificationPreference': 'all',
+        },
+        SetOptions(merge: true),
+      );
+    } catch (_) {
+      // Non-fatal — detail should still open if rules lag deploy.
+    }
+  }
+
+  @override
+  Future<List<ThreadReactionDto>> listReactions({
+    required String threadId,
+  }) async {
+    final bool useV2 = _flags.readsEnabled && await _isV2Thread(threadId);
+    final CollectionReference<Map<String, dynamic>> col = useV2
+        ? _firestore.collection('threads').doc(threadId).collection('reactions')
+        : _firestore
+            .collection('forumPosts')
+            .doc(threadId)
+            .collection('reactions');
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snap = await col.get();
+      return snap.docs.map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
+        final Map<String, dynamic> data = d.data();
+        return ThreadReactionDto(
+          id: d.id,
+          targetType: data['targetType']?.toString() ?? 'thread',
+          targetId: data['targetId']?.toString() ?? threadId,
+          userId: data['userId']?.toString() ?? '',
+          reactionType: data['reactionType']?.toString() ?? '',
+        );
+      }).toList(growable: false);
+    } catch (_) {
+      return const <ThreadReactionDto>[];
+    }
   }
 
   @override
@@ -294,24 +563,52 @@ class FirestoreThreadsRepository implements ThreadsRepository {
     if (normalized == null) {
       return;
     }
-    if (!_flags.writesEnabled) {
-      if (normalized == 'helpful') {
-        await _forumService.togglePostLike(
-          threadId,
-          userId,
-          await _forumService.getUserProfile(userId),
-        );
+    final bool useV2 = _flags.writesEnabled && await _isV2Thread(threadId);
+    if (!useV2) {
+      final String reactionId =
+          '${targetType}_${targetId ?? threadId}_${userId}_$normalized';
+      final DocumentReference<Map<String, dynamic>> reactionRef = _firestore
+          .collection('forumPosts')
+          .doc(threadId)
+          .collection('reactions')
+          .doc(reactionId);
+      final DocumentSnapshot<Map<String, dynamic>> existing =
+          await reactionRef.get();
+      if (existing.exists) {
+        await reactionRef.delete();
+        return;
       }
+      await reactionRef.set(<String, dynamic>{
+        'targetType': targetType,
+        'targetId': targetId ?? threadId,
+        'userId': userId,
+        'reactionType': normalized,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
       return;
     }
     final String reactionId =
         '${targetType}_${targetId ?? threadId}_${userId}_$normalized';
-    await _firestore
+    final DocumentReference<Map<String, dynamic>> reactionRef = _firestore
         .collection('threads')
         .doc(threadId)
         .collection('reactions')
-        .doc(reactionId)
-        .set(<String, dynamic>{
+        .doc(reactionId);
+    final DocumentSnapshot<Map<String, dynamic>> existing =
+        await reactionRef.get();
+    if (existing.exists) {
+      await reactionRef.delete();
+      if (normalized == 'helpful') {
+        await _bumpHelpfulCount(
+          threadId: threadId,
+          targetType: targetType,
+          targetId: targetId,
+          delta: -1,
+        );
+      }
+      return;
+    }
+    await reactionRef.set(<String, dynamic>{
       'targetType': targetType,
       'targetId': targetId ?? threadId,
       'userId': userId,
@@ -319,13 +616,46 @@ class FirestoreThreadsRepository implements ThreadsRepository {
       'createdAt': FieldValue.serverTimestamp(),
     });
     if (normalized == 'helpful') {
-      await _firestore.collection('threads').doc(threadId).update(
-        <String, dynamic>{
-          'helpfulCount': FieldValue.increment(1),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
+      await _bumpHelpfulCount(
+        threadId: threadId,
+        targetType: targetType,
+        targetId: targetId,
+        delta: 1,
+      );
+      scheduleGamificationEvent(
+        ThreadsGamification.helpfulReactionReceived,
+        entityType: targetType == 'reply' ? 'reply' : 'thread',
+        entityId: targetId ?? threadId,
       );
     }
+  }
+
+  Future<void> _bumpHelpfulCount({
+    required String threadId,
+    required String targetType,
+    required String? targetId,
+    required int delta,
+  }) async {
+    if (targetType == 'reply' &&
+        targetId != null &&
+        targetId.isNotEmpty) {
+      await _firestore
+          .collection('threads')
+          .doc(threadId)
+          .collection('replies')
+          .doc(targetId)
+          .update(<String, dynamic>{
+        'helpfulCount': FieldValue.increment(delta),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+    await _firestore.collection('threads').doc(threadId).update(
+      <String, dynamic>{
+        'helpfulCount': FieldValue.increment(delta),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    );
   }
 
   @override
@@ -337,6 +667,11 @@ class FirestoreThreadsRepository implements ThreadsRepository {
   }) async {
     if (!_flags.writesEnabled) {
       return;
+    }
+    if (!await _isV2Thread(threadId)) {
+      throw StateError(
+        'Resolve is only available after this thread is on Threads v2.',
+      );
     }
     final DateTime now = DateTime.now().toUtc();
     final WriteBatch batch = _firestore.batch();
@@ -357,6 +692,112 @@ class FirestoreThreadsRepository implements ThreadsRepository {
       'updatedAt': Timestamp.fromDate(now),
     });
     await batch.commit();
+    scheduleGamificationEvent(
+      ThreadsGamification.answerMarkedHelpful,
+      entityType: 'thread',
+      entityId: threadId,
+    );
+  }
+
+  @override
+  Future<void> followThread({
+    required String threadId,
+    required String userId,
+    bool follow = true,
+  }) async {
+    final bool useV2 = _flags.writesEnabled && await _isV2Thread(threadId);
+    if (!useV2) {
+      await _firestore.collection('forumPosts').doc(threadId).update(
+        <String, dynamic>{
+          'followedBy': follow
+              ? FieldValue.arrayUnion(<String>[userId])
+              : FieldValue.arrayRemove(<String>[userId]),
+        },
+      );
+      return;
+    }
+    final DateTime now = DateTime.now().toUtc();
+    final DocumentReference<Map<String, dynamic>> participantRef = _firestore
+        .collection('threads')
+        .doc(threadId)
+        .collection('participants')
+        .doc(userId);
+    if (follow) {
+      await participantRef.set(
+        <String, dynamic>{
+          'userId': userId,
+          'role': 'follower',
+          'joinedAt': Timestamp.fromDate(now),
+          'lastViewedAt': Timestamp.fromDate(now),
+          'notificationPreference': 'all',
+        },
+        SetOptions(merge: true),
+      );
+      await _firestore.collection('threads').doc(threadId).update(
+        <String, dynamic>{
+          'followCount': FieldValue.increment(1),
+          'updatedAt': Timestamp.fromDate(now),
+        },
+      );
+    } else {
+      await participantRef.set(
+        <String, dynamic>{
+          'role': 'participant',
+          'notificationPreference': 'mute',
+        },
+        SetOptions(merge: true),
+      );
+      await _firestore.collection('threads').doc(threadId).update(
+        <String, dynamic>{
+          'followCount': FieldValue.increment(-1),
+          'updatedAt': Timestamp.fromDate(now),
+        },
+      );
+    }
+  }
+
+  @override
+  Future<void> saveThread({
+    required String threadId,
+    required String userId,
+    bool save = true,
+  }) async {
+    final bool useV2 = _flags.writesEnabled && await _isV2Thread(threadId);
+    if (!useV2) {
+      await _firestore.collection('forumPosts').doc(threadId).update(
+        <String, dynamic>{
+          'bookmarkedBy': save
+              ? FieldValue.arrayUnion(<String>[userId])
+              : FieldValue.arrayRemove(<String>[userId]),
+        },
+      );
+      return;
+    }
+    final DocumentReference<Map<String, dynamic>> saveRef = _firestore
+        .collection('threads')
+        .doc(threadId)
+        .collection('saves')
+        .doc(userId);
+    if (save) {
+      await saveRef.set(<String, dynamic>{
+        'userId': userId,
+        'savedAt': FieldValue.serverTimestamp(),
+      });
+      await _firestore.collection('threads').doc(threadId).update(
+        <String, dynamic>{
+          'saveCount': FieldValue.increment(1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      );
+    } else {
+      await saveRef.delete();
+      await _firestore.collection('threads').doc(threadId).update(
+        <String, dynamic>{
+          'saveCount': FieldValue.increment(-1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      );
+    }
   }
 
   @override
@@ -458,6 +899,59 @@ class FirestoreThreadsRepository implements ThreadsRepository {
     );
   }
 
+  ThreadReplyDto _replyFromV2Map(
+    String threadId,
+    String id,
+    Map<String, dynamic> data,
+  ) {
+    DateTime readTs(Object? value, DateTime fallback) {
+      if (value is Timestamp) {
+        return value.toDate();
+      }
+      if (value is DateTime) {
+        return value;
+      }
+      if (value is String) {
+        return DateTime.tryParse(value) ?? fallback;
+      }
+      return fallback;
+    }
+
+    final DateTime now = DateTime.now();
+    final DateTime createdAt = readTs(data['createdAt'], now);
+    return ThreadReplyDto(
+      id: id,
+      threadId: threadId,
+      authorId: (data['authorId'] as String?) ?? '',
+      body: (data['body'] as String?) ?? '',
+      parentReplyId: data['parentReplyId'] as String?,
+      createdAt: createdAt,
+      updatedAt: readTs(data['updatedAt'], createdAt),
+      authorDisplayName: data['authorDisplayName'] as String?,
+      authorUsername: data['authorUsername'] as String?,
+      authorAvatarUrl: data['authorAvatarUrl'] as String?,
+      helpfulCount: (data['helpfulCount'] as num?)?.toInt() ?? 0,
+      deleted: data['deleted'] == true,
+    );
+  }
+
+  ThreadReplyDto _replyFromLegacyComment(ForumComment comment) {
+    return ThreadReplyDto(
+      id: comment.id,
+      threadId: comment.postId,
+      authorId: comment.author.uid,
+      body: comment.content,
+      parentReplyId: comment.parentCommentId,
+      createdAt: comment.createdAt,
+      updatedAt: comment.updatedAt ?? comment.createdAt,
+      authorDisplayName: comment.author.displayName,
+      authorUsername: comment.author.username,
+      authorAvatarUrl: comment.author.avatarUrl,
+      helpfulCount: comment.likes,
+      deleted: comment.deleted,
+    );
+  }
+
   ThreadSortBy _sortForFilter(String filter) {
     switch (filter) {
       case 'trending':
@@ -473,8 +967,9 @@ class FirestoreThreadsRepository implements ThreadsRepository {
 
   List<ThreadDto> _applyFilterHeuristic(
     List<ThreadDto> input,
-    String filter,
-  ) {
+    String filter, {
+    String? viewerId,
+  }) {
     switch (filter) {
       case 'unanswered':
         return input
@@ -492,6 +987,15 @@ class FirestoreThreadsRepository implements ThreadsRepository {
               (ThreadDto t) =>
                   t.momentumState == 'trending' ||
                   t.momentumState == 'picking_up',
+            )
+            .toList(growable: false);
+      case 'following':
+        if (viewerId == null || viewerId.isEmpty) {
+          return input;
+        }
+        return input
+            .where(
+              (ThreadDto t) => t.legacyFollowedBy.contains(viewerId),
             )
             .toList(growable: false);
       default:

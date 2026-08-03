@@ -26,18 +26,65 @@ class BookmarkEvent {
   });
 
   factory BookmarkEvent.fromMap(Map<String, dynamic> map) {
+    final BookmarkEvent? parsed = tryParse(map);
+    if (parsed == null) {
+      throw FormatException(
+        'BookmarkEvent.fromMap: missing calendar fields in $map',
+      );
+    }
+    return parsed;
+  }
+
+  /// Returns null for non-calendar bookmark docs (e.g. video bookmarks).
+  static BookmarkEvent? tryParse(Map<String, dynamic> map) {
+    final String eventId = (map['eventId'] ?? map['id'] ?? '').toString().trim();
+    final String creatorId = (map['creatorId'] ?? '').toString().trim();
+    final String title = (map['title'] ?? '').toString().trim();
+    final DateTime? startAt = _parseTimestamp(map['startAt'] ?? map['date']);
+    if (eventId.isEmpty || creatorId.isEmpty || title.isEmpty || startAt == null) {
+      return null;
+    }
+    final DateTime notifyAt =
+        _parseTimestamp(map['notifyAt']) ?? startAt;
+    final DateTime createdAt =
+        _parseTimestamp(map['createdAt']) ?? startAt;
+    final Object? creatorNameRaw = map['creatorName'];
+    final String creatorName = creatorNameRaw is String
+        ? creatorNameRaw
+        : creatorId;
+    final Object? sourceRaw = map['source'];
+    final String source = sourceRaw is String && sourceRaw.isNotEmpty
+        ? sourceRaw
+        : 'streamerCardBackView';
+    final Object? scheduledRaw = map['scheduledTaskId'];
     return BookmarkEvent(
-      eventId: map['eventId'] as String,
-      creatorId: map['creatorId'] as String,
-      creatorName: map['creatorName'] as String? ?? map['creatorId'] as String,
-      title: map['title'] as String,
-      startAt: (map['startAt'] as Timestamp).toDate(),
-      notifyAt: (map['notifyAt'] as Timestamp).toDate(),
+      eventId: eventId,
+      creatorId: creatorId,
+      creatorName: creatorName,
+      title: title,
+      startAt: startAt,
+      notifyAt: notifyAt,
       notify: map['notify'] as bool? ?? true,
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
-      scheduledTaskId: map['scheduledTaskId'] as String?,
-      source: map['source'] as String? ?? 'streamerCardBackView',
+      createdAt: createdAt,
+      scheduledTaskId: scheduledRaw is String ? scheduledRaw : null,
+      source: source,
     );
+  }
+
+  static DateTime? _parseTimestamp(Object? raw) {
+    if (raw is Timestamp) {
+      return raw.toDate();
+    }
+    if (raw is DateTime) {
+      return raw;
+    }
+    if (raw is int) {
+      return DateTime.fromMillisecondsSinceEpoch(raw);
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      return DateTime.tryParse(raw.trim());
+    }
+    return null;
   }
 
   Map<String, dynamic> toMap() {

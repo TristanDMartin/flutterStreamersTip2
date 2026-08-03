@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'edit_field_view.dart';
 import 'links_edit_view.dart';
@@ -81,6 +82,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
         }
       }),
     );
+    unawaited(_hydratePlatformsFromSource());
     _checkNameChangeEligibility();
     _isAdmin = AdminService.hasImmediateAdminAccess(cachedUserMap: _user);
     _rulesAlignedAdmin = _isAdmin;
@@ -92,19 +94,102 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     if (d == null || !mounted) {
       return;
     }
+    bool didChange = false;
     for (final String k in const <String>[
       'role',
       'isAdmin',
       'admin',
       'username',
       UserProfileFirestore.platformsField,
+      UserProfileFirestore.linkedPlatformsField,
       UserProfileFirestore.calendarEventsField,
     ]) {
-      if (d.containsKey(k)) {
+      if (d.containsKey(k) && !identical(_user[k], d[k])) {
         _user[k] = d[k];
+        didChange = true;
       }
     }
+    if (didChange) {
+      setState(() {});
+    }
     _checkAdminStatus();
+  }
+
+  Future<void> _hydratePlatformsFromSource() async {
+    final ProfileUpdateService? service = _profileUpdateService;
+    if (service == null) {
+      return;
+    }
+    await service.initialize();
+    final String? uid = (_user['id'] ?? _user['uid'])?.toString();
+    if (uid == null || uid.isEmpty) {
+      return;
+    }
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get(const GetOptions(source: Source.serverAndCache));
+      if (!mounted || !snap.exists) {
+        return;
+      }
+      final Map<String, dynamic>? data = snap.data();
+      if (data == null) {
+        return;
+      }
+      if (data.containsKey(UserProfileFirestore.linkedPlatformsField) ||
+          data.containsKey(UserProfileFirestore.platformsField)) {
+        setState(() {
+          if (data.containsKey(UserProfileFirestore.linkedPlatformsField)) {
+            _user[UserProfileFirestore.linkedPlatformsField] =
+                data[UserProfileFirestore.linkedPlatformsField];
+          }
+          if (data.containsKey(UserProfileFirestore.platformsField)) {
+            _user[UserProfileFirestore.platformsField] =
+                data[UserProfileFirestore.platformsField];
+          }
+        });
+        return;
+      }
+      final Map<String, dynamic>? serviceData = service.userData;
+      if (serviceData != null &&
+          (serviceData.containsKey(UserProfileFirestore.linkedPlatformsField) ||
+              serviceData.containsKey(UserProfileFirestore.platformsField))) {
+        setState(() {
+          if (serviceData
+              .containsKey(UserProfileFirestore.linkedPlatformsField)) {
+            _user[UserProfileFirestore.linkedPlatformsField] =
+                serviceData[UserProfileFirestore.linkedPlatformsField];
+          }
+          if (serviceData.containsKey(UserProfileFirestore.platformsField)) {
+            _user[UserProfileFirestore.platformsField] =
+                serviceData[UserProfileFirestore.platformsField];
+          }
+        });
+      }
+    } catch (e) {
+      final Map<String, dynamic>? serviceData = service.userData;
+      if (serviceData != null &&
+          (serviceData.containsKey(UserProfileFirestore.linkedPlatformsField) ||
+              serviceData.containsKey(UserProfileFirestore.platformsField)) &&
+          mounted) {
+        setState(() {
+          if (serviceData
+              .containsKey(UserProfileFirestore.linkedPlatformsField)) {
+            _user[UserProfileFirestore.linkedPlatformsField] =
+                serviceData[UserProfileFirestore.linkedPlatformsField];
+          }
+          if (serviceData.containsKey(UserProfileFirestore.platformsField)) {
+            _user[UserProfileFirestore.platformsField] =
+                serviceData[UserProfileFirestore.platformsField];
+          }
+        });
+      }
+      if (kDebugMode) {
+        debugPrint('⚠️ EditProfileView: platforms hydrate failed: $e');
+      }
+    }
   }
 
   Future<void> _checkAdminStatus() async {
@@ -757,6 +842,19 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   void _showLinksEditor() {
+    final Map<String, dynamic>? serviceData = _profileUpdateService?.userData;
+    if (serviceData != null &&
+        (serviceData.containsKey(UserProfileFirestore.linkedPlatformsField) ||
+            serviceData.containsKey(UserProfileFirestore.platformsField))) {
+      if (serviceData.containsKey(UserProfileFirestore.linkedPlatformsField)) {
+        _user[UserProfileFirestore.linkedPlatformsField] =
+            serviceData[UserProfileFirestore.linkedPlatformsField];
+      }
+      if (serviceData.containsKey(UserProfileFirestore.platformsField)) {
+        _user[UserProfileFirestore.platformsField] =
+            serviceData[UserProfileFirestore.platformsField];
+      }
+    }
     final List<Map<String, dynamic>> currentPlatforms =
         UserProfileFirestore.parsePlatformsFromUserData(_user);
 
@@ -771,7 +869,16 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             final scaffoldMessenger = ScaffoldMessenger.of(context);
 
             final String? platformRulesError =
-                PlatformRules.validatePlatformsList(updatedPlatforms);
+                PlatformRules.validatePlatformsList(
+              updatedPlatforms
+                  .where((Map<String, dynamic> p) {
+                    final String username =
+                        (p['username']?.toString() ?? '').trim();
+                    final String url = (p['url']?.toString() ?? '').trim();
+                    return username.isNotEmpty || url.isNotEmpty;
+                  })
+                  .toList(growable: false),
+            );
             if (platformRulesError != null) {
               if (mounted) {
                 scaffoldMessenger.showSnackBar(
@@ -827,21 +934,31 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
             // Update all profile views through ProfileUpdateService
             try {
-              final profileUpdateService = ProfileUpdateService();
+              final ProfileUpdateService profileUpdateService =
+                  ProfileUpdateService();
+              await profileUpdateService.initialize();
               await profileUpdateService.updateUserData(
                 <String, dynamic>{'platforms': normalizedPlatforms},
               );
               if (kDebugMode) {
-                // ✅ FIX #2: Wrap in kDebugMode
                 debugPrint(
                     '✅ EditProfileView: Platforms updated in all profile views');
               }
             } catch (e) {
               if (kDebugMode) {
-                // ✅ FIX #2: Wrap in kDebugMode
                 debugPrint(
                     '❌ EditProfileView: Error updating platforms in profile views: $e');
               }
+              if (mounted) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Could not save platforms: $e'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+              return;
             }
 
             // Show success message

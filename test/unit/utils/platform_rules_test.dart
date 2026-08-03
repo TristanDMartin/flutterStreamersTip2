@@ -50,6 +50,19 @@ void main() {
       expect(normalized.first['url'], 'https://patreon.com/foo');
     });
 
+    test('bare handle does not become https://handle', () {
+      final List<Map<String, dynamic>> normalized =
+          PlatformRules.normalizePlatformsForSave(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'type': 'twitch',
+          'url': 'technqs',
+          'username': '',
+        },
+      ]);
+      expect(normalized.first['username'], 'technqs');
+      expect(normalized.first['url'], 'https://www.twitch.tv/technqs');
+    });
+
     test('accepts www Patreon and OnlyFans URLs without protocol', () {
       expect(PlatformRules.hostMatchesUrl('www.patreon.com/smove', 'patreon.com'),
           isTrue);
@@ -67,6 +80,59 @@ void main() {
           username: 'smove',
         ),
         isNull,
+      );
+    });
+
+    test('synthesizes URL from username when url is empty', () {
+      final List<Map<String, dynamic>> normalized =
+          PlatformRules.normalizePlatformsForSave(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'type': 'twitch',
+          'url': '',
+          'username': 'technqs',
+        },
+      ]);
+      expect(normalized.first['url'], 'https://www.twitch.tv/technqs');
+      expect(normalized.first['type'], 'twitch');
+    });
+
+    test('maps website type to other', () {
+      expect(PlatformRules.normalizePlatformType('website'), 'other');
+    });
+
+    test('mergePlatformsForSave keeps non-editable rows', () {
+      final List<Map<String, dynamic>> merged =
+          PlatformRules.mergePlatformsForSave(
+        existingPlatforms: <Map<String, dynamic>>[
+          <String, dynamic>{
+            'type': 'linkedin',
+            'username': 'creator',
+            'url': 'https://linkedin.com/in/creator',
+          },
+          <String, dynamic>{
+            'type': 'twitch',
+            'username': 'old',
+            'url': 'https://twitch.tv/old',
+          },
+        ],
+        editorDraft: <Map<String, dynamic>>[
+          <String, dynamic>{
+            'type': 'twitch',
+            'username': 'new',
+            'url': 'https://www.twitch.tv/new',
+          },
+        ],
+      );
+      expect(merged.length, 2);
+      expect(
+        merged.any((Map<String, dynamic> p) => p['type'] == 'linkedin'),
+        isTrue,
+      );
+      expect(
+        merged.firstWhere(
+          (Map<String, dynamic> p) => p['type'] == 'twitch',
+        )['username'],
+        'new',
       );
     });
 

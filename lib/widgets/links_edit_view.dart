@@ -161,7 +161,10 @@ class _LinksEditViewState extends State<LinksEditView> {
       return;
     }
     final List<Map<String, dynamic>> updatedPlatforms =
-        PlatformRules.normalizePlatformsForSave(draft);
+        PlatformRules.mergePlatformsForSave(
+      existingPlatforms: widget.platforms,
+      editorDraft: PlatformRules.normalizePlatformsForSave(draft),
+    );
     widget.onPlatformsUpdated(updatedPlatforms);
     Navigator.pop(context);
   }

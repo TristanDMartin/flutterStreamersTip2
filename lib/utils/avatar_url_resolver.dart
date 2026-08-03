@@ -87,6 +87,33 @@ String? normalizeAvatarPhotoUrl(String? raw) {
   return _normalizeAvatarString(raw);
 }
 
+/// True when [url] can be loaded by [CachedNetworkImage] / Image.network.
+bool isNetworkAvatarUrl(String? url) {
+  final String? normalized = normalizeAvatarPhotoUrl(url);
+  if (normalized == null) {
+    return false;
+  }
+  final Uri? uri = Uri.tryParse(normalized);
+  if (uri == null || uri.host.isEmpty) {
+    return false;
+  }
+  final String scheme = uri.scheme.toLowerCase();
+  return scheme == 'http' || scheme == 'https';
+}
+
+/// Prefer a loadable network URL from [preferred], then [fallback].
+String? pickBestAvatarUrl(String? preferred, String? fallback) {
+  final String? preferredNormalized = normalizeAvatarPhotoUrl(preferred);
+  if (isNetworkAvatarUrl(preferredNormalized)) {
+    return preferredNormalized;
+  }
+  final String? fallbackNormalized = normalizeAvatarPhotoUrl(fallback);
+  if (isNetworkAvatarUrl(fallbackNormalized)) {
+    return fallbackNormalized;
+  }
+  return preferredNormalized ?? fallbackNormalized;
+}
+
 String? _normalizeAvatarString(String input) {
   final String trimmed = input.trim();
   if (trimmed.isEmpty) return null;

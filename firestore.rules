@@ -593,6 +593,83 @@ service cloud.firestore {
         );
         allow delete: if false;
       }
+
+      // Typed reactions for Threads UI on legacy forum posts.
+      match /reactions/{reactionId} {
+        allow read, list: if request.auth != null;
+        allow create: if request.auth != null &&
+          request.resource.data.userId == request.auth.uid;
+        allow update: if false;
+        allow delete: if request.auth != null &&
+          resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // Creator Threads v2
+    match /threads/{threadId} {
+      function threadData() {
+        return get(/databases/$(database)/documents/threads/$(threadId)).data;
+      }
+      function isThreadDocAuthor(data) {
+        return request.auth != null && (
+          (data.keys().hasAny(['authorId']) && data.authorId == request.auth.uid) ||
+          (data.keys().hasAny(['creatorId']) && data.creatorId == request.auth.uid)
+        );
+      }
+      function isParentThreadAuthor() {
+        return exists(/databases/$(database)/documents/threads/$(threadId)) &&
+          isThreadDocAuthor(threadData());
+      }
+
+      allow read, list: if true;
+      allow create: if request.auth != null &&
+        request.resource.data.authorId == request.auth.uid;
+      allow update: if request.auth != null && (
+        isThreadDocAuthor(resource.data) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'replyCount', 'participantCount', 'helpfulCount', 'saveCount',
+          'followCount', 'lastActivityAt', 'updatedAt', 'status',
+          'momentumState'
+        ])
+      );
+      allow delete: if request.auth != null && isThreadDocAuthor(resource.data);
+
+      match /replies/{replyId} {
+        allow read, list: if true;
+        allow create: if request.auth != null &&
+          request.resource.data.authorId == request.auth.uid;
+        allow update: if request.auth != null &&
+          request.auth.uid == resource.data.authorId;
+        allow delete: if request.auth != null &&
+          (request.auth.uid == resource.data.authorId || isParentThreadAuthor());
+      }
+      match /reactions/{reactionId} {
+        allow read, list: if true;
+        allow create: if request.auth != null &&
+          request.resource.data.userId == request.auth.uid;
+        allow update: if false;
+        allow delete: if request.auth != null &&
+          resource.data.userId == request.auth.uid;
+      }
+      match /participants/{userId} {
+        allow read, list: if true;
+        allow create, update: if request.auth != null &&
+          request.auth.uid == userId &&
+          request.resource.data.userId == request.auth.uid;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      match /saves/{userId} {
+        allow read, list: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null &&
+          request.auth.uid == userId &&
+          request.resource.data.userId == request.auth.uid;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      match /resolution/{docId} {
+        allow read, list: if true;
+        allow create, update: if request.auth != null && isParentThreadAuthor();
+        allow delete: if false;
+      }
     }
 
     match /forumNotifications/{notificationId} {

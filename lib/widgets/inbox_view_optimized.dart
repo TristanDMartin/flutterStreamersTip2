@@ -25,7 +25,9 @@ import '../routing/app_navigator.dart';
 import 'new_message_view.dart';
 import 'draft_feedback_view.dart';
 import 'screen_feedback_state.dart';
-// import 'draft_creation_view.dart'; // Removed - unused
+import 'chat/chat_ui_tokens.dart';
+import '../utils/system_account.dart';
+import '../utils/chat_gif_url.dart';
 
 class InboxViewOptimized extends ConsumerStatefulWidget {
   const InboxViewOptimized({super.key});
@@ -45,12 +47,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   final TextEditingController _searchController = TextEditingController();
   bool _isNavigating = false;
 
-  // Constants
-  static const Color _primaryColor = Color(0xFF9248D2);
+  // Constants — aligned with website InboxView.module.css
+  static const Color _primaryColor = ChatUiTokens.inboxAccent;
   static const Color _secondaryColor = Color(0xFF7768DF);
   static const Color _accentColor = Color(0xFF1670DE);
-  static const Color _successColor = Color(0xFF4CAF50);
-  static const Color _inboxDarkBackground = Color(0xFF071120);
   static const bool _showSharedDraftsTab = false;
 
   ColorScheme get _th => Theme.of(context).colorScheme;
@@ -239,6 +239,15 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     if (_inboxListenersActive) {
       return;
     }
+    if (_inboxService.auth.currentUser == null) {
+      if (mounted && _chats.isEmpty) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Sign in to view messages';
+        });
+      }
+      return;
+    }
     _inboxListenersActive = true;
     if (_chats.isEmpty && mounted) {
       setState(() {
@@ -250,20 +259,30 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     // Start real-time listeners
     _inboxService.startRealTimeListeners(
       onChatsUpdate: (chats) async {
-        // Filter out invalid chats (with empty participant IDs)
-        final validChats = await _filterVisibleChats(chats);
-
-        _syncUnreadFromChatStream(validChats);
-        _setupUserProfileListeners(validChats);
-
-        await _loadUserDataForChats(validChats);
-        await _offlineService.cacheChats(validChats);
-        if (mounted) {
-          setState(() {
-            _chats = validChats;
-            _filteredChats = validChats;
-            _isLoading = false;
-          });
+        try {
+          final validChats = await _filterVisibleChats(chats);
+          _syncUnreadFromChatStream(validChats);
+          _setupUserProfileListeners(validChats);
+          await _loadUserDataForChats(validChats);
+          await _offlineService.cacheChats(validChats);
+          if (mounted) {
+            setState(() {
+              _chats = validChats;
+              _filteredChats = validChats;
+              _isLoading = false;
+              _error = null;
+            });
+          }
+        } catch (e) {
+          LoggingService.instance.error('Inbox chats update failed: $e');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              if (_chats.isEmpty) {
+                _error = UserFacingError.message(e);
+              }
+            });
+          }
         }
       },
       onDraftsUpdate: (drafts) async {
@@ -274,6 +293,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             _filteredDrafts = drafts;
           });
         }
+      },
+      onChatsError: (Object error) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLoading = false;
+          if (_chats.isEmpty) {
+            _error = UserFacingError.message(error);
+          }
+        });
       },
     );
   }
@@ -417,15 +447,24 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Future<List<app_chat.Chat>> _filterVisibleChats(
       List<app_chat.Chat> chats) async {
     final validChats = _filterValidChats(chats);
-    final blockedUserIds = (await _blockingService.getBlockedUsers()).toSet();
-    if (blockedUserIds.isEmpty) {
+    final currentUser = _inboxService.auth.currentUser;
+    if (currentUser == null) {
       return validChats;
     }
-
-    final currentUser = _inboxService.auth.currentUser;
-    if (currentUser == null) return validChats;
-
+    final Set<String> blockedUserIds =
+        (await _blockingService.getBlockedUsers()).toSet();
     return validChats.where((chat) {
+      final List<dynamic> deletedRaw =
+          (chat.metadata?['deletedFor'] as List<dynamic>?) ??
+              const <dynamic>[];
+      final List<String> deletedFor =
+          deletedRaw.map((dynamic e) => e.toString()).toList(growable: false);
+      if (deletedFor.contains(currentUser.uid)) {
+        return false;
+      }
+      if (blockedUserIds.isEmpty) {
+        return true;
+      }
       final otherUserId = chat.participants.firstWhere(
         (id) => id.isNotEmpty && id != currentUser.uid,
         orElse: () => '',
@@ -578,25 +617,13 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final bool dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: dark
-          ? _inboxDarkBackground
+          ? AppColors.profileViewBackground
           : Theme.of(context).scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(0, -1.08),
-            radius: 1.15,
-            colors: dark
-                ? <Color>[
-                    _primaryColor.withValues(alpha: 0.12),
-                    _inboxDarkBackground,
-                  ]
-                : <Color>[
-                    _primaryColor.withValues(alpha: 0.08),
-                    Theme.of(context).scaffoldBackgroundColor,
-                  ],
-          ),
-        ),
+      body: ColoredBox(
+        color: dark
+            ? AppColors.profileViewBackground
+            : Theme.of(context).scaffoldBackgroundColor,
         child: KeyedSubtree(
           child: SafeArea(
             child: Column(
@@ -615,7 +642,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     ),
                   ),
                 _buildSearchBar(),
-                _buildTabBar(),
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 240),
@@ -653,235 +679,154 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final responsive = context.responsive;
     final ColorScheme c = Theme.of(context).colorScheme;
     final Color on = c.onSurface;
+    final int totalUnread =
+        _unreadCounts.values.fold<int>(0, (int a, int b) => a + b);
     return Container(
-      margin: EdgeInsets.fromLTRB(
-        responsive.spacing(20),
-        responsive.spacing(8),
-        responsive.spacing(20),
-        responsive.spacing(8),
-      ),
       padding: EdgeInsets.fromLTRB(
-        responsive.spacing(8),
-        responsive.spacing(8),
-        responsive.spacing(8),
-        responsive.spacing(8),
+        responsive.spacing(20),
+        responsive.spacing(12),
+        responsive.spacing(20),
+        responsive.spacing(12),
       ),
       decoration: BoxDecoration(
-        color: c.surface.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(responsive.radius(18)),
-        border: Border.all(
-          color: on.withValues(alpha: 0.08),
+        color: darkHeaderFill(c),
+        border: Border(
+          bottom: BorderSide(color: on.withValues(alpha: 0.10)),
         ),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Messages',
-                      style: TextStyle(
-                        color: on,
-                        fontSize: responsive.font(25),
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
+                child: Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        'Messages',
+                        style: TextStyle(
+                          color: on,
+                          fontSize: responsive.font(28),
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
                       ),
                     ),
-                    Text(
-                      '${_chats.length} ${_chats.length == 1 ? 'Conversation' : 'Conversations'}',
-                      style: TextStyle(
-                        color: on.withValues(alpha: 0.6),
-                        fontSize: responsive.font(13),
-                        fontWeight: FontWeight.w500,
+                    if (totalUnread > 0) ...<Widget>[
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: <Color>[
+                              Color(0xFFE53E3E),
+                              Color(0xFFC53030),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          totalUnread > 99 ? '99+' : '$totalUnread',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: 'Filter messages',
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  _toggleSelectionMode();
-                },
-                icon: Icon(
-                  _isSelectionMode ? Icons.close : Icons.tune_rounded,
-                  color: _isSelectionMode ? _primaryColor : on,
-                  size: 21,
-                ),
-                padding: const EdgeInsets.all(8),
-              ),
-              IconButton(
-                tooltip: 'New message',
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  _createNewMessage();
-                },
-                icon: Icon(
-                  Icons.edit_square,
-                  color: on,
-                  size: 21,
-                ),
-                padding: const EdgeInsets.all(8),
-              ),
-            ],
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              child: _isSelectionMode
-                  ? Padding(
-                      key: const ValueKey('selection-controls'),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.check_circle,
-                                color: _primaryColor,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${_selectedItems.length} selected',
-                                style: const TextStyle(
-                                  color: _primaryColor,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const Spacer(),
-                              if (_selectedItems.isNotEmpty)
-                                TextButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _selectedItems.clear();
-                                    });
-                                  },
-                                  child: const Text(
-                                    'Clear',
-                                    style: TextStyle(
-                                      color: _primaryColor,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          if (_selectedItems.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: _selectedItems.length ==
-                                            (_tabController.index == 0
-                                                ? _filteredChats.length
-                                                : _filteredDrafts.length)
-                                        ? () {
-                                            setState(() {
-                                              _selectedItems.clear();
-                                            });
-                                          }
-                                        : _selectAll,
-                                    icon: Icon(
-                                      _selectedItems.length ==
-                                              (_tabController.index == 0
-                                                  ? _filteredChats.length
-                                                  : _filteredDrafts.length)
-                                          ? Icons.deselect
-                                          : Icons.select_all,
-                                      size: 16,
-                                    ),
-                                    label: Text(
-                                      _selectedItems.length ==
-                                              (_tabController.index == 0
-                                                  ? _filteredChats.length
-                                                  : _filteredDrafts.length)
-                                          ? 'Deselect All'
-                                          : 'Select All',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          _on.withValues(alpha: 0.1),
-                                      foregroundColor: on,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 8),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                if (_tabController.index == 0) ...[
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      onPressed: _markAsRead,
-                                      icon: const Icon(Icons.mark_email_read,
-                                          size: 16),
-                                      label: const Text(
-                                        'Mark Read',
-                                        style: TextStyle(fontSize: 12),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: _successColor,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 8),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: _deleteSelected,
-                                    icon: const Icon(Icons.delete, size: 16),
-                                    label: const Text(
-                                      'Delete',
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 8),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    )
-                  : const SizedBox(
-                      key: ValueKey('selection-placeholder'),
+              if (_isSelectionMode) ...<Widget>[
+                TextButton(
+                  onPressed: _toggleSelectionMode,
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: on,
+                      fontWeight: FontWeight.w700,
                     ),
-            ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                ElevatedButton(
+                  onPressed:
+                      _selectedItems.isEmpty ? null : _deleteSelected,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEF4444),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        const Color(0xFFEF4444).withValues(alpha: 0.4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                  ),
+                  child: Text(
+                    'Delete${_selectedItems.isEmpty ? '' : ' (${_selectedItems.length})'}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ] else ...<Widget>[
+                IconButton(
+                  tooltip: 'Select',
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    _toggleSelectionMode();
+                  },
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFF64748B),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    minimumSize: const Size(40, 40),
+                  ),
+                  icon: const Icon(Icons.check_box_outlined, size: 20),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    _createNewMessage();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    backgroundColor: ChatUiTokens.inboxAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    '+ New',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Color darkHeaderFill(ColorScheme c) {
+    final bool dark = Theme.of(context).brightness == Brightness.dark;
+    return dark
+        ? const Color(0xCC1E293B)
+        : c.surface.withValues(alpha: 0.92);
   }
 
   Widget _buildSearchBar() {
@@ -890,25 +835,23 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     return Container(
       margin: EdgeInsets.fromLTRB(
         responsive.spacing(20),
-        0,
+        responsive.spacing(12),
         responsive.spacing(20),
-        responsive.spacing(8),
+        responsive.spacing(12),
       ),
       decoration: BoxDecoration(
-        color: _th.surface.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(responsive.radius(14)),
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: _on.withValues(alpha: 0.10),
-          width: 1,
+          color: _on.withValues(alpha: 0.12),
+          width: 2,
         ),
       ),
       child: TextField(
         controller: _searchController,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
-          hintText: _tabController.index == 0
-              ? 'Search conversations...'
-              : 'Search drafts...',
+          hintText: 'Search messages…',
           hintStyle: TextStyle(
             color: _on.withValues(alpha: 0.5),
             fontSize: responsive.font(14),
@@ -920,7 +863,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             padding: const EdgeInsets.all(12),
             child: Icon(
               Icons.search_rounded,
-              color: _on.withValues(alpha: 0.6),
+              color: _on.withValues(alpha: 0.55),
               size: responsive.icon(18),
             ),
           ),
@@ -939,7 +882,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               : null,
           contentPadding: EdgeInsets.symmetric(
             horizontal: responsive.spacing(8),
-            vertical: responsive.spacing(11),
+            vertical: responsive.spacing(12),
           ),
         ),
         style: TextStyle(
@@ -1041,7 +984,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
       itemCount: _filteredChats.length,
       itemBuilder: (context, index) {
         final chat = _filteredChats[index];
@@ -1107,16 +1050,32 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final bool isMuted =
         currentUser != null && chat.mutedBy.contains(currentUser.uid);
     final bool hasUnread = unreadCount > 0;
+    final bool isSystem = isSystemAccount(otherUserId);
+    final String previewText = _formatInboxPreview(
+      chat: chat,
+      currentUserId: currentUser?.uid,
+      fallback: secondaryLabel,
+    );
 
     final Widget tile = Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: isSelected
-            ? _primaryColor.withValues(alpha: 0.12)
-            : hasUnread
-                ? _on.withValues(alpha: 0.045)
-                : Colors.transparent,
+            ? ChatUiTokens.unreadAccent.withValues(alpha: 0.12)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
+        // Never use BorderSide(width: 0) with a non-zero radius — Flutter throws
+        // and the chat tiles fail to paint (empty-looking inbox).
+        border: (hasUnread || isSystem)
+            ? Border(
+                left: BorderSide(
+                  color: hasUnread
+                      ? ChatUiTokens.unreadAccent
+                      : const Color(0xFF3B82F6),
+                  width: 3,
+                ),
+              )
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -1131,48 +1090,71 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             _toggleSelection(chat.id ?? '');
           },
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(
               children: [
                 // Avatar with selection indicator and online status
                 Stack(
+                  clipBehavior: Clip.none,
                   children: [
                     StatusAwareAvatar(
                       userId: otherUserId,
                       avatarURL: userProfile?.avatarURL,
-                      radius: 20,
-                      showOnlineIndicator: true,
+                      radius: 22,
+                      showOnlineIndicator: !isSystem,
                     ),
                     // Selection indicator
                     if (isSelected)
                       Positioned(
-                        right: 0,
-                        top: 0,
+                        right: -2,
+                        top: -2,
                         child: Container(
-                          width: 18,
-                          height: 18,
+                          width: 20,
+                          height: 20,
                           decoration: const BoxDecoration(
-                            color: _primaryColor,
+                            color: ChatUiTokens.unreadAccent,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             Icons.check,
                             color: _onP,
-                            size: 10,
+                            size: 12,
                           ),
                         ),
-                      ),
-                    // Unread count badge
-                    if (unreadCount > 0)
+                      )
+                    else if (unreadCount > 0)
                       Positioned(
-                        right: 0,
-                        top: 0,
+                        right: -4,
+                        top: -4,
                         child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: _primaryColor,
-                            shape: BoxShape.circle,
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          decoration: BoxDecoration(
+                            color: ChatUiTokens.unreadAccent,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: AppColors.profileViewBackground,
+                              width: 1.5,
+                            ),
+                            boxShadow: <BoxShadow>[
+                              BoxShadow(
+                                color: ChatUiTokens.unreadAccent
+                                    .withValues(alpha: 0.45),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            unreadCount > 99 ? '99+' : '$unreadCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
@@ -1191,13 +1173,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               color: _th.surface,
                               width: 2,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
                           ),
                           child: Icon(
                             Icons.volume_off,
@@ -1218,7 +1193,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         children: <Widget>[
                           Expanded(
                             child: Text(
-                              participantName,
+                              isSystem
+                                  ? kStreamersTipSystemDisplayName
+                                  : participantName,
                               style: TextStyle(
                                 color: _on,
                                 fontSize: 15.5,
@@ -1245,27 +1222,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          if (hasUnread) ...<Widget>[
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: const BoxDecoration(
-                                color: _primaryColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
                           Expanded(
                             child: Text(
-                              (chat.lastMessage ?? secondaryLabel)
-                                      .trim()
-                                      .isEmpty
-                                  ? secondaryLabel
-                                  : (chat.lastMessage ?? secondaryLabel),
+                              previewText,
                               style: TextStyle(
                                 color: _on.withValues(
-                                  alpha: hasUnread ? 0.82 : 0.56,
+                                  alpha: hasUnread ? 0.88 : 0.56,
                                 ),
                                 fontSize: 13,
                                 fontWeight: hasUnread
@@ -2460,6 +2422,38 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     } finally {
       _isNavigating = false;
     }
+  }
+
+  String _formatInboxPreview({
+    required app_chat.Chat chat,
+    required String? currentUserId,
+    required String fallback,
+  }) {
+    final String raw = (chat.lastMessage ?? '').trim();
+    if (raw.isEmpty) {
+      return fallback;
+    }
+    final String type =
+        (chat.metadata?['lastMessageType'] ?? '').toString().toLowerCase();
+    final bool looksLikeGif = type == 'gif' ||
+        shouldSendComposerInputAsRemoteGifUrl(raw) ||
+        raw.toLowerCase().contains('giphy.com') ||
+        raw.toLowerCase().contains('tenor.com');
+    if (looksLikeGif) {
+      final String from =
+          (chat.metadata?['lastMessageFrom'] ?? '').toString();
+      if (currentUserId != null && from == currentUserId) {
+        return 'Gif sent';
+      }
+      return 'Gif received';
+    }
+    if (type == 'video_share' || type == 'content_share') {
+      return 'Shared a video';
+    }
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return 'Attachment';
+    }
+    return raw;
   }
 
   String _formatTime(DateTime time) {

@@ -4,8 +4,8 @@ import '../../models/forum_post.dart';
 import '../../services/discussion_author_service.dart';
 import '../status_aware_avatar.dart';
 
-/// Card widget for displaying a forum post in the grid
-class ForumPostCard extends StatelessWidget {
+/// Testimonial-style card for a forum thread in the grid.
+class ForumPostCard extends StatefulWidget {
   final ForumPost post;
   final VoidCallback onTap;
   final bool featured;
@@ -18,137 +18,189 @@ class ForumPostCard extends StatelessWidget {
   });
 
   @override
+  State<ForumPostCard> createState() => _ForumPostCardState();
+}
+
+class _ForumPostCardState extends State<ForumPostCard> {
+  bool _isHovered = false;
+
+  double get _restAngle {
+    final int hash = widget.post.id.codeUnits.fold<int>(
+      0,
+      (int sum, int c) => sum + c,
+    );
+    switch (hash.abs() % 3) {
+      case 0:
+        return -0.055;
+      case 1:
+        return 0.044;
+      default:
+        return -0.035;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
+    final ForumPost post = widget.post;
     final String category = (post.categoryDisplayName ?? '').isNotEmpty
         ? post.categoryDisplayName!
         : _threadTypeLabel(post.category);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(featured ? 18 : 14),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(
-            featured ? 16 : 14,
-            featured ? 16 : 12,
-            featured ? 16 : 14,
-            featured ? 15 : 12,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(featured ? 18 : 14),
-            color: shell.surfaceCard.withValues(alpha: featured ? 0.74 : 0.5),
-            border: Border.all(
-              color: shell.surfaceCardBorder.withValues(alpha: 0.58),
-              width: 1,
-            ),
-            boxShadow: featured
-                ? <BoxShadow>[
+    final String quote = post.content.trim().isNotEmpty
+        ? post.content.trim()
+        : (post.title.trim().isNotEmpty ? post.title.trim() : 'Open thread');
+    final bool showTitle =
+        post.title.trim().isNotEmpty && post.title.trim() != quote;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedScale(
+        scale: _isHovered ? 1.02 : 1.0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutBack,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutBack,
+          transformAlignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..rotateZ(_isHovered ? 0 : _restAngle)
+            ..translateByDouble(0, _isHovered ? -6.0 : 0.0, 0, 1),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  color: shell.surfaceCard.withValues(alpha: 0.72),
+                  border: Border.all(
+                    color: shell.surfaceCardBorder.withValues(alpha: 0.58),
+                  ),
+                  boxShadow: <BoxShadow>[
                     BoxShadow(
                       color: shell.shadowSoft.withValues(alpha: 0.65),
                       blurRadius: 18,
                       offset: const Offset(0, 8),
                     ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _ThreadTypePill(label: category),
-                  const Spacer(),
-                  Text(
-                    '${post.commentCount} replies',
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.52),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: featured ? 12 : 8),
-              Text(
-                post.title,
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: featured ? 20 : 15.5,
-                  fontWeight: FontWeight.w800,
-                  height: 1.22,
-                  letterSpacing: featured ? -0.2 : 0,
+                  ],
                 ),
-                maxLines: featured ? 3 : 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 7),
-              Text(
-                post.content,
-                style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: 0.62),
-                  fontSize: featured ? 14 : 13,
-                  height: 1.38,
-                ),
-                maxLines: featured ? 3 : 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              SizedBox(height: featured ? 14 : 12),
-              Row(
-                children: [
-                  _ThreadPostAvatar(
-                    userId: post.author.uid,
-                    fallbackAvatarUrl: post.author.avatarUrl,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: StreamBuilder(
-                      stream: DiscussionAuthorService()
-                          .watchForumAuthor(post.author.uid),
-                      builder: (BuildContext ctx, snapshot) {
-                        final ColorScheme c = Theme.of(ctx).colorScheme;
-                        final liveAuthor = snapshot.data;
-                        return Text(
-                          liveAuthor?.displayName ?? post.author.displayName,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        _ThreadTypePill(label: category),
+                        const Spacer(),
+                        Text(
+                          _relativeTime(post.createdAt),
                           style: TextStyle(
-                            color: c.onSurface.withValues(alpha: 0.72),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                            color: scheme.onSurface.withValues(alpha: 0.45),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        );
-                      },
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.favorite_border_rounded,
-                    size: 14,
-                    color: scheme.onSurface.withValues(alpha: 0.44),
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    '${post.likes}',
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.52),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    if (showTitle) ...<Widget>[
+                      const SizedBox(height: 12),
+                      Text(
+                        post.title,
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: widget.featured ? 18 : 15,
+                          fontWeight: FontWeight.w800,
+                          height: 1.25,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: Text(
+                        '“$quote”',
+                        style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: 0.78),
+                          fontSize: 15,
+                          height: 1.45,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: widget.featured ? 6 : 5,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _relativeTime(post.createdAt),
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.5),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 16),
+                    Row(
+                      children: <Widget>[
+                        StatusAwareAvatar(
+                          userId: post.author.uid,
+                          avatarURL: post.author.avatarUrl,
+                          radius: 21,
+                          showOnlineIndicator: false,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: StreamBuilder(
+                            stream: DiscussionAuthorService()
+                                .watchForumAuthor(post.author.uid),
+                            builder: (BuildContext ctx, snapshot) {
+                              final ColorScheme c =
+                                  Theme.of(ctx).colorScheme;
+                              final liveAuthor = snapshot.data;
+                              final String name = (liveAuthor?.username ??
+                                      liveAuthor?.displayName ??
+                                      post.author.username)
+                                  .trim();
+                              final String display = name.isNotEmpty
+                                  ? name
+                                  : post.author.displayName.trim();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    display.isEmpty ? 'Creator' : display,
+                                    style: TextStyle(
+                                      color: c.onSurface,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    category,
+                                    style: TextStyle(
+                                      color: c.onSurface
+                                          .withValues(alpha: 0.5),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    Text(
+                      '${post.commentCount} replies · ${post.likes} helpful',
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -185,11 +237,10 @@ class _ThreadTypePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: scheme.primary.withValues(alpha: 0.10),
+        color: scheme.primary.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
       ),
       child: Text(
         label,
@@ -199,33 +250,6 @@ class _ThreadTypePill extends StatelessWidget {
           fontWeight: FontWeight.w800,
         ),
       ),
-    );
-  }
-}
-
-class _ThreadPostAvatar extends StatelessWidget {
-  const _ThreadPostAvatar({
-    required this.userId,
-    required this.fallbackAvatarUrl,
-  });
-
-  final String userId;
-  final String? fallbackAvatarUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder(
-      stream: DiscussionAuthorService().watchForumAuthor(userId),
-      builder: (context, snapshot) {
-        final String? liveAvatarUrl =
-            snapshot.data?.avatarUrl ?? fallbackAvatarUrl;
-        return StatusAwareAvatar(
-          userId: userId,
-          avatarURL: liveAvatarUrl,
-          radius: 14,
-          showOnlineIndicator: true,
-        );
-      },
     );
   }
 }

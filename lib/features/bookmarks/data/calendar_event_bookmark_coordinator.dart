@@ -133,27 +133,31 @@ class CalendarEventBookmarkCoordinator {
                   Map<String, dynamic>.from(doc.data());
               if (data['creatorName'] == null && data['creatorId'] != null) {
                 try {
+                  final String creatorId = data['creatorId'].toString();
                   final DocumentSnapshot<Map<String, dynamic>> creatorDoc =
                       await _firestore
                           .collection('users')
-                          .doc(data['creatorId'] as String)
+                          .doc(creatorId)
                           .get();
                   if (creatorDoc.exists) {
                     final Map<String, dynamic>? creatorData = creatorDoc.data();
                     data['creatorName'] =
                         creatorData?['displayName'] as String? ??
                             creatorData?['username'] as String? ??
-                            data['creatorId'] as String;
+                            creatorId;
                     await doc.reference.update(
                       <String, dynamic>{'creatorName': data['creatorName']},
                     );
                   }
                 } catch (e) {
                   debugPrint('⚠️ CalendarEventBookmarkCoordinator: creator: $e');
-                  data['creatorName'] = data['creatorId'];
+                  data['creatorName'] = data['creatorId']?.toString();
                 }
               }
-              final BookmarkEvent bookmark = BookmarkEvent.fromMap(data);
+              final BookmarkEvent? bookmark = BookmarkEvent.tryParse(data);
+              if (bookmark == null) {
+                continue;
+              }
               _bookmarkedEventIds.add(bookmark.eventId);
               _bookmarkedEvents[bookmark.eventId] = bookmark;
             } catch (e) {
@@ -344,8 +348,9 @@ class CalendarEventBookmarkCoordinator {
           (QuerySnapshot<Map<String, dynamic>> snapshot) => snapshot.docs
               .map(
                 (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
-                    BookmarkEvent.fromMap(doc.data()),
+                    BookmarkEvent.tryParse(doc.data()),
               )
+              .whereType<BookmarkEvent>()
               .toList(growable: false),
         );
   }
@@ -365,8 +370,9 @@ class CalendarEventBookmarkCoordinator {
       return snapshot.docs
           .map(
             (QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
-                BookmarkEvent.fromMap(doc.data()),
+                BookmarkEvent.tryParse(doc.data()),
           )
+          .whereType<BookmarkEvent>()
           .toList(growable: false);
     } catch (e) {
       debugPrint('❌ CalendarEventBookmarkCoordinator: getBookmarks: $e');

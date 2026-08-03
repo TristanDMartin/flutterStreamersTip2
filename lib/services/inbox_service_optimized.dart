@@ -37,23 +37,30 @@ class InboxServiceOptimized {
     if (currentUser == null) return [];
 
     try {
+      // Match website: no orderBy (avoids composite-index failures); sort client-side.
       final query = await _firestore
           .collection('chats')
           .where('participants', arrayContains: currentUser.uid)
-          .orderBy('lastTimestamp', descending: true)
           .get();
 
       final chats = <app_chat.Chat>[];
       for (final doc in query.docs) {
-        final chat = _mapChat(doc.id, doc.data());
-        _chatCache[doc.id] = chat;
-        chats.add(chat);
+        try {
+          final chat = _mapChat(doc.id, doc.data());
+          _chatCache[doc.id] = chat;
+          chats.add(chat);
+        } catch (e) {
+          LoggingService.instance.error('Skip bad chat ${doc.id}: $e');
+        }
       }
-
+      chats.sort(
+        (app_chat.Chat a, app_chat.Chat b) =>
+            b.lastTimestamp.compareTo(a.lastTimestamp),
+      );
       return chats;
     } catch (e) {
       LoggingService.instance.error('Error getting chats: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -458,9 +465,8 @@ class InboxServiceOptimized {
     if (currentUser != null) {
       final unreadField = 'unreadCount_${currentUser.uid}';
       final dynamic unreadValue = data[unreadField];
-      if (unreadValue != null) {
-        unreadCount =
-            unreadValue is int ? unreadValue : (unreadValue as num).toInt();
+      if (unreadValue is num) {
+        unreadCount = unreadValue.toInt();
       }
       // Cache the unread count
       _unreadCounts[id] = unreadCount;
@@ -468,12 +474,48 @@ class InboxServiceOptimized {
 
     return app_chat.Chat(
       id: id,
-      participants: List<String>.from(data['participants'] ?? []),
-      lastMessage: data['lastMessage'] ?? '',
-      lastTimestamp:
-          (data['lastTimestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      chatType: data['chatType'] ?? 'direct',
+      participants: _stringListFrom(data['participants']),
+      lastMessage: (data['lastMessage'] as String?) ?? '',
+      lastTimestamp: _readDateTime(data['lastTimestamp']) ?? DateTime.now(),
+      chatType: (data['chatType'] as String?) ?? 'direct',
+      mutedBy: _stringListFrom(data['mutedBy']),
+      archivedBy: _stringListFrom(data['archivedBy']),
+      metadata: <String, dynamic>{
+        'deletedFor': _stringListFrom(data['deletedFor']),
+        if (data['pinnedUntilViewed'] != null)
+          'pinnedUntilViewed': data['pinnedUntilViewed'],
+        if (data['lastMessageType'] != null)
+          'lastMessageType': data['lastMessageType'],
+        if (data['lastMessageFrom'] != null)
+          'lastMessageFrom': data['lastMessageFrom'],
+      },
     );
+  }
+
+  List<String> _stringListFrom(Object? raw) {
+    if (raw is! List) {
+      return const <String>[];
+    }
+    return raw
+        .map((Object? e) => e?.toString().trim() ?? '')
+        .where((String e) => e.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  DateTime? _readDateTime(Object? raw) {
+    if (raw is Timestamp) {
+      return raw.toDate();
+    }
+    if (raw is DateTime) {
+      return raw;
+    }
+    if (raw is int) {
+      return DateTime.fromMillisecondsSinceEpoch(raw);
+    }
+    if (raw is String) {
+      return DateTime.tryParse(raw);
+    }
+    return null;
   }
 
   /// Map Firestore document to SharedDraft model
@@ -577,15 +619,22 @@ class InboxServiceOptimized {
     return _firestore
         .collection('chats')
         .where('participants', arrayContains: currentUser.uid)
-        .orderBy('lastTimestamp', descending: true)
         .snapshots()
         .map((snapshot) {
       final chats = <app_chat.Chat>[];
       for (final doc in snapshot.docs) {
-        final chat = _mapChat(doc.id, doc.data());
-        _chatCache[doc.id] = chat;
-        chats.add(chat);
+        try {
+          final chat = _mapChat(doc.id, doc.data());
+          _chatCache[doc.id] = chat;
+          chats.add(chat);
+        } catch (e) {
+          LoggingService.instance.error('Skip bad chat ${doc.id}: $e');
+        }
       }
+      chats.sort(
+        (app_chat.Chat a, app_chat.Chat b) =>
+            b.lastTimestamp.compareTo(a.lastTimestamp),
+      );
       return chats;
     });
   }
@@ -685,23 +734,30 @@ class InboxServiceOptimized {
   void startRealTimeListeners({
     required Function(List<app_chat.Chat>) onChatsUpdate,
     required Function(List<SharedDraft>) onDraftsUpdate,
+    void Function(Object error)? onChatsError,
+    void Function(Object error)? onDraftsError,
   }) {
     final currentUser = _auth.currentUser;
-    if (currentUser == null) return;
+    if (currentUser == null) {
+      onChatsError?.call(StateError('Not signed in'));
+      return;
+    }
 
     // Listen to chats
     _chatsSubscription = streamChats().listen(
       onChatsUpdate,
-      onError: (error) {
+      onError: (Object error) {
         LoggingService.instance.error('Error in chats stream: $error');
+        onChatsError?.call(error);
       },
     );
 
     // Listen to drafts
     _draftsSubscription = streamSharedDrafts().listen(
       onDraftsUpdate,
-      onError: (error) {
+      onError: (Object error) {
         LoggingService.instance.error('Error in drafts stream: $error');
+        onDraftsError?.call(error);
       },
     );
   }

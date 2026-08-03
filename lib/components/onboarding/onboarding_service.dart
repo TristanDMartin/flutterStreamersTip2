@@ -224,14 +224,15 @@ class OnboardingService {
         UserProfileFirestore.platformStubsFromSelection(platforms);
     final Map<String, dynamic> payload = <String, dynamic>{
       if (goals.isNotEmpty) 'creatorGoals': goals,
-      if (platforms.isNotEmpty)
-        UserProfileFirestore.platformsField: platformStubs,
+      // Do NOT write selection stubs onto users.platforms / linkedPlatforms —
+      // that wiped real Edit Profile URLs. Keep picks under onboarding only.
       'onboarding': <String, dynamic>{
         'version': OnboardingV1Constants.version,
         'status': OnboardingStatus.inProgress,
         'currentStep': 2,
         if (goals.isNotEmpty) 'creatorGoals': goals,
         if (platforms.isNotEmpty) 'platforms': platforms,
+        if (platformStubs.isNotEmpty) 'platformStubs': platformStubs,
         'hasSeenIntro': true,
         'lastSeenAt': FieldValue.serverTimestamp(),
       },
@@ -352,8 +353,10 @@ class OnboardingService {
       profile['photoURL'] = avatarUrl.trim();
     }
     if (platforms != null) {
-      profile[UserProfileFirestore.platformsField] =
+      final List<Map<String, dynamic>> normalized =
           UserProfileFirestore.normalizePlatformsForFirestore(platforms);
+      profile[UserProfileFirestore.platformsField] = normalized;
+      profile[UserProfileFirestore.linkedPlatformsField] = normalized;
     }
     final List<String> platformTypes = platforms == null
         ? <String>[]

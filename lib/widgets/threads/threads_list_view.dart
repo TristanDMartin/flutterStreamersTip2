@@ -7,7 +7,10 @@ import '../../utils/user_facing_error.dart';
 import '../../models/forum_category.dart';
 import '../../core/theme/support_shell_style.dart';
 import '../../features/threads/creator_threads_shell.dart';
+import '../../features/threads/thread_detail_v2_screen.dart';
+import '../../features/threads/threads_models.dart';
 import '../../features/threads/threads_repository.dart';
+import '../../features/threads/typed_create_thread_screen.dart';
 import 'thread_detail_screen.dart';
 import 'create_thread_screen.dart';
 import 'forum_post_card.dart';
@@ -111,30 +114,49 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
 
   @override
   Widget build(BuildContext context) {
-    const bool envUi = bool.fromEnvironment(
-      'THREADS_V2_UI',
-      defaultValue: false,
-    );
-    final bool useV2Ui = widget.threadsV2UiEnabled ?? envUi;
+    final ThreadsFeatureFlags flags = ThreadsFeatureFlags.fromEnvironment();
+    final bool useV2Ui = widget.threadsV2UiEnabled ?? flags.uiEnabled;
     if (useV2Ui) {
-      return CreatorThreadsShell(
-        repository: FirestoreThreadsRepository(
-          flags: const ThreadsFeatureFlags(
-            readsEnabled: false,
-            writesEnabled: false,
-            uiEnabled: true,
-          ),
+      final ThreadsRepository repository = FirestoreThreadsRepository(
+        flags: ThreadsFeatureFlags(
+          readsEnabled: flags.readsEnabled,
+          writesEnabled: flags.writesEnabled,
+          uiEnabled: true,
+          cutover: flags.cutover,
         ),
-        embeddedInHome: widget.embeddedInHome,
-        onOpenThread: (thread) {
-          Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (BuildContext context) =>
-                  ThreadDetailScreen(postId: thread.id),
-            ),
-          ).then((_) => _loadThreads());
-        },
+      );
+      final ColorScheme scheme = Theme.of(context).colorScheme;
+      return Scaffold(
+        backgroundColor: const Color(0xFF071120),
+        body: CreatorThreadsShell(
+          repository: repository,
+          embeddedInHome: widget.embeddedInHome,
+          onOpenThread: (ThreadDto thread) {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => ThreadDetailV2Screen(
+                  threadId: thread.id,
+                  repository: repository,
+                  initialThread: thread,
+                ),
+              ),
+            ).then((_) => _loadThreads());
+          },
+        ),
+        floatingActionButton: _buildCreateThreadFab(
+          scheme: scheme,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => TypedCreateThreadScreen(
+                  repository: repository,
+                ),
+              ),
+            ).then((_) => _loadThreads());
+          },
+        ),
       );
     }
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
@@ -211,8 +233,26 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.small(
-        onPressed: () => _navigateToCreateThread(),
+      floatingActionButton: _buildCreateThreadFab(
+        scheme: scheme,
+        onPressed: _navigateToCreateThread,
+      ),
+    );
+  }
+
+  Widget _buildCreateThreadFab({
+    required ColorScheme scheme,
+    required VoidCallback onPressed,
+  }) {
+    // Nested under MainTabView extendBody + glass dock — clear dock, not float high.
+    final double bottomClearance = widget.embeddedInHome
+        ? MediaQuery.paddingOf(context).bottom + 48
+        : 0;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomClearance),
+      child: FloatingActionButton.small(
+        tooltip: 'Create a thread',
+        onPressed: onPressed,
         backgroundColor: scheme.primary,
         elevation: 2,
         child: Icon(

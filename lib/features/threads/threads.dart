@@ -6,3 +6,4 @@ export 'threads_gamification.dart';
 export 'creator_threads_shell.dart';
 export 'typed_create_thread_screen.dart';
 export 'thread_workspace_header.dart';
+export 'thread_detail_v2_screen.dart';

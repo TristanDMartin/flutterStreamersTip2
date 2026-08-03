@@ -8,7 +8,6 @@ import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart' as app_user;
 import '../constants/app_colors.dart';
 import '../providers/follow_refresh_provider.dart';
-import '../providers/main_tab_provider.dart';
 import '../utils/interaction_diagnostics.dart';
 import '../utils/like_interaction_boundary.dart';
 import '../routing/app_navigator.dart';
@@ -143,20 +142,17 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     LikeInteractionBoundary.reportProfileRebuild(
       source: 'ProfileViewOptimized_listener',
     );
+    // Always invalidate so Edit Profile reopen does not keep empty platforms.
+    _userDataCache.markDirty();
+    _userDataCache.onProfileServiceAvatarHint(
+      resolveAvatarUrl(_profileUpdateService?.userData),
+    );
     if (LikeInteractionBoundary.shouldDeferHeavyWork) {
       return;
     }
     _rebuildDebounceTimer?.cancel();
     _rebuildDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted || _isDisposed) {
-        return;
-      }
-      _userDataCache.markDirty();
-      _userDataCache.onProfileServiceAvatarHint(
-        resolveAvatarUrl(_profileUpdateService?.userData),
-      );
-      const int profileTabIndex = 4;
-      if (ref.read(mainTabActiveIndexProvider) != profileTabIndex) {
         return;
       }
       setState(() {});

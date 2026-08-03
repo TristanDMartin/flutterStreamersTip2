@@ -136,6 +136,7 @@ class StreamerCardProfileController extends ChangeNotifier {
           );
           final int platformCount = UserProfileFirestore.parsePlatformsFromUserData(
             merged,
+            connectedOnly: true,
           ).length;
           UserProfileFirestore.logPlatformRead(
             uid: resolvedDocId,
@@ -145,8 +146,11 @@ class StreamerCardProfileController extends ChangeNotifier {
           UserProfileFirestore.logCalendarRead(
             uid: resolvedDocId,
             source: 'StreamerCardBackView',
-            count: UserProfileFirestore.parseCalendarEventsFromUserData(merged)
-                .length,
+            count: UserProfileFirestore.parseStreamerFacingCalendarEvents(
+              merged,
+              viewerIsOwner: FirebaseAuth.instance.currentUser?.uid ==
+                  resolvedDocId,
+            ).length,
           );
 
           CreatorCacheService.instance.setFromUserData(resolvedDocId, merged);
@@ -198,15 +202,30 @@ class StreamerCardProfileController extends ChangeNotifier {
     if (identifier.isEmpty) {
       return null;
     }
+    final String normalized = identifier.toLowerCase().replaceAll(
+          RegExp(r'^@+'),
+          '',
+        );
 
     final DocumentSnapshot<Map<String, dynamic>> directPublic =
         await _firestore.collection('publicUsers').doc(identifier).get();
     if (directPublic.exists) {
       return directPublic.id;
     }
+    if (normalized != identifier) {
+      final DocumentSnapshot<Map<String, dynamic>> directPublicNormalized =
+          await _firestore.collection('publicUsers').doc(normalized).get();
+      if (directPublicNormalized.exists) {
+        return directPublicNormalized.id;
+      }
+    }
 
-    final DocumentSnapshot<Map<String, dynamic>> usernameDoc =
-        await _firestore.collection('usernames').doc(identifier).get();
+    DocumentSnapshot<Map<String, dynamic>> usernameDoc =
+        await _firestore.collection('usernames').doc(normalized).get();
+    if (!usernameDoc.exists && normalized != identifier) {
+      usernameDoc =
+          await _firestore.collection('usernames').doc(identifier).get();
+    }
     final String? mappedUid = usernameDoc.data()?['uid'] as String?;
     if (mappedUid != null && mappedUid.trim().isNotEmpty) {
       final String uid = mappedUid.trim();
@@ -225,13 +244,32 @@ class StreamerCardProfileController extends ChangeNotifier {
       return uid;
     }
 
-    final QuerySnapshot<Map<String, dynamic>> usernameQuery = await _firestore
-        .collection('publicUsers')
-        .where('username', isEqualTo: identifier)
-        .limit(1)
-        .get();
-    if (usernameQuery.docs.isNotEmpty) {
-      return usernameQuery.docs.first.id;
+    for (final String field in <String>[
+      'usernameLowercase',
+      'usernameNormalized',
+      'username',
+    ]) {
+      final QuerySnapshot<Map<String, dynamic>> usernameQuery =
+          await _firestore
+              .collection('publicUsers')
+              .where(field, isEqualTo: normalized)
+              .limit(1)
+              .get();
+      if (usernameQuery.docs.isNotEmpty) {
+        return usernameQuery.docs.first.id;
+      }
+    }
+
+    if (normalized != identifier) {
+      final QuerySnapshot<Map<String, dynamic>> exactUsername =
+          await _firestore
+              .collection('publicUsers')
+              .where('username', isEqualTo: identifier)
+              .limit(1)
+              .get();
+      if (exactUsername.docs.isNotEmpty) {
+        return exactUsername.docs.first.id;
+      }
     }
 
     final QuerySnapshot<Map<String, dynamic>> displayNameQuery =

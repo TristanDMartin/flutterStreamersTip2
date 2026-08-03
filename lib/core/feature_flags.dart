@@ -12,4 +12,22 @@ class FeatureFlags {
   static const bool linkedPlatforms = false;
   static const bool tippyPlannerSync = true;
   static const bool progression = true;
+
+  /// Creator Threads v2 shell (compile-time / dart-define).
+  static const bool threadsV2Ui = bool.fromEnvironment(
+    'THREADS_V2_UI',
+    defaultValue: true,
+  );
+  static const bool threadsV2Reads = bool.fromEnvironment(
+    'THREADS_V2_READS',
+    defaultValue: true,
+  );
+  static const bool threadsV2Writes = bool.fromEnvironment(
+    'THREADS_V2_WRITES',
+    defaultValue: true,
+  );
+  static const bool threadsV2Cutover = bool.fromEnvironment(
+    'THREADS_V2_CUTOVER',
+    defaultValue: false,
+  );
 }

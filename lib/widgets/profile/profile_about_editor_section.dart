@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/user_profile_firestore.dart';
 import 'editable_profile_field.dart';
 import 'profile_username_utils.dart';
 
@@ -93,14 +94,8 @@ class ProfileAboutEditorSection extends StatelessWidget {
   }
 
   static int _linkedPlatformCount(Map<String, dynamic> user) {
-    final Object? raw = user['platforms'];
-    if (raw is! List) {
-      return 0;
-    }
-    return raw.where((Object? item) {
-      if (item is! Map) {
-        return false;
-      }
+    return UserProfileFirestore.parsePlatformsFromUserData(user)
+        .where((Map<String, dynamic> item) {
       final String username = (item['username'] as String?)?.trim() ?? '';
       final String url = (item['url'] as String?)?.trim() ?? '';
       return username.isNotEmpty || url.isNotEmpty;

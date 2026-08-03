@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../../features/threads/thread_detail_v2_screen.dart';
+import '../../features/threads/threads_models.dart';
+import '../../features/threads/threads_repository.dart';
 import '../../services/forum_service.dart';
 import '../../utils/user_facing_error.dart';
 import '../../services/comments_service.dart';
@@ -102,16 +105,36 @@ class _CreateThreadFromCommentScreenState
         'name': widget.comment.user.displayName,
       };
 
-      final threadId = await _forumService.createThreadFromComment(
-        threadTitle: title,
-        commentText: content,
-        commentAuthor: commentAuthor,
-        threadAuthor: threadAuthor,
-        videoId: widget.videoId,
-        commentId: widget.comment.id,
-        categoryId: _selectedCategory!,
-        tags: [],
-      );
+      final ThreadsFeatureFlags flags = ThreadsFeatureFlags.fromEnvironment();
+      late final String threadId;
+      if (flags.writesEnabled) {
+        final ThreadsRepository repository = FirestoreThreadsRepository(
+          flags: flags,
+        );
+        threadId = await repository.createThread(
+          CreateThreadRequest(
+            type: 'question',
+            title: title,
+            body: content,
+            categoryId: _selectedCategory!,
+            authorId: user.uid,
+            sourceVideoId: widget.videoId,
+            sourceCommentId: widget.comment.id,
+            sourceComment: commentAuthor,
+          ),
+        );
+      } else {
+        threadId = await _forumService.createThreadFromComment(
+          threadTitle: title,
+          commentText: content,
+          commentAuthor: commentAuthor,
+          threadAuthor: threadAuthor,
+          videoId: widget.videoId,
+          commentId: widget.comment.id,
+          categoryId: _selectedCategory!,
+          tags: [],
+        );
+      }
 
       // Link comment to thread
       await _commentsService.linkCommentToThread(
@@ -121,12 +144,27 @@ class _CreateThreadFromCommentScreenState
       );
 
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (context) => ThreadDetailScreen(postId: threadId),
-          ),
-        );
+        if (flags.uiEnabled) {
+          final ThreadsRepository repository = FirestoreThreadsRepository(
+            flags: flags,
+          );
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (context) => ThreadDetailV2Screen(
+                threadId: threadId,
+                repository: repository,
+              ),
+            ),
+          );
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (context) => ThreadDetailScreen(postId: threadId),
+            ),
+          );
+        }
       }
     } catch (e) {
       setState(() {

@@ -21,6 +21,7 @@ abstract final class ProfileUserDocFields {
     'contentPlanProfileCalendarEvents',
     'contentPlanStreamerCalendarEvents',
     'contentPlanCalendarEvents',
+    'streamerCalendarEvents',
     'recentSearches',
     'calendarEvents',
     'totalLikes',
@@ -30,7 +31,8 @@ abstract final class ProfileUserDocFields {
     'privacy',
     'hashtags',
     'connectedPlatforms',
-    UserProfileFirestore.platformsField,
+    // platforms intentionally NOT ignored — ProfileBack / streamer details
+    // must rebuild when links change.
     'reconciliationDetails',
     'lastPostCountReconciliation',
     'postCount',
@@ -58,6 +60,8 @@ abstract final class ProfileUserDocFields {
     'followersCount',
     'followerCount',
     'followingCount',
+    UserProfileFirestore.platformsField,
+    UserProfileFirestore.linkedPlatformsField,
   };
 
   static List<String> changedRelevantFields({

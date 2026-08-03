@@ -122,11 +122,14 @@ listFeed(filter, ...):
 
 ## Phase mapping
 
-| Plan phase | Migration work |
-|------------|----------------|
-| 0 | Audit + contract + this doc |
-| 1 | Repositories + adapter + flags |
-| 2 | Parallel shells behind `threads_v2_ui` |
-| 3 | Typed create/detail + reactions/resolution |
-| 4 | Modules/Tippy/gamification |
-| 5 | Backfill + cutover + retire legacy writes |
+| Plan phase | Migration work | Status |
+|------------|----------------|--------|
+| 0 | Audit + contract + this doc | Shipped |
+| 1 | Repositories + adapter + flags | Shipped |
+| 2 | Parallel shells behind `threads_v2_ui` | Shipped (flags on) |
+| 3 | Typed create/detail + reactions/resolution | Shipped (flags on; cutover off) |
+| 4 | Modules/Tippy/gamification | Partial (emit on v2 writes; Tippy AI / momentum server still open) |
+| 5 | Backfill + cutover + retire legacy writes | Open |
+
+Phase 2–3 product completeness ships with dual-read/write behind `threads_v2_ui` / `_reads` / `_writes`. Keep `threads_v2_cutover` off until Phase 5 criteria pass.
+

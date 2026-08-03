@@ -35,8 +35,12 @@ class StatusAwareAvatar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(userStatusProvider(userId));
-    final String? resolvedUrl = normalizeAvatarPhotoUrl(avatarURL);
+    final String? resolvedUrl =
+        isNetworkAvatarUrl(avatarURL) ? normalizeAvatarPhotoUrl(avatarURL) : null;
     final int cachePx = (radius * 2 * 2).round().clamp(48, 256);
+    final double diameter = radius * 2;
+    final double indicatorSize = (radius * 0.42).clamp(8.0, 14.0);
+    final double indicatorBorder = radius < 18 ? 1.5 : 2.0;
     final Widget fallback = placeholder ??
         Icon(
           Icons.person,
@@ -45,14 +49,14 @@ class StatusAwareAvatar extends ConsumerWidget {
         );
 
     return SizedBox(
-      width: radius * 2,
-      height: radius * 2,
+      width: diameter,
+      height: diameter,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: radius * 2,
-            height: radius * 2,
+            width: diameter,
+            height: diameter,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: backgroundColor ?? Colors.white.withValues(alpha: 0.2),
@@ -62,8 +66,8 @@ class StatusAwareAvatar extends ConsumerWidget {
                   ? CachedNetworkImage(
                       imageUrl: resolvedUrl,
                       fit: BoxFit.cover,
-                      width: radius * 2,
-                      height: radius * 2,
+                      width: diameter,
+                      height: diameter,
                       memCacheWidth: cachePx,
                       memCacheHeight: cachePx,
                       fadeInDuration: const Duration(milliseconds: 120),
@@ -76,28 +80,24 @@ class StatusAwareAvatar extends ConsumerWidget {
                   : Center(child: fallback),
             ),
           ),
-
-          // Online Status Indicator
           if (showOnlineIndicator)
             statusAsync.when(
               data: (presence) {
-                // Only show indicator for non-offline statuses
                 if (presence.status == UserStatus.offline) {
                   return const SizedBox.shrink();
                 }
-
                 return Positioned(
                   right: 0,
                   bottom: 0,
                   child: Container(
-                    width: radius * 0.35,
-                    height: radius * 0.35,
+                    width: indicatorSize,
+                    height: indicatorSize,
                     decoration: BoxDecoration(
                       color: _getStatusColor(presence.status),
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: Colors.black,
-                        width: 2,
+                        width: indicatorBorder,
                       ),
                       boxShadow: [
                         BoxShadow(

@@ -77,6 +77,7 @@ class ProfileUpdateService extends ChangeNotifier {
         _userData = newData;
         debugPrint("🔍 ProfileUpdateService: Loaded initial user data");
         _notifyAllChannels(reason: 'initial_load');
+        unawaited(_ensurePublicPlatformsMirror());
       }
 
       _userDataSubscription?.cancel();
@@ -101,6 +102,75 @@ class ProfileUpdateService extends ChangeNotifier {
       debugPrint('❌ ProfileUpdateService: Error loading user data: $e');
     } finally {
       _isLoading = false;
+    }
+  }
+
+  /// Peers only see publicUsers.platforms — heal mirror when owner opens app.
+  Future<void> _ensurePublicPlatformsMirror() async {
+    final String? uid = _currentUser?.uid;
+    final Map<String, dynamic>? data = _userData;
+    if (uid == null || data == null) {
+      return;
+    }
+    final List<Map<String, dynamic>> platforms =
+        UserProfileFirestore.parsePlatformsFromUserData(
+      data,
+      connectedOnly: true,
+    );
+    if (platforms.isEmpty) {
+      return;
+    }
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> publicSnap =
+          await FirebaseFirestore.instance
+              .collection(UserProfileFirestore.publicUsersCollection)
+              .doc(uid)
+              .get();
+      final List<Map<String, dynamic>> publicPlatforms =
+          UserProfileFirestore.parsePlatformsFromUserData(
+        publicSnap.data(),
+        connectedOnly: true,
+      );
+      if (publicPlatforms.isNotEmpty &&
+          publicPlatforms.length == platforms.length) {
+        final String privateSignature = platforms
+            .map(
+              (Map<String, dynamic> p) =>
+                  '${p['type']}|${p['username']}|${p['url']}',
+            )
+            .join(';');
+        final String publicSignature = publicPlatforms
+            .map(
+              (Map<String, dynamic> p) =>
+                  '${p['type']}|${p['username']}|${p['url']}',
+            )
+            .join(';');
+        if (privateSignature == publicSignature) {
+          return;
+        }
+      }
+      await FirebaseFirestore.instance
+          .collection(UserProfileFirestore.publicUsersCollection)
+          .doc(uid)
+          .set(
+        <String, dynamic>{
+          'uid': uid,
+          UserProfileFirestore.platformsField:
+              UserProfileFirestore.platformsForPublicMirror(platforms),
+          UserProfileFirestore.linkedPlatformsField:
+              UserProfileFirestore.platformsForPublicMirror(platforms),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint(
+        '✅ ProfileUpdateService: Healed publicUsers platforms mirror '
+        '(${platforms.length})',
+      );
+    } catch (e) {
+      debugPrint(
+        '⚠️ ProfileUpdateService: publicUsers platforms heal failed: $e',
+      );
     }
   }
 
@@ -157,36 +227,100 @@ class ProfileUpdateService extends ChangeNotifier {
   }
 
   Future<void> updateUserData(Map<String, dynamic> updates) async {
-    if (_currentUser == null) return;
+    final firebase_auth.User? authUser =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (authUser == null) {
+      throw StateError('Sign in to update your profile.');
+    }
+    if (_currentUser?.uid != authUser.uid) {
+      await initialize();
+    }
+    if (_currentUser == null) {
+      throw StateError('Sign in to update your profile.');
+    }
 
     try {
-      final normalizedUpdates = <String, dynamic>{...updates};
-      final resolvedAvatar = resolveAvatarUrl(updates);
+      final Map<String, dynamic> normalizedUpdates =
+          <String, dynamic>{...updates};
+      final String? resolvedAvatar = resolveAvatarUrl(updates);
       if (resolvedAvatar != null) {
         normalizedUpdates['avatarURL'] = resolvedAvatar;
         normalizedUpdates['photoURL'] = resolvedAvatar;
       }
+      if (normalizedUpdates.containsKey(UserProfileFirestore.platformsField)) {
+        final Object? raw =
+            normalizedUpdates[UserProfileFirestore.platformsField];
+        final List<Map<String, dynamic>> platforms = raw is List
+            ? raw
+                .whereType<Map>()
+                .map((Map e) => Map<String, dynamic>.from(e))
+                .toList(growable: false)
+            : const <Map<String, dynamic>>[];
+        normalizedUpdates[UserProfileFirestore.linkedPlatformsField] = platforms;
+      }
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .update(normalizedUpdates);
+      // Apply locally first so ProfileBack / cache refresh instantly.
+      final Map<String, dynamic>? previousUserData =
+          _userData == null
+              ? null
+              : Map<String, dynamic>.from(_userData!);
+      _userData = <String, dynamic>{...?_userData, ...normalizedUpdates};
+      _notifyAllChannels(
+        reason: 'edit_profile_update',
+        force: true,
+      );
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUser!.uid)
+            .update(normalizedUpdates);
+      } catch (e) {
+        _userData = previousUserData;
+        _notifyAllChannels(
+          reason: 'edit_profile_update_reverted',
+          force: true,
+        );
+        rethrow;
+      }
 
       if (normalizedUpdates.containsKey(
         UserProfileFirestore.platformsField,
       )) {
         final Object? raw = normalizedUpdates[UserProfileFirestore.platformsField];
-        final int count = raw is List ? raw.length : 0;
+        final List<Map<String, dynamic>> platforms = raw is List
+            ? raw
+                .whereType<Map>()
+                .map((Map e) => Map<String, dynamic>.from(e))
+                .toList(growable: false)
+            : const <Map<String, dynamic>>[];
         UserProfileFirestore.logPlatformSave(
           uid: _currentUser!.uid,
           view: 'EditProfileView',
-          count: count,
+          count: platforms.length,
         );
+        // Peer surfaces read publicUsers only — best-effort after users save.
+        try {
+          await FirebaseFirestore.instance
+              .collection(UserProfileFirestore.publicUsersCollection)
+              .doc(_currentUser!.uid)
+              .set(
+            <String, dynamic>{
+              'uid': _currentUser!.uid,
+              UserProfileFirestore.platformsField:
+                  UserProfileFirestore.platformsForPublicMirror(platforms),
+              UserProfileFirestore.linkedPlatformsField:
+                  UserProfileFirestore.platformsForPublicMirror(platforms),
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true),
+          );
+        } catch (e) {
+          debugPrint(
+            '⚠️ ProfileUpdateService: publicUsers platforms mirror failed: $e',
+          );
+        }
       }
-
-      _userData = {...?_userData, ...normalizedUpdates};
-
-      _notifyAllChannels(reason: 'edit_profile_update');
 
       debugPrint('✅ ProfileUpdateService: User data updated successfully');
     } catch (e) {
@@ -227,16 +361,25 @@ class ProfileUpdateService extends ChangeNotifier {
     _streamerCardBackViewListeners.remove(listener);
   }
 
-  void _notifyAllChannels({required String reason}) {
-    _notifyProfileShellChannel(reason: reason);
+  void _notifyAllChannels({
+    required String reason,
+    bool force = false,
+  }) {
+    _notifyProfileShellChannel(reason: reason, force: force);
     _notifyAvatarChannel(reason: reason);
-    _notifyStreamerCardChannel(reason: reason);
+    _notifyStreamerCardChannel(reason: reason, force: force);
   }
 
-  void _notifyProfileShellChannel({required String reason}) {
+  void _notifyProfileShellChannel({
+    required String reason,
+    bool force = false,
+  }) {
     void emit() {
-      if (!_shouldEmitNotification()) {
+      if (!force && !_shouldEmitNotification()) {
         return;
+      }
+      if (force) {
+        _lastNotificationTime = DateTime.now();
       }
       InteractionDiagnostics.logProfileNotifyListeners(reason: reason);
       InteractionDiagnostics.logProfileNotify(reason: reason);
@@ -261,9 +404,15 @@ class ProfileUpdateService extends ChangeNotifier {
     InteractionDiagnostics.logProfileNotifyListeners(reason: 'avatar:$reason');
   }
 
-  void _notifyStreamerCardChannel({required String reason}) {
-    if (!_shouldEmitNotification()) {
+  void _notifyStreamerCardChannel({
+    required String reason,
+    bool force = false,
+  }) {
+    if (!force && !_shouldEmitNotification()) {
       return;
+    }
+    if (force) {
+      _lastNotificationTime = DateTime.now();
     }
     _invokeListeners(_streamerCardViewListeners, 'StreamerCardView');
     _invokeListeners(_streamerCardBackViewListeners, 'StreamerCardBackView');

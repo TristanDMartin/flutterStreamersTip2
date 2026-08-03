@@ -11,6 +11,8 @@ abstract final class PlatformRules {
     'facebook',
     'x',
     'discord',
+    'bluesky',
+    'reddit',
     'patreon',
     'onlyfans',
     'other',
@@ -40,6 +42,8 @@ abstract final class PlatformRules {
         return 'x';
       case 'facebook_gaming':
         return 'facebook';
+      case 'website':
+        return 'other';
       default:
         return type.toLowerCase();
     }
@@ -64,6 +68,10 @@ abstract final class PlatformRules {
         return 'https://www.x.com/';
       case 'discord':
         return 'https://www.discord.com/';
+      case 'bluesky':
+        return 'https://bsky.app/profile/';
+      case 'reddit':
+        return 'https://www.reddit.com/user/';
       case 'patreon':
         return 'https://www.patreon.com/';
       case 'onlyfans':
@@ -107,6 +115,10 @@ abstract final class PlatformRules {
           return asUrl;
         }
         return 'https://www.discord.com/invite/$trimmed';
+      case 'bluesky':
+        return 'https://bsky.app/profile/$trimmed';
+      case 'reddit':
+        return 'https://www.reddit.com/user/$trimmed';
       case 'patreon':
         return 'https://www.patreon.com/$trimmed';
       case 'onlyfans':
@@ -308,31 +320,69 @@ abstract final class PlatformRules {
     for (final Map<String, dynamic> raw in platforms) {
       String type = normalizePlatformType(raw['type']?.toString() ?? 'other');
       String url = (raw['url']?.toString() ?? '').trim();
-      final String username = (raw['username']?.toString() ?? '').trim();
+      String username = (raw['username']?.toString() ?? '').trim();
+      if (username.startsWith('@')) {
+        username = username.substring(1);
+      }
       if (url.isNotEmpty &&
           !url.startsWith('http://') &&
           !url.startsWith('https://')) {
-        url = 'https://$url';
+        if (url.contains('.') || url.contains('/')) {
+          url = 'https://$url';
+        } else if (username.isEmpty) {
+          username = url.replaceFirst(RegExp(r'^@+'), '');
+          url = previewPlatformUrl(type, username) ?? '';
+        } else {
+          url = previewPlatformUrl(type, username) ?? '';
+        }
+      }
+      if (url.isEmpty && username.isNotEmpty) {
+        url = previewPlatformUrl(type, username) ?? '';
       }
       final String? officialFromUrl =
           url.isNotEmpty ? detectOfficialTypeFromUrl(url) : null;
       if (officialFromUrl != null) {
         type = officialFromUrl;
       }
-      normalized.add(<String, dynamic>{
+      final Map<String, dynamic> row = <String, dynamic>{
         'id': raw['id']?.toString() ??
             DateTime.now().millisecondsSinceEpoch.toString(),
         'type': type,
         'username': username,
         'followers': (raw['followers'] as num?)?.toInt() ?? 0,
-        'url': url.isEmpty ? null : url,
-        // Preserve Tippy/onboarding stubs (empty handle, not yet linked).
         if (raw.containsKey('isConnected')) 'isConnected': raw['isConnected'],
         if (raw.containsKey('platformType'))
           'platformType': raw['platformType'],
-      });
+      };
+      if (url.isNotEmpty) {
+        row['url'] = url;
+      }
+      normalized.add(row);
     }
     return normalized;
+  }
+
+  /// Keep non-editable legacy rows when saving the editable editor draft.
+  static List<Map<String, dynamic>> mergePlatformsForSave({
+    required List<Map<String, dynamic>> existingPlatforms,
+    required List<Map<String, dynamic>> editorDraft,
+  }) {
+    final Set<String> editable = editablePlatformTypes.toSet();
+    final List<Map<String, dynamic>> merged = <Map<String, dynamic>>[];
+    for (final Map<String, dynamic> raw in existingPlatforms) {
+      final String type =
+          normalizePlatformType(raw['type']?.toString() ?? '');
+      if (editable.contains(type)) {
+        continue;
+      }
+      final String username = (raw['username']?.toString() ?? '').trim();
+      final String url = (raw['url']?.toString() ?? '').trim();
+      if (username.isNotEmpty || url.isNotEmpty) {
+        merged.add(Map<String, dynamic>.from(raw));
+      }
+    }
+    merged.addAll(editorDraft);
+    return merged;
   }
 
   static PlatformType? toPlatformTypeEnum(String type) {

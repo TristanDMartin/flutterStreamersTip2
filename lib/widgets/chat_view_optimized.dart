@@ -21,7 +21,7 @@ import '../utils/home_video_from_firestore.dart';
 import '../widgets/player_screen.dart';
 import 'chat/chat_ui_tokens.dart';
 import 'chat_view_controller.dart';
-import 'online_status_indicator.dart';
+import '../utils/system_account.dart';
 
 class ChatViewOptimized extends ConsumerStatefulWidget {
   final app_chat.Chat chat;
@@ -613,8 +613,10 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
     final ColorScheme scheme = Theme.of(context).colorScheme;
 
     final bool dark = Theme.of(context).brightness == Brightness.dark;
+    final Color pageBg =
+        dark ? AppColors.profileViewBackground : shell.scaffold;
     return Scaffold(
-      backgroundColor: dark ? ChatUiTokens.scaffold : shell.scaffold,
+      backgroundColor: pageBg,
       resizeToAvoidBottomInset: false,
       appBar: _isSelectingMessages
           ? AppBar(
@@ -637,20 +639,8 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
               ],
             )
           : null,
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          color: dark ? ChatUiTokens.scaffold : shell.scaffold,
-          gradient: dark
-              ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[
-                    ChatUiTokens.outgoingStart.withValues(alpha: 0.04),
-                    ChatUiTokens.scaffold,
-                  ],
-                )
-              : null,
-        ),
+      body: ColoredBox(
+        color: pageBg,
         child: SafeArea(
           bottom: true,
           child: Column(
@@ -659,8 +649,15 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                 otherUserId: _controller.otherUserId,
                 otherUserName: _controller.otherUserName,
                 otherUserAvatarURL: state.otherUserAvatarURL,
+                isSystemChat: isSystemAccount(_controller.otherUserId),
                 onBack: () => Navigator.of(context).pop(),
                 onMore: _showChatSettings,
+                onOpenProfile: () {
+                  AppNavigator.openStreamerCard(
+                    context,
+                    userId: _controller.otherUserId,
+                  );
+                },
               ),
               Expanded(
                 child: _ChatMessagesPane(
@@ -697,17 +694,20 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                   otherUserName: _controller.otherUserName,
                   onCancel: _controller.cancelReply,
                 ),
-              _KeyboardComposerPadding(
-                child: _ChatComposer(
-                  controller: _textController,
-                  focusNode: _composerFocusNode,
-                  isSending: state.isSending,
-                  onSend: _sendMessage,
-                  onChanged: _handleTypingChanged,
-                  onPasteMediaFromClipboard: _pasteChatMediaFromClipboard,
-                  onKeyboardMediaInserted: _onKeyboardInsertedMedia,
+              if (isSystemAccount(_controller.otherUserId))
+                const _SystemReadOnlyBanner()
+              else
+                _KeyboardComposerPadding(
+                  child: _ChatComposer(
+                    controller: _textController,
+                    focusNode: _composerFocusNode,
+                    isSending: state.isSending,
+                    onSend: _sendMessage,
+                    onChanged: _handleTypingChanged,
+                    onPasteMediaFromClipboard: _pasteChatMediaFromClipboard,
+                    onKeyboardMediaInserted: _onKeyboardInsertedMedia,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1105,15 +1105,19 @@ class _ChatHeader extends ConsumerWidget {
     required this.otherUserId,
     required this.otherUserName,
     required this.otherUserAvatarURL,
+    required this.isSystemChat,
     required this.onBack,
     required this.onMore,
+    required this.onOpenProfile,
   });
 
   final String otherUserId;
   final String otherUserName;
   final String? otherUserAvatarURL;
+  final bool isSystemChat;
   final VoidCallback onBack;
   final VoidCallback onMore;
+  final VoidCallback onOpenProfile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1121,108 +1125,131 @@ class _ChatHeader extends ConsumerWidget {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 6),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: ChatUiTokens.glassFill,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: ChatUiTokens.glassBorder),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
-              child: Row(
-                children: <Widget>[
-                  _HeaderIconButton(
-                    icon: Icons.arrow_back_ios_new_rounded,
-                    onPressed: onBack,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            Colors.white.withValues(alpha: 0.09),
+            Colors.white.withValues(alpha: 0.04),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: ChatUiTokens.glassBorder),
+      ),
+      child: Row(
+        children: <Widget>[
+          _HeaderIconButton(
+            icon: Icons.arrow_back_ios_new_rounded,
+            onPressed: onBack,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: isSystemChat ? null : onOpenProfile,
+                borderRadius: BorderRadius.circular(18),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
                   ),
-                  const SizedBox(width: 8),
-                  StatusAwareAvatar(
-                    userId: otherUserId,
-                    avatarURL: otherUserAvatarURL,
-                    radius: ChatUiTokens.headerAvatarRadius,
-                    showOnlineIndicator: false,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.045),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          otherUserName,
-                          style: TextStyle(
-                            color: shell.onChrome,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                  child: Row(
+                    children: <Widget>[
+                      StatusAwareAvatar(
+                        userId: otherUserId,
+                        avatarURL: otherUserAvatarURL,
+                        radius: ChatUiTokens.headerAvatarRadius,
+                        showOnlineIndicator: false,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            OnlineStatusDot(
-                              userId: otherUserId,
-                              size: 7,
-                              backgroundColor: const Color(0xFF00D4AA),
+                            Text(
+                              otherUserName,
+                              style: TextStyle(
+                                color: shell.onChrome,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: statusAsync.when(
+                            const SizedBox(height: 2),
+                            if (isSystemChat)
+                              Text(
+                                'OFFICIAL',
+                                style: TextStyle(
+                                  color: shell.mutedStrong,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              )
+                            else
+                              statusAsync.when(
                                 data: (presence) {
-                                  final String status =
-                                      presence.status.displayName == 'Online'
-                                          ? 'Active now'
-                                          : presence.status.displayName;
+                                  final bool online =
+                                      presence.status.displayName == 'Online';
                                   return Text(
-                                    status,
+                                    online ? 'ONLINE' : 'OFFLINE',
                                     style: TextStyle(
-                                      color: shell.muted,
+                                      color: shell.mutedStrong,
                                       fontSize: 11,
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.6,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   );
                                 },
                                 loading: () => Text(
-                                  'Checking status',
+                                  '…',
                                   style: TextStyle(
                                     color: shell.muted,
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 error: (Object error, StackTrace stackTrace) =>
                                     Text(
-                                  'Active recently',
+                                  'OFFLINE',
                                   style: TextStyle(
-                                    color: shell.muted,
+                                    color: shell.mutedStrong,
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.6,
                                   ),
                                 ),
                               ),
-                            ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  _HeaderIconButton(
-                    icon: Icons.more_horiz_rounded,
-                    onPressed: onMore,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          if (!isSystemChat) ...<Widget>[
+            const SizedBox(width: 8),
+            _HeaderIconButton(
+              icon: Icons.more_horiz_rounded,
+              onPressed: onMore,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1241,17 +1268,45 @@ class _HeaderIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return SizedBox(
-      width: 34,
-      height: 34,
+      width: ChatUiTokens.headerButtonSize,
+      height: ChatUiTokens.headerButtonSize,
       child: IconButton(
         onPressed: onPressed,
         icon: Icon(icon, color: shell.onChrome, size: 18),
         padding: EdgeInsets.zero,
         style: IconButton.styleFrom(
-          backgroundColor: shell.onChrome.withValues(alpha: 0.06),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(11),
-          ),
+          backgroundColor: Colors.white.withValues(alpha: 0.08),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+          shape: const CircleBorder(),
+        ),
+      ),
+    );
+  }
+}
+
+class _SystemReadOnlyBanner extends StatelessWidget {
+  const _SystemReadOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ChatUiTokens.glassBorder),
+      ),
+      child: Text(
+        'This is an official StreamersTip announcement thread. Replies are disabled.',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: shell.mutedStrong,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          height: 1.35,
         ),
       ),
     );
@@ -1883,11 +1938,12 @@ class _BubbleTimestamp extends StatelessWidget {
         bottom: 2,
       ),
       child: Text(
-        label,
+        label.toUpperCase(),
         style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.38),
+          color: Colors.white.withValues(alpha: 0.62),
           fontSize: 10,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.8,
         ),
       ),
     );
@@ -2431,7 +2487,7 @@ class _SharedVideoPreviewCard extends StatelessWidget {
 
   Widget _buildUnavailablePreview() {
     return Container(
-      color: const Color(0xFF0F172A).withValues(alpha: 0.75),
+      color: AppColors.profileViewBackground.withValues(alpha: 0.75),
       alignment: Alignment.center,
       child: const Text(
         'This video is no longer available.',

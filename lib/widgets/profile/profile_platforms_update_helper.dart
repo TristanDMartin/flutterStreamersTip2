@@ -39,8 +39,16 @@ abstract final class ProfilePlatformsUpdateHelper {
   static ProfilePlatformsUpdateResult validateAndNormalize(
     List<Map<String, dynamic>> updatedPlatforms,
   ) {
+    final List<Map<String, dynamic>> linked = updatedPlatforms
+        .where((Map<String, dynamic> platform) {
+          final String username =
+              (platform['username'] as String?)?.trim() ?? '';
+          final String url = (platform['url'] as String?)?.trim() ?? '';
+          return username.isNotEmpty || url.isNotEmpty;
+        })
+        .toList(growable: false);
     final String? platformRulesError =
-        PlatformRules.validatePlatformsList(updatedPlatforms);
+        PlatformRules.validatePlatformsList(linked);
     if (platformRulesError != null) {
       return ProfilePlatformsUpdateResult(
         isSuccess: false,

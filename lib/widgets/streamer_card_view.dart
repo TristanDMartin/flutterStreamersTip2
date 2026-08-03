@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/calendar_event.dart';
@@ -13,11 +14,14 @@ import '../models/user_status.dart';
 import '../widgets/profile_video_feed_view.dart';
 import '../services/unified_bookmark_service.dart';
 import 'streamer_share_sheet.dart';
+import 'adult_external_link_dialog.dart';
 import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
 import '../services/profile_link_service.dart';
 import '../utils/post_count_rules.dart';
+import '../utils/platform_rules.dart';
+import '../utils/user_profile_firestore.dart';
 import '../providers/follows_provider.dart';
 import '../providers/follow_refresh_provider.dart';
 import '../utils/avatar_url_resolver.dart';
@@ -37,11 +41,11 @@ import '../features/creator_score/creator_score_service.dart';
 import '../features/creator_score/creator_score_widgets.dart';
 import '../features/content_planning/calendar_visibility_contract.dart';
 import '../models/creator_profile_snapshot.dart';
-import '../utils/user_profile_firestore.dart';
 import '../models/user.dart' as app_models;
 import 'streamer_card_profile_controller.dart';
 import 'streamer_card_relationship_controller.dart';
 import 'streamer_card_sections.dart';
+import 'streamer_mirror_calendar.dart';
 import 'connected_user_options_sheet.dart';
 
 enum _StreamerSnackKind {
@@ -141,7 +145,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   late final StreamerCardRelationshipController _relationshipController;
 
   // Tab management
-  int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
+  int _selectedTabIndex = 0; // 0: Video, 1: Platforms, 2: Calendar
 
   // Chat UI State
   bool _showChatView = false;
@@ -209,13 +213,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   void _syncDerivedProfileFields() {
     final List<Map<String, dynamic>> platforms =
-        UserProfileFirestore.parsePlatformsFromUserData(_userData);
-    // Phase 4 + calendar visibility: prefer streamer projection; exclude expired.
+        UserProfileFirestore.parsePlatformsFromUserData(
+      _userData,
+      connectedOnly: true,
+    );
+    final bool viewerIsOwner = widget.currentUserId != null &&
+        widget.currentUserId ==
+            (_resolvedUserDocId ?? widget.userId);
+    // Match website streamer page: streamer mirror only (not profile calendarEvents).
     final List<CalendarEvent> events =
         filterActiveUpcomingCalendarEvents(
-      events: UserProfileFirestore.mergeCalendarEventLists(
-        UserProfileFirestore.parseStreamerCalendarProjection(_userData),
-        UserProfileFirestore.parseCalendarEventsFromUserData(_userData),
+      events: UserProfileFirestore.parseStreamerFacingCalendarEvents(
+        _userData,
+        viewerIsOwner: viewerIsOwner,
       ),
       startsAtOf: (CalendarEvent e) => e.date,
     );
@@ -234,7 +244,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         uid: uid,
         source: 'StreamerCardBackView',
         count: events.length,
-        readPath: UserProfileFirestore.streamerCalendarProjectionPath(uid),
+        readPath: viewerIsOwner
+            ? UserProfileFirestore.streamerCalendarProjectionPath(uid)
+            : UserProfileFirestore.publicStreamerCalendarPath(uid),
       );
     }
     _platforms = platforms;
@@ -550,45 +562,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
   }
 
-  void _deleteEvent(String eventId) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        backgroundColor: scheme.surface,
-        title: Text(
-          'Delete Event',
-          style: TextStyle(color: scheme.onSurface),
-        ),
-        content: Text(
-          'Are you sure you want to delete this event?',
-          style: TextStyle(color: scheme.onSurfaceVariant),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text('Cancel', style: TextStyle(color: scheme.primary)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              ScaffoldMessenger.of(context).showSnackBar(
-                _streamerSnackBar(
-                  context,
-                  'Event deleted',
-                  kind: _StreamerSnackKind.success,
-                  duration: const Duration(seconds: 1),
-                ),
-              );
-            },
-            style: TextButton.styleFrom(foregroundColor: scheme.error),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _flipCard() {
     if (_isFront) {
       _flipController.forward();
@@ -868,7 +841,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _selectedTabIndex = index;
         });
       },
-      content: _buildVideoFeed(),
+      content: _buildSelectedTabContent(),
     );
   }
 
@@ -1985,49 +1958,27 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   List<StreamerCardTabItem> get _tabs {
-    final tabs = <StreamerCardTabItem>[
-      const StreamerCardTabItem(label: 'Video', index: 0),
+    return const <StreamerCardTabItem>[
+      StreamerCardTabItem(label: 'Video', index: 0),
+      StreamerCardTabItem(label: 'Platforms', index: 1),
+      StreamerCardTabItem(label: 'Calendar', index: 2),
     ];
-
-    if (_showFavoritesOnCard) {
-      tabs.add(const StreamerCardTabItem(label: 'Favorites', index: 1));
-    }
-
-    tabs.add(const StreamerCardTabItem(label: 'Tagged', index: 2));
-    return tabs;
   }
 
-  bool get _showFavoritesOnCard {
-    final privacy = _userData?['privacy'] as Map<String, dynamic>? ?? {};
-    return privacy['showFavoritesOnCard'] ?? false;
-  }
-
-  ProfileVideoFeedType _getSelectedFeedType() {
-    if (_selectedTabIndex == 0) {
-      return ProfileVideoFeedType.videos;
-    }
-
-    if (!_showFavoritesOnCard) {
-      return _selectedTabIndex == 1
-          ? ProfileVideoFeedType.tagged
-          : ProfileVideoFeedType.videos;
-    }
-
+  Widget _buildSelectedTabContent() {
     if (_selectedTabIndex == 1) {
-      return ProfileVideoFeedType.favorites;
+      return _buildPlatforms(_platforms);
     }
-
     if (_selectedTabIndex == 2) {
-      return ProfileVideoFeedType.tagged;
+      return _buildCalendar(_calendarEvents);
     }
-
-    return ProfileVideoFeedType.videos;
+    return _buildVideoFeed();
   }
 
   Widget _buildVideoFeed() {
     return ProfileVideoFeedView(
       userId: _effectiveUserId,
-      feedType: _getSelectedFeedType(),
+      feedType: ProfileVideoFeedType.videos,
       viewName: 'StreamerCardView',
       // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
       // It will open the real PlayerScreen with actual videos
@@ -2443,160 +2394,52 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Widget _buildCalendar(List<CalendarEvent> events) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (events.isEmpty)
-            const _EmptyStateWidget(
-              icon: Icons.event,
-              message: 'No upcoming events',
-            )
-          else ...[
-            // Show first 5 events
-            ...events.take(5).map((event) => _buildCalendarRow(event)),
-            // Show "+X more..." if there are more than 5 events
-            if (events.length > 5) ...[
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text(
-                  '+${events.length - 5} more…',
-                  style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCalendarRow(CalendarEvent event) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: shell.surfaceCardBorder,
-          width: 0.5,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.calendar_today,
-            color: shell.onChrome,
-            size: 24,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  event.title,
-                  style: TextStyle(
-                    color: shell.onChrome,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  event.description,
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _formatEventTime(event.date),
-                  style: TextStyle(
-                    color: shell.mutedStrong,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          StreamerMirrorCalendar(
+            key: ValueKey<String>(
+              'mirror_cal_${events.map((CalendarEvent e) => e.id).join('_')}',
             ),
+            events: events,
+            onEventTap: (CalendarEvent event) {
+              unawaited(_toggleBookmark(event));
+            },
           ),
-          // MARK: - Role-based Actions (Owner vs Visitor)
-          if (isOwner) ...[
-            // Owner sees trash button for deletion
-            GestureDetector(
-              onTap: () => _deleteEvent(event.id),
-              child: Icon(
-                Icons.delete,
-                color: scheme.error,
-                size: 20,
+          if (events.isEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              "This streamer hasn't scheduled any events yet",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: shell.muted,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
               ),
             ),
-          ] else ...[
-            // Visitors see bookmark button
-            GestureDetector(
-              onTap: () => _toggleBookmark(event),
-              child: Icon(
-                _bookmarkedEventIds.contains(event.id)
-                    ? Icons.bookmark
-                    : Icons.bookmark_border,
-                color: scheme.primary,
-                size: 20,
+          ] else ...<Widget>[
+            const SizedBox(height: 14),
+            Text(
+              'Upcoming',
+              style: TextStyle(
+                color: shell.onChrome,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...events.take(5).map(
+              (CalendarEvent event) => _UpcomingCalendarRow(
+                event: event,
+                isBookmarked: _bookmarkedEventIds.contains(event.id),
+                onTap: () => unawaited(_toggleBookmark(event)),
               ),
             ),
           ],
         ],
       ),
     );
-  }
-
-  String _formatEventTime(DateTime date) {
-    final now = DateTime.now();
-    final difference = date.difference(now).inDays;
-
-    if (difference == 0) {
-      return 'Today · ${_formatTime(date)}';
-    } else if (difference == 1) {
-      return 'Tomorrow · ${_formatTime(date)}';
-    } else if (difference == -1) {
-      return 'Yesterday · ${_formatTime(date)}';
-    } else {
-      return '${_formatDate(date)} · ${_formatTime(date)}';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    return '${months[date.month - 1]} ${date.day}';
-  }
-
-  String _formatTime(DateTime date) {
-    final hour = date.hour;
-    final minute = date.minute;
-    final period = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final displayMinute = minute.toString().padLeft(2, '0');
-    return '$displayHour:$displayMinute $period';
   }
 
   Color _getStatusColor(UserStatus status) {
@@ -2616,22 +2459,44 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   /// ✅ FIX #4: Added timeout protection to prevent UI freeze
   Future<void> _launchPlatformUrl(Map<String, dynamic> platform) async {
-    final url = platform['url'] as String?;
-    final platformType = platform['type'] as String?;
-
-    if (url == null || url.isEmpty) return;
+    final String platformType = PlatformRules.normalizePlatformType(
+      platform['type']?.toString() ?? '',
+    );
+    if (PlatformRules.isAgeRestrictedEntry(platform)) {
+      final bool confirmed = await showAdultExternalLinkDialog(context);
+      if (!confirmed || !mounted) {
+        return;
+      }
+    }
+    final String rawUrl = (platform['url']?.toString() ?? '').trim();
+    final String username = (platform['username']?.toString() ?? '').trim();
+    final String? resolvedUrl = rawUrl.isNotEmpty
+        ? rawUrl
+        : PlatformRules.previewPlatformUrl(platformType, username);
+    if (resolvedUrl == null || resolvedUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          _streamerSnackBar(
+            context,
+            'No link available for this platform',
+            kind: _StreamerSnackKind.error,
+          ),
+        );
+      }
+      return;
+    }
 
     try {
-      // ✅ FIX #4: Add timeout to prevent hanging (10 seconds)
       await Future.any([
-        _launchUrlWithTimeout(url),
+        _launchUrlWithTimeout(resolvedUrl),
         Future.delayed(const Duration(seconds: 10), () {
           throw TimeoutException(
-              'URL launch timed out', const Duration(seconds: 10));
+            'URL launch timed out',
+            const Duration(seconds: 10),
+          );
         }),
       ]);
 
-      // Show success feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           _streamerSnackBar(
@@ -2643,7 +2508,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-        // ✅ FIX #5: Wrap in kDebugMode
         debugPrint('❌ StreamerCardView: Error launching URL: $e');
       }
       if (mounted) {
@@ -2681,33 +2545,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   String _getPlatformDisplayName(String? platformType) {
-    if (platformType == null) return 'Platform';
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return 'Twitch';
-      case 'youtube':
-        return 'YouTube';
-      case 'kick':
-        return 'Kick';
-      case 'tiktok':
-        return 'TikTok';
-      case 'facebook':
-        return 'Facebook';
-      case 'bluesky':
-        return 'Bluesky';
-      case 'twitter':
-        return 'Twitter';
-      case 'instagram':
-        return 'Instagram';
-      case 'reddit':
-        return 'Reddit';
-      case 'discord':
-        return 'Discord';
-      case 'other':
-        return 'Website';
-      default:
-        return platformType;
+    if (platformType == null || platformType.isEmpty) {
+      return 'Platform';
     }
+    return PlatformRules.displayNameForType(platformType);
   }
 
   void _showShareSheet(BuildContext context) {
@@ -3141,6 +2982,16 @@ class _ClickablePlatformRow extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.68),
                         fontSize: 14,
                       ),
+                    )
+                  else if ((platform['url']?.toString() ?? '').isNotEmpty)
+                    Text(
+                      platform['url'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.68),
+                        fontSize: 14,
+                      ),
                     ),
                 ],
               ),
@@ -3157,95 +3008,80 @@ class _ClickablePlatformRow extends StatelessWidget {
   }
 
   String _getPlatformDisplayName(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return 'Twitch';
-      case 'youtube':
-        return 'YouTube';
-      case 'kick':
-        return 'Kick';
-      case 'tiktok':
-        return 'TikTok';
-      case 'facebook':
-        return 'Facebook';
-      case 'twitter':
-        return 'Twitter';
-      case 'instagram':
-        return 'Instagram';
-      default:
-        return platformType;
-    }
+    return PlatformRules.displayNameForType(platformType);
   }
 }
 
-class _EmptyStateWidget extends StatelessWidget {
-  final IconData icon;
-  final String message;
-
-  const _EmptyStateWidget({
-    required this.icon,
-    required this.message,
+class _UpcomingCalendarRow extends StatelessWidget {
+  const _UpcomingCalendarRow({
+    required this.event,
+    required this.isBookmarked,
+    required this.onTap,
   });
+
+  final CalendarEvent event;
+  final bool isBookmarked;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final String meta = DateFormat('EEE, MMM d · h:mm a').format(event.date);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: Center(
-        child: Container(
-          width: double.infinity,
-          constraints: const BoxConstraints(maxWidth: 320),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-          decoration: BoxDecoration(
-            color: shell.surfaceCard,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: shell.surfaceCardBorder,
-              width: 1,
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: shell.surfaceCard,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: shell.surfaceCardBorder),
             ),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: AppColors.supportAccentGradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Icon(
-                  icon,
-                  color: Theme.of(context).colorScheme.onPrimary,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                message,
-                style: TextStyle(
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  Icons.event_outlined,
                   color: shell.onChrome,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                  size: 20,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'This section will show up here once there is something to share.',
-                style: TextStyle(
-                  color: shell.muted,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  height: 1.35,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        event.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: shell.onChrome,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        meta,
+                        style: TextStyle(
+                          color: shell.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                Icon(
+                  isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                  color: shell.mutedStrong,
+                  size: 20,
+                ),
+              ],
+            ),
           ),
         ),
       ),

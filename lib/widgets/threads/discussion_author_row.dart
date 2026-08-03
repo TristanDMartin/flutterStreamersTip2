@@ -46,7 +46,10 @@ class DiscussionAuthorRow extends StatelessWidget {
           avatarUserId: userId,
           resolvedDisplayName: liveAuthor?.displayName ?? displayName,
           resolvedUsername: liveAuthor?.username ?? username,
-          resolvedAvatarUrl: liveAuthor?.avatarUrl ?? avatarUrl,
+          resolvedAvatarUrl: pickBestAvatarUrl(
+            liveAuthor?.avatarUrl,
+            avatarUrl,
+          ),
         );
       },
     );

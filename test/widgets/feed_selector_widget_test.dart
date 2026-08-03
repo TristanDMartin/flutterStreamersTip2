@@ -66,4 +66,19 @@ void main() {
     expect(selected, FeedTab.threads);
     expect(find.text('Progression'), findsNothing);
   });
+
+  testWidgets('hides Discover on Threads and Progression, shows on For You', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildSelector(activeTab: FeedTab.forYou));
+    expect(find.byIcon(Icons.explore_rounded), findsOneWidget);
+
+    await tester.pumpWidget(_buildSelector(activeTab: FeedTab.threads));
+    await tester.pump();
+    expect(find.byIcon(Icons.explore_rounded), findsNothing);
+
+    await tester.pumpWidget(_buildSelector(activeTab: FeedTab.following));
+    await tester.pump();
+    expect(find.byIcon(Icons.explore_rounded), findsNothing);
+  });
 }

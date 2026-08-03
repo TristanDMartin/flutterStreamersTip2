@@ -34,6 +34,7 @@ class ThreadDto {
     this.legacyLikeCount = 0,
     this.legacyLikedBy = const <String>[],
     this.legacyBookmarkedBy = const <String>[],
+    this.legacyFollowedBy = const <String>[],
     this.deleted = false,
     this.deletedReason,
     this.migratedFrom,
@@ -70,6 +71,7 @@ class ThreadDto {
   final int legacyLikeCount;
   final List<String> legacyLikedBy;
   final List<String> legacyBookmarkedBy;
+  final List<String> legacyFollowedBy;
   final bool deleted;
   final String? deletedReason;
   final String? migratedFrom;
@@ -206,4 +208,70 @@ class WeeklyImpactDto {
   final int creatorsHelped;
   final int answersMarkedHelpful;
   final int discussionsReached30;
+}
+
+class ThreadReplyDto {
+  const ThreadReplyDto({
+    required this.id,
+    required this.threadId,
+    required this.authorId,
+    required this.body,
+    required this.createdAt,
+    required this.updatedAt,
+    this.parentReplyId,
+    this.authorDisplayName,
+    this.authorUsername,
+    this.authorAvatarUrl,
+    this.helpfulCount = 0,
+    this.deleted = false,
+  });
+
+  final String id;
+  final String threadId;
+  final String authorId;
+  final String body;
+  final String? parentReplyId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? authorDisplayName;
+  final String? authorUsername;
+  final String? authorAvatarUrl;
+  final int helpfulCount;
+  final bool deleted;
+}
+
+class ThreadReactionDto {
+  const ThreadReactionDto({
+    required this.id,
+    required this.targetType,
+    required this.targetId,
+    required this.userId,
+    required this.reactionType,
+  });
+
+  final String id;
+  final String targetType;
+  final String targetId;
+  final String userId;
+  final String reactionType;
+}
+
+class CreateReplyRequest {
+  const CreateReplyRequest({
+    required this.threadId,
+    required this.authorId,
+    required this.body,
+    this.parentReplyId,
+    this.authorDisplayName,
+    this.authorUsername,
+    this.authorAvatarUrl,
+  });
+
+  final String threadId;
+  final String authorId;
+  final String body;
+  final String? parentReplyId;
+  final String? authorDisplayName;
+  final String? authorUsername;
+  final String? authorAvatarUrl;
 }

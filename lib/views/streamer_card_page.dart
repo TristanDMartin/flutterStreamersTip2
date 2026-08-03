@@ -300,8 +300,8 @@ class _SegmentedTabsState extends State<_SegmentedTabs> {
           child: Row(
             children: [
               _seg('Video', 0),
-              _seg('Favorites', 1),
-              _seg('Tagged', 2),
+              _seg('Platforms', 1),
+              _seg('Calendar', 2),
             ],
           ),
         ),
@@ -309,9 +309,9 @@ class _SegmentedTabsState extends State<_SegmentedTabs> {
         if (_index == 0)
           const _EmptyState()
         else if (_index == 1)
-          const _EmptyState(label: 'No favorites yet.')
+          const _EmptyState(label: 'No platforms yet.')
         else
-          const _EmptyState(label: 'No tagged posts.'),
+          const _EmptyState(label: 'No calendar events.'),
       ],
     );
   }

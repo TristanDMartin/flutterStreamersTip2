@@ -50,6 +50,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Map<String, dynamic>? _liveUserData;
   final ContentPlanningApiClient _contentPlanningApi =
       ContentPlanningApiClient();
+  final ProfileUpdateService _profileUpdateService = ProfileUpdateService();
 
   @override
   void initState() {
@@ -57,6 +58,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     if (widget.useInitialDataOnly) {
       return;
     }
+    _profileUpdateService.addProfileBackViewListener(_onProfileServiceUpdated);
+    unawaited(_profileUpdateService.initialize());
     _setupRealtimeListener();
     _runCalendarCleanup();
   }
@@ -81,9 +84,71 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   @override
+  void didUpdateWidget(covariant ProfileBackView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.useInitialDataOnly) {
+      return;
+    }
+    if (widget.user.containsKey(UserProfileFirestore.linkedPlatformsField) ||
+        widget.user.containsKey(UserProfileFirestore.platformsField)) {
+      _patchLivePlatformsFromUserData(widget.user);
+    }
+  }
+
+  @override
   void dispose() {
+    _profileUpdateService
+        .removeProfileBackViewListener(_onProfileServiceUpdated);
     _userDataSubscription?.cancel();
     super.dispose();
+  }
+
+  void _onProfileServiceUpdated() {
+    if (!mounted || widget.useInitialDataOnly) {
+      return;
+    }
+    final Map<String, dynamic>? serviceData = _profileUpdateService.userData;
+    if (serviceData == null) {
+      return;
+    }
+    final String liveId =
+        (_liveUserData?['id'] ?? _liveUserData?['uid'] ?? '').toString();
+    final String serviceId =
+        (serviceData['id'] ?? serviceData['uid'] ?? '').toString();
+    final String widgetId =
+        (widget.user['id'] ?? widget.user['uid'] ?? '').toString();
+    if (serviceId.isNotEmpty &&
+        widgetId.isNotEmpty &&
+        serviceId != widgetId &&
+        liveId.isNotEmpty &&
+        serviceId != liveId) {
+      return;
+    }
+    if (!serviceData.containsKey(UserProfileFirestore.platformsField) &&
+        !serviceData.containsKey(UserProfileFirestore.linkedPlatformsField)) {
+      return;
+    }
+    _patchLivePlatformsFromUserData(serviceData);
+  }
+
+  void _patchLivePlatformsFromUserData(Map<String, dynamic> userData) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      final Map<String, dynamic> next = Map<String, dynamic>.from(
+        _liveUserData ?? widget.user,
+      );
+      if (userData.containsKey(UserProfileFirestore.linkedPlatformsField)) {
+        next[UserProfileFirestore.linkedPlatformsField] =
+            userData[UserProfileFirestore.linkedPlatformsField];
+      }
+      if (userData.containsKey(UserProfileFirestore.platformsField)) {
+        next[UserProfileFirestore.platformsField] =
+            userData[UserProfileFirestore.platformsField];
+      }
+      _liveUserData = next;
+    });
   }
 
   /// Set up real-time listener for user data changes (e.g., from website)
@@ -101,7 +166,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
           final Map<String, dynamic> data =
               snapshot.data() ?? <String, dynamic>{};
           final List<Map<String, dynamic>> platforms =
-              UserProfileFirestore.parsePlatformsFromUserData(data);
+              UserProfileFirestore.parsePlatformsFromUserData(
+            data,
+            connectedOnly: true,
+          );
           UserProfileFirestore.logPlatformRead(
             uid: userId,
             view: 'ProfileBackView',
@@ -127,8 +195,39 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
   /// Get the current user data (prioritize live data from Firestore)
   Map<String, dynamic> get _currentUserData {
-    // Use live data if available (from Firestore listener), otherwise use widget data
-    return _liveUserData ?? widget.user;
+    final Map<String, dynamic> liveOrWidget = _liveUserData ?? widget.user;
+    final Map<String, dynamic> merged = UserProfileFirestore.mergeDisplayUserData(
+      fresh: liveOrWidget,
+      seed: widget.user,
+    );
+    // If live snapshot is still empty but the in-memory service already has
+    // platforms (local-first save), surface them immediately.
+    final List<Map<String, dynamic>> mergedPlatforms =
+        UserProfileFirestore.parsePlatformsFromUserData(
+      merged,
+      connectedOnly: true,
+    );
+    if (mergedPlatforms.isNotEmpty) {
+      return merged;
+    }
+    final Map<String, dynamic>? serviceData = _profileUpdateService.userData;
+    final String widgetId =
+        (widget.user['id'] ?? widget.user['uid'] ?? '').toString();
+    final String serviceId =
+        (serviceData?['id'] ?? serviceData?['uid'] ?? _profileUpdateService.currentUser?.uid ?? '')
+            .toString();
+    if (serviceData != null &&
+        serviceId.isNotEmpty &&
+        (widgetId.isEmpty || serviceId == widgetId) &&
+        (serviceData.containsKey(UserProfileFirestore.platformsField) ||
+            serviceData
+                .containsKey(UserProfileFirestore.linkedPlatformsField))) {
+      return UserProfileFirestore.mergeDisplayUserData(
+        fresh: serviceData,
+        seed: merged,
+      );
+    }
+    return merged;
   }
 
   ColorScheme get _scheme => Theme.of(context).colorScheme;
@@ -147,7 +246,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       final String uid =
           (_currentUserData['id'] ?? _currentUserData['uid'] ?? '').toString();
       final List<Map<String, dynamic>> platforms =
-          UserProfileFirestore.parsePlatformsFromUserData(_currentUserData);
+          UserProfileFirestore.parsePlatformsFromUserData(
+        _currentUserData,
+        connectedOnly: true,
+      );
       if (uid.isNotEmpty) {
         UserProfileFirestore.logPlatformRead(
           uid: uid,
@@ -1120,12 +1222,24 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     }
     final url = platform['url'];
     final username = platform['username'] ?? '';
+    final String? resolvedUrl = (() {
+      final String raw = (url?.toString() ?? '').trim();
+      if (raw.isNotEmpty) {
+        return raw;
+      }
+      final String handle = username.toString().trim();
+      if (handle.isEmpty) {
+        return null;
+      }
+      return PlatformRules.previewPlatformUrl(platformType, handle) ??
+          _constructPlatformUrl(platformType, handle);
+    })();
 
-    if (url != null && url.isNotEmpty) {
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
       try {
         // Add timeout to prevent hanging
         await Future.any([
-          _launchUrlWithTimeout(url),
+          _launchUrlWithTimeout(resolvedUrl),
           Future.delayed(const Duration(seconds: 10), () {
             throw TimeoutException(
                 'URL launch timed out', const Duration(seconds: 10));
@@ -1134,26 +1248,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
         _showSuccessSnackBar(
             'Opening ${_getPlatformDisplayName(platformType)}...');
-      } catch (e) {
-        _showErrorSnackBar('Cannot open this link');
-      }
-    } else if (username.isNotEmpty) {
-      // Fallback logic with timeout
-      try {
-        final constructedUrl = _constructPlatformUrl(platformType, username);
-        if (constructedUrl != null) {
-          await Future.any([
-            _launchUrlWithTimeout(constructedUrl),
-            Future.delayed(const Duration(seconds: 10), () {
-              throw TimeoutException(
-                  'URL launch timed out', const Duration(seconds: 10));
-            }),
-          ]);
-          _showSuccessSnackBar(
-              'Opening ${_getPlatformDisplayName(platformType)}...');
-        } else {
-          _showErrorSnackBar('No link available for this platform');
-        }
       } catch (e) {
         _showErrorSnackBar('Cannot open this link');
       }
