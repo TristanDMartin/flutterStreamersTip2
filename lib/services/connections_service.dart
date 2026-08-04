@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../features/messaging/data/messaging_repository.dart';
 import '../models/connection_lite.dart';
 import 'progression_service.dart';
 import 'public_profile_firestore.dart';
@@ -875,40 +876,14 @@ class ConnectionsService {
     return score;
   }
 
-  /// Find or create chat between two users
+  /// Find or create chat between two users (deterministic DM ID).
   Future<String> _findOrCreateChat(String otherUserId) async {
     final currentUserId = _auth.currentUser!.uid;
-
     try {
-      // First, try to find existing chat
-      final existingQuery = await _firestore
-          .collection('chats')
-          .where('participants', arrayContains: currentUserId)
-          .get();
-
-      for (final doc in existingQuery.docs) {
-        final participants =
-            List<String>.from(doc.data()['participants'] ?? []);
-        if (participants.contains(otherUserId)) {
-          secureLog('📱 ConnectionsService: Found existing chat ${doc.id}');
-          return doc.id;
-        }
-      }
-
-      // Create new chat if none exists
-      secureLog('📱 ConnectionsService: Creating new chat with $otherUserId');
-      final chatData = <String, dynamic>{
-        'participants': <String>[currentUserId, otherUserId],
-        'lastMessage': '',
-        'lastTimestamp': FieldValue.serverTimestamp(),
-        'chatType': 'direct',
-        'unreadCount_$currentUserId': 0,
-        'unreadCount_$otherUserId': 0,
-      };
-
-      final docRef = await _firestore.collection('chats').add(chatData);
-      secureLog('📱 ConnectionsService: Created new chat ${docRef.id}');
-      return docRef.id;
+      return await MessagingRepository.instance.getOrCreateDirectChat(
+        currentUserId: currentUserId,
+        otherUserId: otherUserId,
+      );
     } catch (e) {
       secureLog('❌ ConnectionsService: Error finding/creating chat: $e');
       rethrow;

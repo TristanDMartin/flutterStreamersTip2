@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../features/messaging/data/messaging_repository.dart';
+import '../features/messaging/domain/messaging_message.dart';
+import '../features/messaging/domain/normalize_chat_message.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
 import '../features/gamification/emit_engagement_gamification.dart';
@@ -17,6 +20,7 @@ class ChatServiceOptimized {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+  final MessagingRepository _messaging = MessagingRepository.instance;
 
   // Expose auth for external access
   firebase_auth.FirebaseAuth get auth => _auth;
@@ -38,44 +42,32 @@ class ChatServiceOptimized {
 
       final messages = <app_message.Message>[];
       for (final doc in query.docs) {
-        final message = _mapMessage(doc.id, doc.data());
+        final message = _mapMessage(doc.id, chatId, doc.data());
         messages.add(message);
       }
 
       _messagesCache[chatId] = messages;
-      return messages.reversed.toList(); // Return in chronological order
+      return messages.reversed.toList();
     } catch (e) {
-      // appLog('Error getting messages: $e');
       return [];
     }
   }
 
-  /// Send a message
-  Future<bool> sendMessage(String chatId, String text) async {
+  /// Send a message (idempotent via clientId document ID).
+  Future<bool> sendMessage(
+    String chatId,
+    String text, {
+    String? clientId,
+  }) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return false;
 
     try {
-      final messageData = {
-        'senderId': currentUser.uid,
-        'text': text,
-        'timestamp': FieldValue.serverTimestamp(),
-        'type': 'text',
-        'isRead': false,
-      };
-
-      // Add message to messages collection
-      await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .add(messageData);
-
-      // Update chat's last message
-      await _firestore.collection('chats').doc(chatId).update({
-        'lastMessage': text,
-        'lastTimestamp': FieldValue.serverTimestamp(),
-      });
+      await _messaging.sendTextMessage(
+        chatId: chatId,
+        text: text,
+        clientId: clientId,
+      );
       scheduleEngagementGamificationEvent(
         type: GamificationEventTypes.communityMessageSent,
         entityType: 'chat',
@@ -87,10 +79,8 @@ class ChatServiceOptimized {
         ProgressionTaskIds.firstMessageSent,
         source: 'messages',
       ));
-
       return true;
     } catch (e) {
-      // appLog('Error sending message: $e');
       return false;
     }
   }
@@ -190,30 +180,17 @@ class ChatServiceOptimized {
     }
   }
 
-  /// Mark messages as read
+  /// Mark messages as read — zeros only this chat's unread for the viewer.
   Future<bool> markMessagesAsRead(String chatId) async {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return false;
-
-      // Mark all unread messages as read
-      final query = await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .where('isRead', isEqualTo: false)
-          .where('senderId', isNotEqualTo: currentUser.uid)
-          .get();
-
-      final batch = _firestore.batch();
-      for (final doc in query.docs) {
-        batch.update(doc.reference, {'isRead': true});
-      }
-
-      await batch.commit();
+      await _messaging.markChatRead(
+        chatId: chatId,
+        userId: currentUser.uid,
+      );
       return true;
     } catch (e) {
-      // appLog('Error marking messages as read: $e');
       return false;
     }
   }
@@ -246,11 +223,11 @@ class ChatServiceOptimized {
         .orderBy('timestamp', descending: true)
         .limit(50)
         .snapshots()
-        .map((snapshot) {
-      final messages = <app_message.Message>[];
-      for (final doc in snapshot.docs) {
-        final message = _mapMessage(doc.id, doc.data());
-        messages.add(message);
+        .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
+      final List<app_message.Message> messages = <app_message.Message>[];
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in snapshot.docs) {
+        messages.add(_mapMessage(doc.id, chatId, doc.data()));
       }
       return messages.reversed.toList();
     });
@@ -258,49 +235,26 @@ class ChatServiceOptimized {
 
   /// Listen to typing status for a specific user in a chat
   Stream<bool> listenToTypingStatus(String chatId, String userId) {
-    return _firestore.collection('chats').doc(chatId).snapshots().map((doc) {
-      if (!doc.exists) {
-        return false;
-      }
-      final Map<String, dynamic>? data = doc.data();
-      if (data == null) {
-        return false;
-      }
-      final Object? typingRaw = data['typing'];
-      if (typingRaw is! Map<String, dynamic>) {
-        return false;
-      }
-      return typingRaw[userId] == true;
-    });
+    return _messaging.listenToTypingStatus(chatId: chatId, userId: userId);
   }
 
   /// Update current user's typing status in a chat
   Future<void> setTypingStatus(String chatId, bool isTyping) async {
-    final currentUser = _auth.currentUser;
-    if (currentUser == null || chatId.isEmpty) {
-      return;
-    }
-    await _firestore.collection('chats').doc(chatId).set(
-      <String, dynamic>{
-        'typing.${currentUser.uid}': isTyping,
-        'typingUpdatedAt.${currentUser.uid}': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    await _messaging.setTypingStatus(chatId: chatId, isTyping: isTyping);
   }
 
-  /// Delete a message
+  /// Soft-unsend a message (never hard-deletes).
   Future<bool> deleteMessage(String chatId, String messageId) async {
     try {
-      await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .doc(messageId)
-          .delete();
+      final String? userId = _auth.currentUser?.uid;
+      if (userId == null) return false;
+      await _messaging.unsendMessage(
+        chatId: chatId,
+        messageId: messageId,
+        userId: userId,
+      );
       return true;
     } catch (e) {
-      // appLog('Error deleting message: $e');
       return false;
     }
   }
@@ -406,30 +360,32 @@ class ChatServiceOptimized {
   }
 
   /// Map Firestore document to Message model
-  app_message.Message _mapMessage(String id, Map<String, dynamic> data) {
-    final currentUser = _auth.currentUser?.uid ?? '';
-    final String senderId =
-        (data['senderId'] as String?)?.trim().isNotEmpty == true
-            ? data['senderId'] as String
-            : (data['from'] as String? ?? '');
-
+  app_message.Message _mapMessage(
+    String id,
+    String chatId,
+    Map<String, dynamic> data,
+  ) {
+    final MessagingMessage normalized = normalizeChatMessage(
+      docId: id,
+      chatId: chatId,
+      raw: data,
+    );
+    final String currentUser = _auth.currentUser?.uid ?? '';
     return app_message.Message(
-      id: id,
-      chatId: '', // Will be set by the calling context
-      text: data['text'] ?? (data['previewText'] ?? ''),
-      from: senderId,
-      to: senderId == currentUser
-          ? 'other_user'
-          : currentUser, // Simplified for now
-      timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      isRead: data['isRead'] ?? false,
-      gifUrl: data['gifUrl'],
-      messageType: data['type'] ?? 'text',
+      id: normalized.id,
+      chatId: chatId,
+      text: normalized.isUnsent ? '' : (data['text'] ?? data['previewText'] ?? ''),
+      from: normalized.senderId,
+      to: normalized.senderId == currentUser ? 'other_user' : currentUser,
+      timestamp: normalized.serverCreatedAt ?? normalized.createdAt,
+      isRead: data['isRead'] == true,
+      gifUrl: data['gifUrl'] as String?,
+      messageType: normalized.type,
       videoId: data['videoId'] as String?,
       videoThumbnailUrl: data['thumbnailUrl'] as String? ??
           data['videoThumbnailUrl'] as String?,
       videoTitle: data['title'] as String? ?? data['videoTitle'] as String?,
-      deletedForEveryone: data['deletedForEveryone'] == true,
+      deletedForEveryone: normalized.isUnsent,
       replyToMessageId:
           (data['replyTo'] as Map<String, dynamic>?)?['messageId'] as String?,
       replyToSenderId:

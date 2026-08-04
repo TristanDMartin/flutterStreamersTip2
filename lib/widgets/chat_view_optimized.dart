@@ -1820,7 +1820,7 @@ class _ChatMessageBubble extends StatelessWidget {
                                   ),
                                 if (isDeleted)
                                   Text(
-                                    'This message was deleted.',
+                                    'This message was unsent.',
                                     style: TextStyle(
                                       color:
                                           (isMe ? outgoingText : incomingText)
@@ -2169,7 +2169,7 @@ class _ComposerReplyBanner extends StatelessWidget {
   }
 
   String _replyPreviewText(app_message.Message message) {
-    if (message.deletedForEveryone) return 'Deleted message';
+    if (message.deletedForEveryone) return 'This message was unsent.';
     if (message.text.trim().isNotEmpty) return message.text.trim();
     if ((message.videoTitle ?? '').trim().isNotEmpty) {
       return message.videoTitle!.trim();

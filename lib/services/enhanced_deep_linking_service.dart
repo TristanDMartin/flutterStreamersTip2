@@ -6,6 +6,7 @@ import '../models/chat.dart';
 import '../models/home_video.dart';
 import '../models/user_count_fields.dart';
 import '../models/user.dart' as app_user;
+import '../features/messaging/data/messaging_repository.dart';
 import '../routing/app_routes.dart';
 import '../services/pending_auth_redirect_service.dart';
 import 'profile_link_service.dart';
@@ -74,7 +75,7 @@ class EnhancedDeepLinkingService {
         await _handleHashtagLink(path, queryParams, context);
       } else if (path.startsWith('/profile/')) {
         await _handleProfileLink(path, queryParams, context);
-      } else if (path.startsWith('/chat/')) {
+      } else if (path.startsWith('/chat/') || path.startsWith('/messages/')) {
         await _handleChatLink(path, queryParams, context);
       } else if (path.startsWith('/discover')) {
         await _handleDiscoverLink(path, queryParams, context);
@@ -362,11 +363,17 @@ class EnhancedDeepLinkingService {
     }
   }
 
-  /// Handle chat deep link
+  /// Handle chat deep link (`/chat/{id}` or `/messages/{id}`).
   Future<void> _handleChatLink(String path, Map<String, String> queryParams,
       BuildContext context) async {
     try {
-      final chatId = path.split('/chat/')[1];
+      String chatId = '';
+      if (path.contains('/messages/')) {
+        chatId = path.split('/messages/').last.split('?').first;
+      } else if (path.contains('/chat/')) {
+        chatId = path.split('/chat/').last.split('?').first;
+      }
+      chatId = chatId.trim();
       if (chatId.isEmpty) {
         throw Exception('Invalid chat ID');
       }
@@ -382,7 +389,7 @@ class EnhancedDeepLinkingService {
         if (context.mounted) {
           PendingAuthRedirectService.instance.setAction((redirectContext) {
             return _handleChatLink(
-                '/chat/$chatId', queryParams, redirectContext);
+                '/messages/$chatId', queryParams, redirectContext);
           });
           if (context.mounted) {
             _replaceWithNamedRoute(context, AppRoutes.auth);
@@ -390,6 +397,8 @@ class EnhancedDeepLinkingService {
         }
         return;
       }
+
+      chatId = await MessagingRepository.instance.resolveCanonicalChatId(chatId);
 
       final chatDoc = await _firestore.collection('chats').doc(chatId).get();
       if (!chatDoc.exists) {

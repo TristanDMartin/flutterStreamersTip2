@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../features/messaging/data/messaging_repository.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
@@ -17,6 +18,7 @@ class InboxServiceOptimized {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+  final MessagingRepository _messaging = MessagingRepository.instance;
 
   // Expose auth for external access
   firebase_auth.FirebaseAuth get auth => _auth;
@@ -46,6 +48,9 @@ class InboxServiceOptimized {
       final chats = <app_chat.Chat>[];
       for (final doc in query.docs) {
         try {
+          if (doc.data()['supersededBy'] != null) {
+            continue;
+          }
           final chat = _mapChat(doc.id, doc.data());
           _chatCache[doc.id] = chat;
           chats.add(chat);
@@ -417,39 +422,18 @@ class InboxServiceOptimized {
     if (currentUser == null) return null;
 
     try {
-      // Check if chat already exists
-      final existingQuery = await _firestore
-          .collection('chats')
-          .where('participants', arrayContains: currentUser.uid)
-          .get();
-
-      for (final doc in existingQuery.docs) {
-        final participants =
-            List<String>.from(doc.data()['participants'] ?? []);
-        if (participants.contains(otherUserId)) {
-          return _mapChat(doc.id, doc.data());
-        }
+      final String chatId = await _messaging.getOrCreateDirectChat(
+        currentUserId: currentUser.uid,
+        otherUserId: otherUserId,
+      );
+      final DocumentSnapshot<Map<String, dynamic>> snapshot =
+          await _firestore.collection('chats').doc(chatId).get();
+      if (!snapshot.exists) {
+        return null;
       }
-
-      // Create new chat
-      final data = {
-        'participants': [currentUser.uid, otherUserId],
-        'lastMessage': '',
-        'lastTimestamp': FieldValue.serverTimestamp(),
-        'chatType': 'direct',
-        'unreadCount': 0,
-      };
-
-      final docRef = await _firestore.collection('chats').add(data);
-      final snapshot = await docRef.get();
-
-      if (snapshot.exists) {
-        final chat = _mapChat(docRef.id, snapshot.data()!);
-        _chatCache[docRef.id] = chat;
-        return chat;
-      }
-
-      return null;
+      final app_chat.Chat chat = _mapChat(chatId, snapshot.data()!);
+      _chatCache[chatId] = chat;
+      return chat;
     } catch (e) {
       LoggingService.instance.error('Error creating chat: $e');
       return null;
@@ -624,6 +608,9 @@ class InboxServiceOptimized {
       final chats = <app_chat.Chat>[];
       for (final doc in snapshot.docs) {
         try {
+          if (doc.data()['supersededBy'] != null) {
+            continue;
+          }
           final chat = _mapChat(doc.id, doc.data());
           _chatCache[doc.id] = chat;
           chats.add(chat);

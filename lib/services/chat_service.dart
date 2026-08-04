@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import '../features/messaging/data/messaging_repository.dart';
 import '../models/chat.dart';
 
 class ChatService {
@@ -9,6 +10,7 @@ class ChatService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final MessagingRepository _messaging = MessagingRepository.instance;
 
   ChatService._internal();
 
@@ -19,7 +21,6 @@ class ChatService {
       return null;
     }
 
-    // Validate otherUID
     if (otherUID.isEmpty) {
       debugPrint("❌ ChatService: otherUID is empty");
       return null;
@@ -29,55 +30,21 @@ class ChatService {
         "💬 ChatService: fetchOrCreateChat called with otherUID: $otherUID, currentUser: $me");
 
     try {
-      // Query for existing chats
-      final querySnapshot = await _firestore
-          .collection("chats")
-          .where("participants", arrayContains: me)
-          .get();
-
-      debugPrint(
-          "💬 ChatService: Found ${querySnapshot.docs.length} existing chats");
-
-      // Check if there's an existing chat with the other user
-      for (final doc in querySnapshot.docs) {
-        final participants =
-            List<String>.from(doc.data()["participants"] ?? []);
-        debugPrint(
-            "💬 ChatService: Checking chat ${doc.id} with participants: $participants");
-        if (participants.contains(otherUID)) {
-          debugPrint("💬 ChatService: Found existing chat with user $otherUID");
-          final chat = Chat.fromJson(doc.data());
-          return chat.copyWith(id: doc.id);
-        }
+      final String chatId = await _messaging.getOrCreateDirectChat(
+        currentUserId: me,
+        otherUserId: otherUID,
+      );
+      final DocumentSnapshot<Map<String, dynamic>> snapshot =
+          await _firestore.collection('chats').doc(chatId).get();
+      if (!snapshot.exists) {
+        debugPrint("❌ ChatService: Canonical chat missing after create");
+        return null;
       }
-
-      debugPrint("💬 ChatService: No existing chat found, creating new chat");
-      // No existing chat, create new
-      final data = {
-        "participants": [me, otherUID],
-        "lastMessage": "",
-        "lastTimestamp": FieldValue.serverTimestamp(),
-        "chatType": "direct",
-      };
-
-      final docRef = await _firestore.collection("chats").add(data);
-      debugPrint("💬 ChatService: Created new chat with ID: ${docRef.id}");
-
-      // Fetch the created document
-      final snapshot = await docRef.get();
-      if (snapshot.exists) {
-        debugPrint(
-            "💬 ChatService: Successfully fetched created chat document");
-        final chat = Chat.fromJson(snapshot.data()!);
-        return chat.copyWith(id: snapshot.id);
-      }
-
-      debugPrint("❌ ChatService: Created chat document doesn't exist");
-      return null;
+      final Chat chat = Chat.fromJson(snapshot.data()!);
+      return chat.copyWith(id: snapshot.id);
     } catch (e, stackTrace) {
       debugPrint("❌ ChatService: Error in fetchOrCreateChat: $e");
       debugPrint("❌ ChatService: Stack trace: $stackTrace");
-      // Re-throw to get more context about the error
       if (e.toString().contains('permission-denied')) {
         debugPrint("❌ ChatService: Permission denied - check Firestore rules");
       } else if (e.toString().contains('network')) {

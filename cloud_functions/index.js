@@ -1118,63 +1118,92 @@ exports.syncCreatorProfileToVideos = functions.firestore
 // ============================================================================
 
 /**
- * Automatically increment unread counts when messages are created
- * Works for both Flutter app and website
+ * Automatically increment unread counts when messages are created.
+ *
+ * TEMPORARY SHARED BACKEND OWNER (Phase 1):
+ * This Flutter-triggered function remains the single server-side owner of
+ * message-created side effects (unread, preview, push) for BOTH Flutter and
+ * the website. Do not re-enable a parallel React onMessageCreate until a
+ * controlled cutover is complete — never dual-own the same create event.
  */
 exports.onMessageCreate = functions.firestore
   .document('chats/{chatId}/messages/{messageId}')
   .onCreate(async (snap, context) => {
     try {
-      const messageData = snap.data();
+      const messageData = snap.data() || {};
       const chatId = context.params.chatId;
       const messageId = context.params.messageId;
-      
-      // Support both 'from' and 'senderId' fields
+
+      if (
+        messageData.isUnsent === true ||
+        messageData.deleted === true ||
+        messageData.deletedForEveryone === true
+      ) {
+        console.log(`⏭️ Skipping side effects for unsent/deleted message ${messageId}`);
+        return null;
+      }
+
       const senderId = messageData.from || messageData.senderId;
-      
       if (!senderId) {
         console.error(`❌ Message ${messageId} has no sender ID`);
         return null;
       }
-      
+
       console.log(`📱 New message created: ${messageId} in chat: ${chatId} from ${senderId}`);
-      
-      // Get the chat document to find participants
+
       const chatRef = admin.firestore().doc(`chats/${chatId}`);
       const chatDoc = await chatRef.get();
-      
       if (!chatDoc.exists) {
         console.error(`❌ Chat document ${chatId} does not exist`);
         return null;
       }
-      
-      const chatData = chatDoc.data();
+
+      const chatData = chatDoc.data() || {};
       const participants = chatData.participants || [];
-      
-      // Find the recipient (the other participant)
-      const recipientId = participants.find(id => id !== senderId);
-      
+      const recipientId = participants.find((id) => id !== senderId);
       if (!recipientId) {
         console.error(`❌ No recipient found for message from ${senderId}`);
         return null;
       }
-      
-      console.log(`📱 Incrementing unread count for recipient: ${recipientId}`);
-      
-      // Update chat document with incremented unread count and last message info
-      const updateData = {
+
+      const clientId = messageData.clientId || messageId;
+      if (chatData.processedClientIds && chatData.processedClientIds[clientId]) {
+        console.log(`⏭️ Duplicate clientId ${clientId} already processed`);
+        return null;
+      }
+
+      const previewText =
+        messageData.text ||
+        (messageData.gifUrl ? 'Sent a GIF' : null) ||
+        (messageData.type === 'video_share' ? 'Shared a video' : 'New message');
+
+      await chatRef.update({
         [`unreadCount_${recipientId}`]: admin.firestore.FieldValue.increment(1),
-        lastMessage: messageData.text || messageData.gifUrl || 'New message',
-        lastTimestamp: admin.firestore.FieldValue.serverTimestamp()
-      };
-      
-      await chatRef.update(updateData);
-      
+        [`unreadCountByUser.${recipientId}`]: admin.firestore.FieldValue.increment(1),
+        lastMessage: previewText,
+        lastTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageId: messageId,
+        lastMessageSenderId: senderId,
+        lastMessageType: messageData.type || messageData.messageType || 'text',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        [`processedClientIds.${clientId}`]: true,
+      });
+
       console.log(`✅ Unread count incremented for ${recipientId} in chat ${chatId}`);
-      
-      // Send push notification to the recipient
-      await sendMessagePushNotification(recipientId, senderId, messageData, chatId);
-      
+
+      const mutedBy = Array.isArray(chatData.mutedBy) ? chatData.mutedBy : [];
+      if (mutedBy.includes(recipientId)) {
+        console.log(`🔇 Skipping push for muted recipient ${recipientId}`);
+        return null;
+      }
+
+      await sendMessagePushNotification(
+        recipientId,
+        senderId,
+        messageData,
+        chatId,
+        messageId,
+      );
       return null;
     } catch (error) {
       console.error('❌ Error in onMessageCreate:', error);
@@ -1185,95 +1214,88 @@ exports.onMessageCreate = functions.firestore
 /**
  * Send push notification for new message
  */
-async function sendMessagePushNotification(recipientId, senderId, messageData, chatId) {
+async function sendMessagePushNotification(
+  recipientId,
+  senderId,
+  messageData,
+  chatId,
+  messageId,
+) {
   try {
-    // Get recipient's FCM tokens from deviceTokens subcollection
     const tokensSnapshot = await admin.firestore()
       .collection('users')
       .doc(recipientId)
       .collection('deviceTokens')
       .get();
-    
+
     if (tokensSnapshot.empty) {
       console.log(`📱 No FCM tokens found for user ${recipientId}`);
       return;
     }
-    
-    const tokens = tokensSnapshot.docs.map(doc => doc.id);
-    
-    // Get sender's display name
+
+    const tokens = tokensSnapshot.docs.map((doc) => doc.id);
     const senderDoc = await admin.firestore().doc(`users/${senderId}`).get();
     const senderData = senderDoc.exists ? senderDoc.data() : {};
     const senderName = senderData.displayName || senderData.username || 'Someone';
-    
-    // Get message text
     const messageText = messageData.text || (messageData.gifUrl ? 'Sent a GIF' : 'Sent a message');
-    const truncatedText = messageText.length > 100 ? messageText.substring(0, 100) + '...' : messageText;
-    
-    // Create notification payload
-    const message = {
-      notification: {
-        title: `New message from ${senderName}`,
-        body: truncatedText,
-      },
-      data: {
-        type: 'chat',
-        chatId: chatId,
-        senderId: senderId,
-        recipientId: recipientId,
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
-      },
-      tokens: tokens,
+    const truncatedText = messageText.length > 100
+      ? `${messageText.substring(0, 100)}...`
+      : messageText;
+
+    const dataPayload = {
+      type: 'new_message',
+      chatId: String(chatId),
+      roomId: String(chatId),
+      conversationId: String(chatId),
+      messageId: String(messageId || messageData.clientId || ''),
+      senderId: String(senderId),
+      recipientId: String(recipientId),
+      route: `/messages/${chatId}`,
+      schemaVersion: '1',
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
     };
-    
-    // Send push notification to each token individually
-    try {
-      let successCount = 0;
-      const failedTokens = [];
-      
-      for (const token of tokens) {
-        try {
-          await admin.messaging().send({
-            notification: message.notification,
-            data: message.data,
-            token: token,
-            android: {
-              priority: 'high',
+
+    let successCount = 0;
+    const failedTokens = [];
+    for (const token of tokens) {
+      try {
+        await admin.messaging().send({
+          notification: {
+            title: `New message from ${senderName}`,
+            body: truncatedText,
+          },
+          data: dataPayload,
+          token,
+          android: { priority: 'high' },
+          apns: {
+            payload: {
+              aps: {
+                badge: 1,
+                sound: 'default',
+              },
             },
-            apns: {
-              payload: {
-                aps: {
-                  badge: 1,
-                  sound: 'default',
-                }
-              }
-            }
-          });
-          successCount++;
-        } catch (tokenError) {
-          console.log(`❌ Failed to send to token (will remove): ${tokenError.code}`);
-          failedTokens.push(token);
-        }
-      }
-      
-      console.log(`✅ Push notification sent to ${successCount}/${tokens.length} devices for user ${recipientId}`);
-      
-      // Remove invalid tokens
-      if (failedTokens.length > 0) {
-        const batch = admin.firestore().batch();
-        failedTokens.forEach(token => {
-          batch.delete(admin.firestore()
-            .collection('users')
-            .doc(recipientId)
-            .collection('deviceTokens')
-            .doc(token));
+          },
         });
-        await batch.commit();
-        
-        console.log(`🧹 Removed ${failedTokens.length} invalid tokens`);
+        successCount += 1;
+      } catch (tokenError) {
+        console.log(`❌ Failed to send to token (will remove): ${tokenError.code}`);
+        failedTokens.push(token);
       }
-    } catch (error) {
-      console.error('❌ Error sending push notification:', error);
+    }
+
+    console.log(`✅ Push notification sent to ${successCount}/${tokens.length} devices for user ${recipientId}`);
+
+    if (failedTokens.length > 0) {
+      const batch = admin.firestore().batch();
+      failedTokens.forEach((token) => {
+        batch.delete(admin.firestore()
+          .collection('users')
+          .doc(recipientId)
+          .collection('deviceTokens')
+          .doc(token));
+      });
+      await batch.commit();
+      console.log(`🧹 Removed ${failedTokens.length} invalid tokens`);
     }
   } catch (error) {
     console.error('❌ Error in sendMessagePushNotification:', error);

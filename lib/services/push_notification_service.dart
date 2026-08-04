@@ -2,10 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../features/messaging/data/messaging_repository.dart';
+import '../features/messaging/domain/messaging_ids.dart';
+import '../models/chat.dart';
+import '../routing/app_navigator.dart';
+import '../routing/app_routes.dart';
 import '../services/logging_service.dart';
+import '../services/pending_auth_redirect_service.dart';
+import '../services/public_profile_firestore.dart';
+import 'unified_avatar_service.dart' as nav;
 
 class PushNotificationService {
   static final PushNotificationService _instance =
@@ -281,7 +290,11 @@ class PushNotificationService {
       // Navigate based on notification type
       switch (type) {
         case 'chat':
-          _navigateToChat(data['roomId']);
+        case 'new_message':
+        case 'message':
+          _navigateToChat(
+            MessagingIds.resolveDeepLinkChatId(data) ?? data['chatId'],
+          );
           break;
         case 'video':
           _navigateToVideo(data['videoId']);
@@ -316,7 +329,11 @@ class PushNotificationService {
       // Navigate based on notification type
       switch (type) {
         case 'chat':
-          _navigateToChat(data['chatId']);
+        case 'new_message':
+        case 'message':
+          _navigateToChat(
+            MessagingIds.resolveDeepLinkChatId(data) ?? data['chatId'],
+          );
           break;
         case 'video':
           _navigateToVideo(data['videoId']);
@@ -576,29 +593,119 @@ class PushNotificationService {
     );
   }
 
-  /// Navigation methods (to be implemented based on your routing)
-  void _navigateToChat(String roomId) {
-    LoggingService.instance
-        .debug('Navigate to chat: $roomId', tag: 'PushNotificationService');
-    // Implement navigation to chat room
+  /// Navigate to a chat from a notification payload (chatId | roomId).
+  Future<void> _navigateToChat(Object? rawChatId) async {
+    final String? incomingId =
+        rawChatId is String ? rawChatId.trim() : rawChatId?.toString().trim();
+    if (incomingId == null || incomingId.isEmpty) {
+      LoggingService.instance.warning(
+        'Navigate to chat skipped: missing chatId',
+        tag: 'PushNotificationService',
+      );
+      return;
+    }
+
+    try {
+      final String chatId =
+          await MessagingRepository.instance.resolveCanonicalChatId(incomingId);
+      final BuildContext? context =
+          nav.NavigationService.navigatorKey.currentContext;
+      if (context == null || !context.mounted) {
+        LoggingService.instance.warning(
+          'Navigate to chat deferred: no navigator context for $chatId',
+          tag: 'PushNotificationService',
+        );
+        return;
+      }
+
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        PendingAuthRedirectService.instance.setAction((redirectContext) async {
+          await _openChatById(redirectContext, chatId);
+        });
+        if (context.mounted) {
+          Navigator.of(context).pushNamed(AppRoutes.auth);
+        }
+        return;
+      }
+
+      await _openChatById(context, chatId);
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error navigating to chat from notification',
+        tag: 'PushNotificationService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<void> _openChatById(BuildContext context, String chatId) async {
+    final DocumentSnapshot<Map<String, dynamic>> chatDoc =
+        await _firestore.collection('chats').doc(chatId).get();
+    if (!chatDoc.exists || !context.mounted) {
+      return;
+    }
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      return;
+    }
+    final Chat chat = Chat.fromJson(<String, dynamic>{
+      ...?chatDoc.data(),
+      'id': chatDoc.id,
+    });
+    final List<String> participants = chat.participants;
+    if (!participants.contains(currentUser.uid)) {
+      LoggingService.instance.warning(
+        'Notification chat open denied: not a participant',
+        tag: 'PushNotificationService',
+      );
+      return;
+    }
+    final String otherUserId = participants.firstWhere(
+      (String id) => id != currentUser.uid,
+      orElse: () => currentUser.uid,
+    );
+    String otherUserName = 'Messages';
+    String? otherUserAvatarUrl;
+    if (otherUserId != currentUser.uid) {
+      final Map<String, dynamic>? otherUserData =
+          await PublicProfileFirestore.instance.getProfileMap(otherUserId);
+      if (otherUserData != null) {
+        otherUserName = (otherUserData['displayName'] ??
+                otherUserData['username'] ??
+                'Messages')
+            .toString();
+        otherUserAvatarUrl =
+            (otherUserData['avatarURL'] ?? otherUserData['userAvatarUrl'])
+                ?.toString();
+      }
+    }
+    if (!context.mounted) {
+      return;
+    }
+    await AppNavigator.openChat(
+      context,
+      chat: chat,
+      otherUserId: otherUserId,
+      otherUserName: otherUserName,
+      otherUserAvatarUrl: otherUserAvatarUrl,
+    );
   }
 
   void _navigateToVideo(String videoId) {
     LoggingService.instance
         .debug('Navigate to video: $videoId', tag: 'PushNotificationService');
-    // Implement navigation to video
   }
 
   void _navigateToProfile(String userId) {
     LoggingService.instance
         .debug('Navigate to profile: $userId', tag: 'PushNotificationService');
-    // Implement navigation to profile
   }
 
   void _navigateToHome() {
     LoggingService.instance
         .debug('Navigate to home', tag: 'PushNotificationService');
-    // Implement navigation to home
   }
 
   /// Handle token refresh

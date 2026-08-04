@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
+import '../features/messaging/data/messaging_repository.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
 import '../services/chat_service.dart';
@@ -156,7 +157,7 @@ abstract class ChatViewService {
   Stream<List<app_message.Message>> listenToMessages(String chatId);
   Future<bool> markMessagesAsRead(String chatId);
   Future<Map<String, dynamic>?> getUserInfo(String userId);
-  Future<bool> sendMessage(String chatId, String text);
+  Future<bool> sendMessage(String chatId, String text, {String? clientId});
   Future<bool> sendReplyMessage(
     String chatId,
     String text,
@@ -216,8 +217,9 @@ class ChatViewServiceAdapter implements ChatViewService {
       _chatService.markMessagesAsRead(chatId);
 
   @override
-  Future<bool> sendMessage(String chatId, String text) =>
-      _chatService.sendMessage(chatId, text);
+  @override
+  Future<bool> sendMessage(String chatId, String text, {String? clientId}) =>
+      _chatService.sendMessage(chatId, text, clientId: clientId);
 
   @override
   Future<bool> sendReplyMessage(
@@ -334,8 +336,11 @@ class ChatViewController extends ChangeNotifier {
   ];
 
   final ChatViewService _chatService;
+  final MessagingRepository _messaging = MessagingRepository.instance;
   StreamSubscription<List<app_message.Message>>? _messagesSubscription;
   StreamSubscription<bool>? _typingSubscription;
+  final List<app_message.Message> _pendingOptimistic = <app_message.Message>[];
+  final Set<String> _failedClientIds = <String>{};
 
   app_chat.Chat _chat;
   String _otherUserId;
@@ -393,28 +398,88 @@ class ChatViewController extends ChangeNotifier {
     if (trimmed.isEmpty || _state.isSending) {
       return ChatComposerResult.empty;
     }
+    final String chatId = _chat.id ?? '';
+    final String? senderId = currentUserId;
+    if (chatId.isEmpty || senderId == null) {
+      return ChatComposerResult.failed;
+    }
 
-    _updateState(_state.copyWith(isSending: true));
+    final bool isGif = shouldSendComposerInputAsRemoteGifUrl(trimmed);
+    final String clientId = _messaging.createClientId();
+    if (!isGif && _state.replyingTo == null) {
+      final app_message.Message optimistic = app_message.Message(
+        id: clientId,
+        chatId: chatId,
+        text: trimmed,
+        from: senderId,
+        to: _otherUserId,
+        timestamp: DateTime.now(),
+        isRead: false,
+        messageType: 'text',
+      );
+      _pendingOptimistic.add(optimistic);
+      _updateState(
+        _state.copyWith(
+          isSending: true,
+          messages: _mergeOptimistic(_state.messages),
+        ),
+      );
+    } else {
+      _updateState(_state.copyWith(isSending: true));
+    }
 
     try {
-      final bool success = shouldSendComposerInputAsRemoteGifUrl(trimmed)
-          ? await _chatService.sendGifMessage(_chat.id ?? '', trimmed)
+      final bool success = isGif
+          ? await _chatService.sendGifMessage(chatId, trimmed)
           : _state.replyingTo == null
-              ? await _chatService.sendMessage(_chat.id ?? '', trimmed)
+              ? await _chatService.sendMessage(
+                  chatId,
+                  trimmed,
+                  clientId: clientId,
+                )
               : await _chatService.sendReplyMessage(
-                  _chat.id ?? '',
+                  chatId,
                   trimmed,
                   _state.replyingTo!,
                   _replySenderName(_state.replyingTo!),
                 );
       if (success) {
-        unawaited(_chatService.setTypingStatus(_chat.id ?? '', false));
+        unawaited(_chatService.setTypingStatus(chatId, false));
         _updateState(_state.copyWith(replyingTo: null));
+        _failedClientIds.remove(clientId);
+      } else if (!isGif && _state.replyingTo == null) {
+        _failedClientIds.add(clientId);
+        _updateState(
+          _state.copyWith(messages: _mergeOptimistic(_state.messages)),
+        );
       }
       return success ? ChatComposerResult.sent : ChatComposerResult.failed;
     } finally {
       _updateState(_state.copyWith(isSending: false));
     }
+  }
+
+  List<app_message.Message> _mergeOptimistic(
+    List<app_message.Message> serverMessages,
+  ) {
+    final Set<String> serverIds = serverMessages
+        .map((app_message.Message message) => message.id ?? '')
+        .where((String id) => id.isNotEmpty)
+        .toSet();
+    _pendingOptimistic.removeWhere(
+      (app_message.Message message) =>
+          serverIds.contains(message.id) &&
+          !_failedClientIds.contains(message.id),
+    );
+    final List<app_message.Message> pending = _pendingOptimistic
+        .where(
+          (app_message.Message message) => !serverIds.contains(message.id),
+        )
+        .toList();
+    if (pending.isEmpty) {
+      return serverMessages;
+    }
+    return <app_message.Message>[...serverMessages, ...pending];
   }
 
   void startReplyTo(app_message.Message message) {
@@ -498,14 +563,14 @@ class ChatViewController extends ChangeNotifier {
     if (deletedCount == ownMessages.length) {
       return ChatActionFeedback(
         message: deletedCount == 1
-            ? 'Message deleted.'
-            : '$deletedCount messages deleted.',
+            ? 'Message unsent.'
+            : '$deletedCount messages unsent.',
       );
     }
     return ChatActionFeedback(
       message: deletedCount == 0
-          ? 'We couldn’t delete selected messages.'
-          : '$deletedCount of ${ownMessages.length} messages deleted.',
+          ? 'We couldn’t unsend selected messages.'
+          : '$deletedCount of ${ownMessages.length} messages unsent.',
       isError: deletedCount == 0,
     );
   }
@@ -585,7 +650,7 @@ class ChatViewController extends ChangeNotifier {
       (messages) {
         _updateState(
           _state.copyWith(
-            messages: messages,
+            messages: _mergeOptimistic(messages),
             isLoading: false,
             error: null,
           ),

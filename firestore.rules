@@ -457,6 +457,12 @@ service cloud.firestore {
     }
     
     // Users can read and write chats they participate in
+    match /chatAliases/{legacyChatId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null;
+      allow delete: if false;
+    }
+
     match /chats/{chatId} {
       // Allow creating new chats if the user is a participant
       allow create: if request.auth != null && 

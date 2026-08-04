@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../features/messaging/data/messaging_repository.dart';
 
 /// Provider that tracks unread message count for the current user.
 /// Uses chat-level unreadCount field managed by Cloud Functions.
@@ -65,49 +66,19 @@ class UnreadMessagesService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Mark all messages in a chat as read for the current user
-  /// Simply resets the unread count to 0 on the chat document
+  /// Mark all messages in a chat as read for the current user.
+  /// Only zeros this chat's unread counter (never other chats).
   static Future<void> markChatAsRead(String chatId) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return;
 
     try {
-      final messagesSnapshot = await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .where('recipients', arrayContains: currentUser.uid)
-          .get();
-
-      final batch = _firestore.batch();
-      var hasUpdates = false;
-
-      for (final messageDoc in messagesSnapshot.docs) {
-        final readBy =
-            List<String>.from(messageDoc.data()['readBy'] ?? const []);
-        if (readBy.contains(currentUser.uid)) continue;
-
-        batch.update(messageDoc.reference, {
-          'readBy': FieldValue.arrayUnion([currentUser.uid]),
-          'isRead': true,
-        });
-        hasUpdates = true;
-      }
-
-      batch.set(
-        _firestore.collection('chats').doc(chatId),
-        {
-          'unreadCount_${currentUser.uid}': 0,
-          'lastReadTimestamp': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
+      await MessagingRepository.instance.markChatRead(
+        chatId: chatId,
+        userId: currentUser.uid,
       );
-
-      if (hasUpdates || messagesSnapshot.docs.isNotEmpty) {
-        await batch.commit();
-      }
     } catch (e) {
-      // appLog('❌ Error marking chat as read: $e');
+      // Best-effort read marker.
     }
   }
 
