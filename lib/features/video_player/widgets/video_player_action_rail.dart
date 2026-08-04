@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../constants/app_colors.dart';
-import '../../../core/theme/st_theme_tokens.dart';
 import '../../../widgets/enhanced_like_button.dart';
 import 'video_player_action_rail_metrics.dart';
 import 'video_player_count_format.dart';
@@ -149,10 +147,10 @@ class VideoPlayerActionRailButton extends StatelessWidget {
     final double btnSize = metrics.buttonSize;
     final bool isShareAction = count == 'Share';
     final Color iconColor = isActive
-        ? StThemeColors.brandPurple
+        ? Colors.white
         : Colors.white.withValues(alpha: 0.96);
     final Color labelColor = isActive
-        ? AppColors.textPrimary.withValues(alpha: 0.98)
+        ? Colors.white
         : Colors.white.withValues(alpha: 0.92);
 
     return SizedBox(

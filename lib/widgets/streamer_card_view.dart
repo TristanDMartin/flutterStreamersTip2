@@ -36,6 +36,7 @@ import '../routing/app_navigator.dart';
 import '../constants/app_colors.dart';
 import 'profile/profile_username_utils.dart';
 import '../core/theme/support_shell_style.dart';
+import '../core/theme/st_theme_tokens.dart';
 import '../features/creator_score/creator_score.dart';
 import '../features/creator_score/creator_score_service.dart';
 import '../features/creator_score/creator_score_widgets.dart';
@@ -3077,7 +3078,9 @@ class _UpcomingCalendarRow extends StatelessWidget {
                 ),
                 Icon(
                   isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                  color: shell.mutedStrong,
+                  color: isBookmarked
+                      ? StThemeColors.brandPurple
+                      : shell.mutedStrong,
                   size: 20,
                 ),
               ],

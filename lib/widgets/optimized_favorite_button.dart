@@ -96,7 +96,7 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
   @override
   Widget build(BuildContext context) {
     final size = widget.size ?? 24.0;
-    final activeColor = widget.activeColor ?? const Color(0xFF9248D2);
+    final activeColor = widget.activeColor ?? Colors.white;
     final inactiveColor =
         widget.inactiveColor ?? Colors.white.withValues(alpha: 0.85);
 
@@ -110,6 +110,13 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
               _isFavorited ? Icons.bookmark : Icons.bookmark_border,
               color: _isFavorited ? activeColor : inactiveColor,
               size: size,
+              shadows: const <Shadow>[
+                Shadow(
+                  color: Color(0x99000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
             if (_isLoading)
               Positioned.fill(
@@ -124,7 +131,9 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
                       height: size * 0.6,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(activeColor),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          activeColor,
+                        ),
                       ),
                     ),
                   ),
