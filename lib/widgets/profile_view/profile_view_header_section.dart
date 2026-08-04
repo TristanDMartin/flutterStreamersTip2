@@ -116,17 +116,9 @@ class _ProfileAvatarRing extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder:
                             (BuildContext c, Object e, StackTrace? s) =>
-                                Icon(
-                          Icons.person,
-                          color: Colors.white.withValues(alpha: 0.55),
-                          size: 48,
-                        ),
+                                _AvatarInitial(userData: userData),
                       )
-                    : Icon(
-                        Icons.person,
-                        color: Colors.white.withValues(alpha: 0.55),
-                        size: 48,
-                      ),
+                    : _AvatarInitial(userData: userData),
               ),
             ),
           ),
@@ -172,6 +164,31 @@ class _ProfileAvatarRing extends StatelessWidget {
             },
           ),
       ],
+    );
+  }
+}
+
+class _AvatarInitial extends StatelessWidget {
+  const _AvatarInitial({required this.userData});
+
+  final Map<String, dynamic> userData;
+
+  @override
+  Widget build(BuildContext context) {
+    final String letter =
+        ProfileUsernameUtils.resolveAvatarInitialLetter(userData);
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.25),
+      child: Center(
+        child: Text(
+          letter,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.9),
+            fontSize: 40,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -14,7 +14,7 @@ Get Started / Start Free → Welcome → Slim 7 → Notifications → Trial inte
 - Guest answers live in local session (`tippy_onboarding_v1`) until auth.
 - After signup/login, `POST /api/tippy/onboarding/attach` writes Creator Memory + seeds `users/{uid}.onboarding`.
 - Tippy mascot is a replaceable presentation layer (`TippyMascot` → `CodeDrawnTippy` today; Rive later).
-- Billing never starts before an authenticated account; trial screen only stores `trialIntent`.
+- Billing never starts before an authenticated account; trial screen only stores `trialIntent`. After signup + email verify, `trialIntent` opens Creator Pro Stripe/IAP checkout once.
 
 ## Consumers
 

@@ -110,6 +110,13 @@ class UsernameLockService {
     if (isUsernameReserved(normalizedUsername)) {
       return false;
     }
+    final bool? apiResult = await _checkUsernameViaApi(
+      normalizedUsername: normalizedUsername,
+      userId: userId,
+    );
+    if (apiResult != null) {
+      return apiResult;
+    }
     try {
       final bool? mappingResult = await _lookupUsernameMapping(
         normalizedUsername: normalizedUsername,
@@ -131,6 +138,56 @@ class UsernameLockService {
         debugPrint('$stackTrace');
       }
       rethrow;
+    }
+  }
+
+  /// Server check when signed in — catches taken names before create profile.
+  Future<bool?> _checkUsernameViaApi({
+    required String normalizedUsername,
+    required String userId,
+  }) async {
+    final User? authUser = FirebaseAuth.instance.currentUser;
+    if (authUser == null || authUser.uid != userId) {
+      return null;
+    }
+    try {
+      final String? idToken = await authUser.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        return null;
+      }
+      final Map<String, String> headers =
+          await buildAuthenticatedHttpHeaders(
+        idToken: idToken,
+        extra: const <String, String>{
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+      final http.Response response = await _http
+          .post(
+            Uri.parse(siteUsernameCheckUrl(base: _siteApiBase)),
+            headers: headers,
+            body: jsonEncode(<String, dynamic>{
+              'username': normalizedUsername,
+            }),
+          )
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      final Map<String, dynamic> body = _decodeJsonMap(response.body);
+      final Object? available = body['available'];
+      if (available is bool) {
+        return available;
+      }
+      return null;
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint(
+          'UsernameLockService: API availability check failed: $error',
+        );
+      }
+      return null;
     }
   }
 
@@ -267,6 +324,16 @@ class UsernameLockService {
       } on UsernameTakenException {
         rethrow;
       } on UsernameClaimException catch (claimError) {
+        if (claimError.code == 'already_claimed') {
+          // Account already has a username — change, don't claim.
+          await _postUsernameApi(
+            uri: Uri.parse(siteUsernameChangeUrl(base: _siteApiBase)),
+            idToken: idToken,
+            username: normalizedUsername,
+            action: 'change',
+          );
+          return;
+        }
         if (allowSoftSkip && _canSoftSkipUsernameLock(claimError)) {
           debugPrint(
             'UsernameLockService: soft-skip claim lock: $claimError',
@@ -399,7 +466,7 @@ class UsernameLockService {
     if (lowerMessage.contains('already claimed') ||
         lowerMessage.contains('use changeusername')) {
       throw const UsernameClaimException(
-        'Username already claimed. Use changeUsername instead.',
+        'That username is unavailable. Pick another.',
         code: 'already_claimed',
       );
     }

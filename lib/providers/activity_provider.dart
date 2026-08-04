@@ -650,6 +650,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         _forceDeliveredIds.add(d.id);
         batch.update(d.reference, {
           'read': true,
+          'isRead': true,
           'readAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -675,6 +676,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         final forumId = notificationId.substring(_forumIdPrefix.length);
         await _db.collection('forumNotifications').doc(forumId).update({
           'read': true,
+          'isRead': true,
           'readAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -687,6 +689,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
             .doc(notificationId)
             .update({
           'isRead': true,
+          'read': true,
           'readAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -1478,7 +1481,13 @@ final unreadActivityCountProvider = StreamProvider<int>((ref) {
       .where('read', isEqualTo: false)
       .snapshots()
       .listen((snapshot) {
-    forumUnread = snapshot.docs.length;
+    forumUnread = snapshot.docs.where((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+      final Map<String, dynamic> data = doc.data();
+      if (shouldHideFromActivityUnreadBadge(data['type'] as String?)) {
+        return false;
+      }
+      return isActivityNotificationDocUnread(data);
+    }).length;
     forumReady = true;
     emitIfReady();
   }, onError: (_) {

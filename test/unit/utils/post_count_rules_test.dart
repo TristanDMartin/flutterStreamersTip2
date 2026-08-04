@@ -107,4 +107,42 @@ void main() {
       expect(homeVideoCountsAsUserPost(processing), isFalse);
     });
   });
+
+  group('resolveDisplayedPostCount', () {
+    test('uses stored count while feed is loading', () {
+      expect(
+        resolveDisplayedPostCount(
+          loadedVideoCount: 0,
+          feedLoading: true,
+          hasMore: true,
+          storedCount: 42,
+        ),
+        42,
+      );
+    });
+
+    test('uses loaded count when feed is complete', () {
+      expect(
+        resolveDisplayedPostCount(
+          loadedVideoCount: 5,
+          feedLoading: false,
+          hasMore: false,
+          storedCount: 99,
+        ),
+        5,
+      );
+    });
+
+    test('uses stored count when more pages remain and page is full', () {
+      expect(
+        resolveDisplayedPostCount(
+          loadedVideoCount: kProfileVideosPageSize,
+          feedLoading: false,
+          hasMore: true,
+          storedCount: 80,
+        ),
+        80,
+      );
+    });
+  });
 }

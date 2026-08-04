@@ -46,5 +46,27 @@ void main() {
       );
       expect(actual, 'Tristan M');
     });
+
+    test('resolveAvatarInitialLetter prefers display name over email', () {
+      expect(
+        ProfileUsernameUtils.resolveAvatarInitialLetter(
+          <String, dynamic>{
+            'displayName': 'Tristan',
+            'email': 'alex@example.com',
+          },
+        ),
+        'T',
+      );
+      expect(
+        ProfileUsernameUtils.resolveAvatarInitialLetter(
+          <String, dynamic>{'email': 'alex@example.com'},
+        ),
+        'A',
+      );
+      expect(
+        ProfileUsernameUtils.resolveAvatarInitialLetter(<String, dynamic>{}),
+        '?',
+      );
+    });
   });
 }

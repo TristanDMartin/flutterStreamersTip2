@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/features/activity/activity_notification_rules.dart';
 import 'package:streamers_tip/models/activity_notification.dart';
@@ -41,6 +42,23 @@ void main() {
       );
       expect(
         isActivityNotificationDocUnread(<String, dynamic>{'read': true}),
+        isFalse,
+      );
+    });
+
+    test('treats Timestamp or string readAt as read', () {
+      expect(
+        isActivityNotificationDocUnread(<String, dynamic>{
+          'isRead': false,
+          'readAt': '2024-01-01T00:00:00.000Z',
+        }),
+        isFalse,
+      );
+      expect(
+        isActivityNotificationDocUnread(<String, dynamic>{
+          'isRead': false,
+          'readAt': Timestamp.fromDate(DateTime.utc(2024, 1, 1)),
+        }),
         isFalse,
       );
     });

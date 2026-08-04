@@ -154,9 +154,12 @@ class AppRoutes {
           fullscreenDialog: true,
         );
       case upgrade:
+        final Object? upgradeArgs = routeSettings.arguments;
+        final bool autoStartPro = upgradeArgs is UpgradeRouteArgs &&
+            upgradeArgs.autoStartPro;
         return _buildRoute(
           settings: routeSettings,
-          builder: (_) => const UpgradeView(),
+          builder: (_) => UpgradeView(autoStartPro: autoStartPro),
         );
       case linkedPlatforms:
         final args = routeSettings.arguments;

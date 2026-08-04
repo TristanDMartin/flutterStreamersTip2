@@ -87,5 +87,8 @@ String siteUsernameClaimUrl({String? base}) =>
 String siteUsernameChangeUrl({String? base}) =>
     siteApiPath('/api/username/change', base: base);
 
+String siteUsernameCheckUrl({String? base}) =>
+    siteApiPath('/api/username/check', base: base);
+
 String siteProfileDisplayNameUrl({String? base}) =>
     siteApiPath('/api/profile/display-name', base: base);

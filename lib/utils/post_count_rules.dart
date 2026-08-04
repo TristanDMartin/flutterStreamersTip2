@@ -27,6 +27,9 @@ const Set<String> kCountablePostPrivacyLevels = <String>{
   'followers',
 };
 
+/// Keep in sync with website `PROFILE_VIDEOS_PAGE_SIZE`.
+const int kProfileVideosPageSize = 30;
+
 /// True when a Firestore video doc should increment [users.postCount].
 bool videoCountsAsUserPost(Map<String, dynamic> data) {
   if (data['deleted'] == true || data['isDeleted'] == true) {
@@ -91,13 +94,52 @@ String _privacyFromHomeVideoVisibility(String visibility) {
   }
 }
 
+/// Canonical displayed post count — keep in sync with website
+/// `resolveDisplayedPostCount` in lib/video/profileVideos.ts.
+int resolveDisplayedPostCount({
+  required int loadedVideoCount,
+  required bool feedLoading,
+  required bool hasMore,
+  required int storedCount,
+  int? totalCountFromApi,
+}) {
+  if (feedLoading) {
+    return storedCount;
+  }
+  if (totalCountFromApi != null) {
+    return totalCountFromApi;
+  }
+  if (!hasMore) {
+    return loadedVideoCount;
+  }
+  if (loadedVideoCount < kProfileVideosPageSize) {
+    return loadedVideoCount;
+  }
+  return storedCount;
+}
+
+/// Profile/Streamer hero override. Returns null so [UserStatsRow] keeps the
+/// live doc counter while the feed is still priming.
 int? resolvePostsCountOverride({
   required List<HomeVideo> userVideos,
   required List<HomeVideo> allVideos,
   required bool isVideoServiceLoading,
+  int storedCount = 0,
 }) {
-  if (userVideos.isEmpty && (isVideoServiceLoading || allVideos.isEmpty)) {
+  final bool feedPriming =
+      userVideos.isEmpty && (isVideoServiceLoading || allVideos.isEmpty);
+  if (feedPriming) {
     return null;
   }
-  return userVideos.where(homeVideoCountsAsUserPost).length;
+  final int loadedCountable =
+      userVideos.where(homeVideoCountsAsUserPost).length;
+  // Approximate hasMore: still loading a full page+ of this user's videos.
+  final bool hasMore =
+      isVideoServiceLoading && loadedCountable >= kProfileVideosPageSize;
+  return resolveDisplayedPostCount(
+    loadedVideoCount: loadedCountable,
+    feedLoading: false,
+    hasMore: hasMore,
+    storedCount: storedCount > 0 ? storedCount : loadedCountable,
+  );
 }

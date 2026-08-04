@@ -67,6 +67,34 @@ abstract final class ProfileUsernameUtils {
     return resolveUsername(userData);
   }
 
+  /// Single letter for avatar placeholders — never uses Firebase UID.
+  static String resolveAvatarInitialLetter(
+    Map<String, dynamic>? userData, {
+    List<String?> fallbacks = const <String?>[],
+  }) {
+    final String email = (userData?['email']?.toString() ?? '').trim();
+    final String emailLocal =
+        email.contains('@') ? email.split('@').first : email;
+    final String label = _firstNonEmpty(<String?>[
+      resolveDisplayName(userData),
+      resolveUsername(userData),
+      emailLocal,
+      ...fallbacks,
+    ]);
+    if (label.isEmpty) {
+      return '?';
+    }
+    final String cleaned = label.replaceFirst(RegExp(r'^@+'), '').trim();
+    if (cleaned.isEmpty) {
+      return '?';
+    }
+    final String letter = cleaned[0].toUpperCase();
+    if (!RegExp(r'[A-Z0-9]').hasMatch(letter)) {
+      return '?';
+    }
+    return letter;
+  }
+
   /// `@handle` when a username exists; empty string when it does not.
   static String formatAtHandle(Map<String, dynamic>? userData) {
     final String username = resolveUsername(userData);

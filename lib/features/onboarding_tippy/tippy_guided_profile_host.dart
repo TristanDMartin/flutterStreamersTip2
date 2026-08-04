@@ -19,6 +19,7 @@ import '../../widgets/profile/platform_handle_input_field.dart';
 import '../../widgets/profile/profile_avatar_picker_actions.dart';
 import '../../widgets/profile/profile_username_availability_controller.dart';
 import '../../widgets/profile/profile_username_rules.dart';
+import '../../widgets/profile/profile_username_utils.dart';
 import '../tippy/mascot/tippy_mascot.dart';
 import '../tippy/mascot/tippy_mascot_types.dart';
 import 'tippy_onboarding_contract.dart';
@@ -91,6 +92,7 @@ class TippyGuidedProfileHostState
     _bioController = TextEditingController(text: _draft.bio);
     _handleController = TextEditingController();
     _platformUrlController = TextEditingController();
+    unawaited(_seedIdentityFromSignedInAccount());
   }
 
   @override
@@ -98,7 +100,81 @@ class TippyGuidedProfileHostState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.session.profileDraft != widget.session.profileDraft) {
       _draft = widget.session.profileDraft;
+      if (_displayNameController.text.trim().isEmpty &&
+          _draft.displayName.trim().isNotEmpty) {
+        _displayNameController.text = _draft.displayName;
+      }
+      if (_usernameController.text.trim().isEmpty &&
+          _draft.username.trim().isNotEmpty) {
+        _usernameController.text = _draft.username;
+      }
     }
+    final String stage = TippyOnboardingStages.normalize(widget.session.stage);
+    final String oldStage =
+        TippyOnboardingStages.normalize(oldWidget.session.stage);
+    if (stage == TippyOnboardingStages.displayName &&
+        oldStage != TippyOnboardingStages.displayName) {
+      unawaited(_seedIdentityFromSignedInAccount());
+    }
+  }
+
+  /// Prefill "What should people call you?" from Auth / users doc.
+  Future<void> _seedIdentityFromSignedInAccount() async {
+    if (_draft.displayName.trim().isNotEmpty &&
+        _displayNameController.text.trim().isNotEmpty) {
+      return;
+    }
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+    String? fromUsersDisplay;
+    String? fromUsersUsername;
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final Map<String, dynamic>? data = snap.data();
+      fromUsersDisplay = (data?['displayName'] as String?)?.trim();
+      fromUsersUsername = (data?['username'] as String?)?.trim();
+      if (fromUsersUsername == null || fromUsersUsername.isEmpty) {
+        fromUsersUsername = (data?['handle'] as String?)?.trim();
+      }
+    } catch (_) {
+      // Best-effort seed only.
+    }
+    final String authDisplay = user.displayName?.trim() ?? '';
+    final String emailLocal = (user.email?.split('@').first ?? '').trim();
+    final String seededName = <String>[
+      if (_draft.displayName.trim().isNotEmpty) _draft.displayName.trim(),
+      if (fromUsersDisplay != null && fromUsersDisplay.isNotEmpty)
+        fromUsersDisplay,
+      if (authDisplay.isNotEmpty) authDisplay,
+      if (fromUsersUsername != null && fromUsersUsername.isNotEmpty)
+        fromUsersUsername,
+      if (emailLocal.isNotEmpty) emailLocal,
+    ].firstWhere((String value) => value.isNotEmpty, orElse: () => '');
+    if (seededName.isEmpty || !mounted) {
+      return;
+    }
+    final String seededUsername = _draft.username.trim().isNotEmpty
+        ? _draft.username.trim()
+        : (fromUsersUsername != null && fromUsersUsername.isNotEmpty
+            ? ProfileUsernameRules.normalize(fromUsersUsername)
+            : '');
+    final TippyProfileDraft next = _draft.copyWith(
+      displayName: seededName,
+      username: seededUsername.length >=
+              TippyGuidedProfileOptions.usernameMinLength
+          ? seededUsername
+          : _draft.username,
+    );
+    _displayNameController.text = next.displayName;
+    if (next.username.trim().isNotEmpty &&
+        _usernameController.text.trim().isEmpty) {
+      _usernameController.text = next.username;
+    }
+    await _saveDraft(next);
   }
 
   @override
@@ -227,6 +303,17 @@ class TippyGuidedProfileHostState
         : File(_draft.localAvatarPath!);
     final bool hasPhoto =
         local != null || (previewUrl != null && previewUrl.isNotEmpty);
+    final firebase_auth.User? authUser =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    final String initialLetter =
+        ProfileUsernameUtils.resolveAvatarInitialLetter(
+      <String, dynamic>{
+        'displayName': _draft.displayName,
+        'username': _draft.username,
+        'email': authUser?.email,
+      },
+      fallbacks: <String?>[authUser?.displayName],
+    );
     return _scene(
       TippyOnboardingCopy.avatarPrompt,
       primary: 'CONTINUE',
@@ -269,17 +356,27 @@ class TippyGuidedProfileHostState
                                     Object error,
                                     StackTrace? stackTrace,
                                   ) {
-                                    return const Icon(
-                                      Icons.person,
-                                      color: Colors.white70,
-                                      size: 40,
+                                    return Center(
+                                      child: Text(
+                                        initialLetter,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 40,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
                                     );
                                   },
                                 ))
-                          : const Icon(
-                              Icons.person,
-                              color: Colors.white70,
-                              size: 40,
+                          : Center(
+                              child: Text(
+                                initialLetter,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
                     ),
                   ),
@@ -402,11 +499,10 @@ class TippyGuidedProfileHostState
       TippyOnboardingCopy.usernamePrompt,
       primary: 'CONTINUE',
       onPrimary: () async {
-        if (_usernameStatus != UsernameAvailabilityStatus.available &&
-            _usernameStatus != UsernameAvailabilityStatus.idle) {
-          setState(() {
-            _localError = _usernameMessage ?? 'Choose an available username.';
-          });
+        final String? uid =
+            firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) {
+          setState(() => _localError = 'Please sign in to continue.');
           return;
         }
         final String username =
@@ -415,6 +511,27 @@ class TippyGuidedProfileHostState
           setState(() => _localError = 'Username is too short.');
           return;
         }
+        await _usernameAvailability.checkNow(
+          username: username,
+          userId: uid,
+          onStatusChanged: (UsernameAvailabilityStatus status, String? message) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _usernameStatus = status;
+              _usernameMessage = message;
+            });
+          },
+        );
+        if (_usernameStatus != UsernameAvailabilityStatus.available) {
+          setState(() {
+            _localError = _usernameMessage ??
+                'That username is unavailable. Pick another.';
+          });
+          return;
+        }
+        setState(() => _localError = null);
         await _saveDraft(_draft.copyWith(username: username));
         await widget.onAdvanceStage(TippyOnboardingStages.bio);
       },
@@ -848,22 +965,38 @@ class TippyGuidedProfileHostState
       );
       if (!available) {
         setState(() {
-          _localError = 'Username is no longer available.';
+          _localError = 'That username is unavailable. Pick another.';
           _saving = false;
         });
         await widget.onAdvanceStage(TippyOnboardingStages.username);
         return;
       }
-      await UsernameLockService().reserveUsername(
-        username: username,
-        userId: user.uid,
-        previousUsername: (await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .get())
-            .data()?['username'] as String?,
-        allowSoftSkip: true,
-      );
+      try {
+        await UsernameLockService().reserveUsername(
+          username: username,
+          userId: user.uid,
+          previousUsername: (await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get())
+              .data()?['username'] as String?,
+          allowSoftSkip: false,
+        );
+      } on UsernameClaimException catch (claimError) {
+        setState(() {
+          _localError = _friendlyCommitError(claimError);
+          _saving = false;
+        });
+        await widget.onAdvanceStage(TippyOnboardingStages.username);
+        return;
+      } on UsernameTakenException catch (takenError) {
+        setState(() {
+          _localError = _friendlyCommitError(takenError);
+          _saving = false;
+        });
+        await widget.onAdvanceStage(TippyOnboardingStages.username);
+        return;
+      }
       await _persistDisplayNameViaApi(
         user: user,
         displayName: _draft.displayName.trim(),
@@ -972,6 +1105,12 @@ class TippyGuidedProfileHostState
       return 'That username was just taken. Pick another.';
     }
     if (error is UsernameClaimException) {
+      final String code = (error.code ?? '').toLowerCase();
+      if (code == 'already_claimed' ||
+          error.message.toLowerCase().contains('already claimed') ||
+          error.message.toLowerCase().contains('changeusername')) {
+        return 'That username is unavailable. Pick another.';
+      }
       return error.message;
     }
     final String raw = error.toString();

@@ -22,9 +22,22 @@ import '../features/billing/store_product_ids.dart';
 import '../services/creator_intelligence_analytics_service.dart';
 import 'contact_support_view.dart';
 
+/// Route args for [UpgradeView] (Tippy trialIntent auto-start).
+class UpgradeRouteArgs {
+  const UpgradeRouteArgs({this.autoStartPro = false});
+
+  final bool autoStartPro;
+}
+
 /// Duolingo-inspired subscription surface for StreamersTip tiers.
 class UpgradeView extends ConsumerStatefulWidget {
-  const UpgradeView({super.key});
+  const UpgradeView({
+    super.key,
+    this.autoStartPro = false,
+  });
+
+  /// When true (Tippy trialIntent), open Pro period picker after catalog load.
+  final bool autoStartPro;
 
   @override
   ConsumerState<UpgradeView> createState() => _UpgradeViewState();
@@ -95,7 +108,21 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
           feature: 'upgrade_view',
         ),
       );
+      if (widget.autoStartPro) {
+        unawaited(_autoStartProTrialCheckout());
+      }
     });
+  }
+
+  Future<void> _autoStartProTrialCheckout() async {
+    final IapBillingCoordinator coordinator = IapBillingCoordinator.instance;
+    if (_iap.productsById.isEmpty) {
+      await coordinator.refreshStoreCatalog();
+    }
+    if (!mounted) {
+      return;
+    }
+    await _pickProProductThenBuy();
   }
 
   @override
@@ -128,22 +155,28 @@ class _UpgradeViewState extends ConsumerState<UpgradeView> {
         return AlertDialog(
           backgroundColor: _cardBg,
           title: Text(
-            'Pro billing period',
+            'Choose your Pro plan',
             style: TextStyle(color: _on, fontWeight: FontWeight.w800),
           ),
           content: Text(
-            'Choose monthly or yearly Pro. Checkout runs in the '
-            'App Store or Google Play app on this device.',
+            'Start with monthly to build trust — or save with yearly. '
+            'Checkout runs in the App Store or Google Play on this device.',
             style: TextStyle(color: _on.withValues(alpha: 0.78)),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(storeProMonthlyId()),
-              child: const Text('Monthly', style: TextStyle(color: _ctaBlue)),
+              child: const Text(
+                'Monthly · \$12.99',
+                style: TextStyle(color: _ctaBlue),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(storeProYearlyId()),
-              child: const Text('Yearly', style: TextStyle(color: _ctaBlue)),
+              child: Text(
+                'Yearly · \$120',
+                style: TextStyle(color: _on.withValues(alpha: 0.85)),
+              ),
             ),
           ],
         );

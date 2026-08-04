@@ -9,6 +9,7 @@ import '../../constants/app_colors.dart';
 import '../../features/billing/upgrade_tier_marketing.dart';
 import '../../routing/app_routes.dart';
 import '../../services/robust_auth_service.dart';
+import '../../views/upgrade_view.dart';
 import '../../widgets/signup_view.dart';
 import '../../components/onboarding/onboarding_service.dart';
 import '../../services/contacts_service.dart';
@@ -61,6 +62,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
   int _welcomeBeat = 0;
   final GlobalKey<TippyGuidedProfileHostState> _guidedProfileKey =
       GlobalKey<TippyGuidedProfileHostState>();
+  bool _trialCheckoutOffered = false;
 
   @override
   void initState() {
@@ -138,6 +140,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
       _hydrateQuestionDraft(session);
     });
     _analytics.started(sessionId: session.sessionId);
+    unawaited(_offerProTrialCheckoutIfNeeded(session));
   }
 
   bool _isPostQuizStage(String stage) {
@@ -206,6 +209,48 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
     await _persist(current.copyWith(stage: stage));
   }
 
+  bool _isPostVerifyCheckoutStage(String stage) {
+    final String normalized = TippyOnboardingStages.normalize(stage);
+    return TippyOnboardingStages.isGuidedProfileStage(normalized) ||
+        normalized == TippyOnboardingStages.findFriends ||
+        normalized == TippyOnboardingStages.success ||
+        normalized == TippyOnboardingStages.landingChoice;
+  }
+
+  /// After account create + verify: open Pro IAP checkout once when
+  /// the guest chose Start Free Trial (`trialIntent`).
+  Future<void> _offerProTrialCheckoutIfNeeded(
+    TippyOnboardingGuestSession session,
+  ) async {
+    if (_trialCheckoutOffered || !session.trialIntent) {
+      return;
+    }
+    if (!_isPostVerifyCheckoutStage(session.stage)) {
+      return;
+    }
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+    final bool needsVerify = !user.emailVerified &&
+        user.providerData.any(
+          (firebase_auth.UserInfo info) => info.providerId == 'password',
+        );
+    if (needsVerify) {
+      return;
+    }
+    _trialCheckoutOffered = true;
+    await _persist(session.copyWith(trialIntent: false));
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).pushNamed(
+      AppRoutes.upgrade,
+      arguments: const UpgradeRouteArgs(autoStartPro: true),
+    );
+  }
+
   Future<void> _handleAuthenticated() async {
     final TippyOnboardingGuestSession? session = _session;
     if (session == null || _isBusy) {
@@ -241,6 +286,10 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
             ? TippyOnboardingStages.verifyEmail
             : TippyOnboardingStages.accountSecured,
       );
+      if (!needsVerify) {
+        final TippyOnboardingGuestSession after = _session ?? session;
+        await _offerProTrialCheckoutIfNeeded(after);
+      }
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -313,9 +362,11 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
                   Expanded(
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 320),
+                      // Do not key on welcomeBeat — both Meet Tippy beats include
+                      // TippyMascot, and cross-fading them stacks the brand logo twice.
                       child: KeyedSubtree(
                         key: ValueKey<String>(
-                          '${session.stage}_${session.questionIndex}_$_welcomeBeat',
+                          '${session.stage}_${session.questionIndex}',
                         ),
                         child: _buildStage(session),
                       ),
@@ -966,6 +1017,10 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
             firebase_auth.FirebaseAuth.instance.currentUser;
         if (fresh != null && fresh.emailVerified) {
           await _advanceStage(TippyOnboardingStages.accountSecured);
+          final TippyOnboardingGuestSession? after = _session;
+          if (after != null) {
+            await _offerProTrialCheckoutIfNeeded(after);
+          }
           return;
         }
         setState(() {

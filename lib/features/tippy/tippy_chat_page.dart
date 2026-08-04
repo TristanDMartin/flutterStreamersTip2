@@ -2085,12 +2085,18 @@ class TippyConversationHistoryStore {
                   ) ??
                   _readTimestamp(data['updatedAt']) ??
                   _readTimestamp(data['createdAt']);
-              final String lastMessage = data['lastMessage'] is String
+              final String rawLast = data['lastMessage'] is String
                   ? data['lastMessage'] as String
                   : '';
-              final String title = data['title'] is String
+              final String lastMessage =
+                  _stripTippyFrontendContextBlock(rawLast);
+              final String rawTitle = data['title'] is String
                   ? data['title'] as String
-                  : (lastMessage.isEmpty ? 'New chat' : lastMessage);
+                  : '';
+              final String title = _resolveTippyChatTitle(
+                title: rawTitle,
+                lastMessage: lastMessage,
+              );
               return TippyConversationSummary(
                 id: doc.id,
                 title: title,
@@ -2172,21 +2178,71 @@ class TippyConversationHistoryStore {
   }
 
   String _titleFromMessages(List<TippyStoredMessage> messages) {
-    final String firstUser = messages
-        .firstWhere(
-          (TippyStoredMessage message) => message.role == 'user',
-          orElse: () => messages.first,
-        )
-        .content
-        .trim()
-        .replaceAll(RegExp(r'\s+'), ' ');
-    if (firstUser.isEmpty) {
+    final String firstUser = _stripTippyFrontendContextBlock(
+      messages
+          .firstWhere(
+            (TippyStoredMessage message) => message.role == 'user',
+            orElse: () => messages.first,
+          )
+          .content,
+    ).replaceAll(RegExp(r'\s+'), ' ');
+    if (firstUser.isEmpty ||
+        firstUser.contains('[TIPPY_FRONTEND_CONTEXT]')) {
       return 'Tippy conversation';
     }
     return firstUser.length > 54
         ? '${firstUser.substring(0, 54)}...'
         : firstUser;
   }
+}
+
+String _stripTippyFrontendContextBlock(String message) {
+  if (message.isEmpty) {
+    return '';
+  }
+  String out = message.replaceAll(
+    RegExp(
+      r'\[TIPPY_FRONTEND_CONTEXT\][\s\S]*?\[/TIPPY_FRONTEND_CONTEXT\]\s*',
+      caseSensitive: false,
+    ),
+    '',
+  );
+  out = out.replaceAll(
+    RegExp(r'\[TIPPY_FRONTEND_CONTEXT\][\s\S]*', caseSensitive: false),
+    '',
+  );
+  out = out.replaceAll(
+    RegExp(r'\[/?TIPPY_FRONTEND_CONTEXT\]', caseSensitive: false),
+    '',
+  );
+  return out.trim();
+}
+
+String _sanitizeTippyChatTitle(String title) {
+  final String cleaned =
+      _stripTippyFrontendContextBlock(title).replaceAll(RegExp(r'\s+'), ' ');
+  if (cleaned.isEmpty ||
+      cleaned.toUpperCase().contains('TIPPY_FRONTEND_CONTEXT') ||
+      cleaned.toLowerCase() == 'new chat') {
+    return '';
+  }
+  return cleaned;
+}
+
+String _resolveTippyChatTitle({
+  required String title,
+  String lastMessage = '',
+}) {
+  for (final String candidate in <String>[title, lastMessage]) {
+    final String cleaned = _sanitizeTippyChatTitle(candidate);
+    if (cleaned.isEmpty) {
+      continue;
+    }
+    return cleaned.length > 48
+        ? '${cleaned.substring(0, 45)}...'
+        : cleaned;
+  }
+  return 'Conversation';
 }
 
 class _TippyHistorySheet extends StatelessWidget {
@@ -2278,6 +2334,19 @@ class _TippyHistorySheet extends StatelessWidget {
                     itemBuilder: (BuildContext context, int index) {
                       final TippyConversationSummary conversation =
                           conversations[index];
+                      final String preview =
+                          _stripTippyFrontendContextBlock(
+                        conversation.lastMessage,
+                      );
+                      final bool hasCleanPreview = preview.isNotEmpty &&
+                          !preview
+                              .toUpperCase()
+                              .contains('TIPPY_FRONTEND_CONTEXT');
+                      final String subtitle = hasCleanPreview
+                          ? preview
+                          : (conversation.updatedAt == null
+                              ? 'Open conversation'
+                              : 'Updated ${_formatRelative(conversation.updatedAt!)}');
                       return ListTile(
                         onTap: () => onSelect(conversation),
                         leading: const Icon(
@@ -2285,7 +2354,10 @@ class _TippyHistorySheet extends StatelessWidget {
                           color: Colors.white70,
                         ),
                         title: Text(
-                          conversation.title,
+                          _resolveTippyChatTitle(
+                            title: conversation.title,
+                            lastMessage: conversation.lastMessage,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -2294,11 +2366,7 @@ class _TippyHistorySheet extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(
-                          conversation.lastMessage.isNotEmpty
-                              ? conversation.lastMessage
-                              : (conversation.updatedAt == null
-                                  ? 'Open conversation'
-                                  : 'Updated ${_formatRelative(conversation.updatedAt!)}'),
+                          subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

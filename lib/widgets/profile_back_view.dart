@@ -433,7 +433,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          _SmallAvatar(imageUrl: resolveAvatarUrl(_currentUserData)),
+          _SmallAvatar(
+            imageUrl: resolveAvatarUrl(_currentUserData),
+            userData: _currentUserData,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1339,7 +1342,11 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
 class _SmallAvatar extends StatelessWidget {
   final String? imageUrl;
-  const _SmallAvatar({required this.imageUrl});
+  final Map<String, dynamic> userData;
+  const _SmallAvatar({
+    required this.imageUrl,
+    required this.userData,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1348,6 +1355,8 @@ class _SmallAvatar extends StatelessWidget {
     final Color inner = shell.isLight
         ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
         : Colors.black.withValues(alpha: 0.2);
+    final String letter =
+        ProfileUsernameUtils.resolveAvatarInitialLetter(userData);
     return Container(
       width: 64,
       height: 64,
@@ -1372,11 +1381,31 @@ class _SmallAvatar extends StatelessWidget {
           ),
           child: ClipOval(
             child: imageUrl != null && imageUrl!.isNotEmpty
-                ? Image.network(imageUrl!, fit: BoxFit.cover)
-                : Icon(
-                    Icons.person,
-                    color: scheme.onSurface,
-                    size: 28,
+                ? Image.network(
+                    imageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder:
+                        (BuildContext c, Object e, StackTrace? s) =>
+                            Center(
+                      child: Text(
+                        letter,
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      letter,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
           ),
         ),
