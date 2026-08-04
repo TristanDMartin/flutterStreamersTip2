@@ -14,7 +14,7 @@ class UpgradeTierMarketing {
   static const List<String> proBullets = <String>[
     'Unlimited content uploads',
     'Unlimited content plans',
-    '500 monthly AI credits',
+    '300 monthly AI credits',
     '90-day analytics',
     'Full weekly growth reports',
     'AI caption rewriting',

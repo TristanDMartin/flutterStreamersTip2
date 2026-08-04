@@ -98,7 +98,7 @@ ApiEntitlements catalogEntitlementsForTier(String tierApi) {
     case 'pro':
       return const ApiEntitlements(
         maxPlatforms: 5,
-        monthlyAiCredits: 500,
+        monthlyAiCredits: 300,
         contentPlansLimit: kEntitlementUnlimited,
         analyticsWindowDays: 90,
         crossPostWeeklyLimit: kEntitlementUnlimited,
