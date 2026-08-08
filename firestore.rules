@@ -1,636 +1,1057 @@
+// =============================================================================
+// UNIFIED CONTRACT — 2026-08-05r1
+// This file is the single source of truth for Firestore security rules.
+// The Flutter repo (flutterST/firestore.rules) MUST keep a byte-identical
+// copy — do not hand-edit rules in the Flutter repo; edit here and `cp` over.
+// Notifications (users/{uid}/notifications + notifications/{uid}/items) are
+//   server-only: create/delete are always false, update is a client
+//   read-receipt allow-list (isRead/read/readAt/updatedAt) only.
+// Mobile parity additions (2026-08-05): tags/mentions/shared_drafts (CF
+//   onTagCreate/onMentionCreate + Flutter draft sharing), users/.../presence,
+//   user_favorites, engagement, user_sessions, user_retention_profiles,
+//   creator_stats, feeds fan-out cache, engagement_analytics, admin_logs —
+//   ported from the Flutter rules contract so production mobile is not
+//   broken by this file's default-deny catch-all.
+// Hotfix: restore userInterests, creator_metrics, users/.../followers|following
+//   (r3 drop caused FollowsService / interests / metrics denials on Flutter).
+// Engagement: like/bookmark edges + viewer counter bumps allow isAuthenticated
+//   (email_verified was blocking mobile favorites for some auth providers).
+// Share: viewer may bump shares+shareCount together (+1 only).
+// TRANSITIONAL users (expires 2026-08-31): auth read + owner createWithStarterOnly
+// Follows: composite follower_target / legacy follower_following doc ids required
+// Bookmarks bridge (through 2026-08-31): dual paths until web migrates
+// Deploy: ALLOW_FIREBASE_RULES_DEPLOY=1 (freeze script still required)
+// =============================================================================
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-  // Canonical public profile mirror (must match web contract for cross-user UI)
-  match /publicUsers/{uid} {
-    allow read: if true;
-    allow create, update: if request.auth != null && request.auth.uid == uid;
-    allow delete: if false;
-  }
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
 
-  // Users can read public user profiles and write their own
-  match /users/{userId} {
-    // Private account doc. Others must use publicUsers (deploy web rules contract).
-    allow read: if request.auth != null && request.auth.uid == userId;
-    // Block self-escalation / ban bypass; privileged fields only via Admin SDK / Functions
-    allow create: if request.auth != null && request.auth.uid == userId
-      && (
-        !request.resource.data.keys().hasAny(['pinnedVideoIds'])
-        || request.resource.data.pinnedVideoIds.size() <= 3
-      )
-      && isSafeUserProfileCreate();
-    allow update: if request.auth != null && request.auth.uid == userId
-      && (
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pinnedVideoIds'])
-        || request.resource.data.pinnedVideoIds.size() <= 3
-      )
-      && isSafeUserProfileUpdate();
-    allow delete: if request.auth != null && request.auth.uid == userId;
+    // Firebase Auth token claim — authoritative email verification.
+    // Do not use Firestore users.isVerified (platform badge) for security.
+    function hasVerifiedEmail() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidUser(userId) {
+      return userId is string && userId.size() > 0 && userId.size() <= 128;
+    }
 
-      // Client-side post count reconciliation (profile tab).
-      allow update: if request.auth != null && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['postCount', 'lastPostCountReconciliation']);
+    function isChatParticipant(chatId) {
+      return isAuthenticated() &&
+        request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    function isVideoDocumentOwner() {
+      return isAuthenticated() && isVideoDataOwner(resource.data);
+    }
+
+    function isVideoDataOwner(data) {
+      return isAuthenticated() && (
+        request.auth.uid == data.get('ownerId', '') ||
+        request.auth.uid == data.get('uid', '') ||
+        request.auth.uid == data.get('userId', '') ||
+        request.auth.uid == data.get('creatorId', '')
+      );
+    }
+
+    function videoOwnerIdFromData(data) {
+      return data.get('ownerId', data.get('userId', data.get('creatorId', data.get('uid', ''))));
+    }
+
+    // Prefer Auth custom claims (admin / role). Never trust Firestore users.role for authZ.
+    function isPlatformAdmin() {
+      return isAuthenticated() && (
+        request.auth.uid in [
+          'bU0RxyZ2L4ULAv1Co5L4f825yV73',
+          'jsmbQMLQjoUyC5cUFvkrRbi9mkp1'
+        ] ||
+        request.auth.token.get('admin', false) == true ||
+        request.auth.token.get('role', '') in ['admin', 'super_admin', 'owner']
+      );
+    }
+
+    function listOrEmpty(data, field) {
+      return field in data && data[field] is list ? data[field] : [];
+    }
+
+    function isLikeToggle(countField, listField) {
+      let beforeList = listOrEmpty(resource.data, listField);
+      let afterList = listOrEmpty(request.resource.data, listField);
+      let beforeCount = resource.data.get(countField, 0);
+      let afterCount = request.resource.data.get(countField, 0);
+      let adding = !(request.auth.uid in beforeList) &&
+        request.auth.uid in afterList &&
+        afterList.size() == beforeList.size() + 1 &&
+        afterCount == beforeCount + 1;
+      let removing = request.auth.uid in beforeList &&
+        !(request.auth.uid in afterList) &&
+        afterList.size() == beforeList.size() - 1 &&
+        afterCount == beforeCount - 1;
+      return adding || removing;
+    }
+
+    function isBookmarkToggle() {
+      let beforeList = listOrEmpty(resource.data, 'bookmarkedBy');
+      let afterList = listOrEmpty(request.resource.data, 'bookmarkedBy');
+      let adding = !(request.auth.uid in beforeList) &&
+        request.auth.uid in afterList &&
+        afterList.size() == beforeList.size() + 1;
+      let removing = request.auth.uid in beforeList &&
+        !(request.auth.uid in afterList) &&
+        afterList.size() == beforeList.size() - 1;
+      return adding || removing;
+    }
+
+    function isFollowToggle() {
+      let beforeList = listOrEmpty(resource.data, 'followedBy');
+      let afterList = listOrEmpty(request.resource.data, 'followedBy');
+      let adding = !(request.auth.uid in beforeList) &&
+        request.auth.uid in afterList &&
+        afterList.size() == beforeList.size() + 1;
+      let removing = request.auth.uid in beforeList &&
+        !(request.auth.uid in afterList) &&
+        afterList.size() == beforeList.size() - 1;
+      return adding || removing;
+    }
+
+    function isCommentCountBump() {
+      let before = resource.data.get('commentCount', 0);
+      let after = request.resource.data.get('commentCount', 0);
+      return after == before + 1 || after == before - 1;
+    }
+
+    function isReplyCountBump() {
+      let before = resource.data.get('replyCount', 0);
+      let after = request.resource.data.get('replyCount', 0);
+      return after == before + 1 || after == before - 1;
+    }
+
+    function followsUser(ownerId) {
+      return isAuthenticated() &&
+        ownerId is string &&
+        ownerId.size() > 0 &&
+        (
+          exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + ownerId)) ||
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)/following/$(ownerId))
+        );
+    }
+
+    // Public / Connections / Private — must stay in sync with lib/video/profileVideoVisibility.ts
+    function isVideoDataPublic(data) {
+      return !(('isPublic' in data) && data.isPublic == false) &&
+        (
+          data.get('isPublic', false) == true ||
+          data.get('privacy', '') in ['Everyone', 'everyone', 'public', 'Public'] ||
+          data.get('visibility', '') == 'public' ||
+          (
+            !('privacy' in data) &&
+            !('isPublic' in data) &&
+            !('visibility' in data)
+          )
+        );
+    }
+
+    function isVideoDataConnections(data) {
+      return data.get('isConnectionsOnly', false) == true ||
+        data.get('privacy', '') in ['Connections', 'connections'] ||
+        data.get('visibility', '') == 'followers_only';
+    }
+
+    function canReadVideoData(data) {
+      return isPlatformAdmin() ||
+        isVideoDataOwner(data) ||
+        (
+          data.get('isDeleted', false) == false &&
+          !(data.get('status', '') in ['deleted', 'removed']) &&
+          !('deletedAt' in data) &&
+          (
+            isVideoDataPublic(data) ||
+            (isVideoDataConnections(data) && followsUser(videoOwnerIdFromData(data)))
+          )
+        );
+    }
+
+    function canReadVideo() {
+      return canReadVideoData(resource.data);
+    }
+
+    function canReadVideoById(videoId) {
+      return exists(/databases/$(database)/documents/videos/$(videoId)) &&
+        canReadVideoData(get(/databases/$(database)/documents/videos/$(videoId)).data);
+    }
+
+    function isVideoSoftDeletePatch() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+        ['status', 'isDeleted', 'deletedAt', 'deletedBy', 'updatedAt']
+      ) &&
+      request.resource.data.status == 'deleted' &&
+      request.resource.data.isDeleted == true;
+    }
+
+    // publicUsers collection - canonical public profile
+    match /publicUsers/{uid} {
+      // TikTok-style: public can view streamer pages / threads / videos (including avatars/names),
+      // but cannot interact unless authenticated.
+      allow read: if true;
+      // Clients may sync non-identity public fields; username + displayName are Admin SDK only.
+      allow create: if hasVerifiedEmail() &&
+                       request.auth.uid == uid &&
+                       request.resource.data.uid == uid &&
+                       !('username' in request.resource.data) &&
+                       !('handle' in request.resource.data) &&
+                       !('usernameNormalized' in request.resource.data) &&
+                       !('usernameLowercase' in request.resource.data) &&
+                       !('displayName' in request.resource.data) &&
+                       !('displayNameLowercase' in request.resource.data) &&
+                       !('identityStatus' in request.resource.data);
+      allow update: if hasVerifiedEmail() &&
+                       request.auth.uid == uid &&
+                       request.resource.data.uid == uid &&
+                       usernameIdentityFieldsUnchanged();
+      allow delete: if false;
+    }
+    
+    // Tippy Bot Channels — public read (commands pages); owner writes only
+    // OAuth tokens live in *Connections, not here.
+    match /tippyBotChannels/{channelId} {
+      allow read: if true;
+
+      allow create: if hasVerifiedEmail() &&
+                       request.resource.data.uid == request.auth.uid &&
+                       isValidUser(request.resource.data.uid);
+
+      allow update: if hasVerifiedEmail() &&
+                       resource.data.uid == request.auth.uid &&
+                       request.resource.data.uid == request.auth.uid &&
+                       isValidUser(request.resource.data.uid);
+
+      allow delete: if hasVerifiedEmail() &&
+                       resource.data.uid == request.auth.uid;
+    }
+
+    // Tippy chat engagement state — Admin SDK / tippy-bot only
+    match /tippyPolls/{pollId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    match /tippyGiveaways/{giveawayId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    match /tippyPredictions/{predictionId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    
+    // Server-controlled fields — only Stripe webhook, Admin SDK, or migrations may write these
+    function serverControlledFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny([
+          'subscriptionTier', 'subscriptionStatus', 'subscriptionPeriodEnd',
+          'subscriptionProvider', 'stripeCustomerId', 'stripeSubscriptionId',
+          'subscriptionCancelAtPeriodEnd', 'subscriptionPauseResumesAt',
+          'canceledDuringTrial', 'hasUsedTrial', 'trialConsumedAt',
+          'aiCreditsUsed', 'aiCreditsResetAt',
+          'role', 'isAdmin', 'admin', 'adminAccess', 'adminStatus',
+          'entitlementOverride', 'entitlements',
+          'accountStatus', 'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
+          'emailVerified', 'publicProfileEnabled', 'provisionedAt', 'verifiedAt',
+          'gamification',
+          'appleOriginalTransactionId', 'googlePurchaseToken', 'revenueCatCustomerId',
+          // Username identity — Cloud Functions Admin SDK only
+          'username', 'handle', 'usernameNormalized', 'usernameLowercase',
+          'usernameCompacted', 'usernameVersion', 'usernameUpdatedAt',
+          'username_display', 'username_last_change_at', 'username_history',
+          'usernameHistory',
+          // Display name + identity moderation — Admin SDK / trusted APIs only
+          'displayName', 'displayNameLowercase',
+          'identityStatus', 'identityModerationStatus',
+          'identityModeratedAt', 'identityModerationReason',
+        ]);
+    }
+
+    function usernameIdentityFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny([
+          'username', 'handle', 'usernameNormalized', 'usernameLowercase',
+          'usernameCompacted', 'usernameVersion', 'usernameUpdatedAt',
+          'username_display', 'username_last_change_at', 'username_history',
+          'usernameHistory',
+          'displayName', 'displayNameLowercase',
+          'identityStatus', 'identityModerationStatus',
+          'identityModeratedAt', 'identityModerationReason',
+        ]);
+    }
+    function createWithStarterOnly() {
+      return request.resource.data.get('subscriptionTier', 'starter') == 'starter' &&
+             request.resource.data.get('subscriptionStatus', 'active') == 'active' &&
+             !request.resource.data.keys().hasAny([
+               'role', 'isAdmin', 'admin', 'adminAccess', 'adminStatus',
+               'entitlementOverride', 'entitlements',
+               'subscriptionPeriodEnd', 'subscriptionProvider',
+               'stripeCustomerId', 'stripeSubscriptionId',
+               'hasUsedTrial', 'trialConsumedAt', 'canceledDuringTrial',
+               'accountStatus', 'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
+               'gamification',
+               // Identity — claim via /api/username/* / Admin only
+               'username', 'handle', 'usernameNormalized', 'usernameLowercase',
+               'usernameCompacted', 'usernameVersion', 'usernameUpdatedAt',
+               'username_display', 'username_last_change_at', 'username_history',
+               'usernameHistory',
+               'displayName', 'displayNameLowercase',
+               'identityStatus', 'identityModerationStatus',
+               'identityModeratedAt', 'identityModerationReason',
+             ]);
+    }
+
+    function clientSecretUserFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['twoFactorSecret', 'twoFactorBackupCodes', 'backupCodes', 'phoneNumber']);
+    }
+
+    function isServerOwnedUserSubcollection(name) {
+      return name in [
+        'usage', 'aiUsage', 'xpEvents', 'achievements', 'missions',
+        'gamificationStats', 'gamification', 'progression', 'gamificationEvents',
+        // Worker XP mission/achievement collections (must not be client-writable)
+        'gamificationAchievements', 'gamificationMissions',
+        'creatorScore', 'creatorScoreHistory', 'analyticsProfile', 'tippyMemory', 'billing',
+        'entitlements', 'subscription_events', 'admin_notifications',
+        'gamification_audit',
+        // Quota-gated; create only via Admin API
+        'contentPlans',
+        // Tippy Intelligence — server-written via authenticated APIs
+        'creatorMemory',
+        'tippyRecommendations',
+        'tippyTrendHistory',
+        'tippyPlannerHistory',
+        'tippyDnaSessions',
+        'tippyNotificationHistory',
+        'tippyMorningBriefings',
+      ];
+    }
+
+    function videoCreateOwnedByAuth() {
+      return request.resource.data.get('userId', '') == request.auth.uid ||
+        request.resource.data.get('ownerId', '') == request.auth.uid;
+    }
+
+    function videoCreateOwnerFieldsConsistent() {
+      return (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid) &&
+        (!('ownerId' in request.resource.data) || request.resource.data.ownerId == request.auth.uid) &&
+        (!('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid) &&
+        (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) &&
+        (!('authorId' in request.resource.data) || request.resource.data.authorId == request.auth.uid);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Private account doc — billing, email, bans, entitlements. Others use publicUsers.
+      allow read: if isOwner(userId);
+      // TRANSITIONAL (expires 2026-08-31): owner create until /api/account/provision.
+      // Target: allow create: if false;
+      // createWithStarterOnly() also blocks username/displayName on create.
+      allow create: if hasVerifiedEmail() && isOwner(userId) && createWithStarterOnly();
+      allow update: if hasVerifiedEmail() && isOwner(userId) && isValidUser(userId) && serverControlledFieldsUnchanged() &&
+                       clientSecretUserFieldsUnchanged() &&
+                       (!('isArtist' in request.resource.data) || request.resource.data.isArtist is bool) &&
+                       (!('artistStatus' in request.resource.data) || request.resource.data.artistStatus is string) &&
+                       (!('shopSlug' in request.resource.data) || request.resource.data.shopSlug is string);
+      allow delete: if false;
+      // Note: liveStatus, subscriptionTier, subscriptionStatus, stripeCustomerId, aiCredits* are server-only
+
+      // 2FA secrets, backup codes, SMS phone — Admin SDK / API routes only
+      match /security/{docId} {
+        allow read, write: if false;
+      }
       
-      // TikTok-style liked video cache. Relationship counters are server-owned.
-      allow update: if request.auth != null 
-        && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['liked_videos', 'updatedAt'])
-        && isValidBookmarkUpdate(request.resource.data.liked_videos);
+      // Subcollections
+      match /videos/{videoId} {
+        allow read: if isOwner(userId) || canReadVideo();
+        allow write: if hasVerifiedEmail() && isOwner(userId);
+      }
+      
+      match /status/{statusId} {
+        allow read: if true; // Public read for status
+        allow write: if hasVerifiedEmail() && isOwner(userId);
+      }
 
-      // Presence: any signed-in user can read (avatars / network); only owner writes
+      // Online/offline presence (Flutter status_provider / AuthService) —
+      // any signed-in user reads (network avatars, online dots); owner writes.
       match /presence/{presenceDocId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow read: if isAuthenticated();
+        allow write: if hasVerifiedEmail() && isOwner(userId);
 
         match /{nestedPresenceDoc=**} {
-          allow read: if request.auth != null;
-          allow write: if request.auth != null && request.auth.uid == userId;
+          allow read: if isAuthenticated();
+          allow write: if hasVerifiedEmail() && isOwner(userId);
         }
       }
       
-      // Users can read and write their own non-sensitive subcollections.
-      // Progression/XP and admin subcollections are server-owned below.
-      match /contentPlans/{planId} {
-        allow read, list: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null
-          && request.auth.uid == userId
-          && request.resource.data.ownerUid == userId;
-        allow update: if request.auth != null
-          && request.auth.uid == userId
-          && resource.data.ownerUid == userId
-          && request.resource.data.ownerUid == userId;
-        allow delete: if request.auth != null
-          && request.auth.uid == userId
-          && resource.data.ownerUid == userId;
+      // AI usage credits — server-written only (see lib/tippy/creditManager.ts)
+      match /usage/{usageId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if false;
       }
 
-      match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null &&
-          request.auth.uid == userId &&
+      // Connections subcollection - users can read their own connections
+      match /connections/{connectionId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if hasVerifiedEmail() && isOwner(userId);
+      }
+      
+      // Liked Videos subcollection - users can read/write their own
+      match /likedVideos/{videoId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // Bookmarked Videos subcollection - users can read/write their own
+      match /bookmarkedVideos/{videoId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // Mobile bookmark favorites (Flutter UnifiedBookmarkService)
+      match /favorites/{videoId} {
+        allow read, list: if isAuthenticated() && isOwner(userId);
+        allow create, update, delete: if isAuthenticated() && isOwner(userId);
+      }
+
+      // FCM device tokens — client registration (not server-owned)
+      match /deviceTokens/{tokenId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow create, update: if hasVerifiedEmail() && isOwner(userId) &&
+          (
+            !('token' in request.resource.data) ||
+            request.resource.data.token == tokenId
+          ) &&
+          request.resource.data.keys().hasOnly([
+            'token', 'platform', 'createdAt', 'updatedAt',
+            'lastUsed', 'lastSeenAt', 'source'
+          ]);
+        allow delete: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // Academy certificates - public read for profile badges (status signaling)
+      match /certificates/{certId} {
+        allow read: if true;
+        allow write: if hasVerifiedEmail() && isOwner(userId);
+      }
+
+      // Academy progress - owner only
+      match /academyProgress/{guideId} {
+        allow read: if isOwner(userId);
+        allow write: if hasVerifiedEmail() && isOwner(userId);
+      }
+
+      // Legacy platforms subcollection (canonical SoT is users/{uid}.platforms array)
+      match /platforms/{platformId} {
+        allow read: if isOwner(userId);
+        allow write: if hasVerifiedEmail() && isOwner(userId);
+      }
+
+      // ── Gamification subcollections — server writes only, owner reads ────────
+      match /xpEvents/{eventId} {
+        allow read: if isOwner(userId);
+        allow write: if false; // server-only via Admin SDK
+      }
+      match /achievements/{achievementKey} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+      match /missions/{missionId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+      match /gamificationStats/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+      match /gamification/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+      match /progression/{taskId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+      match /gamificationEvents/{eventId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      // Creator Score — worker-written; public read for streamer/profile badges
+      match /creatorScore/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // Creator intelligence profile — server-written, owner read
+      match /analyticsProfile/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      // StreamersTip analytics (summary, daily entries, post performance)
+      match /analytics/{analyticsDocId} {
+        allow read, write: if isOwner(userId);
+        match /entries/{entryId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+
+      match /tippyChats/{chatId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow create, update, delete: if isAuthenticated() && request.auth.uid == userId;
+        match /messages/{messageId} {
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          allow create: if hasVerifiedEmail() && request.auth.uid == userId;
+          allow update, delete: if false;
+        }
+      }
+
+      // Legacy Flutter Tippy history (embedded messages). Migrate-only.
+      // New conversation writes must use tippyChats. Read/delete for privacy wipe.
+      match /tippyConversations/{conversationId} {
+        allow read, delete: if isAuthenticated() && request.auth.uid == userId;
+        allow create, update: if false;
+      }
+
+      match /privacySettings/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Tippy per-creator memory summaries — server-written, owner read/delete
+      match /tippyMemory/{memoryId} {
+        allow read: if isOwner(userId);
+        allow create, update: if false;
+        allow delete: if isOwner(userId);
+      }
+
+      // Tippy Creator Memory (structured) — server-written, owner read
+      match /creatorMemory/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /tippyRecommendations/{recId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /tippyTrendHistory/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /tippyPlannerHistory/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /tippyNotificationHistory/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /tippyDnaSessions/{sessionId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      // Tippy Hook & Caption creator vocabulary — owner read/write (API also writes via Admin)
+      match /tippyVocabulary/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /aiUsage/{monthId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if false;
+      }
+
+      // Content Plans — create is server-only (quota-gated Admin API)
+      match /contentPlans/{planId} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid == userId ||
+          isActiveWorkspaceMember(userId)
+        );
+        allow create: if false;
+        allow update: if hasVerifiedEmail() && 
+                         request.auth.uid == userId &&
+                         resource.data.userId == userId &&
+                         request.resource.data.userId == userId &&
+                         isValidUser(userId);
+        allow delete: if hasVerifiedEmail() && 
+                         request.auth.uid == userId &&
+                         resource.data.userId == userId &&
+                         isValidUser(userId);
+      }
+
+      // Follow graph edges under users/{uid} — auth read (FollowsService.isFollowing
+      // reads users/{target}/followers/{me}, including STREAMERTIP_SYSTEM).
+      match /following/{followingId} {
+        allow read, list: if isAuthenticated();
+        allow create, update: if hasVerifiedEmail() &&
+          isOwner(userId) &&
+          request.resource.data.userId == followingId;
+        allow delete: if isAuthenticated() &&
+          (isOwner(userId) || request.auth.uid == followingId);
+      }
+
+      match /followers/{followerId} {
+        allow read, list: if isAuthenticated();
+        allow create, update: if hasVerifiedEmail() &&
+          request.auth.uid == followerId &&
+          request.resource.data.userId == followerId;
+        allow delete: if isAuthenticated() &&
+          (request.auth.uid == followerId || isOwner(userId));
+      }
+      
+      match /{subcollection}/{documentId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if hasVerifiedEmail() &&
+          isOwner(userId) &&
           !isServerOwnedUserSubcollection(subcollection);
 
         match /{nested=**} {
-          allow read, write: if request.auth != null &&
-            request.auth.uid == userId &&
+          allow read: if isAuthenticated() && isOwner(userId);
+          allow write: if hasVerifiedEmail() &&
+            isOwner(userId) &&
             !isServerOwnedUserSubcollection(subcollection);
         }
       }
-
-      match /progression/{taskId} {
-        allow read, list: if request.auth != null && request.auth.uid == userId;
-        allow create, update, delete: if false;
-      }
-
-      // Canonical gamification state — backend writes only (see docs/GAMIFICATION_ALIGNMENT.md)
-      match /gamification/{docId} {
-        allow read, list: if request.auth != null && request.auth.uid == userId;
-        allow create, update, delete: if false;
-      }
-
-      // Creator Score is a shared profile signal calculated by backend jobs.
-      match /creatorScore/{docId} {
-        allow read, list: if request.auth != null;
-        allow create, update, delete: if false;
-      }
-
-      // Explicit favorites rule for mobile/web bookmark persistence
-      match /favorites/{videoId} {
-        allow read, list: if request.auth != null && request.auth.uid == userId;
-        allow create, update, delete: if request.auth != null
-          && request.auth.uid == userId;
-      }
-      
-      // Allow following/followers subcollections for authenticated users
-      match /following/{followingId} {
-        allow read, list: if request.auth != null;
-        allow create, update: if request.auth != null
-          && request.auth.uid == userId
-          && request.resource.data.userId == followingId;
-        allow delete: if request.auth != null &&
-          (request.auth.uid == userId || request.auth.uid == followingId);
-      }
-      
-      match /followers/{followerId} {
-        allow read, list: if request.auth != null;
-        allow create, update: if request.auth != null
-          && request.auth.uid == followerId
-          && request.resource.data.userId == followerId;
-        allow delete: if request.auth != null &&
-          (request.auth.uid == followerId || request.auth.uid == userId);
-      }
     }
     
-    // Users can read their own notifications and write notifications for others
-    match /notifications/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow list: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if request.auth != null && request.auth.uid == userId;
+    // Growth Coaching Settings
+    match /growthCoachingSettings/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow write: if hasVerifiedEmail() && isOwner(userId);
+    }
+    
+    // Sessions
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && 
+                     resource.data.creatorId == request.auth.uid;
+      // Write operations are server-side only (Admin SDK)
+    }
+    
+    // Streams
+    match /streams/{streamId} {
+      allow read: if isAuthenticated() && 
+                     resource.data.creatorId == request.auth.uid;
+      // Write operations are server-side only (Admin SDK)
+    }
+    
+    // Reports
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && 
+                     resource.data.creatorId == request.auth.uid;
+      // Write operations are server-side only (Admin SDK)
+    }
+    
+    // Creator Profiles
+    match /creatorProfiles/{profileId} {
+      allow read: if isAuthenticated() && 
+                     resource.data.creatorId == request.auth.uid;
+      // Write operations are server-side only (Admin SDK)
+    }
+    
+    // OAuth platform connections — tokens written only by Admin SDK (auth callbacks)
+    match /twitchConnections/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create, update: if false;
+      allow delete: if hasVerifiedEmail() && isOwner(userId);
+    }
 
-      match /items/{itemId} {
-        allow read: if request.auth != null && request.auth.uid == userId;
-        allow list: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null &&
-          (request.auth.uid == userId ||
-           request.auth.uid == request.resource.data.user.id);
-        allow update: if request.auth != null && request.auth.uid == userId;
-        allow delete: if request.auth != null && request.auth.uid == userId;
-      }
+    match /youtubeConnections/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create, update: if false;
+      allow delete: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    match /instagramConnections/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create, update: if false;
+      allow delete: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    match /tiktokConnections/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create, update: if false;
+      allow delete: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    match /twitterConnections/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create, update: if false;
+      allow delete: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    match /linkedinConnections/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create, update: if false;
+      allow delete: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    match /kickConnections/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create, update: if false;
+      allow delete: if hasVerifiedEmail() && isOwner(userId);
     }
     
-    // Activity notifications (new structure for web/mobile parity)
-    match /activity/{userId} {
-      allow read, get: if request.auth != null && request.auth.uid == userId;
-      allow list: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      
-      match /notifications/{notificationId} {
-        allow read, get: if request.auth != null && request.auth.uid == userId;
-        allow list: if request.auth != null && request.auth.uid == userId;
-        allow update: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null &&
-          (request.auth.uid == userId ||
-           request.auth.uid == request.resource.data.user.id);
-        allow delete: if request.auth != null && request.auth.uid == userId;
-      }
+    // Tippy Clip Markers
+    match /tippyClipMarkers/{markerId} {
+      allow read: if isAuthenticated() && 
+                     resource.data.uid == request.auth.uid;
+      allow create: if hasVerifiedEmail() && 
+                       request.resource.data.uid == request.auth.uid;
+      // Updates and deletes are typically server-side only
     }
     
-    // Users can read and write their own relationships
-    match /relationships/{relationshipId} {
-      // Allow creating new relationships where user is the follower
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.followerId;
-      
-      // Allow reading relationships where user is involved
-      allow read: if request.auth != null && 
-        (request.auth.uid == resource.data.followerId || 
-         request.auth.uid == resource.data.followingId);
-      
-      // Allow querying/listing relationships for authenticated users
-      allow list: if request.auth != null;
-      
-      // Allow deleting relationships where user is the follower
-      allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.followerId;
-    }
-    
-    // Users can read public posts
+    // Posts collection
     match /posts/{postId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == resource.data.authorId;
+      allow read: if true; // Public read
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.uid == request.auth.uid;
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.uid;
+      allow delete: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.uid;
     }
     
-    // Users can read public comments
-    match /comments/{commentId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && isCommentAuthor(request.resource.data);
-      allow update, delete: if request.auth != null && 
-        (isCommentAuthor(resource.data) || isUserAdmin());
-    }
-    
-    // Users can read and write video comments
-    match /videos/{videoId}/comments/{commentId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && isCommentAuthor(request.resource.data);
-      allow update: if request.auth != null && (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'likedBy', 'likeCount', 'isLiked', 'replyCount',
-          'linkedThreadId', 'updatedAt'
-        ]) ||
-        isCommentAuthor(resource.data) ||
-        isUserAdmin() ||
-        isVideoOwnerById(videoId)
-      );
-      allow delete: if request.auth != null && (
-        isCommentAuthor(resource.data) ||
-        isUserAdmin() ||
-        isVideoOwnerById(videoId)
-      );
-    }
-    
-    // Allow querying video comments collection
-    match /videos/{videoId}/comments {
-      allow list: if request.auth != null;
-    }
-
-    // Canonical video-scoped engagement documents.
-    match /videos/{videoId}/likes/{uid} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.data.userId == uid
-        && request.resource.data.videoId == videoId;
-      allow delete: if request.auth != null && request.auth.uid == uid;
-    }
-
-    match /videos/{videoId}/bookmarks/{uid} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.data.userId == uid
-        && request.resource.data.videoId == videoId;
-      allow delete: if request.auth != null && request.auth.uid == uid;
-    }
-    
-    // Users can read public videos (Worker migration: no non-owner writes)
-    match /videos/{videoId} {
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null
-        && isVideoCreateOwnerSafe()
-        && !exists(/databases/$(database)/documents/users/$(request.auth.uid));
-      allow create: if request.auth != null
-        && isVideoCreateOwnerSafe()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && stringField(
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data,
-          'accountStatus'
-        ) != 'banned';
-      // Owner can update metadata after upload (Worker sets muxPlaybackId/hlsUrl/status:ready)
-      // Viewers may only bump favorite counters (UnifiedBookmarkService batch).
-      allow update: if resource != null && isVideoLikeCountOnlyUpdate();
-      allow update: if resource != null && isBookmarkFavoriteCountOnlyUpdate();
-      allow update: if resource != null && isVideoShareCountOnlyUpdate();
-      allow update: if resource != null && isOwnerVideoCaptionOnlyUpdate();
-      allow update: if resource != null
-        && isOwnerVideoMetadataBackfillUpdate(videoId);
-      allow update: if resource != null
-        && isOwnerVideoMetadataUpdateCore()
-        && (
-          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-          || (
-            exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && stringField(
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data,
-              'accountStatus'
-            ) != 'banned'
-          )
-        );
-      allow delete: if resource != null
-        && request.auth != null
-        && isVideoDocumentOwner();
-    }
-
-    // Written only by Cloud Functions (Admin SDK) on soft-delete.
-    match /videoDeletionLogs/{logId} {
-      allow read, write: if false;
-    }
-    
-    // User favorites collections
-    match /user_favorites/{userId}/videos/{videoId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow list: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // User videos collection - allows users to manage their own video posts
-    match /user_videos/{userId} {
-      // Users can read and write their own user_videos document
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      
-      // Posts subcollection - users can manage their own video posts
-      match /posts/{videoId} {
-        allow read: if request.auth != null && request.auth.uid == userId;
-        allow list: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null && request.auth.uid == userId;
-        allow update: if request.auth != null && request.auth.uid == userId;
-        allow delete: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Allow other subcollections under user_videos
-      match /{subcollection=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-    
-    // Collection-group queries (liked videos feed) require recursive wildcards.
-    match /{path=**}/likes/{likeId} {
-      allow read: if request.auth != null
-        && (
-          resource.data.userId == request.auth.uid
-          || request.auth.uid == likeId
-          || isUserAdmin()
-        );
-      allow create, update: if request.auth != null
-        && request.auth.uid == likeId
-        && request.resource.data.userId == request.auth.uid;
-      allow delete: if request.auth != null && request.auth.uid == likeId;
-    }
-
-    match /{path=**}/byUser/{userId} {
-      allow read: if request.auth != null
-        && (
-          resource.data.userId == request.auth.uid
-          || request.auth.uid == userId
-          || isUserAdmin()
-        );
-      allow create, update: if request.auth != null
-        && request.auth.uid == userId
-        && request.resource.data.userId == userId;
-      allow delete: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /{path=**}/bookmarks/{bookmarkId} {
-      allow read: if request.auth != null
-        && (
-          resource.data.userId == request.auth.uid
-          || request.auth.uid == bookmarkId
-          || isUserAdmin()
-        );
-      allow create, update: if request.auth != null
-        && request.auth.uid == bookmarkId
-        && request.resource.data.userId == request.auth.uid;
-      allow delete: if request.auth != null && request.auth.uid == bookmarkId;
-    }
-
-    // Users can read public likes and write their own likes
-    match /likes/{videoId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        (isUserAdmin() || isWithinLikeLimit(request.auth.uid));
-      
-      // Canonical cross-platform like edge. Mobile, web, and Cloud Functions
-      // all use this shape: /likes/{videoId}/byUser/{userId}.
-      match /byUser/{userId} {
-        allow read: if request.auth != null;
-        allow create, update: if request.auth != null
-          && request.auth.uid == userId
-          && request.resource.data.userId == userId
-          && request.resource.data.videoId == videoId;
-        allow delete: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-    
-    // Users can read public follows and write their own follow relationships
-    match /follows/{followId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null &&
-        (isUidFirstFollowCreate(followId) || isLegacyFollowCreate(followId));
-      allow update: if request.auth != null &&
-        (exists(/databases/$(database)/documents/follows/$(followId))
-          ? request.auth.uid == existingFollowFollowerId() &&
-            request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['isActive', 'updatedAt'])
-          : false);
-      allow delete: if request.auth != null &&
-        (exists(/databases/$(database)/documents/follows/$(followId))
-          ? (request.auth.uid == existingFollowFollowerId() ||
-             request.auth.uid == existingFollowTargetId())
-          : false);
-      allow list: if request.auth != null;
-    }
-
-    // User blocks - users can manage their own block edges and read any edge
-    // they participate in.
-    match /user_blocks/{blockId} {
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.blockerId;
-      allow read: if request.auth != null &&
-        (request.auth.uid == resource.data.blockerId ||
-         request.auth.uid == resource.data.blockedUserId);
-      allow list: if request.auth != null;
-      allow update: if false;
-      allow delete: if request.auth != null &&
-        request.auth.uid == resource.data.blockerId;
-    }
-
-    match /userInterests/{userId} {
-      allow read, list: if request.auth != null && request.auth.uid == userId;
-      allow create, update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Users can read all engagement analytics and write their own
-    match /engagement_analytics/{analyticsId} {
-      allow read, list: if request.auth != null;
-      allow create: if isRequestOwner();
-      allow update, delete: if isResourceOwner();
-    }
-    
-    // TikTok-style: Engagement tracking for algorithm
-    match /engagement/{engagementId} {
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
-      allow create: if isRequestOwner();
-      allow update, delete: if isResourceOwner();
-    }
-
-    // Client ML/algorithm interaction events. Users may create their own
-    // events and query only their own history; moderation/admin reads use the
-    // admin path.
-    match /user_interactions/{interactionId} {
-      allow read, list: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isUserAdmin());
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.userId &&
-        request.resource.data.keys().hasOnly([
-          'userId', 'videoId', 'creatorId', 'interactionType',
-          'watchPercentage', 'timestamp', 'metadata'
-        ]);
-      allow update, delete: if false;
-    }
-
-    match /user_sessions/{sessionId} {
-      allow read, list: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isUserAdmin());
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.userId &&
-        request.resource.data.keys().hasOnly([
-          'userId', 'startTime', 'endTime', 'sessionDuration',
-          'videosWatched', 'engagementActions', 'retentionScore'
-        ]);
-      allow update, delete: if false;
-    }
-    
-    // TikTok-style: User retention profiles for algorithm
-    match /user_retention_profiles/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow list: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Users can read and write chats they participate in
-    match /chatAliases/{legacyChatId} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
-      allow delete: if false;
-    }
-
-    match /chats/{chatId} {
-      // Allow creating new chats if the user is a participant
-      allow create: if request.auth != null && 
-        request.auth.uid in request.resource.data.participants;
-      
-      // Allow reading and updating existing chats if the user is a participant
-      allow read, update: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
-      
-      // Allow listing only chats where the signed-in user is a participant.
-      allow list: if request.auth != null &&
-        request.auth.uid in resource.data.participants;
-      
-      // Allow deleting chats if the user is a participant
-      allow delete: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
-      
-      // Users can read and write messages in chats they participate in
-      match /messages/{messageId} {
-        // Allow reading messages if user is a participant in parent chat
-        allow read: if request.auth != null && 
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        
-        // Allow listing messages if user is a participant in parent chat
-        allow list: if request.auth != null && 
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        
-        // Allow creating messages only when the signed-in participant is the sender.
-        allow create: if request.auth != null && 
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
-          isChatMessageSender();
-        
-        // Allow updating messages if user is a participant (for read receipts)
-        allow update: if request.auth != null && 
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        
-        // Allow deleting messages if user is the sender (use 'from' field)
-        allow delete: if request.auth != null && 
-          request.auth.uid == resource.data.from;
-      }
-    }
-    
-    // Note: All user subcollections are now handled by the wildcard pattern above
-    // This includes: bookmarks, deviceTokens, bookmarkedEvents, presence, videos, 
-    // followers, following, likedVideos, connections, and any future subcollections
-    
-    // Hashtag permissions - allow authenticated users to read and write
-    match /hashtag_permissions/{hashtag} {
-      allow read: if request.auth != null;
-      allow write: if isUserAdmin();
-    }
-    
-    // Shared drafts permissions - allow users to read and write their own drafts
-    match /shared_drafts/{draftId} {
-      allow read: if request.auth != null && 
-        (request.auth.uid == resource.data.sharerId ||
-         request.auth.uid == resource.data.senderId ||
-         request.auth.uid in resource.data.recipients ||
-         request.auth.uid == resource.data.receiverId);
-      allow list: if request.auth != null;
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.sharerId;
-      allow update, delete: if request.auth != null && 
-        (request.auth.uid == resource.data.sharerId ||
-         request.auth.uid in resource.data.recipients ||
-         request.auth.uid == resource.data.receiverId);
-    }
-    
-    // Video analytics permissions - allow users to read and write their own analytics
-    match /video_analytics/{videoId} {
-      allow read: if request.auth != null;
-      allow create: if isRequestOwner() || isAnalyticsCounterCreate();
-      allow update: if isResourceOwner() || isAnalyticsCounterWrite();
-      allow delete: if isResourceOwner();
-    }
-
-    // Creator Command / growth aggregates — owner read-write; admins read
-    match /creator_metrics/{creatorId} {
-      allow read: if request.auth != null && (
-        request.auth.uid == creatorId || isUserAdmin());
-      allow create, update: if request.auth != null &&
-        request.auth.uid == creatorId;
-      allow delete: if false;
-
-      match /{metricDoc=**} {
-        allow read, list: if request.auth != null &&
-          (request.auth.uid == creatorId || isUserAdmin());
-        allow create, update: if request.auth != null &&
-          request.auth.uid == creatorId;
-        allow delete: if false;
-      }
-    }
-
-    match /support_tickets/{ticketId} {
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.userId;
-      allow get: if request.auth != null &&
-        (isUserAdmin() || request.auth.uid == resource.data.userId);
-      allow list: if isUserAdmin();
-      allow update, delete: if isUserAdmin();
-    }
-
-    match /forumCategories/{categoryId} {
-      allow read, list: if request.auth != null;
-      allow update: if isUserAdmin();
-      allow create, delete: if isUserAdmin();
-    }
-
+    // Forum Posts collection (threads/forum)
     match /forumPosts/{postId} {
-      allow read, list: if request.auth != null;
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.authorId;
-      allow update: if request.auth != null && (
-        request.auth.uid == resource.data.authorId ||
-        isUserAdmin() ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'likedBy','likes','bookmarkedBy','followedBy','commentCount',
-          'updatedAt','reportCount','lastReported','commentReportCount'
-        ])
-      );
-      allow delete: if false;
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.author.uid == request.auth.uid;
+      allow update: if hasVerifiedEmail() && 
+                       (request.auth.uid == resource.data.author.uid ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['likedBy', 'likes', 'updatedAt']) &&
+                          isLikeToggle('likes', 'likedBy')
+                        ) ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['likedBy', 'likes']) &&
+                          isLikeToggle('likes', 'likedBy')
+                        ) ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['bookmarkedBy', 'updatedAt']) &&
+                          isBookmarkToggle()
+                        ) ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['bookmarkedBy']) &&
+                          isBookmarkToggle()
+                        ) ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['followedBy', 'updatedAt']) &&
+                          isFollowToggle()
+                        ) ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['followedBy']) &&
+                          isFollowToggle()
+                        ) ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['commentCount', 'updatedAt']) &&
+                          isCommentCountBump()
+                        ) ||
+                        (
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['commentCount']) &&
+                          isCommentCountBump()
+                        ));
+      allow delete: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.author.uid;
 
-      match /comments/{commentId} {
-        allow read, list: if request.auth != null;
-        allow create: if request.auth != null &&
-          request.auth.uid == request.resource.data.authorId;
-        allow update: if request.auth != null && (
-          request.auth.uid == resource.data.authorId ||
-          isUserAdmin() ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'likedBy','likes','dislikedBy','dislikes','replyCount',
-            'deleted','content','updatedAt'
-          ])
+      function forumPostAuthorUid() {
+        return ('authorId' in resource.data && resource.data.authorId is string)
+          ? resource.data.authorId
+          : resource.data.author.uid;
+      }
+
+      function isForumPostAuthor() {
+        return isAuthenticated() && request.auth.uid == forumPostAuthorUid();
+      }
+
+      function hasActiveThreadInvite() {
+        return isAuthenticated() &&
+          exists(/databases/$(database)/documents/forumPosts/$(postId)/invites/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/forumPosts/$(postId)/invites/$(request.auth.uid)).data.status in ['pending', 'accepted'];
+      }
+
+      function canReadForumPostDoc() {
+        let vis = resource.data.get('visibility', 'public');
+        return isPlatformAdmin() ||
+          vis == 'public' ||
+          !('visibility' in resource.data) ||
+          isForumPostAuthor() ||
+          (
+            vis == 'followers' &&
+            isAuthenticated() &&
+            (
+              exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + forumPostAuthorUid())) ||
+              exists(/databases/$(database)/documents/users/$(forumPostAuthorUid())/followers/$(request.auth.uid))
+            )
+          ) ||
+          (vis == 'inviteOnly' && hasActiveThreadInvite());
+      }
+
+      allow read: if canReadForumPostDoc();
+
+      match /invites/{inviteeId} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid == inviteeId ||
+          request.auth.uid == get(/databases/$(database)/documents/forumPosts/$(postId)).data.author.uid ||
+          request.auth.uid == resource.data.invitedBy
         );
-        allow delete: if false;
+        allow create: if hasVerifiedEmail() &&
+          request.auth.uid == get(/databases/$(database)/documents/forumPosts/$(postId)).data.author.uid &&
+          request.resource.data.invitedUserId == inviteeId &&
+          request.resource.data.invitedBy == request.auth.uid &&
+          request.resource.data.status == 'pending';
+        allow update: if hasVerifiedEmail() && (
+          (
+            request.auth.uid == inviteeId &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'respondedAt']) &&
+            request.resource.data.status in ['accepted', 'declined']
+          ) ||
+          request.auth.uid == get(/databases/$(database)/documents/forumPosts/$(postId)).data.author.uid
+        );
+        allow delete: if hasVerifiedEmail() &&
+          request.auth.uid == get(/databases/$(database)/documents/forumPosts/$(postId)).data.author.uid;
+      }
+      
+      // Forum post comments subcollection (supports nested replies)
+      match /comments/{commentId} {
+        allow read: if true; // Public read
+        allow create: if hasVerifiedEmail() && 
+                         // Ensure user.id matches authenticated user
+                         (request.resource.data.authorId == request.auth.uid ||
+                          request.resource.data.author.uid == request.auth.uid) &&
+                         // Allow setting parentCommentId, rootId, depth, and replyCount for nested structure
+                         (!('parentCommentId' in request.resource.data) ||
+                          request.resource.data.parentCommentId == null || 
+                          request.resource.data.parentCommentId is string) &&
+                         (!('rootId' in request.resource.data) ||
+                          request.resource.data.rootId == null || 
+                          request.resource.data.rootId is string) &&
+                         (!('depth' in request.resource.data) ||
+                          request.resource.data.depth is int) &&
+                         (!('replyCount' in request.resource.data) ||
+                          request.resource.data.replyCount == 0);
+        allow update: if hasVerifiedEmail() && 
+                         (request.auth.uid == resource.data.authorId ||
+                          request.auth.uid == resource.data.author.uid ||
+                          (
+                            request.resource.data.diff(resource.data).affectedKeys()
+                              .hasOnly(['replyCount']) &&
+                            isReplyCountBump()
+                          ) ||
+                          (
+                            request.resource.data.diff(resource.data).affectedKeys()
+                              .hasOnly(['likes', 'likedBy']) &&
+                            isLikeToggle('likes', 'likedBy')
+                          ) ||
+                          (
+                            request.resource.data.diff(resource.data).affectedKeys()
+                              .hasOnly(['dislikes', 'dislikedBy']) &&
+                            isLikeToggle('dislikes', 'dislikedBy')
+                          ) ||
+                          (
+                            request.resource.data.diff(resource.data).affectedKeys()
+                              .hasOnly(['likes', 'likedBy', 'dislikes', 'dislikedBy']) &&
+                            isLikeToggle('likes', 'likedBy') &&
+                            isLikeToggle('dislikes', 'dislikedBy')
+                          ));
+        allow delete: if hasVerifiedEmail() && 
+                         (request.auth.uid == resource.data.authorId ||
+                          request.auth.uid == resource.data.author.uid || 
+                          request.auth.uid == get(/databases/$(database)/documents/forumPosts/$(postId)).data.author.uid);
       }
 
       // Typed reactions for Threads UI on legacy forum posts.
       match /reactions/{reactionId} {
-        allow read, list: if request.auth != null;
-        allow create: if request.auth != null &&
+        allow read: if true;
+        allow create: if isAuthenticated() &&
           request.resource.data.userId == request.auth.uid;
         allow update: if false;
-        allow delete: if request.auth != null &&
+        allow delete: if isAuthenticated() &&
           resource.data.userId == request.auth.uid;
       }
     }
-
-    // Creator Threads v2
+    
+    // Forum Categories collection
+    match /forumCategories/{categoryId} {
+      allow read: if true; // Public read
+      allow create: if hasVerifiedEmail();
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.createdBy;
+      allow delete: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.createdBy;
+    }
+    
+    // Thread Follows collection (forum thread follow/unfollow)
+    match /threadFollows/{followId} {
+      // Allow authenticated users to read their own follow documents
+      // Document ID format: {postId}_{userId}
+      allow read: if isAuthenticated() && 
+                     (resource == null || resource.data.userId == request.auth.uid);
+      // Allow authenticated users to create follow documents where userId matches their uid
+      allow create: if hasVerifiedEmail() && 
+                       request.resource.data.userId == request.auth.uid &&
+                       isValidUser(request.resource.data.userId) &&
+                       request.resource.data.postId is string;
+      // Allow authenticated users to delete their own follow documents
+      allow delete: if hasVerifiedEmail() && 
+                       resource.data.userId == request.auth.uid;
+      // No updates allowed (use delete + create to toggle)
+      allow update: if false;
+    }
+    
+    // Artists collection (Artist Alley)
+    match /artists/{artistId} {
+      // Public read for active artists' storefront data
+      allow read: if true; // Will filter by status in queries
+      // Only the artist can create their own document
+      allow create: if hasVerifiedEmail() && 
+                       request.auth.uid == artistId &&
+                       request.resource.data.uid == artistId;
+      // Only the artist can update their own document (except Stripe fields)
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == artistId &&
+                       // Only allow specific fields to be updated by the artist
+                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'bio', 'bannerUrl', 'categories', 'featuredProductIds', 'socials', 'updatedAt']) ||
+                        // Allow updating agreements by client (initial acceptance)
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['agreements', 'updatedAt']) ||
+                        // Allow updating status by server only (via admin claims or specific service account)
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) && false) || // Deny client updates to status
+                        // Deny client updates to stripe fields
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stripe', 'updatedAt']) && false));
+      // Server-only delete (or artist can request deletion)
+      allow delete: if false; // Only via server
+    }
+    
+    // Products collection (Artist Alley Part 2)
+    match /products/{productId} {
+      // Public read for active products, or owner can read their own (including drafts)
+      allow read: if resource.data.status == 'active' || 
+                     (isAuthenticated() && 
+                      request.auth.uid == resource.data.artistId &&
+                      resource.data.status in ['draft', 'active', 'flagged']);
+      // Only authenticated users can create products (artist verification happens in code)
+      allow create: if hasVerifiedEmail() && 
+                       request.resource.data.artistId == request.auth.uid &&
+                       request.resource.data.status in ['draft', 'active'];
+      // Only the artist can update their own products
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.artistId &&
+                       // Allow updating product fields
+                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'price', 'category', 'tags', 'mediaUrls', 'variants', 'inventory', 'status', 'featured', 'digitalFiles', 'slug', 'updatedAt']) ||
+                        // Allow view count increments (anyone authenticated can increment on active products)
+                        (resource.data.status == 'active' && 
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'updatedAt'])) ||
+                        // Allow save count increments/decrements (anyone authenticated on active products)
+                        (resource.data.status == 'active' && 
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['saveCount', 'updatedAt'])) ||
+                        // Allow report count increments (for moderation - anyone can report active products)
+                        (resource.data.status == 'active' && 
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportCount', 'flaggedAt', 'updatedAt'])) ||
+                        // Allow status changes (for auto-flagging - server/moderation only, but allow owner to change draft->active)
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) && 
+                         (resource.data.status == 'draft' || request.resource.data.status == 'flagged')));
+      // Soft delete only (status change handled in update)
+      allow delete: if false; // Products are soft-deleted via status update
+    }
+    
+    // Product Reports collection (Moderation)
+    match /productReports/{reportId} {
+      allow read: if isAuthenticated() && resource.data.reporterId == request.auth.uid;
+      allow create: if hasVerifiedEmail() && 
+                       request.resource.data.reporterId == request.auth.uid;
+      // Updates/deletes are server/admin only
+      allow update, delete: if false;
+    }
+    
+    // Draft Orders collection (Interest tracking - Part 2, no payments yet)
+    match /draftOrders/{orderId} {
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid == resource.data.buyerId || 
+                      request.auth.uid == resource.data.artistId);
+      allow create: if hasVerifiedEmail() && 
+                       request.resource.data.buyerId == request.auth.uid;
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.buyerId;
+      allow delete: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.buyerId;
+    }
+    
+    // Message Audit Log - write-only for authenticated users, no client reads (admin SDK only)
+    match /messageAuditLog/{logId} {
+      allow create: if hasVerifiedEmail() && 
+                       request.resource.data.deletedBy == request.auth.uid;
+      allow read: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Comments collection
+    match /comments/{commentId} {
+      allow read: if true; // Public read
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.uid == request.auth.uid;
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.uid;
+      allow delete: if hasVerifiedEmail() && 
+                       (request.auth.uid == resource.data.uid || 
+                        request.auth.uid == resource.data.postUid);
+    }
+    
+    // Creator Threads v2 (`threads` SoT) + legacy thread-shaped docs.
     match /threads/{threadId} {
       function threadData() {
         return get(/databases/$(database)/documents/threads/$(threadId)).data;
       }
+
       function isThreadDocAuthor(data) {
-        return request.auth != null && (
+        return isAuthenticated() && (
           (data.keys().hasAny(['authorId']) && data.authorId == request.auth.uid) ||
           (data.keys().hasAny(['creatorId']) && data.creatorId == request.auth.uid)
         );
       }
+
       function isParentThreadAuthor() {
         return exists(/databases/$(database)/documents/threads/$(threadId)) &&
           isThreadDocAuthor(threadData());
       }
 
-      allow read, list: if true;
-      allow create: if request.auth != null &&
-        request.resource.data.authorId == request.auth.uid;
-      allow update: if request.auth != null && (
+      function isThreadAuthorOnCreate() {
+        return hasVerifiedEmail() && (
+          (request.resource.data.keys().hasAny(['authorId']) &&
+            request.resource.data.authorId == request.auth.uid) ||
+          (request.resource.data.keys().hasAny(['creatorId']) &&
+            request.resource.data.creatorId == request.auth.uid)
+        );
+      }
+
+      allow read: if true;
+      allow create: if isThreadAuthorOnCreate();
+      allow update: if hasVerifiedEmail() && (
         isThreadDocAuthor(resource.data) ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'replyCount', 'participantCount', 'helpfulCount', 'saveCount',
@@ -638,210 +1059,1201 @@ service cloud.firestore {
           'momentumState'
         ])
       );
-      allow delete: if request.auth != null && isThreadDocAuthor(resource.data);
+      allow delete: if hasVerifiedEmail() && isThreadDocAuthor(resource.data);
+
+      // Legacy subcollection (older thread docs).
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if hasVerifiedEmail() &&
+          (request.resource.data.uid == request.auth.uid ||
+           request.resource.data.authorId == request.auth.uid);
+        allow update: if hasVerifiedEmail() &&
+          (request.auth.uid == resource.data.uid ||
+           request.auth.uid == resource.data.authorId);
+        allow delete: if hasVerifiedEmail() &&
+          (request.auth.uid == resource.data.uid ||
+           request.auth.uid == resource.data.authorId ||
+           isParentThreadAuthor());
+      }
 
       match /replies/{replyId} {
-        allow read, list: if true;
-        allow create: if request.auth != null &&
+        allow read: if true;
+        allow create: if hasVerifiedEmail() &&
           request.resource.data.authorId == request.auth.uid;
-        allow update: if request.auth != null &&
+        allow update: if hasVerifiedEmail() &&
           request.auth.uid == resource.data.authorId;
-        allow delete: if request.auth != null &&
-          (request.auth.uid == resource.data.authorId || isParentThreadAuthor());
+        allow delete: if hasVerifiedEmail() &&
+          (request.auth.uid == resource.data.authorId ||
+           isParentThreadAuthor());
       }
+
       match /reactions/{reactionId} {
-        allow read, list: if true;
-        allow create: if request.auth != null &&
+        allow read: if true;
+        allow create: if hasVerifiedEmail() &&
           request.resource.data.userId == request.auth.uid;
         allow update: if false;
-        allow delete: if request.auth != null &&
+        allow delete: if hasVerifiedEmail() &&
           resource.data.userId == request.auth.uid;
       }
+
       match /participants/{userId} {
-        allow read, list: if true;
-        allow create, update: if request.auth != null &&
+        allow read: if true;
+        allow create, update: if hasVerifiedEmail() &&
           request.auth.uid == userId &&
           request.resource.data.userId == request.auth.uid;
-        allow delete: if request.auth != null && request.auth.uid == userId;
+        allow delete: if hasVerifiedEmail() && request.auth.uid == userId;
       }
+
       match /saves/{userId} {
-        allow read, list: if request.auth != null && request.auth.uid == userId;
-        allow create, update: if request.auth != null &&
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow create, update: if hasVerifiedEmail() &&
           request.auth.uid == userId &&
           request.resource.data.userId == request.auth.uid;
-        allow delete: if request.auth != null && request.auth.uid == userId;
+        allow delete: if hasVerifiedEmail() && request.auth.uid == userId;
       }
+
       match /resolution/{docId} {
-        allow read, list: if true;
-        allow create, update: if request.auth != null && isParentThreadAuthor();
+        allow read: if true;
+        allow create, update: if hasVerifiedEmail() && isParentThreadAuthor();
+        allow delete: if false;
+      }
+    }
+    
+    // Opaque public ID redirects (legacy UID-prefixed → vid_*)
+    // Writes via Admin SDK / migration scripts only.
+    match /videoRedirects/{oldId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Videos collection (top-level)
+    // Worker creates doc at initiate; webhook sets isReadyForFeed (client never writes it)
+    // Read policy: public | connections (followers) | private (owner/admin only)
+    match /videos/{videoId} {
+      allow read: if canReadVideo();
+      allow create: if hasVerifiedEmail() &&
+                       videoCreateOwnedByAuth() &&
+                       videoCreateOwnerFieldsConsistent() &&
+                       !('isReadyForFeed' in request.resource.data) &&
+                       !('muxPlaybackId' in request.resource.data) &&
+                       !('muxAssetId' in request.resource.data);
+      allow update: if (
+                       hasVerifiedEmail() &&
+                       !('isReadyForFeed' in request.resource.data) && (
+                       isVideoDocumentOwner() &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+                          ['title', 'description', 'caption', 'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
+                           'views', 'likes', 'likeCount', 'bookmarks', 'bookmarkCount', 'favorites', 'favoriteCount',
+                           'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
+                           'allowComments', 'hashtags', 'category', 'categoryId', 'viewCount', 'commentCount', 'shareCount'])
+                       ||
+                       isVideoDocumentOwner() && isVideoSoftDeletePatch()
+                     ))
+                     ||
+                     (
+                       isAuthenticated() &&
+                       !('isReadyForFeed' in request.resource.data) &&
+                       !isVideoDocumentOwner() &&
+                       canReadVideo() &&
+                       (
+                         isViewerVideoViewsBump() ||
+                         isViewerVideoLikeCounterBump() ||
+                         isViewerVideoBookmarkCounterBump() ||
+                         isViewerVideoShareCounterBump()
+                       )
+                     );
+      allow delete: if (hasVerifiedEmail() && isVideoDocumentOwner()) || isPlatformAdmin();
+
+      // Flutter engagement edges (canonical for mobile)
+      match /likes/{uid} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && request.auth.uid == uid
+          && request.resource.data.userId == uid
+          && request.resource.data.videoId == videoId;
+        allow delete: if isAuthenticated() && request.auth.uid == uid;
+      }
+      match /bookmarks/{uid} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && request.auth.uid == uid
+          && request.resource.data.userId == uid
+          && request.resource.data.videoId == videoId;
+        allow delete: if isAuthenticated() && request.auth.uid == uid;
+      }
+      
+      // Video comments subcollection (supports nested replies)
+      match /comments/{commentId} {
+        allow read: if canReadVideoById(videoId);
+        allow create: if hasVerifiedEmail() &&
+                         canReadVideoById(videoId) &&
+                         // Ensure user.id matches authenticated user
+                         request.resource.data.user.id == request.auth.uid &&
+                         // Allow setting parentId, rootId, depth, and replyCount for nested structure
+                         // parentId can be null (top-level) or a string (reply)
+                         (!('parentId' in request.resource.data) ||
+                          request.resource.data.parentId == null || 
+                          request.resource.data.parentId is string) &&
+                         // rootId can be null (top-level) or a string (reply)
+                         (!('rootId' in request.resource.data) ||
+                          request.resource.data.rootId == null || 
+                          request.resource.data.rootId is string) &&
+                         // depth should be a number (0 for top-level, >0 for replies)
+                         (!('depth' in request.resource.data) ||
+                          request.resource.data.depth is int) &&
+                         // replyCount should be 0 or not present for new comments
+                         (!('replyCount' in request.resource.data) ||
+                          request.resource.data.replyCount == 0);
+        allow update: if hasVerifiedEmail() && 
+                         (request.auth.uid == resource.data.user.id ||
+                          request.auth.uid == resource.data.uid ||
+                          (
+                            request.resource.data.diff(resource.data).affectedKeys()
+                              .hasOnly(['replyCount']) &&
+                            isReplyCountBump()
+                          ) ||
+                          (
+                            request.resource.data.diff(resource.data).affectedKeys()
+                              .hasOnly(['likeCount', 'likedBy']) &&
+                            isLikeToggle('likeCount', 'likedBy')
+                          ));
+        allow delete: if hasVerifiedEmail() && 
+                         (request.auth.uid == resource.data.user.id ||
+                          request.auth.uid == resource.data.uid || 
+                          request.auth.uid == get(/databases/$(database)/documents/videos/$(videoId)).data.uid);
+      }
+    }
+    
+    // Bookmarks collection
+    match /feedSkipLogs/{logId} {
+      allow create: if hasVerifiedEmail();
+      allow read, update, delete: if false;
+    }
+
+    // DUAL BOOKMARKS (bridge through 2026-08-31):
+    // Canonical Flutter: videos/{videoId}/bookmarks/{uid} + users/{uid}/favorites
+    // Website: this top-level bookmarks + users/{uid}/bookmarkedVideos
+    // After migration, prefer video-scoped edges; keep top-level read for legacy.
+    match /bookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == resource.data.uid;
+      allow create: if hasVerifiedEmail() && 
+                       request.auth.uid == request.resource.data.uid;
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.uid;
+      allow delete: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.uid;
+    }
+    
+    // Followers collection
+    match /followers/{followerId} {
+      allow read: if true; // Public read for follower counts
+      allow create: if hasVerifiedEmail() &&
+                       (request.resource.data.followerId == request.auth.uid ||
+                        request.resource.data.followerUserId == request.auth.uid);
+      allow update: if hasVerifiedEmail() && 
+                       (request.auth.uid == resource.data.followerId ||
+                        request.auth.uid == resource.data.followerUserId);
+      allow delete: if hasVerifiedEmail() && 
+                       (request.auth.uid == resource.data.followerId ||
+                        request.auth.uid == resource.data.followerUserId);
+    }
+    
+    // Following collection
+    match /following/{followingId} {
+      allow read: if true; // Public read for following counts
+      allow create: if hasVerifiedEmail() &&
+                       (request.resource.data.followerId == request.auth.uid ||
+                        request.resource.data.followerUserId == request.auth.uid);
+      allow update: if hasVerifiedEmail() && 
+                       (request.auth.uid == resource.data.followerId ||
+                        request.auth.uid == resource.data.followerUserId);
+      allow delete: if hasVerifiedEmail() && 
+                       (request.auth.uid == resource.data.followerId ||
+                        request.auth.uid == resource.data.followerUserId);
+    }
+    
+    // Follows — require composite doc id (app + web must setDoc, not addDoc)
+    match /follows/{followId} {
+      allow read: if true;
+      allow create: if hasVerifiedEmail() &&
+        (isUidFirstFollowCreate(followId) || isLegacyFollowCreate(followId));
+      allow update: if hasVerifiedEmail() &&
+        request.auth.uid == existingFollowFollowerId() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isActive', 'updatedAt']);
+      allow delete: if hasVerifiedEmail() && (
+        request.auth.uid == existingFollowFollowerId() ||
+        request.auth.uid == existingFollowTargetId()
+      );
+      allow list: if isAuthenticated();
+    }
+
+    // Top-level likes/{videoId}/byUser/{userId} (Flutter StreamersTipLikeService)
+    match /likes/{videoId} {
+      allow read: if isAuthenticated();
+      match /byUser/{userId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && request.auth.uid == userId
+          && request.resource.data.userId == userId
+          && request.resource.data.videoId == videoId;
+        allow delete: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+    
+    // Events collection (calendar events)
+    match /events/{eventId} {
+      allow read: if true; // Public read
+      allow create: if hasVerifiedEmail() &&
+                       request.resource.data.uid == request.auth.uid;
+      allow update: if hasVerifiedEmail() &&
+                       request.auth.uid == resource.data.uid &&
+                       request.resource.data.uid == resource.data.uid;
+      allow delete: if hasVerifiedEmail() &&
+                       request.auth.uid == resource.data.uid;
+    }
+    
+    // Platforms collection
+    match /platforms/{platformId} {
+      allow read: if true; // Public read
+      allow create: if hasVerifiedEmail() &&
+                       request.resource.data.uid == request.auth.uid;
+      allow update: if hasVerifiedEmail() &&
+                       request.auth.uid == resource.data.uid &&
+                       request.resource.data.uid == resource.data.uid;
+      allow delete: if hasVerifiedEmail() &&
+                       request.auth.uid == resource.data.uid;
+    }
+    
+    // Notifications collection
+    match /notifications/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow write: if false; // Notifications are server-side only
+      
+      // Notification items subcollection
+      match /items/{itemId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        // Allow users to update their own notifications to mark as read.
+        // Client dual-writes isRead + read for Flutter/legacy parity.
+        allow update: if hasVerifiedEmail() &&
+                         isOwner(userId) &&
+                         request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['isRead', 'read', 'readAt', 'updatedAt']);
+        allow create, delete: if false; // Server-side only
+      }
+    }
+    
+    // Streamer Learning (AI learning about each streamer)
+    match /streamer_learning/{userId} {
+      // Users can read/write their own learning profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if hasVerifiedEmail() && request.auth.uid == userId && isValidUser(userId);
+    }
+    
+    // Tippy Learning (General user learning preferences)
+    match /tippy_learning/{userId} {
+      // Users can read/write their own learning profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if hasVerifiedEmail() && request.auth.uid == userId && isValidUser(userId);
+    }
+    
+    // Streamers Tip Events (admin/analytics) — server-side admin SDK only
+    match /streamers_tip_events/{eventId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // Tippy universal events — server ingest only
+    match /tippy_events/{eventId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // Tippy Brain global knowledge — authenticated read of active cards; writes via Admin SDK
+    match /tippyBrainKnowledge/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    match /tippyBrainSources/{sourceId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    match /tippyBrainChunks/{chunkId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // Creator intelligence events (website + app activity tracking)
+    match /analytics_events/{eventId} {
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.uid == request.auth.uid;
+      allow read: if isAuthenticated() &&
+        resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+    
+    // Auto Responses (for Tippy bot)
+    match /autoResponses/{responseId} {
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == resource.data.uid;
+      allow create: if hasVerifiedEmail() && 
+                       request.auth.uid == request.resource.data.uid;
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.uid;
+      allow delete: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.uid;
+    }
+    
+    // Collab invites - creators can invite others, invitees can accept/decline
+    match /collabInvites/{inviteId} {
+      allow read: if isAuthenticated() &&
+                     (resource.data.fromUserId == request.auth.uid ||
+                      resource.data.toUserId == request.auth.uid);
+      allow create: if hasVerifiedEmail() &&
+                      request.resource.data.fromUserId == request.auth.uid;
+      allow update: if hasVerifiedEmail() &&
+                      resource.data.toUserId == request.auth.uid;
+      allow delete: if false;
+    }
+    
+    // Forum Notifications collection
+    match /forumNotifications/{notificationId} {
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == resource.data.userId;
+      allow create: if hasVerifiedEmail() && request.resource.data.fromUserId == request.auth.uid;
+      allow update: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.userId;
+      allow delete: if hasVerifiedEmail() && 
+                       request.auth.uid == resource.data.userId;
+    }
+    
+    // Video views collection (for view deduplication)
+    match /video_views/{videoId} {
+      // Allow authenticated users to read/write their own viewer records
+      match /viewers/{userId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if hasVerifiedEmail() && request.auth.uid == userId;
+      }
+    }
+    
+    // Support tickets collection
+    match /support_tickets/{ticketId} {
+      // Users can create their own tickets and read their own tickets
+      allow create: if hasVerifiedEmail() && 
+                       request.auth.uid == request.resource.data.userId;
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == resource.data.userId;
+      // Users cannot update or delete tickets (admin only via server)
+      allow update, delete: if false;
+    }
+
+    // Mobile app invite waitlist — Admin SDK / API only (PII emails)
+    match /mobileWaitlist/{entryId} {
+      allow read, write: if false;
+    }
+
+    // Admin audit log — Admin SDK only (immutable from clients)
+    match /adminAuditLog/{logId} {
+      allow read, write: if false;
+    }
+
+    // Two-person admin approvals — Admin SDK only
+    match /adminApprovals/{approvalId} {
+      allow read, write: if false;
+    }
+
+    // Web Vitals RUM samples — Admin SDK only
+    match /webVitalsSamples/{sampleId} {
+      allow read, write: if false;
+    }
+
+    // Billing refunds engine — Admin SDK only
+    match /billingRefunds/{refundId} {
+      allow read, write: if false;
+    }
+
+    // Cancel feedback — Admin SDK only (written by Cloud Functions / server)
+    match /billingCancelFeedback/{docId} {
+      allow read, write: if false;
+    }
+
+    // System config — clients may read Tippy kill-switch doc only; all writes via Admin SDK / API
+    match /system/{docId} {
+      allow read: if isAuthenticated() &&
+        (docId == 'feature_flags' || docId == 'tippyBrainConfig');
+      allow write: if false;
+
+      match /collectorRuns/{runId} {
+        allow read, write: if false;
+      }
+    }
+
+    // Username registry — Admin SDK / Cloud Functions only (no client claims)
+    match /usernames/{usernameId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if false;
+    }
+
+    // Username history / audit — server only
+    match /usernameHistory/{historyId} {
+      allow read, write: if false;
+    }
+    match /usernameAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+    match /identityModerationAudit/{logId} {
+      allow read, write: if false;
+    }
+    // Pending Auth identities (pre-verification) — Admin writes only; owner may read own doc
+    match /pendingAccounts/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update, delete: if false;
+    }
+
+    // Self-delete audit trail — Admin SDK only (/api/account/delete)
+    match /deleted_accounts/{docId} {
+      allow read, write: if false;
+    }
+    // Durable anti-abuse identity ledger — Admin SDK only
+    match /identityLedger/{emailHash} {
+      allow read, write: if false;
+    }
+    match /identityLedgerProviders/{providerSubject} {
+      allow read, write: if false;
+    }
+    match /accountAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+    match /reserved_usernames/{nameId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    
+    // Post Analytics (cross-post performance metrics)
+    match /postAnalytics/{jobId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow write: if false; // Server-side only (Worker cron)
+    }
+
+    // Cross-post jobs — Admin SDK / API / Workers only (no client creates)
+    match /crossPostJobs/{jobId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    // Content plan share invites — deprecated. Use workspace seats
+    // (POST /api/workspace/members). Keep reads for historical docs only.
+    match /contentPlanInvites/{inviteId} {
+      allow create: if false;
+      allow read: if isAuthenticated() &&
+        (resource.data.invitedBy == request.auth.uid ||
+          (request.auth.token.email != null &&
+            resource.data.invitedEmail == request.auth.token.email));
+      allow update, delete: if false;
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return isAuthenticated() && request.auth.uid == workspaceId;
+    }
+
+    function isActiveWorkspaceMember(workspaceId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function canReadWorkspace(workspaceId) {
+      return isWorkspaceOwner(workspaceId) || isActiveWorkspaceMember(workspaceId);
+    }
+
+    function workspaceMemberRole(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role;
+    }
+
+    // Editors+ can write liveFields / Yjs. Viewers and analysts are read-only.
+    function canEditWorkspaceCollab(workspaceId) {
+      return isWorkspaceOwner(workspaceId) || (
+        isActiveWorkspaceMember(workspaceId) &&
+        workspaceMemberRole(workspaceId) in ['admin', 'content_manager', 'editor']
+      );
+    }
+
+    // Workspace owner subscription mirror — server writes only
+    match /subscriptions/{workspaceOwnerId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == workspaceOwnerId ||
+        isActiveWorkspaceMember(workspaceOwnerId)
+      );
+      allow write: if false;
+    }
+
+    // Creator Studio workspaces — members collaborate inside owner workspace only
+    match /workspaces/{workspaceId} {
+      allow read: if canReadWorkspace(workspaceId);
+      allow create, update, delete: if false;
+
+      match /members/{memberId} {
+        allow read: if canReadWorkspace(workspaceId) || request.auth.uid == memberId;
+        allow write: if false;
+      }
+
+      match /presence/{userId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow create, update: if isAuthenticated() &&
+          request.auth.uid == userId &&
+          canReadWorkspace(workspaceId) &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.workspaceId == workspaceId;
+        allow delete: if hasVerifiedEmail() &&
+          request.auth.uid == userId &&
+          canReadWorkspace(workspaceId);
+      }
+
+      match /activity/{eventId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      match /auditLog/{entryId} {
+        allow read: if isWorkspaceOwner(workspaceId) || (
+          isActiveWorkspaceMember(workspaceId) &&
+          workspaceMemberRole(workspaceId) in ['admin']
+        );
+        allow write: if false;
+      }
+
+      match /locks/{lockId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      match /tasks/{taskId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      match /privateDrafts/{draftId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      // Phase 2 canonical planner items (dual-written with users/.../contentPlans items[])
+      match /contentItems/{itemId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      // Phase 3 publish inventory linked to scheduled_posts + contentItems
+      match /publishJobs/{jobId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      match /approvalRequests/{requestId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+
+        match /decisions/{decisionId} {
+          allow read: if canReadWorkspace(workspaceId);
+          allow write: if false;
+        }
+
+        match /comments/{commentId} {
+          allow read: if canReadWorkspace(workspaceId);
+          allow write: if false;
+        }
+      }
+
+      match /automations/{automationId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+
+        match /runs/{runId} {
+          allow read: if canReadWorkspace(workspaceId);
+          allow write: if false;
+        }
+      }
+
+      match /brandAssets/{assetId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      match /settings/{settingsId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+      }
+
+      match /liveFields/{fieldKey} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow create, update: if isAuthenticated() &&
+          canEditWorkspaceCollab(workspaceId) &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.workspaceId == workspaceId;
+        allow delete: if hasVerifiedEmail() && canEditWorkspaceCollab(workspaceId) && (
+          resource.data.userId == request.auth.uid ||
+          isWorkspaceOwner(workspaceId)
+        );
+      }
+
+      match /yDocs/{docId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow write: if false;
+
+        match /updates/{updateId} {
+          allow read: if canReadWorkspace(workspaceId);
+          allow create: if hasVerifiedEmail() && canEditWorkspaceCollab(workspaceId);
+          allow update, delete: if false;
+        }
+      }
+
+      match /yAwareness/{awarenessId} {
+        allow read: if canReadWorkspace(workspaceId);
+        allow create, update: if isAuthenticated() &&
+          canEditWorkspaceCollab(workspaceId) &&
+          request.resource.data.userId == request.auth.uid;
+        allow delete: if hasVerifiedEmail() &&
+          canEditWorkspaceCollab(workspaceId) &&
+          resource.data.userId == request.auth.uid;
+      }
+    }
+
+    match /workspaceInvites/{inviteId} {
+      allow read: if isAuthenticated() && (
+        resource.data.invitedBy == request.auth.uid ||
+        resource.data.invitedEmail == request.auth.token.email ||
+        resource.data.invitedUserId == request.auth.uid
+      );
+      allow write: if false;
+    }
+
+    // Legal acceptances (Terms, Privacy) — append-only by the signing user
+    match /legal_acceptances/{acceptanceId} {
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.agreementVersion is string &&
+        request.resource.data.source is string;
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Direct messages — participants only (header unread, inbox, mobile parity)
+    match /chatAliases/{legacyChatId} {
+      allow read: if isAuthenticated();
+      allow create, update: if hasVerifiedEmail();
+      allow delete: if false;
+    }
+
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() &&
+                     request.auth.uid in resource.data.participants;
+      allow create: if hasVerifiedEmail() &&
+                       request.auth.uid in request.resource.data.participants &&
+                       request.resource.data.participants is list &&
+                       request.resource.data.participants.size() >= 2;
+      allow update: if hasVerifiedEmail() &&
+                       request.auth.uid in resource.data.participants &&
+                       request.resource.data.participants == resource.data.participants;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isChatParticipant(chatId);
+        allow create: if isChatParticipant(chatId) &&
+                         (request.resource.data.from == request.auth.uid ||
+                          request.resource.data.senderId == request.auth.uid);
+        // Edit / soft-delete (sender), read receipts, reactions (participants).
+        // Hard deletes are denied — use soft-delete fields instead.
+        allow update: if isChatParticipant(chatId) && (
+          (
+            (resource.data.from == request.auth.uid || resource.data.senderId == request.auth.uid) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['text', 'editedAt', 'updatedAt', 'isEdited', 'edited'])
+          ) ||
+          (
+            (resource.data.from == request.auth.uid || resource.data.senderId == request.auth.uid) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['deleted', 'deletedAt', 'deletedBy', 'deletedForEveryone',
+                        'isUnsent', 'unsentAt', 'unsentBy', 'text']) &&
+            (
+              request.resource.data.deleted == true ||
+              request.resource.data.isUnsent == true
+            ) &&
+            (
+              request.resource.data.deletedBy == request.auth.uid ||
+              request.resource.data.unsentBy == request.auth.uid
+            )
+          ) ||
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['isRead', 'readAt', 'readBy', 'read']) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['reactions']) &&
+            request.resource.data.get('reactions', {})
+              .diff(resource.data.get('reactions', {}))
+              .affectedKeys()
+              .hasOnly([request.auth.uid])
+          )
+        );
         allow delete: if false;
       }
     }
 
-    match /forumNotifications/{notificationId} {
-      allow read, list: if request.auth != null &&
-        request.auth.uid == resource.data.userId;
-      allow create: if false;
-      allow update: if request.auth != null &&
-        request.auth.uid == resource.data.userId &&
+    // Password reset sessions — server-only (Admin SDK), 30-minute enforced TTL
+    match /passwordResetSessions/{uid} {
+      allow read, write: if false;
+    }
+
+    // API rate limit counters — server-only (Admin SDK)
+    match /rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+    // Production monitoring events — server-only (Admin SDK)
+    match /monitoring_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    // Stripe webhook idempotency ledger — Admin SDK only
+    match /stripeWebhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    // Mux webhook idempotency ledger — Admin SDK / Workers only
+    match /muxWebhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+
+    // =========================================================================
+    // Mobile parity collections (from Flutter app rules) — before catch-all
+    // =========================================================================
+
+    // Interest graph for feed personalization (Flutter)
+    match /userInterests/{userId} {
+      allow read, list: if isAuthenticated() && isOwner(userId);
+      allow create, update, delete: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    // Creator Command / growth aggregates
+    match /creator_metrics/{creatorId} {
+      allow read: if isAuthenticated() && (
+        isOwner(creatorId) || isPlatformAdmin()
+      );
+      allow create, update: if hasVerifiedEmail() && isOwner(creatorId);
+      allow delete: if false;
+
+      match /{metricDoc=**} {
+        allow read, list: if isAuthenticated() && (
+          isOwner(creatorId) || isPlatformAdmin()
+        );
+        allow create, update: if hasVerifiedEmail() && isOwner(creatorId);
+        allow delete: if false;
+      }
+    }
+
+    function isMobileAnalyticsCounterWrite() {
+      return isAuthenticated() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'read', 'readAt', 'updatedAt'
+          'views', 'likes', 'comments', 'shares', 'watchTime', 'watchTimeSeconds',
+          'averageWatchTime', 'completionRate', 'engagementRate',
+          'lastViewedAt', 'lastLikedAt', 'lastCommentedAt', 'lastSharedAt',
+          'updatedAt', 'timestamp'
+        ]) &&
+        // Ownership fields immutable on counter updates
+        request.resource.data.get('ownerId', resource.data.get('ownerId', ''))
+          == resource.data.get('ownerId', '') &&
+        request.resource.data.get('userId', resource.data.get('userId', ''))
+          == resource.data.get('userId', '') &&
+        request.resource.data.get('uid', resource.data.get('uid', ''))
+          == resource.data.get('uid', '');
+    }
+
+    function isMobileAnalyticsCounterCreate() {
+      return isAuthenticated() &&
+        request.resource.data.keys().hasOnly([
+          'views', 'likes', 'comments', 'shares', 'watchTime', 'watchTimeSeconds',
+          'averageWatchTime', 'completionRate', 'engagementRate',
+          'lastViewedAt', 'lastLikedAt', 'lastCommentedAt', 'lastSharedAt',
+          'updatedAt', 'timestamp'
         ]);
+    }
+
+    function videoIntFieldUnified(data, field) {
+      let value = data.get(field, 0);
+      // JS/Worker often store counts as float; `value is int` alone rejects them
+      // and forces before=0, which breaks viewer +1/-1 counter bumps.
+      return value is int
+        ? value
+        : (value is float ? int(value) : 0);
+    }
+
+    function canonicalVideoLikeCountUnified(data) {
+      let likes = videoIntFieldUnified(data, 'likes');
+      let likeCount = videoIntFieldUnified(data, 'likeCount');
+      return likes > likeCount ? likes : likeCount;
+    }
+
+    function canonicalVideoBookmarkCountUnified(data) {
+      let bookmarkCount = videoIntFieldUnified(data, 'bookmarkCount');
+      let bookmarks = videoIntFieldUnified(data, 'bookmarks');
+      let favorites = videoIntFieldUnified(data, 'favorites');
+      let favoriteCount = videoIntFieldUnified(data, 'favoriteCount');
+      let legacyMax = favorites > favoriteCount ? favorites : favoriteCount;
+      let withBookmarks = bookmarkCount > bookmarks ? bookmarkCount : bookmarks;
+      return withBookmarks > legacyMax ? withBookmarks : legacyMax;
+    }
+
+    function isViewerVideoViewsBump() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['views', 'updatedAt']) &&
+        request.resource.data.views == resource.data.get('views', 0) + 1;
+    }
+
+    function isViewerVideoLikeCounterBump() {
+      let before = canonicalVideoLikeCountUnified(resource.data);
+      let afterLikes = videoIntFieldUnified(request.resource.data, 'likes');
+      let afterLikeCount = videoIntFieldUnified(request.resource.data, 'likeCount');
+      let keys = request.resource.data.diff(resource.data).affectedKeys();
+      return keys.hasOnly(['likes', 'likeCount', 'updatedAt']) &&
+        (
+          (afterLikes == before + 1 && afterLikeCount == before + 1) ||
+          (before > 0 && afterLikes == before - 1 && afterLikeCount == before - 1) ||
+          (before == 0 && afterLikes == 0 && afterLikeCount == 0)
+        );
+    }
+
+    function isViewerVideoBookmarkCounterBump() {
+      let before = canonicalVideoBookmarkCountUnified(resource.data);
+      let afterBookmark = videoIntFieldUnified(request.resource.data, 'bookmarkCount');
+      let afterFavorites = videoIntFieldUnified(request.resource.data, 'favorites');
+      let afterFavoriteCount = videoIntFieldUnified(request.resource.data, 'favoriteCount');
+      let afterBookmarks = videoIntFieldUnified(request.resource.data, 'bookmarks');
+      let keys = request.resource.data.diff(resource.data).affectedKeys();
+      // Flutter may bump bookmarkCount/favorites/favoriteCount together and/or bookmarks
+      return (
+          keys.hasOnly(['bookmarkCount', 'favorites', 'favoriteCount', 'updatedAt']) ||
+          keys.hasOnly(['bookmarks', 'updatedAt']) ||
+          keys.hasOnly(['bookmarks', 'bookmarkCount', 'favorites', 'favoriteCount', 'updatedAt'])
+        ) &&
+        (
+          (
+            afterBookmark == before + 1 &&
+            afterFavorites == before + 1 &&
+            afterFavoriteCount == before + 1
+          ) ||
+          (
+            before > 0 &&
+            afterBookmark == before - 1 &&
+            afterFavorites == before - 1 &&
+            afterFavoriteCount == before - 1
+          ) ||
+          (
+            keys.hasOnly(['bookmarks', 'updatedAt']) &&
+            (afterBookmarks == resource.data.get('bookmarks', 0) + 1 ||
+             afterBookmarks == resource.data.get('bookmarks', 0) - 1)
+          ) ||
+          (before == 0 && afterBookmark == 0 && afterFavorites == 0 && afterFavoriteCount == 0)
+        );
+    }
+
+    function isViewerVideoShareCounterBump() {
+      let beforeShares = videoIntFieldUnified(resource.data, 'shares');
+      let beforeShareCount = videoIntFieldUnified(resource.data, 'shareCount');
+      let before = beforeShares > beforeShareCount ? beforeShares : beforeShareCount;
+      let afterShares = videoIntFieldUnified(request.resource.data, 'shares');
+      let afterShareCount = videoIntFieldUnified(request.resource.data, 'shareCount');
+      let keys = request.resource.data.diff(resource.data).affectedKeys();
+      return keys.hasOnly(['shares', 'shareCount', 'updatedAt']) &&
+        afterShares == before + 1 &&
+        afterShareCount == before + 1;
+    }
+
+    function isUidFirstFollowCreate(followId) {
+      return request.resource.data.keys().hasAll([
+        'followerUserId', 'targetUserId', 'isActive'
+      ])
+        ? request.auth.uid == request.resource.data.followerUserId &&
+          request.auth.uid != request.resource.data.targetUserId &&
+          followId == request.resource.data.followerUserId + '_' +
+            request.resource.data.targetUserId &&
+          request.resource.data.isActive == true
+        : false;
+    }
+
+    function isLegacyFollowCreate(followId) {
+      return request.resource.data.keys().hasAll([
+        'followerId', 'followingId', 'isActive'
+      ])
+        ? request.auth.uid == request.resource.data.followerId &&
+          request.auth.uid != request.resource.data.followingId &&
+          followId == request.resource.data.followerId + '_' +
+            request.resource.data.followingId &&
+          request.resource.data.isActive == true
+        : false;
+    }
+
+    function existingFollowFollowerId() {
+      return resource.data.get(
+        'followerUserId',
+        resource.data.get('followerId', '')
+      );
+    }
+
+    function existingFollowTargetId() {
+      return resource.data.get(
+        'targetUserId',
+        resource.data.get(
+          'followingId',
+          resource.data.get('followedId', '')
+        )
+      );
+    }
+
+    function isScheduledPostOwnerData(data) {
+      return isAuthenticated() && (
+        data.get('authorId', '') == request.auth.uid ||
+        data.get('userId', '') == request.auth.uid ||
+        data.get('uid', '') == request.auth.uid ||
+        data.get('ownerId', '') == request.auth.uid ||
+        data.get('creatorId', '') == request.auth.uid
+      );
+    }
+
+    match /tags/{tagId} {
+      allow read, list: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.taggerId;
+      allow update, delete: if isAuthenticated() &&
+        request.auth.uid == resource.data.taggerId;
+    }
+
+    match /mentions/{mentionId} {
+      allow read, list: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.mentionerId;
+      allow update, delete: if isAuthenticated() &&
+        request.auth.uid == resource.data.mentionerId;
+    }
+
+    match /shared_drafts/{draftId} {
+      // get + list both use this predicate (no open list hole).
+      // Clients must query with sharerId/senderId/receiverId/recipients filters.
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.sharerId ||
+        request.auth.uid == resource.data.senderId ||
+        request.auth.uid in resource.data.get('recipients', []) ||
+        request.auth.uid == resource.data.receiverId
+      );
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.sharerId;
+      allow update, delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.sharerId ||
+        request.auth.uid in resource.data.get('recipients', []) ||
+        request.auth.uid == resource.data.receiverId
+      );
+    }
+
+    // Mobile bookmark cache keyed by user (Flutter UnifiedBookmarkService /
+    // VideoActionsService). Distinct from users/{uid}/favorites above.
+    match /user_favorites/{userId}/videos/{videoId} {
+      allow read, list: if isAuthenticated() && isOwner(userId);
+      allow create, update, delete: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    // Feed-ranking engagement signal, keyed '{userId}_{videoId}' (Flutter
+    // AdvancedEngagementService / UnifiedAlgorithmService — home feed path).
+    // Cross-user read is required: RealtimeTrendingService/VelocityScoring
+    // query by videoId across all viewers.
+    match /engagement/{engagementId} {
+      allow read, list: if isAuthenticated();
+      allow create, update: if hasVerifiedEmail() &&
+        request.resource.data.userId == request.auth.uid;
       allow delete: if false;
     }
-    
-    // Video analytics aggregated data (camelCase) - read by InsightsView
-    match /videoAnalytics/{videoId} {
-      allow read: if request.auth != null;
-      allow create: if isRequestOwner() || isAnalyticsCounterCreate();
-      allow update: if isResourceOwner() || isAnalyticsCounterWrite();
-      allow delete: if isResourceOwner();
-    }
-    
-    // Video insights (additional insights data)
-    match /videoInsights/{videoId} {
-      allow read: if request.auth != null;
-      allow create: if isRequestOwner() || isAnalyticsCounterCreate();
-      allow update: if isResourceOwner() || isAnalyticsCounterWrite();
-      allow delete: if isResourceOwner();
-    }
-    
-    // Follow edges permissions - allow users to read and write their own follow relationships
-    match /followEdges/{edgeId} {
-      allow read: if request.auth != null && 
-        (request.auth.uid == resource.data.followerId || 
-         request.auth.uid == resource.data.followingId);
-      allow write: if request.auth != null && 
-        request.auth.uid == request.resource.data.followerId;
-      // Allow querying followEdges collection for relationship state
-      allow list: if request.auth != null;
-    }
-    
-    // Outgoing invites permissions - allow users to read and write their own invites
-    match /users/{userId}/outgoingInvites/{inviteId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Incoming invites permissions - allow users to read invites sent to them
-    match /users/{userId}/incomingInvites/{inviteId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Feed permissions - allow authenticated users to read and write feeds
-    match /feeds/{feedType} {
-      allow read: if request.auth != null;
-      allow create: if isRequestOwner();
-      allow update, delete: if isResourceOwner();
 
-      match /videos/{videoId} {
-        allow read, list: if request.auth != null;
-        allow create: if isRequestOwner();
-        allow update, delete: if isResourceOwner();
-      }
-      
-      // Allow subcollections within feeds
-      match /{subcollection=**} {
-        allow read: if request.auth != null;
-        allow create: if isRequestOwner();
-        allow update, delete: if isResourceOwner();
-      }
-    }
-    
-    // Bookmark audit logging - allow users to create audit entries for their own actions
-    match /bookmark_audit/{auditId} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
-    }
-
-    // Feed telemetry written by Home feed impressions/play-start/skip logging
-    match /feedSkipLogs/{logId} {
-      allow create: if request.auth != null
-        && request.auth.uid == requestOwnerId();
-      allow read, list: if request.auth != null
-        && (request.auth.uid == resourceOwnerId() || isUserAdmin());
+    // Session/retention telemetry (Flutter AdvancedEngagementService.endSession)
+    match /user_sessions/{sessionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || isPlatformAdmin()
+      );
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.userId == request.auth.uid;
       allow update, delete: if false;
     }
-    
-    // Rate limiting collection - for tracking operation frequency
-    match /rate_limits/{userId} {
-      // Users can read their own rate limit data
-      allow read: if request.auth != null && request.auth.uid == userId;
-      // System can write rate limit data (for server-side rate limiting)
-      // Users can also write their own rate limit data (for client-side tracking)
-      allow write: if request.auth != null && (
-        request.auth.uid == userId ||
-        isUserAdmin()
+
+    // Retention prediction profile, doc id == userId (Flutter RetentionPredictionService)
+    match /user_retention_profiles/{userId} {
+      allow read, write: if hasVerifiedEmail() && isOwner(userId);
+    }
+
+    // Creator growth boost input (Flutter CreatorGrowthService reads other
+    // creators' stats while ranking the feed). No client writer found —
+    // read-only from clients; populate server-side if this becomes canonical.
+    match /creator_stats/{creatorId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+
+      match /{metricDoc=**} {
+        allow read: if isAuthenticated();
+        allow write: if false;
+      }
+    }
+
+    // Global feed fan-out cache (Flutter DraftsService / VideoUploadService /
+    // VideoPublishFinalizeService write feeds/{for_you|following|categories|
+    // connections_categories}/{subcollection}/{videoId} on publish).
+    match /feeds/{feedType} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+
+      match /{subcollection}/{docId} {
+        allow read, list: if isAuthenticated();
+        allow create, update: if hasVerifiedEmail() &&
+          request.resource.data.userId == request.auth.uid;
+        allow delete: if false;
+      }
+    }
+
+    // Client-batched engagement telemetry (Flutter EngagementAnalyticsService).
+    // Cross-user read required: ML score sync reads recent events for all users.
+    match /engagement_analytics/{analyticsId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Mobile admin action audit trail (Flutter AdminService.logAdminAction)
+    match /admin_logs/{logId} {
+      allow read, list: if isPlatformAdmin();
+      allow create: if isPlatformAdmin() &&
+        request.resource.data.adminId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /scheduled_posts/{scheduledPostId} {
+      allow read, list: if isAuthenticated() &&
+        (isScheduledPostOwnerData(resource.data) || isPlatformAdmin());
+      allow create: if isAuthenticated() &&
+        isScheduledPostOwnerData(request.resource.data);
+      allow update: if isAuthenticated() &&
+        (isScheduledPostOwnerData(resource.data) || isPlatformAdmin()) &&
+        isScheduledPostOwnerData(request.resource.data);
+      allow delete: if isAuthenticated() &&
+        (isScheduledPostOwnerData(resource.data) || isPlatformAdmin());
+    }
+
+    match /video_analytics/{videoId} {
+      allow read: if isAuthenticated();
+      allow create: if isMobileAnalyticsCounterCreate() ||
+        (isAuthenticated() &&
+          request.resource.data.get(
+            'ownerId',
+            request.resource.data.get('userId', request.resource.data.get('uid', ''))
+          ) == request.auth.uid);
+      allow update: if isMobileAnalyticsCounterWrite() ||
+        (isAuthenticated() &&
+          resource.data.get(
+            'ownerId',
+            resource.data.get('userId', resource.data.get('uid', ''))
+          ) == request.auth.uid);
+      allow delete: if isAuthenticated() &&
+        resource.data.get(
+          'ownerId',
+          resource.data.get('userId', resource.data.get('uid', ''))
+        ) == request.auth.uid;
+    }
+
+    match /videoAnalytics/{videoId} {
+      allow read: if isAuthenticated();
+      allow create: if isMobileAnalyticsCounterCreate() ||
+        (isAuthenticated() &&
+          request.resource.data.get(
+            'ownerId',
+            request.resource.data.get('userId', request.resource.data.get('uid', ''))
+          ) == request.auth.uid);
+      allow update: if isMobileAnalyticsCounterWrite() ||
+        (isAuthenticated() &&
+          resource.data.get(
+            'ownerId',
+            resource.data.get('userId', resource.data.get('uid', ''))
+          ) == request.auth.uid);
+      allow delete: if isAuthenticated() &&
+        resource.data.get(
+          'ownerId',
+          resource.data.get('userId', resource.data.get('uid', ''))
+        ) == request.auth.uid;
+    }
+
+    match /videoInsights/{videoId} {
+      allow read: if isAuthenticated();
+      allow create: if isMobileAnalyticsCounterCreate() ||
+        (isAuthenticated() &&
+          request.resource.data.get(
+            'ownerId',
+            request.resource.data.get('userId', request.resource.data.get('uid', ''))
+          ) == request.auth.uid);
+      allow update: if isMobileAnalyticsCounterWrite() ||
+        (isAuthenticated() &&
+          resource.data.get(
+            'ownerId',
+            resource.data.get('userId', resource.data.get('uid', ''))
+          ) == request.auth.uid);
+      allow delete: if isAuthenticated() &&
+        resource.data.get(
+          'ownerId',
+          resource.data.get('userId', resource.data.get('uid', ''))
+        ) == request.auth.uid;
+    }
+
+    match /gamification_events/{eventId} {
+      allow create: if isAuthenticated()
+        && request.resource.data.keys().hasAll(['uid', 'type'])
+        && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    match /user_interactions/{interactionId} {
+      allow create: if isAuthenticated()
+        && request.resource.data.get(
+          'userId',
+          request.resource.data.get('uid', '')
+        ) == request.auth.uid;
+      allow read: if isAuthenticated() &&
+        resource.data.get('userId', resource.data.get('uid', '')) == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /user_blocks/{blockId} {
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.blockerId;
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.blockerId ||
+        request.auth.uid == resource.data.blockedUserId
       );
+      allow list: if isAuthenticated();
+      allow update: if false;
+      allow delete: if isAuthenticated() &&
+        request.auth.uid == resource.data.blockerId;
     }
-    
-    // Creator stats - analytics data for content creators
-    match /creator_stats/{userId} {
-      // Allow reading your own stats or public stats
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
-      // Allow writing your own stats
-      allow create, update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if request.auth != null && request.auth.uid == userId;
-      
-      // Follower history subcollection
-      match /follower_history/{entryId} {
-        allow read: if request.auth != null;
-        allow list: if request.auth != null;
-        allow create, update: if request.auth != null && request.auth.uid == userId;
-        allow delete: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Video stats subcollection
-      match /video_stats/{entryId} {
-        allow read: if request.auth != null;
-        allow list: if request.auth != null;
-        allow create, update: if request.auth != null && request.auth.uid == userId;
-        allow delete: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Allow other subcollections
-      match /{subcollection=**} {
-        allow read: if request.auth != null;
-        allow create, update: if request.auth != null && request.auth.uid == userId;
-        allow delete: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-    
-    // Invites - user invitation system
-    match /invites/{inviteId} {
-      // Invite visibility is limited to the inviter/invitee.
-      allow read, list: if request.auth != null &&
-        (request.auth.uid == resource.data.inviterId ||
-         request.auth.uid == resource.data.inviteeId);
-      // Allow creating invites
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.inviterId;
-      // Allow updating invites - inviter or invitee can update
-      allow update: if request.auth != null && 
-        (request.auth.uid == resource.data.inviterId || 
-         request.auth.uid == resource.data.inviteeId);
-      // Allow deleting own invites
-      allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.inviterId;
-    }
-    
-    // Reports - content/user reporting system
-    match /reports/{reportId} {
-      allow get: if request.auth != null && (
-        request.auth.uid == resource.data.reporterId ||
-        request.auth.uid == resource.data.reporterUserId ||
-        isAdmin()
+
+    match /relationships/{relationshipId} {
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.followerId;
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.followerId ||
+        request.auth.uid == resource.data.followingId
       );
-      allow list: if isUserAdmin();
-      allow create: if request.auth != null &&
-        (request.auth.uid == request.resource.data.reporterId ||
-         request.auth.uid == request.resource.data.reporterUserId);
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly([
-            'status', 'reviewedBy', 'reviewedAt', 'actionTaken', 'updatedAt'
-          ]);
-      allow delete: if false;
+      allow list: if isAuthenticated();
+      allow delete: if isAuthenticated() &&
+        request.auth.uid == resource.data.followerId;
+      allow update: if false;
+    }
+
+    match /hashtag_permissions/{docId} {
+      allow read, list: if isAuthenticated();
+      allow write: if isPlatformAdmin();
     }
 
     match /tippy_rate_limits/{rateLimitId} {
@@ -851,778 +2263,14 @@ service cloud.firestore {
     match /tippy_usage_events/{eventId} {
       allow read, write: if false;
     }
-    
-    // Tags - user/content tagging system
-    match /tags/{tagId} {
-      allow read, list: if request.auth != null;
-      // Anyone can create tags
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.taggerId;
-      // Can update your own tags
-      allow update: if request.auth != null && 
-        request.auth.uid == resource.data.taggerId;
-      // Can delete your own tags
-      allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.taggerId;
-    }
-    
-    // Mentions - user mention system
-    match /mentions/{mentionId} {
-      // Anyone can read mentions
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
-      // Anyone can create mentions
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.mentionerId;
-      // Can update your own mentions
-      allow update: if request.auth != null && 
-        request.auth.uid == resource.data.mentionerId;
-      // Can delete your own mentions
-      allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.mentionerId;
-    }
-    
-    // Moderation - content moderation system
-    match /moderation/{moderationId} {
-      // Only allow reading moderation data for the content owner
-      allow read: if request.auth != null;
-      allow list: if request.auth != null;
-      // System can create moderation entries
-      allow create: if isRequestOwner() || isUserAdmin();
-      allow update, delete: if isResourceOwner();
-    }
-    
-    // Admin logs - only admins can read/write
-    match /admin_logs/{logId} {
-      allow read, list: if isUserAdmin();
-      allow create: if isUserAdmin();
-      allow update, delete: if isUserAdmin();
-    }
-    
-    // System settings - only admins can write
-    match /system/{settingId} {
-      allow read: if request.auth != null;
-      allow write: if isUserAdmin();
-    }
-    
-    // Admin notifications subcollection under users
-    match /users/{userId}/admin_notifications/{notificationId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if isUserAdmin();
-    }
-    
-    match /users/{userId}/achievements/{achievementId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create, update: if request.auth != null
-        && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly([
-          'unlocked', 'seen', 'seenAt', 'updatedAt'
-        ])
-        && request.resource.data.unlocked == true
-        && request.resource.data.seen == true;
+
+    match /videoDeletionLogs/{logId} {
+      allow read, write: if false;
     }
 
-    match /users/{userId}/deviceTokens/{tokenId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create, update: if request.auth != null
-        && request.auth.uid == userId
-        && (
-          !request.resource.data.keys().hasAny(['token'])
-          || request.resource.data.token == tokenId
-        )
-        && request.resource.data.keys().hasOnly([
-          'token', 'platform', 'createdAt', 'updatedAt',
-          'lastUsed', 'lastSeenAt', 'source'
-        ]);
-      allow delete: if request.auth != null && request.auth.uid == userId;
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
     }
-    
-    // User favorites subcollection
-    match /user_favorites/{userId}/videos/{videoId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow list: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Conversations collection - for DM sharing
-    match /conversations/{conversationId} {
-      // Allow reading conversations if user is a participant
-      allow read: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
-      
-      // Allow creating conversations if user is a participant
-      allow create: if request.auth != null && 
-        request.auth.uid in request.resource.data.participants;
-      
-      // Allow updating conversations if user is a participant
-      allow update: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
-      
-      // Allow listing only conversations where the signed-in user is a participant.
-      allow list: if request.auth != null &&
-        request.auth.uid in resource.data.participants;
-      
-      // Allow deleting conversations if user is a participant
-      allow delete: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
-      
-      // Messages subcollection
-      match /messages/{messageId} {
-        // Allow reading messages if user is a participant in parent conversation
-        allow read: if request.auth != null && 
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-        
-        // Allow listing messages if user is a participant in parent conversation
-        allow list: if request.auth != null && 
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-        
-        // Allow creating messages if user is the sender
-        allow create: if request.auth != null && 
-          request.auth.uid == request.resource.data.senderId;
-        
-        // Allow updating messages if user is a participant (for read receipts)
-        allow update: if request.auth != null && 
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-        
-        // Allow deleting messages if user is the sender
-        allow delete: if request.auth != null && 
-          request.auth.uid == resource.data.senderId;
-      }
-    }
-    
-    // Scheduled posts collection - for video scheduling
-    match /scheduled_posts/{scheduledPostId} {
-      allow read, list: if request.auth != null
-        && (isScheduledPostOwner(resource.data) || isUserAdmin());
-      allow create: if request.auth != null &&
-        isScheduledPostOwner(request.resource.data);
-      allow update: if request.auth != null &&
-        (isScheduledPostOwner(resource.data) || isUserAdmin()) &&
-        isScheduledPostOwner(request.resource.data);
-      allow delete: if request.auth != null &&
-        (isScheduledPostOwner(resource.data) || isUserAdmin());
-    }
-
-    // Shared app + website content planner source.
-    match /contentPlans/{planId} {
-      allow read, list: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isUserAdmin());
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.userId;
-      allow update: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isUserAdmin()) &&
-        request.resource.data.userId == resource.data.userId;
-      allow delete: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isUserAdmin());
-    }
-
-    match /analytics_events/{eventId} {
-      allow create: if request.auth != null
-        && request.resource.data.uid == request.auth.uid
-        && isValidAnalyticsEventCreate();
-      allow read: if request.auth != null && (
-        resource.data.uid == request.auth.uid || isAdmin()
-      );
-      allow update, delete: if false;
-    }
-
-    match /users/{userId}/analyticsProfile/{profileId} {
-      allow read: if request.auth != null && (
-        request.auth.uid == userId || isAdmin()
-      );
-      allow write: if false;
-    }
-
-    match /gamification_events/{eventId} {
-      allow create: if request.auth != null
-        && request.resource.data.keys().hasAll(['uid', 'type'])
-        && request.resource.data.uid == request.auth.uid;
-      allow read, update, delete: if false;
-    }
-  }
-  
-  // Video doc: bookmark / unbookmark by non-owner (client increment only).
-  function videoIntField(data, field) {
-    let value = data.get(field, 0);
-    // JS/Worker often store counts as float; treat float as int so like/bookmark
-    // +1/-1 bumps are not denied when before was misread as 0.
-    return value is int
-      ? value
-      : (value is float ? int(value) : 0);
-  }
-
-  // Matches VideoActionsService owner resolution (userId, creatorId, creator_id).
-  function isVideoDocumentOwner() {
-    return request.auth != null
-      && resource != null
-      && videoOwnerMatches(resource.data, request.auth.uid);
-  }
-
-  function isVideoCreateOwner() {
-    return isVideoCreateOwnerSafe();
-  }
-
-  function isVideoCreateOwnerSafe() {
-    return request.auth != null
-      && request.resource.data.keys().hasAny(['userId'])
-      && request.resource.data.userId == request.auth.uid;
-  }
-
-  function videoOwnerMatches(data, uid) {
-    return ownerUidFieldMatches(data, 'userId', uid)
-      || ownerUidFieldMatches(data, 'creatorId', uid)
-      || ownerUidFieldMatches(data, 'creator_id', uid);
-  }
-
-  function ownerUidFieldMatches(data, field, uid) {
-    return data.keys().hasAny([field])
-      && data[field] is string
-      && data[field] == uid;
-  }
-
-  function hasCanonicalVideoOwnerField(data) {
-    return (data.keys().hasAny(['userId'])
-        && data.userId is string
-        && data.userId.size() > 0)
-      || (data.keys().hasAny(['creatorId'])
-        && data.creatorId is string
-        && data.creatorId.size() > 0)
-      || (data.keys().hasAny(['creator_id'])
-        && data.creator_id is string
-        && data.creator_id.size() > 0);
-  }
-
-  function videoDocumentIdOwnedByAuthUser(videoId) {
-    return request.auth != null
-      && videoId.matches('^' + request.auth.uid + '_.+');
-  }
-
-  function isVideoMetadataBackfillActor(videoId) {
-    return isVideoDocumentOwner()
-      || (
-        resource != null
-        && !hasCanonicalVideoOwnerField(resource.data)
-        && videoDocumentIdOwnedByAuthUser(videoId)
-      );
-  }
-
-  function isOwnerVideoMetadataBackfillUpdate(videoId) {
-    return request.auth != null
-      && resource != null
-      && isVideoMetadataBackfillActor(videoId)
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly([
-          'userId','creatorId','creator_id','ownerId',
-          'caption','privacy','visibility','updatedAt'
-        ]);
-  }
-
-  function isOwnerVideoMetadataUpdateCore() {
-    return request.auth != null
-      && resource != null
-      && isVideoDocumentOwner()
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly([
-          'userId','creatorId','creator_id','ownerId',
-          'caption','hashtags','privacy','visibility','allowComments',
-          'category','categoryId','category_id','categories',
-          'updatedAt','deletedAt',
-          'thumbnailUrl',
-          'thumbnails','status','moderation','metadata','videoUrl',
-          'visible','isReadyForFeed',
-          'uploadError','errorMessage',
-          'sourcePlatform','isMux','muxStatus','muxUploadId',
-          'views','likes','comments','shares','favorites',
-          'favoriteCount','id',
-          'cross_platform_sharing','watermark_applied','moderation_confidence',
-          'moderation_checked_at','duration','fileSize',
-          'thumbnailTimeSeconds','isCustomThumbnail'
-        ])
-      && videoStatusIsNotReady(request.resource.data);
-  }
-
-  function videoStatusIsNotReady(data) {
-    return !data.keys().hasAny(['status'])
-      || (data.status is string && data.status != 'ready');
-  }
-
-  function isOwnerVideoCaptionOnlyUpdate() {
-    return request.auth != null
-      && resource != null
-      && isVideoDocumentOwner()
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['caption', 'updatedAt'])
-      && request.resource.data.caption is string
-      && request.resource.data.caption.size() > 0;
-  }
-
-  function isBookmarkFavoriteCountOnlyUpdate() {
-    return resource != null
-      && resource.data != null
-      && request.auth != null
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['bookmarkCount', 'favorites', 'favoriteCount', 'updatedAt'])
-      && isFavoriteAndFavoriteCountStepTogether();
-  }
-
-  function isFavoriteAndFavoriteCountStepTogether() {
-    let beforeCount = canonicalVideoBookmarkCount(resource.data);
-    let afterBookmarkCount = videoIntField(request.resource.data, 'bookmarkCount');
-    let afterFavorites = videoIntField(request.resource.data, 'favorites');
-    let afterFavoriteCount = videoIntField(request.resource.data, 'favoriteCount');
-    return (afterBookmarkCount == beforeCount + 1
-        && afterFavorites == beforeCount + 1
-        && afterFavoriteCount == beforeCount + 1)
-      || (beforeCount > 0
-        && afterBookmarkCount == beforeCount - 1
-        && afterFavorites == beforeCount - 1
-        && afterFavoriteCount == beforeCount - 1)
-      || (beforeCount == 0
-        && afterBookmarkCount == 0
-        && afterFavorites == 0
-        && afterFavoriteCount == 0);
-  }
-
-  function isVideoShareCountOnlyUpdate() {
-    return resource != null
-      && resource.data != null
-      && request.auth != null
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['shares', 'shareCount', 'updatedAt'])
-      && isShareAndShareCountStepTogether();
-  }
-
-  function isShareAndShareCountStepTogether() {
-    let beforeShares = videoIntField(resource.data, 'shares');
-    let beforeShareCount = videoIntField(resource.data, 'shareCount');
-    let beforeCount = beforeShares > beforeShareCount ? beforeShares : beforeShareCount;
-    let afterShares = videoIntField(request.resource.data, 'shares');
-    let afterShareCount = videoIntField(request.resource.data, 'shareCount');
-    return afterShares == beforeCount + 1
-      && afterShareCount == beforeCount + 1;
-  }
-
-  function isVideoLikeCountOnlyUpdate() {
-    return resource != null
-      && resource.data != null
-      && request.auth != null
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['likes', 'likeCount', 'updatedAt'])
-      && isLikeAndLikeCountStepTogether();
-  }
-
-  function isLikeAndLikeCountStepTogether() {
-    let beforeCount = canonicalVideoLikeCount(resource.data);
-    let afterLikes = videoIntField(request.resource.data, 'likes');
-    let afterLikeCount = videoIntField(request.resource.data, 'likeCount');
-    return (afterLikes == beforeCount + 1 && afterLikeCount == beforeCount + 1)
-      || (beforeCount > 0 && afterLikes == beforeCount - 1 && afterLikeCount == beforeCount - 1)
-      || (beforeCount == 0 && afterLikes == 0 && afterLikeCount == 0);
-  }
-
-  function canonicalVideoLikeCount(data) {
-    let likes = videoIntField(data, 'likes');
-    let likeCount = videoIntField(data, 'likeCount');
-    return likes > likeCount ? likes : likeCount;
-  }
-
-  function canonicalVideoBookmarkCount(data) {
-    let bookmarkCount = videoIntField(data, 'bookmarkCount');
-    let bookmarks = videoIntField(data, 'bookmarks');
-    let favorites = videoIntField(data, 'favorites');
-    let favoriteCount = videoIntField(data, 'favoriteCount');
-    let legacyMax = favorites > favoriteCount ? favorites : favoriteCount;
-    let withBookmarks = bookmarkCount > bookmarks ? bookmarkCount : bookmarks;
-    return withBookmarks > legacyMax ? withBookmarks : legacyMax;
-  }
-
-  function isVideoOwnerById(videoId) {
-    let path = /databases/$(database)/documents/videos/$(videoId);
-    return request.auth != null &&
-      exists(path) &&
-      (
-        ('userId' in get(path).data && get(path).data.userId == request.auth.uid) ||
-        ('creatorId' in get(path).data && get(path).data.creatorId == request.auth.uid) ||
-        ('creator_id' in get(path).data && get(path).data.creator_id == request.auth.uid)
-      );
-  }
-
-  // Validation functions
-  function isValidBookmarkUpdate(likedVideos) {
-    return likedVideos is list
-      && likedVideos.size() <= 1000  // Prevent abuse - max 1000 bookmarks
-      && likedVideos.hasAll(['string'])  // Only video IDs allowed
-      && likedVideos.size() == likedVideos.toSet().size();  // No duplicates
-  }
-  
-  // Admin: JWT claim and/or Firestore on the signed-in user (self-writes
-  // cannot set role/admin — see users/{userId} allow write).
-  // Use (default) — admin helpers live outside match /databases/{database}/documents
-  // so $(database) is not in scope for get() paths.
-  function adminUserDocPath() {
-    return /databases/(default)/documents/users/$(request.auth.uid);
-  }
-
-  function isOwnerFallbackAdmin() {
-    return request.auth != null
-      && request.auth.uid == 'bU0RxyZ2L4ULAv1Co5L4f825yV73';
-  }
-
-  function authEmailFallbackAdmin() {
-    return request.auth != null
-      && request.auth.token is map
-      && 'email' in request.auth.token
-      && request.auth.token.email == 'technqs@gmail.com';
-  }
-
-  // Mirrors client AdminService fallback allowlist (username/email on user doc).
-  function isFallbackAdminProfile() {
-    let path = adminUserDocPath();
-    return request.auth != null
-      && exists(path)
-      && (
-        stringField(get(path).data, 'username').matches('(?i)^(technqs|buzzz)$')
-        || stringField(get(path).data, 'email').matches('(?i)^technqs@gmail\\.com$')
-      );
-  }
-
-  function truthyField(data, field) {
-    return data != null
-      && data.keys().hasAny([field])
-      && (data[field] == true || data[field] == 'true');
-  }
-
-  function adminStatusIsActive(data) {
-    return data != null
-      && data.keys().hasAny(['adminStatus'])
-      && data.adminStatus is string
-      && data.adminStatus.matches('(?i)^active$');
-  }
-
-  function hasActiveAdminAccess(data) {
-    return data != null && (
-      (truthyField(data, 'adminAccess') && adminStatusIsActive(data))
-      || (
-        data.keys().hasAny(['admin'])
-        && data.admin is map
-        && truthyField(data.admin, 'adminAccess')
-        && adminStatusIsActive(data.admin)
-      )
-    );
-  }
-
-  function isFirestoreAdminSelf() {
-    let path = adminUserDocPath();
-    return request.auth != null
-      && exists(path)
-      && (
-        ('role' in get(path).data && get(path).data.role == 'admin') ||
-        truthyField(get(path).data, 'isAdmin') ||
-        (
-          'admin' in get(path).data &&
-          get(path).data.admin is map &&
-          get(path).data.admin.isAdmin == true
-        ) ||
-        hasActiveAdminAccess(get(path).data)
-      );
-  }
-
-  function isAdmin() {
-    return request.auth != null && (
-      hasAdminClaim() ||
-      isOwnerFallbackAdmin() ||
-      authEmailFallbackAdmin() ||
-      isFirestoreAdminSelf() ||
-      isFallbackAdminProfile()
-    );
-  }
-
-  function isUserAdmin() {
-    return isAdmin();
-  }
-
-  function hasAdminClaim() {
-    return request.auth.token is map
-      ? 'admin' in request.auth.token &&
-        request.auth.token.admin == true
-      : false;
-  }
-
-  function isExistingUserNotBanned() {
-    let path = /databases/$(database)/documents/users/$(request.auth.uid);
-    return exists(path)
-      && stringField(get(path).data, 'accountStatus') != 'banned';
-  }
-
-  function isNotBannedUser() {
-    let path = /databases/$(database)/documents/users/$(request.auth.uid);
-    return request.auth != null
-      && (
-        !exists(path)
-        || (exists(path)
-          && stringField(get(path).data, 'accountStatus') != 'banned')
-      );
-  }
-
-  function stringField(data, field) {
-    return data != null
-      && data.keys().hasAny([field])
-      && data[field] is string
-      ? data[field]
-      : '';
-  }
-
-  function requestOwnerId() {
-    return 'userId' in request.resource.data
-      ? request.resource.data.userId
-      : ('ownerId' in request.resource.data
-        ? request.resource.data.ownerId
-        : ('authorId' in request.resource.data
-          ? request.resource.data.authorId
-          : ('creatorId' in request.resource.data
-            ? request.resource.data.creatorId
-            : ('viewerId' in request.resource.data
-              ? request.resource.data.viewerId
-              : ('likerId' in request.resource.data
-                ? request.resource.data.likerId
-                : ('commenterId' in request.resource.data
-                  ? request.resource.data.commenterId
-                  : ('sharerId' in request.resource.data
-                    ? request.resource.data.sharerId
-                    : ('uid' in request.resource.data
-                      ? request.resource.data.uid
-                      : null))))))));
-  }
-
-  function resourceOwnerId() {
-    return 'userId' in resource.data
-      ? resource.data.userId
-      : ('ownerId' in resource.data
-        ? resource.data.ownerId
-        : ('authorId' in resource.data
-          ? resource.data.authorId
-          : ('creatorId' in resource.data
-            ? resource.data.creatorId
-            : ('viewerId' in resource.data
-              ? resource.data.viewerId
-              : ('likerId' in resource.data
-                ? resource.data.likerId
-                : ('commenterId' in resource.data
-                  ? resource.data.commenterId
-                  : ('sharerId' in resource.data
-                    ? resource.data.sharerId
-                    : ('uid' in resource.data
-                      ? resource.data.uid
-                      : null))))))));
-  }
-
-  function isRequestOwner() {
-    return request.auth != null &&
-      (request.auth.uid == requestOwnerId() || isUserAdmin());
-  }
-
-  function isResourceOwner() {
-    return request.auth != null &&
-      (request.auth.uid == resourceOwnerId() || isUserAdmin());
-  }
-
-  function isChatMessageSender() {
-    return request.auth != null &&
-      (
-        ('from' in request.resource.data &&
-          request.resource.data.from == request.auth.uid) ||
-        ('senderId' in request.resource.data &&
-          request.resource.data.senderId == request.auth.uid)
-      );
-  }
-
-  function userServerOwnedFields() {
-    return [
-      'role', 'isAdmin', 'admin', 'accountStatus',
-      'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
-      'totalXP', 'totalXp', 'level', 'rankName', 'completedTaskCount',
-      'rankTitle', 'creatorScore', 'streakCount', 'streakDays',
-      'lastActiveDate', 'progressionSummary',
-      'gamification', 'dailyMissions', 'missions',
-      'subscriptionTier', 'subscriptionStatus', 'subscriptionPlan',
-      'subscription', 'entitlements', 'studioAccess', 'isStudio',
-      'stripeCustomerId', 'stripeSubscriptionId', 'revenueCatCustomerId'
-    ];
-  }
-
-  function isSafeUserProfileCreate() {
-    return !request.resource.data.keys().hasAny(userServerOwnedFields());
-  }
-
-  function isSafeUserProfileUpdate() {
-    return !request.resource.data.diff(resource.data).affectedKeys()
-      .hasAny(userServerOwnedFields());
-  }
-
-  function isServerOwnedUserSubcollection(subcollection) {
-    return subcollection in [
-      'progression',
-      'gamification',
-      'deviceTokens',
-      'admin_notifications',
-      'gamification_audit',
-      'creatorScore',
-      'billing',
-      'entitlements',
-      'subscription_events',
-      'analyticsProfile'
-    ];
-  }
-
-  function isValidAnalyticsEventCreate() {
-    return request.resource.data.keys().hasAll([
-      'uid', 'eventType', 'source', 'targetType', 'createdAt'
-    ])
-      && request.resource.data.uid is string
-      && request.resource.data.uid == request.auth.uid
-      && request.resource.data.eventType is string
-      && request.resource.data.source in ['app', 'website']
-      && request.resource.data.targetType is string
-      && request.resource.data.metadata is map;
-  }
-
-  function isAnalyticsCounterWrite() {
-    return request.auth != null &&
-      request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'views', 'likes', 'comments', 'shares', 'watchTime', 'watchTimeSeconds',
-        'averageWatchTime', 'completionRate', 'engagementRate',
-        'lastViewedAt', 'lastLikedAt', 'lastCommentedAt', 'lastSharedAt',
-        'updatedAt', 'timestamp'
-      ]);
-  }
-
-  function isAnalyticsCounterCreate() {
-    return request.auth != null &&
-      request.resource.data.keys().hasOnly([
-        'views', 'likes', 'comments', 'shares', 'watchTime', 'watchTimeSeconds',
-        'averageWatchTime', 'completionRate', 'engagementRate',
-        'lastViewedAt', 'lastLikedAt', 'lastCommentedAt', 'lastSharedAt',
-        'updatedAt', 'timestamp'
-      ]);
-  }
-
-  function isScheduledPostOwner(data) {
-    return request.auth != null
-      && (
-        scheduledOwnerFieldMatches(data, 'authorId')
-        || scheduledOwnerFieldMatches(data, 'userId')
-        || scheduledOwnerFieldMatches(data, 'uid')
-        || scheduledOwnerFieldMatches(data, 'ownerId')
-        || scheduledOwnerFieldMatches(data, 'creatorId')
-      );
-  }
-
-  function scheduledOwnerFieldMatches(data, field) {
-    return data.keys().hasAny([field])
-      && data[field] is string
-      && data[field] == request.auth.uid;
-  }
-
-  function isCommentAuthor(data) {
-    return request.auth != null && (
-      ('user' in data && data.user is map &&
-        'id' in data.user && data.user.id == request.auth.uid) ||
-      ('author' in data && data.author is map &&
-        'id' in data.author && data.author.id == request.auth.uid) ||
-      ('userId' in data && data.userId == request.auth.uid) ||
-      ('authorId' in data && data.authorId == request.auth.uid) ||
-      ('commenterId' in data && data.commenterId == request.auth.uid) ||
-      ('uid' in data && data.uid == request.auth.uid)
-    );
-  }
-  
-  function isWithinCommentLimit(userId) {
-    return isUserAdmin() ||
-           !exists(/databases/$(database)/documents/rate_limits/$(userId)) ||
-           (!('comment_time' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
-           (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.comment_time.seconds > 60) ||
-           (!('comment_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
-           (get(/databases/$(database)/documents/rate_limits/$(userId)).data.comment_count < 20);
-  }
-  
-  function isWithinLikeLimit(userId) {
-    return isUserAdmin() ||
-           !exists(/databases/$(database)/documents/rate_limits/$(userId)) ||
-           (!('like_time' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
-           (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.like_time.seconds > 60) ||
-           (!('like_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
-           (get(/databases/$(database)/documents/rate_limits/$(userId)).data.like_count < 100);
-  }
-  
-  function isWithinFollowLimit(userId) {
-    let path = /databases/$(database)/documents/rate_limits/$(userId);
-    return isUserAdmin() ||
-           (!exists(path) ? true :
-             (!('follow_time' in get(path).data)) ||
-             (request.time.seconds - get(path).data.follow_time.seconds > 60) ||
-             (!('follow_count' in get(path).data)) ||
-             (get(path).data.follow_count < 30));
-  }
-
-  function isUidFirstFollowCreate(followId) {
-    return request.resource.data.keys().hasAll([
-      'followerUserId',
-      'targetUserId',
-      'isActive'
-    ])
-      ? request.auth.uid == request.resource.data.followerUserId &&
-        request.auth.uid != request.resource.data.targetUserId &&
-        followId == request.resource.data.followerUserId + '_' + request.resource.data.targetUserId &&
-        request.resource.data.isActive == true
-      : false;
-  }
-
-  function isLegacyFollowCreate(followId) {
-    return request.resource.data.keys().hasAll([
-      'followerId',
-      'followingId',
-      'isActive'
-    ])
-      ? request.auth.uid == request.resource.data.followerId &&
-        request.auth.uid != request.resource.data.followingId &&
-        followId == request.resource.data.followerId + '_' + request.resource.data.followingId &&
-        request.resource.data.isActive == true
-      : false;
-  }
-
-  function followFollowerId() {
-    return 'followerUserId' in request.resource.data
-      ? request.resource.data.followerUserId
-      : ('followerId' in request.resource.data
-        ? request.resource.data.followerId
-        : '');
-  }
-
-  function followTargetId() {
-    return 'targetUserId' in request.resource.data
-      ? request.resource.data.targetUserId
-      : ('followingId' in request.resource.data
-        ? request.resource.data.followingId
-        : ('followedId' in request.resource.data
-          ? request.resource.data.followedId
-          : ''));
-  }
-
-  function existingFollowFollowerId() {
-    return 'followerUserId' in resource.data
-      ? resource.data.followerUserId
-      : ('followerId' in resource.data
-        ? resource.data.followerId
-        : '');
-  }
-
-  function existingFollowTargetId() {
-    return 'targetUserId' in resource.data
-      ? resource.data.targetUserId
-      : ('followingId' in resource.data
-        ? resource.data.followingId
-        : ('followedId' in resource.data
-          ? resource.data.followedId
-          : ''));
   }
 }

@@ -9,9 +9,11 @@ import '../models/forum_category.dart';
 import '../models/forum_author.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../features/threads/thread_visibility.dart';
 import 'discussion_author_service.dart';
 import 'progression_service.dart';
 import 'public_profile_firestore.dart';
+import 'thread_invite_service.dart';
 
 /// Thread sort options
 enum ThreadSortBy {
@@ -208,18 +210,20 @@ class ForumService {
           await _enrichPostsWithUserAvatars(posts);
       final List<ForumPost> enrichedPosts = await _attachLiveCommentCounts(
           await _attachCategoryDisplayNames(withAvatars));
+      final List<ForumPost> audienceVisible =
+          await _filterPostsByAudience(enrichedPosts, currentUserId);
 
       // Apply search query filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
         final lowerQuery = searchQuery.toLowerCase();
-        return enrichedPosts.where(_isThreadVisible).where((post) {
+        return audienceVisible.where(_isThreadVisible).where((post) {
           return post.title.toLowerCase().contains(lowerQuery) ||
               post.content.toLowerCase().contains(lowerQuery) ||
               post.tags.any((tag) => tag.toLowerCase().contains(lowerQuery));
         }).toList();
       }
 
-      return enrichedPosts.where(_isThreadVisible).toList();
+      return audienceVisible.where(_isThreadVisible).toList();
     } on FirebaseException catch (e) {
       if (e.code == 'failed-precondition' &&
           (sortBy == ThreadSortBy.activeNow ||
@@ -246,15 +250,23 @@ class ForumService {
   }
 
   /// Get thread details
-  Future<ForumPost?> getPost(String postId) async {
+  Future<ForumPost?> getPost(
+    String postId, {
+    String? currentUserId,
+  }) async {
     try {
       final doc = await _firestore.collection('forumPosts').doc(postId).get();
       if (!doc.exists || !_isThreadDocVisible(doc.data())) {
         return null;
       }
       final ForumPost post = ForumPost.fromFirestore(doc);
+      final List<ForumPost> accessible =
+          await _filterPostsByAudience(<ForumPost>[post], currentUserId);
+      if (accessible.isEmpty) {
+        return null;
+      }
       final List<ForumPost> withNames =
-          await _attachCategoryDisplayNames(<ForumPost>[post]);
+          await _attachCategoryDisplayNames(accessible);
       final List<ForumPost> withCounts =
           await _attachLiveCommentCounts(withNames);
       return withCounts.first;
@@ -287,7 +299,7 @@ class ForumService {
           'displayName': author.displayName,
           'avatarUrl': author.avatarUrl,
         },
-        'visibility': visibility,
+        'visibility': normalizeThreadVisibility(visibility),
         'likes': 0,
         'commentCount': 0,
         'likedBy': [],
@@ -341,7 +353,7 @@ class ForumService {
           'displayName': threadAuthor.displayName,
           'avatarUrl': threadAuthor.avatarUrl,
         },
-        'visibility': visibility,
+        'visibility': normalizeThreadVisibility(visibility),
         'likes': 0,
         'commentCount': 0,
         'likedBy': [],
@@ -1002,6 +1014,77 @@ class ForumService {
       return false;
     }
     return true;
+  }
+
+  Future<List<ForumPost>> _filterPostsByAudience(
+    List<ForumPost> posts,
+    String? currentUserId,
+  ) async {
+    if (posts.isEmpty) {
+      return posts;
+    }
+    final String? viewerId = (currentUserId != null && currentUserId.isNotEmpty)
+        ? currentUserId
+        : firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    final Map<String, bool> followCache = <String, bool>{};
+    final Map<String, bool> inviteCache = <String, bool>{};
+    final List<ForumPost> visible = <ForumPost>[];
+    for (final ForumPost post in posts) {
+      final String authorId = post.author.uid.trim().isNotEmpty
+          ? post.author.uid.trim()
+          : '';
+      final String vis = normalizeThreadVisibility(post.visibility);
+      bool follows = false;
+      bool inviteAccess = false;
+      if (vis == kThreadVisibilityFollowers &&
+          viewerId != null &&
+          viewerId.isNotEmpty &&
+          viewerId != authorId) {
+        follows = followCache[authorId] ??=
+            await _viewerFollowsAuthor(viewerId, authorId);
+      }
+      if (vis == kThreadVisibilityInviteOnly &&
+          viewerId != null &&
+          viewerId.isNotEmpty &&
+          viewerId != authorId) {
+        inviteAccess = inviteCache[post.id] ??=
+            await ThreadInviteService().viewerHasThreadInviteAccess(
+          post.id,
+          viewerId,
+        );
+      }
+      if (canViewerAccessThread(
+        visibility: vis,
+        authorId: authorId,
+        viewerId: viewerId,
+        viewerFollowsAuthor: follows,
+        viewerHasInviteAccess: inviteAccess,
+      )) {
+        visible.add(post);
+      }
+    }
+    return visible;
+  }
+
+  Future<bool> _viewerFollowsAuthor(String viewerId, String authorId) async {
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> edge = await _firestore
+          .collection('follows')
+          .doc('${viewerId}_$authorId')
+          .get();
+      if (edge.exists) {
+        return true;
+      }
+      final DocumentSnapshot<Map<String, dynamic>> sub = await _firestore
+          .collection('users')
+          .doc(authorId)
+          .collection('followers')
+          .doc(viewerId)
+          .get();
+      return sub.exists;
+    } catch (_) {
+      return false;
+    }
   }
 
   bool _isThreadDocVisible(Map<String, dynamic>? data) {

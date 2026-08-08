@@ -16,8 +16,14 @@ import '../../constants/app_colors.dart';
 import '../../core/theme/support_shell_style.dart';
 import '../../core/theme/st_theme_tokens.dart';
 import '../../routing/app_navigator.dart';
+import '../../features/threads/related_video.dart';
+import '../../features/threads/thread_invite.dart';
+import '../../features/threads/thread_visibility.dart';
+import '../../services/thread_invite_service.dart';
 import 'discussion_author_row.dart';
 import 'thread_comment_item.dart';
+import 'related_video_card.dart';
+import 'thread_invite_sheet.dart';
 
 /// Thread detail screen showing thread content and comments
 /// Simplified version without video embedding to avoid build_runner issues
@@ -47,6 +53,11 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
   String? _replyingToDisplayName;
   final Set<String> _expandedReplies = {};
   bool _isSubmittingReply = false;
+  bool _isBookmarked = false;
+  bool _isFollowed = false;
+  String? _myInviteStatus;
+  bool _respondingInvite = false;
+  final ThreadInviteService _inviteService = ThreadInviteService();
 
   @override
   void initState() {
@@ -68,10 +79,14 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
     });
 
     try {
-      final post = await _forumService.getPost(widget.postId);
+      final post = await _forumService.getPost(
+        widget.postId,
+        currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+      );
       if (post == null) {
         setState(() {
-          _errorMessage = 'Thread not found';
+          _errorMessage =
+              'This thread is unavailable, or it is invite-only and you do not have access.';
           _isLoading = false;
         });
         return;
@@ -79,10 +94,24 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
 
       // Enrich post with current user avatar data
       final enrichedPost = await _enrichPostWithAvatar(post);
+      final String? uid =
+          firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+      String? inviteStatus;
+      if (uid != null &&
+          normalizeThreadVisibility(enrichedPost.visibility) ==
+              kThreadVisibilityInviteOnly) {
+        final ThreadInviteRecord? invite =
+            await _inviteService.getThreadInvite(widget.postId, uid);
+        inviteStatus = invite?.status;
+      }
 
       if (mounted) {
         setState(() {
           _post = enrichedPost;
+          _isBookmarked =
+              uid != null && enrichedPost.bookmarkedBy.contains(uid);
+          _isFollowed = uid != null && enrichedPost.followedBy.contains(uid);
+          _myInviteStatus = inviteStatus;
           _isLoading = false;
         });
       }
@@ -894,17 +923,129 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
           ),
           const SizedBox(height: 18),
           Text(
-            _post!.content,
+            stripRelatedVideoMarkdown(_post!.content),
             style: TextStyle(
               color: shell.onChrome.withValues(alpha: 0.88),
               fontSize: 16,
               height: 1.45,
             ),
           ),
+          if (_myInviteStatus == kThreadInviteStatusPending) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: scheme.primary.withValues(alpha: 0.28),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'You were invited to this thread',
+                    style: TextStyle(
+                      color: shell.onChrome,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: <Widget>[
+                      OutlinedButton(
+                        onPressed: _respondingInvite
+                            ? null
+                            : () => _respondInvite(false),
+                        child: const Text('Decline'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _respondingInvite
+                            ? null
+                            : () => _respondInvite(true),
+                        child: const Text('Accept'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_myInviteStatus == kThreadInviteStatusAccepted) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Joined',
+              style: TextStyle(
+                color: scheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          Builder(
+            builder: (BuildContext context) {
+              final String? relatedId = resolveRelatedVideoId(
+                linkedVideoId: _post!.linkedVideoId,
+                content: _post!.content,
+              );
+              if (relatedId == null || relatedId.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return RelatedVideoCard(videoId: relatedId);
+            },
+          ),
           if (_post!.sourceComment != null) ...[
             const SizedBox(height: 16),
             _buildSourceCommentCard(),
           ],
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              OutlinedButton.icon(
+                onPressed: _toggleFollow,
+                icon: Icon(
+                  _isFollowed
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_none_rounded,
+                  size: 18,
+                ),
+                label: Text(_isFollowed ? 'Following' : 'Follow'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _toggleSave,
+                icon: Icon(
+                  _isBookmarked
+                      ? Icons.bookmark_rounded
+                      : Icons.bookmark_border_rounded,
+                  size: 18,
+                ),
+                label: Text(_isBookmarked ? 'Saved' : 'Save'),
+              ),
+              if (canInviteToThread(
+                currentUserId:
+                    firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+                ownerId: _post!.author.uid,
+                visibility: _post!.visibility,
+              ))
+                OutlinedButton.icon(
+                  onPressed: () {
+                    ThreadInviteSheet.show(
+                      context,
+                      postId: widget.postId,
+                      postTitle: _post!.title,
+                      ownerId: _post!.author.uid,
+                      visibility: _post!.visibility,
+                    );
+                  },
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                  label: const Text('Invite'),
+                ),
+            ],
+          ),
           const SizedBox(height: 16),
           Wrap(
             spacing: 10,
@@ -927,6 +1068,69 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleFollow() async {
+    final String? uid =
+        firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _post == null) {
+      return;
+    }
+    final bool next = !_isFollowed;
+    setState(() => _isFollowed = next);
+    try {
+      await _forumService.toggleThreadFollow(widget.postId, uid);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isFollowed = !next);
+      }
+    }
+  }
+
+  Future<void> _toggleSave() async {
+    final String? uid =
+        firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _post == null) {
+      return;
+    }
+    final bool next = !_isBookmarked;
+    setState(() => _isBookmarked = next);
+    try {
+      await _forumService.togglePostBookmark(widget.postId, uid);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isBookmarked = !next);
+      }
+    }
+  }
+
+  Future<void> _respondInvite(bool accept) async {
+    setState(() => _respondingInvite = true);
+    try {
+      await _inviteService.respondToThreadInvite(
+        postId: widget.postId,
+        status: accept
+            ? kThreadInviteStatusAccepted
+            : kThreadInviteStatusDeclined,
+      );
+      if (mounted) {
+        setState(() {
+          _myInviteStatus = accept
+              ? kThreadInviteStatusAccepted
+              : kThreadInviteStatusDeclined;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update invite')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _respondingInvite = false);
+      }
+    }
   }
 
   Widget _buildCommentsSection() {

@@ -28,6 +28,11 @@ class R2MediaService {
     return url;
   }
 
+  /// Upload video thumbnail image. Returns public URL or throws.
+  Future<String> uploadThumbnail(File imageFile) async {
+    return _uploadMedia(imageFile, 'thumbnail');
+  }
+
   Future<String> _uploadMedia(File file, String type) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {

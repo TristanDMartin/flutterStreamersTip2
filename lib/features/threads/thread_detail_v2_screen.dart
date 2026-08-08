@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 
 import '../../models/forum_author.dart';
 import '../../services/discussion_author_service.dart';
+import '../../services/thread_invite_service.dart';
 import '../../utils/avatar_url_resolver.dart';
 import '../../widgets/status_aware_avatar.dart';
+import '../../widgets/threads/related_video_card.dart';
+import '../../widgets/threads/thread_invite_sheet.dart';
 import 'conversation_pulse_card.dart';
+import 'related_video.dart';
+import 'thread_invite.dart';
+import 'thread_visibility.dart';
 import 'thread_workspace_header.dart';
 import 'threads_contract.dart';
 import 'threads_models.dart';
@@ -42,6 +48,9 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
   bool _isSubmitting = false;
   bool _isFollowing = false;
   bool _isSaved = false;
+  String? _myInviteStatus;
+  bool _respondingInvite = false;
+  final ThreadInviteService _inviteService = ThreadInviteService();
   String? _errorMessage;
   String? _selectedReplyId;
   String? _replyingToReplyId;
@@ -91,6 +100,18 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
         thread: thread,
         uid: uid,
       );
+      String? inviteStatus;
+      if (uid != null &&
+          thread != null &&
+          normalizeThreadVisibility(thread.visibility) ==
+              kThreadVisibilityInviteOnly) {
+        final ThreadInviteRecord? invite =
+            await _inviteService.getThreadInvite(widget.threadId, uid);
+        inviteStatus = invite?.status;
+      }
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _thread = thread;
         _replies = replies;
@@ -100,9 +121,11 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
         _myReplyReactions = projected.myReply;
         _isFollowing = thread?.legacyFollowedBy.contains(uid ?? '') ?? false;
         _isSaved = thread?.legacyBookmarkedBy.contains(uid ?? '') ?? false;
+        _myInviteStatus = inviteStatus;
         _isLoading = false;
         if (thread == null) {
-          _errorMessage = 'Thread not found';
+          _errorMessage =
+              'This thread is unavailable, or it is invite-only and you do not have access.';
         }
       });
     } catch (e) {
@@ -355,6 +378,35 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
     }
   }
 
+  Future<void> _respondInvite(bool accept) async {
+    setState(() => _respondingInvite = true);
+    try {
+      await _inviteService.respondToThreadInvite(
+        postId: widget.threadId,
+        status: accept
+            ? kThreadInviteStatusAccepted
+            : kThreadInviteStatusDeclined,
+      );
+      if (mounted) {
+        setState(() {
+          _myInviteStatus = accept
+              ? kThreadInviteStatusAccepted
+              : kThreadInviteStatusDeclined;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update invite')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _respondingInvite = false);
+      }
+    }
+  }
+
   Future<void> _resolve() async {
     final String? uid =
         firebase_auth.FirebaseAuth.instance.currentUser?.uid;
@@ -470,6 +522,25 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
               _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
             ),
           ),
+          if (_thread != null &&
+              canInviteToThread(
+                currentUserId: uid,
+                ownerId: _thread!.authorId,
+                visibility: _thread!.visibility,
+              ))
+            IconButton(
+              tooltip: 'Invite',
+              onPressed: () {
+                ThreadInviteSheet.show(
+                  context,
+                  postId: widget.threadId,
+                  postTitle: _thread!.title,
+                  ownerId: _thread!.authorId,
+                  visibility: _thread!.visibility,
+                );
+              },
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+            ),
         ],
       ),
       body: _isLoading && thread == null
@@ -509,7 +580,7 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
                                     0,
                                   ),
                                   child: Text(
-                                    thread.body,
+                                    stripRelatedVideoMarkdown(thread.body),
                                     style: TextStyle(
                                       color: scheme.onSurface
                                           .withValues(alpha: 0.88),
@@ -517,6 +588,78 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
                                       height: 1.45,
                                     ),
                                   ),
+                                ),
+                                if (_myInviteStatus ==
+                                    kThreadInviteStatusPending)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      12,
+                                      16,
+                                      0,
+                                    ),
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: scheme.primary
+                                            .withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          const Text(
+                                            'You were invited to this thread',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Row(
+                                            children: <Widget>[
+                                              OutlinedButton(
+                                                onPressed: _respondingInvite
+                                                    ? null
+                                                    : () =>
+                                                        _respondInvite(false),
+                                                child: const Text('Decline'),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              FilledButton(
+                                                onPressed: _respondingInvite
+                                                    ? null
+                                                    : () =>
+                                                        _respondInvite(true),
+                                                child: const Text('Accept'),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                Builder(
+                                  builder: (BuildContext context) {
+                                    final String? relatedId =
+                                        resolveRelatedVideoId(
+                                      sourceVideoId: thread.sourceVideoId,
+                                      content: thread.body,
+                                    );
+                                    if (relatedId == null ||
+                                        relatedId.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                      ),
+                                      child: RelatedVideoCard(
+                                        videoId: relatedId,
+                                      ),
+                                    );
+                                  },
                                 ),
                                 ConversationPulseCard(thread: thread),
                                 const SizedBox(height: 14),

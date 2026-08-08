@@ -127,6 +127,7 @@ class ChatServiceOptimized {
       await _firestore.collection('chats').doc(chatId).update({
         'lastMessage': 'Shared a video',
         'lastTimestamp': FieldValue.serverTimestamp(),
+        'deletedFor': FieldValue.arrayRemove(<String>[currentUser.uid]),
       });
       unawaited(ProgressionService.instance.markTaskCompleted(
         currentUser.uid,
@@ -166,6 +167,7 @@ class ChatServiceOptimized {
       await _firestore.collection('chats').doc(chatId).update({
         'lastMessage': 'GIF',
         'lastTimestamp': FieldValue.serverTimestamp(),
+        'deletedFor': FieldValue.arrayRemove(<String>[currentUser.uid]),
       });
       unawaited(ProgressionService.instance.markTaskCompleted(
         currentUser.uid,
@@ -259,23 +261,6 @@ class ChatServiceOptimized {
     }
   }
 
-  /// Update message
-  Future<bool> updateMessage(
-      String chatId, String messageId, String newText) async {
-    try {
-      await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .doc(messageId)
-          .update({'text': newText});
-      return true;
-    } catch (e) {
-      // appLog('Error updating message: $e');
-      return false;
-    }
-  }
-
   /// Send a text reply with quoted-message metadata.
   Future<bool> sendReplyMessage(
     String chatId,
@@ -317,6 +302,7 @@ class ChatServiceOptimized {
       await _firestore.collection('chats').doc(chatId).update({
         'lastMessage': text,
         'lastTimestamp': FieldValue.serverTimestamp(),
+        'deletedFor': FieldValue.arrayRemove(<String>[currentUser.uid]),
       });
       return true;
     } catch (e) {
@@ -400,7 +386,102 @@ class ChatServiceOptimized {
           as Map<String, dynamic>?)?['thumbnailUrl'] as String?,
       replyVideoId:
           (data['replyTo'] as Map<String, dynamic>?)?['videoId'] as String?,
+      reactions: _mapReactions(data['reactions']),
+      edited: data['edited'] == true,
+      editedAt: _parseOptionalTimestamp(data['editedAt']),
     );
+  }
+
+  Map<String, dynamic> _mapReactions(dynamic raw) {
+    if (raw is! Map) return const <String, dynamic>{};
+    return Map<String, dynamic>.from(raw);
+  }
+
+  DateTime? _parseOptionalTimestamp(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
+
+  /// Toggle map-based reaction (shared schema with web).
+  /// Returns true when the write succeeds.
+  Future<bool> toggleReaction(
+    String chatId,
+    String messageId,
+    String emoji,
+  ) async {
+    final firebase_auth.User? currentUser = _auth.currentUser;
+    if (currentUser == null) return false;
+    if (chatId.isEmpty || messageId.isEmpty || emoji.isEmpty) return false;
+    try {
+      final DocumentReference<Map<String, dynamic>> messageRef = _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId);
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await messageRef.get();
+      if (!snap.exists) return false;
+      final Map<String, dynamic> data = snap.data() ?? <String, dynamic>{};
+      final Map<String, dynamic> reactions =
+          Map<String, dynamic>.from(data['reactions'] as Map? ?? {});
+      final dynamic existing = reactions[currentUser.uid];
+      final String? existingEmoji = existing is String
+          ? existing
+          : (existing is Map ? existing['reaction'] as String? : null);
+      if (existingEmoji == emoji) {
+        await messageRef.update(<String, dynamic>{
+          'reactions.${currentUser.uid}': FieldValue.delete(),
+        });
+      } else {
+        await messageRef.update(<String, dynamic>{
+          'reactions.${currentUser.uid}': <String, dynamic>{
+            'userId': currentUser.uid,
+            'reaction': emoji,
+            'timestamp': FieldValue.serverTimestamp(),
+          },
+        });
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Edit own text message (sets edited + editedAt like web).
+  Future<bool> editMessage(
+    String chatId,
+    String messageId,
+    String newText,
+  ) async {
+    final firebase_auth.User? currentUser = _auth.currentUser;
+    if (currentUser == null) return false;
+    final String trimmed = newText.trim();
+    if (chatId.isEmpty || messageId.isEmpty || trimmed.isEmpty) return false;
+    try {
+      final DocumentReference<Map<String, dynamic>> messageRef = _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId);
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await messageRef.get();
+      if (!snap.exists) return false;
+      final Map<String, dynamic> data = snap.data() ?? <String, dynamic>{};
+      final String senderId =
+          (data['senderId'] as String?) ?? (data['from'] as String?) ?? '';
+      if (senderId != currentUser.uid) return false;
+      final String? type = data['type'] as String? ?? data['messageType'] as String?;
+      if (type != null && type != 'text' && type != 'reply') return false;
+      await messageRef.update(<String, dynamic>{
+        'text': trimmed,
+        'edited': true,
+        'editedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Clear cache

@@ -41,5 +41,29 @@ void main() {
       );
       expect(upcoming, <DateTime>[DateTime.parse('2026-07-31T10:00:00.000Z')]);
     });
+
+    test('streamer page keeps past events within 7 days', () {
+      expect(
+        isWithinStreamerPageCalendarWindow(
+          status: 'scheduled',
+          startsAt: DateTime.parse('2026-07-28T12:00:00.000Z'),
+          eventType: 'content_post',
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
+    test('streamer page drops events older than 7 days', () {
+      expect(
+        isWithinStreamerPageCalendarWindow(
+          status: 'scheduled',
+          startsAt: DateTime.parse('2026-07-22T12:00:00.000Z'),
+          eventType: 'content_post',
+          now: now,
+        ),
+        isFalse,
+      );
+    });
   });
 }

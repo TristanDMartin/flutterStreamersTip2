@@ -40,7 +40,6 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   String? _currentUserId;
   static const String _relationshipsCollection = 'relationships';
   static const String _usersCollection = 'users';
-  static const String _notificationsCollection = 'notifications';
 
   // ======== INITIALIZATION ========
   RelationshipServiceAdvanced() {
@@ -316,11 +315,6 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
         // Update user's follower count
         await _updateUserFollowerCount(user.id, 1);
 
-        // Create follow notification
-        if (_currentUserId != null) {
-          await _createFollowNotification(_currentUserId!, user.id);
-        }
-
         debugPrint('✅ Successfully followed user: ${user.displayName}');
       } else {
         debugPrint('ℹ️ Already following user: ${user.displayName}');
@@ -361,11 +355,6 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
 
       // Update user's follower count
       await _updateUserFollowerCount(user.id, -1);
-
-      // Remove follow notification if it exists
-      if (_currentUserId != null) {
-        await _removeFollowNotification(_currentUserId!, user.id);
-      }
 
       debugPrint('✅ Successfully unfollowed user: ${user.displayName}');
     } catch (e) {
@@ -437,53 +426,6 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
       });
     } catch (e) {
       debugPrint('❌ Error updating following count: $e');
-    }
-  }
-
-  /// Create follow notification
-  Future<void> _createFollowNotification(
-      String followerId, String followingId) async {
-    try {
-      // Get follower info
-      final followerDoc =
-          await _db.collection(_usersCollection).doc(followerId).get();
-      final followerData = followerDoc.data();
-
-      if (followerData != null) {
-        await _db.collection(_notificationsCollection).add({
-          'userId': followingId,
-          'type': 'follow',
-          'fromUserId': followerId,
-          'fromUserName': followerData['displayName'] ?? 'Someone',
-          'message':
-              '${followerData['displayName'] ?? 'Someone'} started following you',
-          'timestamp': FieldValue.serverTimestamp(),
-          'read': false,
-        });
-        debugPrint('✅ Created follow notification for user $followingId');
-      }
-    } catch (e) {
-      debugPrint('❌ Error creating follow notification: $e');
-    }
-  }
-
-  /// Remove follow notification
-  Future<void> _removeFollowNotification(
-      String followerId, String followingId) async {
-    try {
-      final notificationQuery = await _db
-          .collection(_notificationsCollection)
-          .where('userId', isEqualTo: followingId)
-          .where('type', isEqualTo: 'follow')
-          .where('fromUserId', isEqualTo: followerId)
-          .get();
-
-      for (final doc in notificationQuery.docs) {
-        await doc.reference.delete();
-      }
-      debugPrint('✅ Removed follow notification for user $followingId');
-    } catch (e) {
-      debugPrint('❌ Error removing follow notification: $e');
     }
   }
 

@@ -23,6 +23,11 @@ final unreadMessagesProvider = StreamProvider<int>((ref) {
 
     for (final chatDoc in chatsSnapshot.docs) {
       final chatData = chatDoc.data();
+      final List<dynamic> deletedRaw =
+          (chatData['deletedFor'] as List<dynamic>?) ?? const <dynamic>[];
+      if (deletedRaw.map((dynamic e) => e.toString()).contains(currentUser.uid)) {
+        continue;
+      }
       // Get unread count for this user from chat document
       final unreadField = 'unreadCount_${currentUser.uid}';
       final dynamic unreadCount = chatData[unreadField] ?? 0;

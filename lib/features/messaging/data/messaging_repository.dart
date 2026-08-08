@@ -61,23 +61,40 @@ class MessagingRepository {
     required String currentUserId,
     required String otherUserId,
   }) async {
-    final String chatId =
+    final String canonicalId =
         MessagingIds.directChatId(currentUserId, otherUserId);
     final List<String> participants =
         MessagingIds.sortedParticipantIds(currentUserId, otherUserId);
-    final DocumentReference<Map<String, dynamic>> chatRef =
-        _firestore.collection(MessagingIds.chatsCollection).doc(chatId);
+    final DocumentReference<Map<String, dynamic>> canonicalRef =
+        _firestore.collection(MessagingIds.chatsCollection).doc(canonicalId);
+
+    // Prefer an existing live direct chat (legacy auto-ID or canonical).
+    // Do not hide legacy history behind an empty dm_* document.
+    final String? existingId = await _findExistingDirectChatId(
+      currentUserId: currentUserId,
+      otherUserId: otherUserId,
+      preferredCanonicalId: canonicalId,
+    );
+    if (existingId != null && existingId.isNotEmpty) {
+      if (existingId != canonicalId) {
+        unawaited(_writeAliasOnly(
+          legacyChatId: existingId,
+          canonicalChatId: canonicalId,
+        ));
+      }
+      return existingId;
+    }
 
     await _firestore.runTransaction((Transaction transaction) async {
       final DocumentSnapshot<Map<String, dynamic>> existing =
-          await transaction.get(chatRef);
+          await transaction.get(canonicalRef);
       if (existing.exists) {
         return;
       }
-      transaction.set(chatRef, <String, dynamic>{
+      transaction.set(canonicalRef, <String, dynamic>{
         'participants': participants,
         'participantIds': participants,
-        'directPairKey': chatId,
+        'directPairKey': canonicalId,
         'lastMessage': '',
         'lastTimestamp': FieldValue.serverTimestamp(),
         'chatType': 'direct',
@@ -94,59 +111,96 @@ class MessagingRepository {
       });
     });
 
-    unawaited(_aliasLegacyDuplicates(
-      currentUserId: currentUserId,
-      otherUserId: otherUserId,
-      canonicalChatId: chatId,
-    ));
-
-    return chatId;
+    return canonicalId;
   }
 
-  Future<void> _aliasLegacyDuplicates({
+  Future<String?> _findExistingDirectChatId({
     required String currentUserId,
     required String otherUserId,
+    required String preferredCanonicalId,
+  }) async {
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+        .collection(MessagingIds.chatsCollection)
+        .where('participants', arrayContains: currentUserId)
+        .get();
+    QueryDocumentSnapshot<Map<String, dynamic>>? bestDoc;
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+        in snapshot.docs) {
+      final Map<String, dynamic> data = doc.data();
+      final List<dynamic> participants =
+          data['participants'] as List<dynamic>? ?? <dynamic>[];
+      if (participants.length != 2 || !participants.contains(otherUserId)) {
+        continue;
+      }
+      if (bestDoc == null) {
+        bestDoc = doc;
+        continue;
+      }
+      final Map<String, dynamic> bestData = bestDoc.data();
+      final String bestMessage = (bestData['lastMessage'] as String?) ?? '';
+      final String candidateMessage = (data['lastMessage'] as String?) ?? '';
+      final DateTime? bestTs = _readTimestamp(bestData['lastTimestamp']);
+      final DateTime? candidateTs = _readTimestamp(data['lastTimestamp']);
+      // Prefer threads with history, then newer activity, then canonical id.
+      if (candidateMessage.isNotEmpty && bestMessage.isEmpty) {
+        bestDoc = doc;
+      } else if (candidateMessage.isEmpty && bestMessage.isNotEmpty) {
+        continue;
+      } else if (candidateTs != null &&
+          (bestTs == null || candidateTs.isAfter(bestTs))) {
+        bestDoc = doc;
+      } else if (doc.id == preferredCanonicalId &&
+          bestDoc.id != preferredCanonicalId &&
+          candidateMessage.isNotEmpty == bestMessage.isNotEmpty) {
+        bestDoc = doc;
+      }
+    }
+    if (bestDoc == null) {
+      return null;
+    }
+    if (bestDoc.data()['supersededBy'] != null) {
+      unawaited(_clearSupersededBy(bestDoc.id));
+    }
+    return bestDoc.id;
+  }
+
+  Future<void> _clearSupersededBy(String chatId) async {
+    try {
+      await _firestore
+          .collection(MessagingIds.chatsCollection)
+          .doc(chatId)
+          .update(<String, dynamic>{
+        'supersededBy': FieldValue.delete(),
+      });
+    } catch (_) {
+      // Best-effort recovery for Phase 1 supersede mistakes.
+    }
+  }
+
+  /// Deep-link compatibility only — does not hide the legacy inbox row.
+  Future<void> _writeAliasOnly({
+    required String legacyChatId,
     required String canonicalChatId,
   }) async {
+    if (legacyChatId.isEmpty ||
+        canonicalChatId.isEmpty ||
+        legacyChatId == canonicalChatId) {
+      return;
+    }
     try {
-      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
-          .collection(MessagingIds.chatsCollection)
-          .where('participants', arrayContains: currentUserId)
-          .get();
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
-          in snapshot.docs) {
-        if (doc.id == canonicalChatId) {
-          continue;
-        }
-        final List<dynamic> participants =
-            doc.data()['participants'] as List<dynamic>? ?? <dynamic>[];
-        if (participants.length == 2 &&
-            participants.contains(otherUserId)) {
-          await _firestore
-              .collection(MessagingIds.chatAliasCollection)
-              .doc(doc.id)
-              .set(
-            <String, dynamic>{
-              'canonicalChatId': canonicalChatId,
-              'migratedAt': FieldValue.serverTimestamp(),
-              'reason': 'duplicate_direct_chat',
-            },
-            SetOptions(merge: true),
-          );
-          await _firestore
-              .collection(MessagingIds.chatsCollection)
-              .doc(doc.id)
-              .set(
-            <String, dynamic>{
-              'supersededBy': canonicalChatId,
-              'updatedAt': FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true),
-          );
-        }
-      }
+      await _firestore
+          .collection(MessagingIds.chatAliasCollection)
+          .doc(legacyChatId)
+          .set(
+        <String, dynamic>{
+          'canonicalChatId': canonicalChatId,
+          'migratedAt': FieldValue.serverTimestamp(),
+          'reason': 'duplicate_direct_chat',
+        },
+        SetOptions(merge: true),
+      );
     } catch (_) {
-      // Alias write is best-effort and must not block chat open.
+      // Alias write is best-effort.
     }
   }
 
@@ -238,6 +292,8 @@ class MessagingRepository {
         'lastMessageSenderId': senderId,
         'lastMessageType': 'text',
         'updatedAt': FieldValue.serverTimestamp(),
+        // Re-show conversation if this user soft-hid it from Inbox.
+        'deletedFor': FieldValue.arrayRemove(<String>[senderId]),
       });
     } catch (_) {
       // Preview update is best-effort; CF also refreshes summary.
@@ -382,6 +438,83 @@ class MessagingRepository {
       'deletedAt': FieldValue.serverTimestamp(),
       'deletedBy': userId,
     });
+    // Optimistic preview repair — CF onMessageUpdate is canonical.
+    unawaited(_rebuildChatPreviewAfterUnsend(
+      chatId: chatId,
+      unsentMessageId: messageId,
+    ));
+  }
+
+  Future<void> _rebuildChatPreviewAfterUnsend({
+    required String chatId,
+    required String unsentMessageId,
+  }) async {
+    try {
+      final DocumentReference<Map<String, dynamic>> chatRef = _firestore
+          .collection(MessagingIds.chatsCollection)
+          .doc(chatId);
+      final DocumentSnapshot<Map<String, dynamic>> chatSnap =
+          await chatRef.get();
+      if (!chatSnap.exists) {
+        return;
+      }
+      final Map<String, dynamic> chatData =
+          chatSnap.data() ?? <String, dynamic>{};
+      final String lastMessageId =
+          (chatData['lastMessageId'] as String?) ?? '';
+      if (lastMessageId.isNotEmpty && lastMessageId != unsentMessageId) {
+        return;
+      }
+      final QuerySnapshot<Map<String, dynamic>> messagesSnap = await chatRef
+          .collection(MessagingIds.messagesCollection)
+          .orderBy('timestamp', descending: true)
+          .limit(40)
+          .get();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in messagesSnap.docs) {
+        final Map<String, dynamic> data = doc.data();
+        if (data['isUnsent'] == true ||
+            data['deleted'] == true ||
+            data['deletedForEveryone'] == true) {
+          continue;
+        }
+        final String text =
+            (data['text'] as String?)?.trim() ?? '';
+        final String preview = text.isNotEmpty
+            ? text
+            : (data['gifUrl'] != null
+                ? 'Sent a GIF'
+                : ((data['type'] == 'video_share' ||
+                        data['messageType'] == 'video_share')
+                    ? 'Shared a video'
+                    : 'Message'));
+        final String senderId = (data['senderId'] as String?) ??
+            (data['from'] as String?) ??
+            '';
+        await chatRef.update(<String, dynamic>{
+          'lastMessage': preview,
+          'lastMessageId': doc.id,
+          'lastMessageSenderId': senderId,
+          'lastMessageType':
+              (data['type'] as String?) ??
+                  (data['messageType'] as String?) ??
+                  'text',
+          'lastTimestamp':
+              data['timestamp'] ?? FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+      await chatRef.update(<String, dynamic>{
+        'lastMessage': '',
+        'lastMessageId': '',
+        'lastMessageSenderId': '',
+        'lastMessageType': 'text',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // CF onMessageUpdate repairs if this fails.
+    }
   }
 
   Future<void> setTypingStatus({

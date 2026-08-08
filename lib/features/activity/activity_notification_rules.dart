@@ -27,6 +27,11 @@ const Set<String> kGlobalSystemNotificationTypes = <String>{
   'adminbroadcast',
   'broadcast',
   'message',
+  'new_message',
+  'newmessage',
+  'dm',
+  'direct_message',
+  'directmessage',
   'newevent',
   'new_event',
   'retention_prompt',
@@ -51,6 +56,8 @@ ActivityNotificationType activityNotificationTypeFromString(String? raw) {
     case 'follows':
     case 'collab_invite':
     case 'collabinvite':
+    case 'thread_invite':
+    case 'threadinvite':
       return ActivityNotificationType.follow;
     case 'like_video':
     case 'like_post':
@@ -105,6 +112,15 @@ ActivityNotificationType activityNotificationTypeFromString(String? raw) {
     case 'tippy_coach':
     case 'tippycoach':
     case 'message':
+    case 'new_message':
+    case 'newmessage':
+    case 'dm':
+    case 'direct_message':
+    case 'directmessage':
+    case 'calendar_event_reminder':
+    case 'calendareventreminder':
+    case 'calendar_event_rescheduled':
+    case 'calendar_event_cancelled':
     case 'retention_prompt':
     case 'retention':
     case 'session_summary':
@@ -131,7 +147,28 @@ ActivityNotificationType activityNotificationTypeFromString(String? raw) {
 }
 
 /// Website hides these from the Activity feed and unread badge.
-bool shouldHideFromActivityFeed(String? type) {
+bool shouldHideFromActivityFeed(
+  String? type, {
+  String? actionType,
+  String? chatId,
+  String? messageId,
+  String? actionUrl,
+}) {
+  if (isGenericVideoPublishActivityType(type)) {
+    return true;
+  }
+  if (isMessageNotificationType(type) || isMessageNotificationType(actionType)) {
+    return true;
+  }
+  if (shouldHideDmFromActivity(
+    type: type,
+    actionType: actionType,
+    chatId: chatId,
+    messageId: messageId,
+    actionUrl: actionUrl,
+  )) {
+    return true;
+  }
   if (!kHideContentPlanExpiredInActivity) {
     return false;
   }
@@ -140,9 +177,57 @@ bool shouldHideFromActivityFeed(String? type) {
       normalized == 'contentplanexpired';
 }
 
+/// Follower fan-out for video publish is feed content, not Activity.
+bool isGenericVideoPublishActivityType(String? raw) {
+  final String normalized = (raw ?? '').trim().toLowerCase();
+  return normalized == 'newvideo' ||
+      normalized == 'new_video' ||
+      normalized == 'video_posted' ||
+      normalized == 'video_published' ||
+      normalized == 'creator_uploaded_video' ||
+      normalized == 'creator_posted' ||
+      normalized == 'video';
+}
+
+/// Personal DMs stay in Inbox — keep admin_broadcast in Activity Global.
+bool shouldHideDmFromActivity({
+  String? type,
+  String? actionType,
+  String? chatId,
+  String? messageId,
+  String? actionUrl,
+}) {
+  if (!isActivityMessageNotification(
+    type: type,
+    actionType: actionType,
+    chatId: chatId,
+    messageId: messageId,
+    actionUrl: actionUrl,
+  )) {
+    return false;
+  }
+  final String rawType = (type ?? '').trim().toLowerCase();
+  if (rawType == 'admin_broadcast' || rawType == 'adminbroadcast') {
+    return false;
+  }
+  return true;
+}
+
 /// Website badge filters these types out of the unread count.
-bool shouldHideFromActivityUnreadBadge(String? type) {
-  return shouldHideFromActivityFeed(type);
+bool shouldHideFromActivityUnreadBadge(
+  String? type, {
+  String? actionType,
+  String? chatId,
+  String? messageId,
+  String? actionUrl,
+}) {
+  return shouldHideFromActivityFeed(
+    type,
+    actionType: actionType,
+    chatId: chatId,
+    messageId: messageId,
+    actionUrl: actionUrl,
+  );
 }
 
 bool isTippyCoachNotificationType(String? type) {
@@ -212,6 +297,61 @@ bool isSyntheticTestAccountId(String? accountId) {
       id == 'test_user_5';
 }
 
+const Set<String> kMessageNotificationTypes = <String>{
+  'message',
+  'new_message',
+  'newmessage',
+  'dm',
+  'direct_message',
+  'directmessage',
+};
+
+bool isMessageNotificationType(String? raw) {
+  final String normalized = (raw ?? '').trim().toLowerCase();
+  return kMessageNotificationTypes.contains(normalized);
+}
+
+/// DM Activity rows: typed message, open_chat, or chat-linked docs.
+bool isActivityMessageNotification({
+  String? type,
+  String? actionType,
+  String? chatId,
+  String? messageId,
+  String? actionUrl,
+}) {
+  if (isMessageNotificationType(type) || isMessageNotificationType(actionType)) {
+    return true;
+  }
+  final String openChat = (actionType ?? '').trim().toLowerCase();
+  if (openChat == 'open_chat') {
+    return true;
+  }
+  if (isTippyCoachNotificationType(type) ||
+      isContentPlanNotificationType(type) ||
+      isTippyCoachNotificationType(actionType) ||
+      isContentPlanNotificationType(actionType)) {
+    return false;
+  }
+  final String normalizedType = (type ?? '').trim().toLowerCase();
+  if (normalizedType == 'follow' ||
+      normalizedType == 'like' ||
+      normalizedType == 'comment' ||
+      normalizedType == 'mention' ||
+      normalizedType == 'collab_invite') {
+    return false;
+  }
+  if ((chatId ?? '').trim().isNotEmpty) {
+    return true;
+  }
+  if ((messageId ?? '').trim().isNotEmpty) {
+    return true;
+  }
+  final String url = (actionUrl ?? '').toLowerCase();
+  return url.contains('/messages/') ||
+      url.contains('tab=messages') ||
+      url.contains('chatid=');
+}
+
 DateTime? _dateFromDynamic(Object? value) {
   if (value == null) {
     return null;
@@ -258,6 +398,16 @@ String activityNotificationDisplayMessage(Map<String, dynamic> data) {
     data['commentText'],
     data['messagePreview'],
   ]);
+  if (isActivityMessageNotification(
+    type: type,
+    actionType: data['actionType']?.toString(),
+    chatId: data['chatId']?.toString(),
+    messageId: data['messageId']?.toString(),
+    actionUrl: data['actionUrl']?.toString(),
+  )) {
+    // Keep preview only — row UI prefixes "sent you a message".
+    return body;
+  }
   if (isTippyCoachNotificationType(type) ||
       isContentPlanNotificationType(type) ||
       isGlobalSystemNotificationType(type)) {

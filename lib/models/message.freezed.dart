@@ -40,6 +40,12 @@ mixin _$Message implements DiagnosticableTreeMixin {
   String? get replyVideoId;
   bool get deletedForEveryone;
 
+  /// Map of uid → { userId, reaction, timestamp } (web/Flutter shared schema).
+  Map<String, dynamic> get reactions;
+  bool get edited;
+  @TimestampConverter()
+  DateTime? get editedAt;
+
   /// Create a copy of Message
   /// with the given fields replaced by the non-null parameter values.
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -77,7 +83,10 @@ mixin _$Message implements DiagnosticableTreeMixin {
       ..add(DiagnosticsProperty('replyPreviewText', replyPreviewText))
       ..add(DiagnosticsProperty('replyThumbnailUrl', replyThumbnailUrl))
       ..add(DiagnosticsProperty('replyVideoId', replyVideoId))
-      ..add(DiagnosticsProperty('deletedForEveryone', deletedForEveryone));
+      ..add(DiagnosticsProperty('deletedForEveryone', deletedForEveryone))
+      ..add(DiagnosticsProperty('reactions', reactions))
+      ..add(DiagnosticsProperty('edited', edited))
+      ..add(DiagnosticsProperty('editedAt', editedAt));
   }
 
   @override
@@ -123,7 +132,11 @@ mixin _$Message implements DiagnosticableTreeMixin {
             (identical(other.replyVideoId, replyVideoId) ||
                 other.replyVideoId == replyVideoId) &&
             (identical(other.deletedForEveryone, deletedForEveryone) ||
-                other.deletedForEveryone == deletedForEveryone));
+                other.deletedForEveryone == deletedForEveryone) &&
+            const DeepCollectionEquality().equals(other.reactions, reactions) &&
+            (identical(other.edited, edited) || other.edited == edited) &&
+            (identical(other.editedAt, editedAt) ||
+                other.editedAt == editedAt));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -153,12 +166,15 @@ mixin _$Message implements DiagnosticableTreeMixin {
         replyPreviewText,
         replyThumbnailUrl,
         replyVideoId,
-        deletedForEveryone
+        deletedForEveryone,
+        const DeepCollectionEquality().hash(reactions),
+        edited,
+        editedAt
       ]);
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle, replyToMessageId: $replyToMessageId, replyToSenderId: $replyToSenderId, replyToSenderName: $replyToSenderName, replyToType: $replyToType, replyPreviewText: $replyPreviewText, replyThumbnailUrl: $replyThumbnailUrl, replyVideoId: $replyVideoId, deletedForEveryone: $deletedForEveryone)';
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle, replyToMessageId: $replyToMessageId, replyToSenderId: $replyToSenderId, replyToSenderName: $replyToSenderName, replyToType: $replyToType, replyPreviewText: $replyPreviewText, replyThumbnailUrl: $replyThumbnailUrl, replyVideoId: $replyVideoId, deletedForEveryone: $deletedForEveryone, reactions: $reactions, edited: $edited, editedAt: $editedAt)';
   }
 }
 
@@ -191,7 +207,10 @@ abstract mixin class $MessageCopyWith<$Res> {
       String? replyPreviewText,
       String? replyThumbnailUrl,
       String? replyVideoId,
-      bool deletedForEveryone});
+      bool deletedForEveryone,
+      Map<String, dynamic> reactions,
+      bool edited,
+      @TimestampConverter() DateTime? editedAt});
 }
 
 /// @nodoc
@@ -230,6 +249,9 @@ class _$MessageCopyWithImpl<$Res> implements $MessageCopyWith<$Res> {
     Object? replyThumbnailUrl = freezed,
     Object? replyVideoId = freezed,
     Object? deletedForEveryone = null,
+    Object? reactions = null,
+    Object? edited = null,
+    Object? editedAt = freezed,
   }) {
     return _then(_self.copyWith(
       id: freezed == id
@@ -328,6 +350,18 @@ class _$MessageCopyWithImpl<$Res> implements $MessageCopyWith<$Res> {
           ? _self.deletedForEveryone
           : deletedForEveryone // ignore: cast_nullable_to_non_nullable
               as bool,
+      reactions: null == reactions
+          ? _self.reactions
+          : reactions // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>,
+      edited: null == edited
+          ? _self.edited
+          : edited // ignore: cast_nullable_to_non_nullable
+              as bool,
+      editedAt: freezed == editedAt
+          ? _self.editedAt
+          : editedAt // ignore: cast_nullable_to_non_nullable
+              as DateTime?,
     ));
   }
 }
@@ -447,7 +481,10 @@ extension MessagePatterns on Message {
             String? replyPreviewText,
             String? replyThumbnailUrl,
             String? replyVideoId,
-            bool deletedForEveryone)?
+            bool deletedForEveryone,
+            Map<String, dynamic> reactions,
+            bool edited,
+            @TimestampConverter() DateTime? editedAt)?
         $default, {
     required TResult orElse(),
   }) {
@@ -478,7 +515,10 @@ extension MessagePatterns on Message {
             _that.replyPreviewText,
             _that.replyThumbnailUrl,
             _that.replyVideoId,
-            _that.deletedForEveryone);
+            _that.deletedForEveryone,
+            _that.reactions,
+            _that.edited,
+            _that.editedAt);
       case _:
         return orElse();
     }
@@ -523,7 +563,10 @@ extension MessagePatterns on Message {
             String? replyPreviewText,
             String? replyThumbnailUrl,
             String? replyVideoId,
-            bool deletedForEveryone)
+            bool deletedForEveryone,
+            Map<String, dynamic> reactions,
+            bool edited,
+            @TimestampConverter() DateTime? editedAt)
         $default,
   ) {
     final _that = this;
@@ -553,7 +596,10 @@ extension MessagePatterns on Message {
             _that.replyPreviewText,
             _that.replyThumbnailUrl,
             _that.replyVideoId,
-            _that.deletedForEveryone);
+            _that.deletedForEveryone,
+            _that.reactions,
+            _that.edited,
+            _that.editedAt);
     }
   }
 
@@ -595,7 +641,10 @@ extension MessagePatterns on Message {
             String? replyPreviewText,
             String? replyThumbnailUrl,
             String? replyVideoId,
-            bool deletedForEveryone)?
+            bool deletedForEveryone,
+            Map<String, dynamic> reactions,
+            bool edited,
+            @TimestampConverter() DateTime? editedAt)?
         $default,
   ) {
     final _that = this;
@@ -625,7 +674,10 @@ extension MessagePatterns on Message {
             _that.replyPreviewText,
             _that.replyThumbnailUrl,
             _that.replyVideoId,
-            _that.deletedForEveryone);
+            _that.deletedForEveryone,
+            _that.reactions,
+            _that.edited,
+            _that.editedAt);
       case _:
         return null;
     }
@@ -659,9 +711,13 @@ class _Message with DiagnosticableTreeMixin implements Message {
       this.replyPreviewText,
       this.replyThumbnailUrl,
       this.replyVideoId,
-      this.deletedForEveryone = false})
+      this.deletedForEveryone = false,
+      final Map<String, dynamic> reactions = const <String, dynamic>{},
+      this.edited = false,
+      @TimestampConverter() this.editedAt})
       : _recipients = recipients,
-        _readBy = readBy;
+        _readBy = readBy,
+        _reactions = reactions;
   factory _Message.fromJson(Map<String, dynamic> json) =>
       _$MessageFromJson(json);
 
@@ -737,6 +793,25 @@ class _Message with DiagnosticableTreeMixin implements Message {
   @JsonKey()
   final bool deletedForEveryone;
 
+  /// Map of uid → { userId, reaction, timestamp } (web/Flutter shared schema).
+  final Map<String, dynamic> _reactions;
+
+  /// Map of uid → { userId, reaction, timestamp } (web/Flutter shared schema).
+  @override
+  @JsonKey()
+  Map<String, dynamic> get reactions {
+    if (_reactions is EqualUnmodifiableMapView) return _reactions;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(_reactions);
+  }
+
+  @override
+  @JsonKey()
+  final bool edited;
+  @override
+  @TimestampConverter()
+  final DateTime? editedAt;
+
   /// Create a copy of Message
   /// with the given fields replaced by the non-null parameter values.
   @override
@@ -779,7 +854,10 @@ class _Message with DiagnosticableTreeMixin implements Message {
       ..add(DiagnosticsProperty('replyPreviewText', replyPreviewText))
       ..add(DiagnosticsProperty('replyThumbnailUrl', replyThumbnailUrl))
       ..add(DiagnosticsProperty('replyVideoId', replyVideoId))
-      ..add(DiagnosticsProperty('deletedForEveryone', deletedForEveryone));
+      ..add(DiagnosticsProperty('deletedForEveryone', deletedForEveryone))
+      ..add(DiagnosticsProperty('reactions', reactions))
+      ..add(DiagnosticsProperty('edited', edited))
+      ..add(DiagnosticsProperty('editedAt', editedAt));
   }
 
   @override
@@ -825,7 +903,12 @@ class _Message with DiagnosticableTreeMixin implements Message {
             (identical(other.replyVideoId, replyVideoId) ||
                 other.replyVideoId == replyVideoId) &&
             (identical(other.deletedForEveryone, deletedForEveryone) ||
-                other.deletedForEveryone == deletedForEveryone));
+                other.deletedForEveryone == deletedForEveryone) &&
+            const DeepCollectionEquality()
+                .equals(other._reactions, _reactions) &&
+            (identical(other.edited, edited) || other.edited == edited) &&
+            (identical(other.editedAt, editedAt) ||
+                other.editedAt == editedAt));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -855,12 +938,15 @@ class _Message with DiagnosticableTreeMixin implements Message {
         replyPreviewText,
         replyThumbnailUrl,
         replyVideoId,
-        deletedForEveryone
+        deletedForEveryone,
+        const DeepCollectionEquality().hash(_reactions),
+        edited,
+        editedAt
       ]);
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle, replyToMessageId: $replyToMessageId, replyToSenderId: $replyToSenderId, replyToSenderName: $replyToSenderName, replyToType: $replyToType, replyPreviewText: $replyPreviewText, replyThumbnailUrl: $replyThumbnailUrl, replyVideoId: $replyVideoId, deletedForEveryone: $deletedForEveryone)';
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle, replyToMessageId: $replyToMessageId, replyToSenderId: $replyToSenderId, replyToSenderName: $replyToSenderName, replyToType: $replyToType, replyPreviewText: $replyPreviewText, replyThumbnailUrl: $replyThumbnailUrl, replyVideoId: $replyVideoId, deletedForEveryone: $deletedForEveryone, reactions: $reactions, edited: $edited, editedAt: $editedAt)';
   }
 }
 
@@ -894,7 +980,10 @@ abstract mixin class _$MessageCopyWith<$Res> implements $MessageCopyWith<$Res> {
       String? replyPreviewText,
       String? replyThumbnailUrl,
       String? replyVideoId,
-      bool deletedForEveryone});
+      bool deletedForEveryone,
+      Map<String, dynamic> reactions,
+      bool edited,
+      @TimestampConverter() DateTime? editedAt});
 }
 
 /// @nodoc
@@ -933,6 +1022,9 @@ class __$MessageCopyWithImpl<$Res> implements _$MessageCopyWith<$Res> {
     Object? replyThumbnailUrl = freezed,
     Object? replyVideoId = freezed,
     Object? deletedForEveryone = null,
+    Object? reactions = null,
+    Object? edited = null,
+    Object? editedAt = freezed,
   }) {
     return _then(_Message(
       id: freezed == id
@@ -1031,6 +1123,18 @@ class __$MessageCopyWithImpl<$Res> implements _$MessageCopyWith<$Res> {
           ? _self.deletedForEveryone
           : deletedForEveryone // ignore: cast_nullable_to_non_nullable
               as bool,
+      reactions: null == reactions
+          ? _self._reactions
+          : reactions // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>,
+      edited: null == edited
+          ? _self.edited
+          : edited // ignore: cast_nullable_to_non_nullable
+              as bool,
+      editedAt: freezed == editedAt
+          ? _self.editedAt
+          : editedAt // ignore: cast_nullable_to_non_nullable
+              as DateTime?,
     ));
   }
 }

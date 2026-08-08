@@ -390,20 +390,30 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     Color accent,
   ) {
     final ActivityNotification n = widget.notification;
+    final bool isMessage = isActivityMessageNotification(
+      type: n.actionType,
+      actionType: n.actionType,
+      chatId: n.chatId,
+      actionUrl: n.actionUrl,
+    );
     final bool isSystemBroadcast =
-        n.type == ActivityNotificationType.adminBroadcast;
+        n.type == ActivityNotificationType.adminBroadcast && !isMessage;
     final String fullText = n.commentText?.trim() ?? '';
     final List<String> lines = fullText
         .split('\n')
         .map((String line) => line.trim())
         .where((String line) => line.isNotEmpty)
         .toList(growable: false);
-    final String headline = isSystemBroadcast && lines.isNotEmpty
-        ? lines.first
-        : _getNotificationMessage();
-    final String? preview = isSystemBroadcast
-        ? (lines.length > 1 ? lines.sublist(1).join(' ') : null)
-        : n.commentText?.trim();
+    final String headline = isMessage
+        ? 'sent you a message'
+        : (isSystemBroadcast && lines.isNotEmpty
+            ? lines.first
+            : _getNotificationMessage());
+    final String? preview = isMessage
+        ? (fullText.isNotEmpty ? fullText : null)
+        : (isSystemBroadcast
+            ? (lines.length > 1 ? lines.sublist(1).join(' ') : null)
+            : n.commentText?.trim());
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -701,6 +711,14 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           return 'is live now! 🔴';
         }
       case ActivityNotificationType.adminBroadcast:
+        if (isActivityMessageNotification(
+          type: widget.notification.actionType,
+          actionType: widget.notification.actionType,
+          chatId: widget.notification.chatId,
+          actionUrl: widget.notification.actionUrl,
+        )) {
+          return 'sent you a message';
+        }
         if (widget.notification.commentText != null &&
             widget.notification.commentText!.trim().isNotEmpty) {
           return widget.notification.commentText!;

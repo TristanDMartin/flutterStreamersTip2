@@ -281,9 +281,9 @@ class DraftSharingService {
         // Don't fail the entire operation if some chats fail, but log it
       }
 
-      // 7. Create notification entries for each verified recipient
-      await _createShareNotifications(
-          sharedDraftId, verifiedConnectionIds, message);
+      // 7. Activity notifications are server-only — Cloud Function
+      // onSharedDraftCreate reads shared_drafts/{sharedDraftId}.recipients
+      // and writes notifications/{recipientId}/items for each.
 
       debugPrint(
           '✅ Draft shared successfully with ${verifiedConnectionIds.length} verified connections');
@@ -526,60 +526,6 @@ class DraftSharingService {
     } catch (e) {
       debugPrint('❌ Error requesting video file: $e');
       return null;
-    }
-  }
-
-  /// Create notifications for shared draft recipients
-  Future<void> _createShareNotifications(
-    String sharedDraftId,
-    List<String> recipientIds,
-    String? message,
-  ) async {
-    try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return;
-
-      // Validate IDs
-      if (sharedDraftId.isEmpty) {
-        debugPrint('❌ Shared draft ID is empty for notifications');
-        return;
-      }
-
-      final batch = _firestore.batch();
-
-      for (final recipientId in recipientIds) {
-        // Skip empty recipient IDs
-        if (recipientId.isEmpty) {
-          debugPrint('⚠️ Skipping empty recipient ID');
-          continue;
-        }
-
-        final notificationRef = _firestore
-            .collection('notifications')
-            .doc(recipientId)
-            .collection('items')
-            .doc();
-
-        batch.set(notificationRef, {
-          'id': notificationRef.id,
-          'type': 'shared_draft',
-          'from': currentUser.uid,
-          'fromUsername': currentUser.displayName ?? 'Unknown',
-          'fromAvatarUrl': currentUser.photoURL ?? '',
-          'sharedDraftId': sharedDraftId,
-          'message': message ??
-              '${currentUser.displayName ?? 'Someone'} shared a draft with you',
-          'status': 'pending',
-          'createdAt': FieldValue.serverTimestamp(),
-          'readAt': null,
-        });
-      }
-
-      await batch.commit();
-      debugPrint(
-          '✅ Created notifications for ${recipientIds.length} recipients');
-    } catch (e) {
-      debugPrint('❌ Error creating share notifications: $e');
     }
   }
 

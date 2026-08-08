@@ -13,8 +13,11 @@ import '../models/video_thumbnails.dart';
 import '../services/chat_service.dart';
 import '../services/chat_service_optimized.dart';
 import '../services/connections_service.dart';
+import '../models/connection_lite.dart';
+import '../services/follows_service.dart';
 import '../services/enhanced_share_service.dart';
 import '../services/public_profile_firestore.dart';
+import '../models/user_model.dart' as user_model;
 import '../utils/swallow_non_fatal.dart';
 import '../services/report_service.dart';
 import '../services/video_actions_service.dart';
@@ -161,46 +164,119 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
     }
 
     try {
-      final QuerySnapshot<Map<String, dynamic>> snapshot =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(currentUser.uid)
-              .collection('connections')
-              .limit(24)
-              .get();
+      final Map<String, _ShareConnection> byId = <String, _ShareConnection>{};
 
-      final List<_ShareConnection> directConnections =
-          snapshot.docs.map(_ShareConnection.fromDocument).toList();
-
-      final List<_ShareConnection> resolvedConnections = <_ShareConnection>[];
-      for (final _ShareConnection connection in directConnections) {
-        if (connection.hasDisplayData) {
-          resolvedConnections.add(connection);
-          continue;
+      // 1) Canonical follows graph (mutual + following + followers)
+      try {
+        final NetworkTabUsers tabs =
+            await FollowsService().loadNetworkTabUsers();
+        void addUsers(List<user_model.User> users, {required bool prefer}) {
+          for (final user_model.User u in users) {
+            if (u.id.isEmpty || u.id == currentUser.uid) continue;
+            if (!prefer && byId.containsKey(u.id)) continue;
+            byId[u.id] = _ShareConnection(
+              userId: u.id,
+              username: u.username,
+              displayName: u.displayName.isNotEmpty ? u.displayName : u.username,
+              avatarUrl: u.avatarURL ?? '',
+            );
+          }
         }
-        try {
-          final Map<String, dynamic>? userData =
-              await PublicProfileFirestore.instance
-                  .getProfileMap(connection.userId);
-          resolvedConnections.add(connection.mergeUserData(userData));
-        } catch (_) {
-          resolvedConnections.add(connection);
+
+        addUsers(tabs.connections, prefer: true);
+        addUsers(tabs.following, prefer: false);
+        addUsers(tabs.followers, prefer: false);
+      } catch (e) {
+        debugPrint('⚠️ EnhancedShareSheet: FollowsService load failed: $e');
+      }
+
+      // 2) Existing DM peers (message contacts)
+      try {
+        final QuerySnapshot<Map<String, dynamic>> chats = await FirebaseFirestore
+            .instance
+            .collection('chats')
+            .where('participants', arrayContains: currentUser.uid)
+            .limit(40)
+            .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> chat
+            in chats.docs) {
+          final Map<String, dynamic> data = chat.data();
+          if (data['chatType'] == 'support' || data['isSystem'] == true) {
+            continue;
+          }
+          final List<dynamic> raw =
+              (data['participants'] as List<dynamic>?) ?? <dynamic>[];
+          final List<String> participants = raw
+              .whereType<String>()
+              .where((String id) => id.isNotEmpty)
+              .toList();
+          if (participants.length != 2) continue;
+          final String peer = participants.firstWhere(
+            (String id) => id != currentUser.uid,
+            orElse: () => '',
+          );
+          if (peer.isEmpty || byId.containsKey(peer)) continue;
+          final Map<String, dynamic>? profile =
+              await PublicProfileFirestore.instance.getProfileMap(peer);
+          if (profile == null) continue;
+          byId[peer] = _ShareConnection(
+            userId: peer,
+            username: (profile['username'] as String?) ?? '',
+            displayName: (profile['displayName'] as String?) ??
+                (profile['username'] as String?) ??
+                'Creator',
+            avatarUrl: (profile['avatarUrl'] as String?) ??
+                (profile['avatarURL'] as String?) ??
+                '',
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ EnhancedShareSheet: DM peers load failed: $e');
+      }
+
+      // 3) Fallback: ConnectionsService (includes recentShares + legacy)
+      if (byId.isEmpty) {
+        final List<ConnectionLite> liteConnections =
+            await ConnectionsService().getConnectionsPreview(limit: 24);
+        for (final ConnectionLite lite in liteConnections) {
+          byId[lite.userId] = _ShareConnection.fromLite(lite);
         }
       }
 
-      List<_ShareConnection> finalConnections = resolvedConnections;
-      if (finalConnections.isEmpty) {
-        final liteConnections =
-            await ConnectionsService().getConnectionsPreview(limit: 12);
-        finalConnections =
-            liteConnections.map(_ShareConnection.fromLite).toList();
+      // 4) Sparse users/{uid}/connections cache (optional extras)
+      try {
+        final QuerySnapshot<Map<String, dynamic>> snapshot =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .collection('connections')
+                .limit(24)
+                .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
+          final _ShareConnection connection =
+              _ShareConnection.fromDocument(doc);
+          if (connection.userId.isEmpty || byId.containsKey(connection.userId)) {
+            continue;
+          }
+          if (connection.hasDisplayData) {
+            byId[connection.userId] = connection;
+          } else {
+            final Map<String, dynamic>? userData =
+                await PublicProfileFirestore.instance
+                    .getProfileMap(connection.userId);
+            byId[connection.userId] = connection.mergeUserData(userData);
+          }
+        }
+      } catch (_) {
+        // ignore
       }
 
       if (!mounted) {
         return;
       }
       setState(() {
-        _connections = finalConnections
+        _connections = byId.values
             .where(
                 (_ShareConnection connection) => connection.userId.isNotEmpty)
             .toList();

@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'event_trigger_service.dart';
 
 /// Service for parsing and processing tags and mentions in video captions
 class TagMentionService {
@@ -9,12 +8,6 @@ class TagMentionService {
   TagMentionService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  EventTriggerService? _eventTriggerService;
-
-  /// Set the EventTriggerService instance (should be called from provider)
-  void setEventTriggerService(EventTriggerService eventTriggerService) {
-    _eventTriggerService = eventTriggerService;
-  }
 
   /// Parse and process tags and mentions from video caption
   /// This should be called after a video is successfully uploaded
@@ -122,18 +115,8 @@ class TagMentionService {
           debugPrint(
               '🏷️ TagMentionService: Found tagged user: $username ($taggedUserId)');
 
-          // Trigger tag event notification
-          if (_eventTriggerService != null) {
-            await _eventTriggerService!.triggerTagEvent(
-              taggerId: videoOwnerId,
-              taggedUserId: taggedUserId,
-              videoId: videoId,
-              postThumbnailUrl: postThumbnailUrl,
-            );
-          } else {
-            debugPrint(
-                '⚠️ TagMentionService: EventTriggerService not set - no tag notification will be created');
-          }
+          // Activity notifications are server-only — Cloud Function
+          // onTagCreate reads the tags/{tagId} doc written below.
 
           // Store tag relationship in Firestore
           await _storeTagRelationship(
@@ -170,18 +153,8 @@ class TagMentionService {
           debugPrint(
               '💬 TagMentionService: Found mentioned user: $username ($mentionedUserId)');
 
-          // Create mention notification
-          if (_eventTriggerService != null) {
-            await _eventTriggerService!.triggerMentionEvent(
-              mentionerId: videoOwnerId,
-              mentionedUserId: mentionedUserId,
-              videoId: videoId,
-              postThumbnailUrl: postThumbnailUrl,
-            );
-          } else {
-            debugPrint(
-                '⚠️ TagMentionService: EventTriggerService not set - no mention notification will be created');
-          }
+          // Activity notifications are server-only — Cloud Function
+          // onMentionCreate reads the mentions/{mentionId} doc written below.
 
           // Store mention relationship in Firestore
           await _storeMentionRelationship(

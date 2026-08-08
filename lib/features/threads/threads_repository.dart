@@ -1,10 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import '../../core/feature_flags.dart';
 import '../../models/forum_author.dart';
 import '../../models/forum_comment.dart';
 import '../../services/forum_service.dart';
+import '../../services/thread_invite_service.dart';
 import '../gamification/emit_gamification_event.dart';
+import 'thread_visibility.dart';
 import 'threads_contract.dart';
 import 'threads_gamification.dart';
 import 'threads_legacy_adapter.dart';
@@ -151,6 +154,7 @@ class FirestoreThreadsRepository implements ThreadsRepository {
         categoryId: categoryId,
         searchQuery: searchQuery,
         pageSize: pageSize,
+        viewerId: viewerId,
       );
       if (fromV2.isNotEmpty) {
         return _applyFilterHeuristic(
@@ -165,6 +169,7 @@ class FirestoreThreadsRepository implements ThreadsRepository {
       searchQuery: searchQuery,
       sortBy: _sortForFilter(normalizedFilter),
       pageSize: pageSize,
+      currentUserId: viewerId,
     );
     final List<ThreadDto> projected =
         legacy.map(_adapter.fromForumPost).toList(growable: false);
@@ -253,11 +258,39 @@ class FirestoreThreadsRepository implements ThreadsRepository {
           await _firestore.collection('threads').doc(threadId).get();
       if (v2.exists && v2.data() != null) {
         _v2Presence[threadId] = true;
-        return _fromV2Map(threadId, v2.data()!);
+        final ThreadDto dto = _fromV2Map(threadId, v2.data()!);
+        final String? viewerId =
+            firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+        final bool follows = await _viewerFollowsAuthor(
+          viewerId,
+          dto.authorId,
+        );
+        bool inviteAccess = false;
+        final String vis = normalizeThreadVisibility(dto.visibility);
+        if (vis == kThreadVisibilityInviteOnly &&
+            viewerId != null &&
+            viewerId.isNotEmpty &&
+            viewerId != dto.authorId) {
+          inviteAccess = await ThreadInviteService()
+              .viewerHasThreadInviteAccess(threadId, viewerId);
+        }
+        if (!canViewerAccessThread(
+          visibility: dto.visibility,
+          authorId: dto.authorId,
+          viewerId: viewerId,
+          viewerFollowsAuthor: follows,
+          viewerHasInviteAccess: inviteAccess,
+        )) {
+          return null;
+        }
+        return dto;
       }
       _v2Presence[threadId] = false;
     }
-    final legacy = await _forumService.getPost(threadId);
+    final legacy = await _forumService.getPost(
+      threadId,
+      currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+    );
     if (legacy == null) {
       return null;
     }
@@ -282,7 +315,7 @@ class FirestoreThreadsRepository implements ThreadsRepository {
         'categoryId': categoryId,
         'status': status,
         'momentumState': 'new',
-        'visibility': request.visibility,
+        'visibility': normalizeThreadVisibility(request.visibility),
         'platformTags': request.platformTags,
         'topicTags': request.topicTags,
         'payload': request.payload,
@@ -807,6 +840,7 @@ class FirestoreThreadsRepository implements ThreadsRepository {
     String? categoryId,
     String? searchQuery,
     int pageSize = 20,
+    String? viewerId,
   }) async {
     Query<Map<String, dynamic>> query = _firestore
         .collection('threads')
@@ -839,9 +873,77 @@ class FirestoreThreadsRepository implements ThreadsRepository {
             )
             .toList(growable: false);
       }
-      return threads;
+      return _filterThreadsByAudience(threads, viewerId);
     } catch (_) {
       return const <ThreadDto>[];
+    }
+  }
+
+  Future<List<ThreadDto>> _filterThreadsByAudience(
+    List<ThreadDto> threads,
+    String? viewerId,
+  ) async {
+    if (threads.isEmpty) {
+      return threads;
+    }
+    final Map<String, bool> followCache = <String, bool>{};
+    final Map<String, bool> inviteCache = <String, bool>{};
+    final List<ThreadDto> visible = <ThreadDto>[];
+    for (final ThreadDto thread in threads) {
+      bool follows = false;
+      bool inviteAccess = false;
+      final String vis = normalizeThreadVisibility(thread.visibility);
+      if (vis == kThreadVisibilityFollowers &&
+          viewerId != null &&
+          viewerId.isNotEmpty &&
+          viewerId != thread.authorId) {
+        follows = followCache[thread.authorId] ??=
+            await _viewerFollowsAuthor(viewerId, thread.authorId);
+      }
+      if (vis == kThreadVisibilityInviteOnly &&
+          viewerId != null &&
+          viewerId.isNotEmpty &&
+          viewerId != thread.authorId) {
+        inviteAccess = inviteCache[thread.id] ??=
+            await ThreadInviteService().viewerHasThreadInviteAccess(
+          thread.id,
+          viewerId,
+        );
+      }
+      if (canViewerAccessThread(
+        visibility: vis,
+        authorId: thread.authorId,
+        viewerId: viewerId,
+        viewerFollowsAuthor: follows,
+        viewerHasInviteAccess: inviteAccess,
+      )) {
+        visible.add(thread);
+      }
+    }
+    return visible;
+  }
+
+  Future<bool> _viewerFollowsAuthor(String? viewerId, String authorId) async {
+    if (viewerId == null || viewerId.isEmpty || authorId.isEmpty) {
+      return false;
+    }
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> edge = await _firestore
+          .collection('follows')
+          .doc('${viewerId}_$authorId')
+          .get();
+      if (edge.exists) {
+        return true;
+      }
+      final DocumentSnapshot<Map<String, dynamic>> sub = await _firestore
+          .collection('users')
+          .doc(authorId)
+          .collection('followers')
+          .doc(viewerId)
+          .get();
+      return sub.exists;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -875,7 +977,7 @@ class FirestoreThreadsRepository implements ThreadsRepository {
       categoryId: normalizeCategoryId(data['categoryId']),
       status: normalizeThreadStatus(data['status']),
       momentumState: normalizeMomentumState(data['momentumState']),
-      visibility: (data['visibility'] as String?) ?? 'public',
+      visibility: normalizeThreadVisibility(data['visibility']),
       replyCount: (data['replyCount'] as num?)?.toInt() ?? 0,
       participantCount: (data['participantCount'] as num?)?.toInt() ?? 1,
       helpfulCount: (data['helpfulCount'] as num?)?.toInt() ?? 0,

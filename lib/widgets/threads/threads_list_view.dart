@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'dart:async';
 import '../../models/forum_post.dart';
 import '../../services/forum_service.dart';
@@ -89,6 +90,7 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
         sortBy: _sortBy,
         pageSize: _searchQuery.isNotEmpty ? 50 : 10,
+        currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
       );
       if (!mounted || requestId != _activeLoadRequestId) return;
       setState(() {

@@ -10,6 +10,8 @@ import '../../models/comment.dart';
 import '../../models/forum_author.dart';
 import '../../models/forum_category.dart';
 import 'thread_detail_screen.dart';
+import 'thread_visibility_picker.dart';
+import '../../features/threads/thread_visibility.dart';
 
 /// Screen for creating a thread from a comment
 class CreateThreadFromCommentScreen extends StatefulWidget {
@@ -35,6 +37,7 @@ class _CreateThreadFromCommentScreenState
   final TextEditingController _contentController = TextEditingController();
   String? _selectedCategory;
   List<ForumCategory> _categories = [];
+  String _visibility = kThreadVisibilityPublic;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -118,6 +121,7 @@ class _CreateThreadFromCommentScreenState
             body: content,
             categoryId: _selectedCategory!,
             authorId: user.uid,
+            visibility: _visibility,
             sourceVideoId: widget.videoId,
             sourceCommentId: widget.comment.id,
             sourceComment: commentAuthor,
@@ -133,6 +137,7 @@ class _CreateThreadFromCommentScreenState
           commentId: widget.comment.id,
           categoryId: _selectedCategory!,
           tags: [],
+          visibility: _visibility,
         );
       }
 
@@ -316,6 +321,14 @@ class _CreateThreadFromCommentScreenState
                 setState(() {
                   _selectedCategory = value;
                 });
+              },
+            ),
+            const SizedBox(height: 16),
+            ThreadVisibilityPicker(
+              value: _visibility,
+              enabled: !_isLoading,
+              onChanged: (String next) {
+                setState(() => _visibility = next);
               },
             ),
           ],

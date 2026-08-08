@@ -102,3 +102,66 @@ List<T> filterActiveUpcomingCalendarEvents<T>({
       )
       .toList(growable: false);
 }
+
+/// Past events remain on the public streamer page for [retention], then drop.
+const Duration kStreamerPageCalendarRetention = Duration(days: 7);
+
+bool isWithinStreamerPageCalendarWindow({
+  Object? status,
+  Object? deletedAt,
+  required DateTime? startsAt,
+  DateTime? endsAt,
+  String eventType = 'content_post',
+  DateTime? now,
+  Duration retention = kStreamerPageCalendarRetention,
+}) {
+  if (deletedAt != null) {
+    return false;
+  }
+  final String key = (status?.toString() ?? 'scheduled').trim().toLowerCase();
+  if (key == 'cancelled' ||
+      key == 'canceled' ||
+      key == 'archived' ||
+      key == 'missed' ||
+      key == 'failed' ||
+      key == 'published' ||
+      key == 'completed') {
+    return false;
+  }
+  if (startsAt == null) {
+    return false;
+  }
+  final DateTime at = (now ?? DateTime.now()).toUtc();
+  final DateTime end = resolveCalendarEndsAt(
+    startsAt: startsAt,
+    endsAt: endsAt,
+    eventType: eventType,
+  );
+  final DateTime cutoff = at.subtract(retention);
+  return !end.isBefore(cutoff);
+}
+
+List<T> filterStreamerPageCalendarEvents<T>({
+  required List<T> events,
+  required DateTime? Function(T event) startsAtOf,
+  Object? Function(T event)? statusOf,
+  Object? Function(T event)? deletedAtOf,
+  DateTime? Function(T event)? endsAtOf,
+  String Function(T event)? eventTypeOf,
+  DateTime? now,
+  Duration retention = kStreamerPageCalendarRetention,
+}) {
+  return events
+      .where(
+        (T event) => isWithinStreamerPageCalendarWindow(
+          status: statusOf?.call(event),
+          deletedAt: deletedAtOf?.call(event),
+          startsAt: startsAtOf(event),
+          endsAt: endsAtOf?.call(event),
+          eventType: eventTypeOf?.call(event) ?? 'content_post',
+          now: now,
+          retention: retention,
+        ),
+      )
+      .toList(growable: false);
+}

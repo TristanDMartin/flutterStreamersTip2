@@ -48,9 +48,6 @@ class InboxServiceOptimized {
       final chats = <app_chat.Chat>[];
       for (final doc in query.docs) {
         try {
-          if (doc.data()['supersededBy'] != null) {
-            continue;
-          }
           final chat = _mapChat(doc.id, doc.data());
           _chatCache[doc.id] = chat;
           chats.add(chat);
@@ -322,10 +319,16 @@ class InboxServiceOptimized {
     }
   }
 
-  /// Delete a chat
+  /// Soft-hide a chat for the current user (rules block hard delete).
   Future<bool> deleteChat(String chatId) async {
+    final String? me = _auth.currentUser?.uid;
+    if (me == null || chatId.isEmpty) {
+      return false;
+    }
     try {
-      await _firestore.collection('chats').doc(chatId).delete();
+      await _firestore.collection('chats').doc(chatId).update(<String, dynamic>{
+        'deletedFor': FieldValue.arrayUnion(<String>[me]),
+      });
       _chatCache.remove(chatId);
       return true;
     } catch (e) {
@@ -334,16 +337,23 @@ class InboxServiceOptimized {
     }
   }
 
-  /// Delete multiple chats
+  /// Soft-hide multiple chats for the current user.
   Future<bool> deleteMultipleChats(List<String> chatIds) async {
+    final String? me = _auth.currentUser?.uid;
+    if (me == null || chatIds.isEmpty) {
+      return false;
+    }
     try {
-      final batch = _firestore.batch();
-
-      for (final chatId in chatIds) {
-        batch.delete(_firestore.collection('chats').doc(chatId));
+      final WriteBatch batch = _firestore.batch();
+      for (final String chatId in chatIds) {
+        batch.update(
+          _firestore.collection('chats').doc(chatId),
+          <String, dynamic>{
+            'deletedFor': FieldValue.arrayUnion(<String>[me]),
+          },
+        );
         _chatCache.remove(chatId);
       }
-
       await batch.commit();
       return true;
     } catch (e) {
@@ -608,9 +618,6 @@ class InboxServiceOptimized {
       final chats = <app_chat.Chat>[];
       for (final doc in snapshot.docs) {
         try {
-          if (doc.data()['supersededBy'] != null) {
-            continue;
-          }
           final chat = _mapChat(doc.id, doc.data());
           _chatCache[doc.id] = chat;
           chats.add(chat);

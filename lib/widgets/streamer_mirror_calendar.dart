@@ -437,6 +437,11 @@ class _DayCell extends StatelessWidget {
               itemCount: events.length.clamp(0, 3),
               itemBuilder: (BuildContext context, int index) {
                 final CalendarEvent event = events[index];
+                final bool isPast = event.date.isBefore(DateTime.now());
+                final Color chipColor = isPast
+                    ? shell.muted.withValues(alpha: 0.55)
+                    : accent.withValues(alpha: 0.8);
+                final Color chipBorder = isPast ? shell.muted : accent;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 2),
                   child: GestureDetector(
@@ -450,16 +455,18 @@ class _DayCell extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.8),
+                        color: chipColor,
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: accent),
+                        border: Border.all(color: chipBorder),
                       ),
                       child: Text(
                         event.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: isPast
+                              ? shell.mutedStrong
+                              : Colors.white,
                           fontSize: 9,
                           fontWeight: FontWeight.w600,
                         ),

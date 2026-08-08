@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../models/home_video.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/video_service_provider.dart';
@@ -13,6 +15,7 @@ import '../services/video_deletion_service.dart';
 import '../services/video_download_service.dart';
 import '../services/streamers_tip_like_service.dart';
 import '../services/unified_bookmark_service.dart';
+import '../services/r2_media_service.dart';
 import 'video_player_view_optimized.dart';
 import 'insights_view.dart';
 import 'package:flutter/services.dart';
@@ -940,6 +943,9 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
   late TextEditingController _titleController;
   late TextEditingController _hashtagsController;
   bool _isLoading = false;
+  String? _muxPlaybackId;
+  String? _pendingThumbnailUrl;
+  String? _previewThumbnailUrl;
 
   @override
   void initState() {
@@ -951,6 +957,97 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
     );
     debugPrint(
         '🏷️ EditPostSheet: Hashtags controller text: ${_hashtagsController.text}');
+    _previewThumbnailUrl = widget.video.thumbnailURL;
+    unawaited(_hydrateHashtagsFromFirestore());
+  }
+
+  Future<void> _hydrateHashtagsFromFirestore() async {
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await FirebaseFirestore.instance
+              .collection('videos')
+              .doc(widget.video.id)
+              .get();
+      if (!mounted || !snap.exists) {
+        return;
+      }
+      final Map<String, dynamic> data =
+          Map<String, dynamic>.from(snap.data() ?? <String, dynamic>{});
+      final Object? raw = data['hashtags'] ?? data['tags'];
+      final Object? mux =
+          data['muxPlaybackId'] ?? data['mux_playback_id'];
+      final Object? thumb = data['thumbnailUrl'] ??
+          data['thumbnailURL'] ??
+          data['thumbnail_url'];
+      if (mounted) {
+        setState(() {
+          if (mux is String && mux.trim().isNotEmpty) {
+            _muxPlaybackId = mux.trim();
+          }
+          if (thumb is String && thumb.trim().isNotEmpty) {
+            _previewThumbnailUrl = thumb.trim();
+          }
+        });
+      }
+      if (raw is! List) {
+        return;
+      }
+      final List<String> tags = raw
+          .whereType<String>()
+          .map((String tag) => tag.trim())
+          .where((String tag) => tag.isNotEmpty)
+          .toList();
+      if (tags.isEmpty) {
+        return;
+      }
+      setState(() {
+        _hashtagsController.text = tags.join(' ');
+      });
+    } catch (_) {}
+  }
+
+  String _muxThumbAt(double seconds) {
+    final String id = _muxPlaybackId ?? '';
+    return 'https://image.mux.com/$id/thumbnail.jpg?time=$seconds&width=720';
+  }
+
+  Future<void> _pickCustomThumbnail() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+      );
+      if (picked == null) {
+        return;
+      }
+      setState(() {
+        _isLoading = true;
+      });
+      final String url =
+          await R2MediaService.instance.uploadThumbnail(File(picked.path));
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _pendingThumbnailUrl = url;
+        _previewThumbnailUrl = url;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Couldn't upload thumbnail. Try again."),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -983,7 +1080,7 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
               Row(
                 children: [
                   const Text(
-                    'Edit Post',
+                    'Edit Video',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -996,6 +1093,65 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
                     icon: const Icon(
                       Icons.close,
                       color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              const Text(
+                'Thumbnail',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: 64,
+                      height: 96,
+                      child: _previewThumbnailUrl != null &&
+                              _previewThumbnailUrl!.isNotEmpty
+                          ? Image.network(
+                              _previewThumbnailUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: Colors.white12,
+                              ),
+                            )
+                          : Container(color: Colors.white12),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        OutlinedButton(
+                          onPressed: _isLoading ? null : _pickCustomThumbnail,
+                          child: const Text('Upload image'),
+                        ),
+                        if (_muxPlaybackId != null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          OutlinedButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                                    final String url = _muxThumbAt(1);
+                                    setState(() {
+                                      _pendingThumbnailUrl = url;
+                                      _previewThumbnailUrl = url;
+                                    });
+                                  },
+                            child: const Text('Use Mux frame (1s)'),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
@@ -1158,15 +1314,13 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
               .toList();
       debugPrint('🏷️ EditPostSheet: Parsed hashtags: $hashtags');
 
-      // Update video in Firestore
-      await FirebaseFirestore.instance
-          .collection('videos')
-          .doc(widget.video.id)
-          .update({
-        'caption': _titleController.text.trim(),
-        'tags': hashtags,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      final VideoActionsService actions = ref.read(videoActionsServiceProvider);
+      await actions.updateVideoMetadata(
+        videoId: widget.video.id,
+        caption: _titleController.text.trim(),
+        hashtags: hashtags,
+        thumbnailUrl: _pendingThumbnailUrl,
+      );
 
       // Update video data in memory (VideoService state)
       final videoService = ref.read(videoServiceProvider);
@@ -1180,10 +1334,10 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
       debugPrint('🏷️ EditPostSheet: VideoService update completed');
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Post updated successfully!'),
+            content: Text('Video updated'),
             backgroundColor: Color(0xFF9248D2),
           ),
         );
@@ -1192,7 +1346,7 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update post: $e'),
+            content: Text("Couldn't update video. Try again."),
             backgroundColor: Colors.red,
           ),
         );

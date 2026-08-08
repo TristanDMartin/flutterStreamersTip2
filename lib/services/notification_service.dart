@@ -1,13 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'public_profile_firestore.dart';
-import 'push_notification_service.dart';
 
+/// Activity notification docs (`notifications/{uid}/items/{id}`) are
+/// server-only (Cloud Functions / Admin SDK). Clients may only update
+/// `isRead`/`read`/`readAt`/`updatedAt` — see firestore.rules. The methods
+/// below are kept as no-op stubs so existing call sites keep compiling
+/// while the Cloud Functions in cloud_functions/index.js own all creates.
 class NotificationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final PushNotificationService _pushNotificationService =
-      PushNotificationService();
   bool _hasUnreadNotifications = false;
 
   bool get hasUnreadNotifications => _hasUnreadNotifications;
@@ -17,7 +18,6 @@ class NotificationService {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) return;
 
-      // Mark all notifications as read for the current user
       final batch = _db.batch();
       final notificationsRef = _db
           .collection('notifications')
@@ -27,7 +27,12 @@ class NotificationService {
 
       final snapshot = await notificationsRef.get();
       for (final doc in snapshot.docs) {
-        batch.update(doc.reference, {'isRead': true});
+        batch.update(doc.reference, {
+          'isRead': true,
+          'read': true,
+          'readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       }
 
       await batch.commit();
@@ -44,19 +49,8 @@ class NotificationService {
     required String body,
     required Map<String, dynamic> data,
   }) async {
-    try {
-      await _db.collection('notifications').add({
-        'userId': userId,
-        'title': title,
-        'body': body,
-        'data': data,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-      });
-      debugPrint('✅ Notification sent to user: $userId');
-    } catch (e) {
-      debugPrint('❌ Error sending notification: $e');
-    }
+    debugPrint(
+        '🚫 NotificationService.sendNotification: server-only contract — Cloud Functions own Activity creates. Skipping flat notifications/ write.');
   }
 
   Future<List<Map<String, dynamic>>> getUserNotifications(String userId) async {
@@ -81,141 +75,27 @@ class NotificationService {
     }
   }
 
-  // Real implementations for EventTriggerService calls
+  /// CF `onFollowCreate` owns follow Activity notifications.
   Future<void> handleFollowEvent({
     required String followerId,
     required String followingId,
   }) async {
-    try {
-      debugPrint('🔔 NotificationService: handleFollowEvent called');
-      debugPrint('   FollowerId: $followerId');
-      debugPrint('   FollowingId: $followingId');
-
-      // Get follower user data
-      final followerData =
-          await PublicProfileFirestore.instance.getProfileMap(followerId);
-      if (followerData == null) {
-        debugPrint('❌ Follower document not found: $followerId');
-        return;
-      }
-      debugPrint(
-          '📝 Follower data: ${followerData['username']} (${followerData['displayName']})');
-
-      // Create notification for the user being followed
-      debugPrint('💾 Creating notification in Firestore...');
-      debugPrint('   Path: notifications/$followingId/items');
-
-      final docRef = await _db
-          .collection('notifications')
-          .doc(followingId)
-          .collection('items')
-          .add({
-        'type': 'follow',
-        'user': {
-          'id': followerId,
-          'username': followerData['username'] ?? 'Unknown',
-          'displayName': followerData['displayName'] ?? 'Unknown',
-          'avatarURL': followerData['avatarURL'] ?? followerData['avatarUrl'],
-        },
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'status': 'pending', // Use 'pending' so it shows in the activity badge
-      });
-
-      debugPrint('✅ Follow notification created in Firestore');
-      debugPrint('   Document ID: ${docRef.id}');
-      debugPrint(
-          '   Notification path: notifications/$followingId/items/${docRef.id}');
-
-      // Send push notification
-      await _pushNotificationService.sendNotificationToUser(
-        userId: followingId,
-        title: 'New Follower',
-        body:
-            '${followerData['displayName'] ?? 'Someone'} started following you',
-        type: 'follow',
-        data: {
-          'followerId': followerId,
-          'followerUsername': followerData['username'],
-          'followerDisplayName': followerData['displayName'],
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error creating follow notification: $e');
-    }
+    debugPrint(
+        '🚫 NotificationService.handleFollowEvent: server-only contract — Cloud Function onFollowCreate owns this write.');
   }
 
+  /// CF `onLikeCreate` owns like Activity notifications.
   Future<void> handleLikeEvent({
     required String likerId,
     required String videoOwnerId,
     required String videoId,
     String? postThumbnailUrl,
   }) async {
-    try {
-      debugPrint(
-          '🔔 NotificationService.handleLikeEvent called: $likerId -> $videoOwnerId for video $videoId');
-
-      // Don't create notification if user is liking their own video
-      if (likerId == videoOwnerId) {
-        debugPrint('🔔 Skipping notification - user liking their own video');
-        return;
-      }
-
-      // Get liker user data
-      final likerData =
-          await PublicProfileFirestore.instance.getProfileMap(likerId);
-      if (likerData == null) {
-        debugPrint('🔔 Skipping notification - liker user not found: $likerId');
-        return;
-      }
-      debugPrint(
-          '🔔 Got liker data: ${likerData['username']} (${likerData['displayName']})');
-
-      // Create notification for the video owner
-      final notificationData = {
-        'type': 'like',
-        'user': {
-          'id': likerId,
-          'username': likerData['username'] ?? 'Unknown',
-          'displayName': likerData['displayName'] ?? 'Unknown',
-          'avatarURL': likerData['avatarURL'] ?? likerData['avatarUrl'],
-        },
-        'videoId': videoId,
-        'postThumbnailUrl': postThumbnailUrl,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'status': 'pending', // Use 'pending' so it shows in the activity badge
-      };
-
-      debugPrint(
-          '🔔 Creating notification in Firestore: notifications/$videoOwnerId/items');
-      await _db
-          .collection('notifications')
-          .doc(videoOwnerId)
-          .collection('items')
-          .add(notificationData);
-
-      debugPrint(
-          '✅ Like notification created successfully: $likerId -> $videoOwnerId for video $videoId');
-
-      // Send push notification
-      await _pushNotificationService.sendNotificationToUser(
-        userId: videoOwnerId,
-        title: 'New Like',
-        body: '${likerData['displayName'] ?? 'Someone'} liked your video',
-        type: 'like',
-        data: {
-          'likerId': likerId,
-          'likerUsername': likerData['username'],
-          'likerDisplayName': likerData['displayName'],
-          'videoId': videoId,
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error creating like notification: $e');
-    }
+    debugPrint(
+        '🚫 NotificationService.handleLikeEvent: server-only contract — Cloud Function onLikeCreate owns this write.');
   }
 
+  /// CF `onCommentCreate` owns comment Activity notifications.
   Future<void> handleCommentEvent({
     required String commenterId,
     required String videoOwnerId,
@@ -223,187 +103,35 @@ class NotificationService {
     required String commentText,
     String? postThumbnailUrl,
   }) async {
-    try {
-      // Don't create notification if user is commenting on their own video
-      if (commenterId == videoOwnerId) return;
-
-      // Get commenter user data
-      final commenterData =
-          await PublicProfileFirestore.instance.getProfileMap(commenterId);
-      if (commenterData == null) return;
-
-      // Create notification for the video owner
-      await _db
-          .collection('notifications')
-          .doc(videoOwnerId)
-          .collection('items')
-          .add({
-        'type': 'comment',
-        'user': {
-          'id': commenterId,
-          'username': commenterData['username'] ?? 'Unknown',
-          'displayName': commenterData['displayName'] ?? 'Unknown',
-          'avatarURL': commenterData['avatarURL'] ?? commenterData['avatarUrl'],
-        },
-        'videoId': videoId,
-        'commentText': commentText,
-        'postThumbnailUrl': postThumbnailUrl,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'status': 'pending', // Use 'pending' so it shows in the activity badge
-      });
-
-      debugPrint(
-          '✅ Comment notification created: $commenterId -> $videoOwnerId for video $videoId');
-
-      // Send push notification
-      await _pushNotificationService.sendNotificationToUser(
-        userId: videoOwnerId,
-        title: 'New Comment',
-        body:
-            '${commenterData['displayName'] ?? 'Someone'} commented: "${commentText.length > 50 ? '${commentText.substring(0, 50)}...' : commentText}"',
-        type: 'comment',
-        data: {
-          'commenterId': commenterId,
-          'commenterUsername': commenterData['username'],
-          'commenterDisplayName': commenterData['displayName'],
-          'videoId': videoId,
-          'commentText': commentText,
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error creating comment notification: $e');
-    }
+    debugPrint(
+        '🚫 NotificationService.handleCommentEvent: server-only contract — Cloud Function onCommentCreate owns this write.');
   }
 
+  /// CF `onTagCreate` owns tag Activity notifications.
   Future<void> handleTagEvent({
     required String taggerId,
     required String taggedUserId,
     required String videoId,
     String? postThumbnailUrl,
   }) async {
-    try {
-      // Get tagger user data
-      final taggerData =
-          await PublicProfileFirestore.instance.getProfileMap(taggerId);
-      if (taggerData == null) return;
-
-      // Create notification for the tagged user
-      await _db
-          .collection('notifications')
-          .doc(taggedUserId)
-          .collection('items')
-          .add({
-        'type': 'tag',
-        'user': {
-          'id': taggerId,
-          'username': taggerData['username'] ?? 'Unknown',
-          'displayName': taggerData['displayName'] ?? 'Unknown',
-          'avatarURL': taggerData['avatarURL'] ?? taggerData['avatarUrl'],
-        },
-        'videoId': videoId,
-        'postThumbnailUrl': postThumbnailUrl,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'status': 'pending', // Use 'pending' so it shows in the activity badge
-      });
-
-      debugPrint(
-          '✅ Tag notification created: $taggerId -> $taggedUserId for video $videoId');
-
-      // Send push notification
-      await _pushNotificationService.sendNotificationToUser(
-        userId: taggedUserId,
-        title: 'You Were Tagged',
-        body:
-            '${taggerData['displayName'] ?? 'Someone'} tagged you in their video',
-        type: 'tag',
-        data: {
-          'taggerId': taggerId,
-          'taggerUsername': taggerData['username'],
-          'taggerDisplayName': taggerData['displayName'],
-          'videoId': videoId,
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error creating tag notification: $e');
-    }
+    debugPrint(
+        '🚫 NotificationService.handleTagEvent: server-only contract — Cloud Function onTagCreate owns this write.');
   }
 
+  /// CF `onMentionCreate` owns mention Activity notifications.
   Future<void> handleMentionEvent({
     required String mentionerId,
     required String mentionedUserId,
     required String videoId,
     String? postThumbnailUrl,
   }) async {
-    try {
-      // Get mentioner user data
-      final mentionerData =
-          await PublicProfileFirestore.instance.getProfileMap(mentionerId);
-      if (mentionerData == null) return;
-
-      // Create notification for the mentioned user
-      await _db
-          .collection('notifications')
-          .doc(mentionedUserId)
-          .collection('items')
-          .add({
-        'type': 'mention',
-        'user': {
-          'id': mentionerId,
-          'username': mentionerData['username'] ?? 'Unknown',
-          'displayName': mentionerData['displayName'] ?? 'Unknown',
-          'avatarURL': mentionerData['avatarURL'] ?? mentionerData['avatarUrl'],
-        },
-        'videoId': videoId,
-        'postThumbnailUrl': postThumbnailUrl,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'status': 'pending', // Use 'pending' so it shows in the activity badge
-      });
-
-      debugPrint(
-          '✅ Mention notification created: $mentionerId -> $mentionedUserId for video $videoId');
-
-      // Send push notification
-      await _pushNotificationService.sendNotificationToUser(
-        userId: mentionedUserId,
-        title: 'You Were Mentioned',
-        body:
-            '${mentionerData['displayName'] ?? 'Someone'} mentioned you in their video',
-        type: 'mention',
-        data: {
-          'mentionerId': mentionerId,
-          'mentionerUsername': mentionerData['username'],
-          'mentionerDisplayName': mentionerData['displayName'],
-          'videoId': videoId,
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error creating mention notification: $e');
-    }
+    debugPrint(
+        '🚫 NotificationService.handleMentionEvent: server-only contract — Cloud Function onMentionCreate owns this write.');
   }
 
   Future<void> processBatchNotifications(
       List<Map<String, dynamic>> notifications) async {
-    try {
-      final batch = _db.batch();
-
-      for (final notification in notifications) {
-        final userId = notification['userId'] as String;
-        final docRef = _db
-            .collection('notifications')
-            .doc(userId)
-            .collection('items')
-            .doc();
-
-        batch.set(docRef, notification);
-      }
-
-      await batch.commit();
-      debugPrint('✅ Processed batch of ${notifications.length} notifications');
-    } catch (e) {
-      debugPrint('❌ Error processing batch notifications: $e');
-    }
+    debugPrint(
+        '🚫 NotificationService.processBatchNotifications: server-only contract — no batched Activity item writes from client.');
   }
 }

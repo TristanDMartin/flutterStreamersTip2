@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'threads_contract.dart';
 import 'threads_models.dart';
 import 'threads_repository.dart';
+import 'thread_visibility.dart';
+import '../../widgets/threads/thread_visibility_picker.dart';
 
 /// Guided typed composer — fields driven by Threads v2 contract.
 class TypedCreateThreadScreen extends StatefulWidget {
@@ -27,6 +29,7 @@ class _TypedCreateThreadScreenState extends State<TypedCreateThreadScreen> {
   late String _type;
   late String _categoryId;
   String? _tippyStarterId;
+  String _visibility = kThreadVisibilityPublic;
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
   bool _isSubmitting = false;
@@ -79,6 +82,7 @@ class _TypedCreateThreadScreenState extends State<TypedCreateThreadScreen> {
           body: body,
           categoryId: _categoryId,
           authorId: uid,
+          visibility: _visibility,
           tippyStarterId: _tippyStarterId,
           payload: <String, dynamic>{
             'prompt': widget.initialPreset?.prompt,
@@ -193,6 +197,14 @@ class _TypedCreateThreadScreenState extends State<TypedCreateThreadScreen> {
               border: OutlineInputBorder(),
               alignLabelWithHint: true,
             ),
+          ),
+          const SizedBox(height: 16),
+          ThreadVisibilityPicker(
+            value: _visibility,
+            enabled: !_isSubmitting,
+            onChanged: (String next) {
+              setState(() => _visibility = next);
+            },
           ),
           if (_errorMessage != null) ...<Widget>[
             const SizedBox(height: 12),

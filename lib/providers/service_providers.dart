@@ -5,8 +5,6 @@ import '../services/notification_service.dart';
 import '../services/relationship_service_advanced.dart';
 import '../services/event_trigger_service.dart';
 import '../services/comments_service.dart';
-import '../services/follows_service.dart';
-import '../services/tag_mention_service.dart';
 import '../models/user_model.dart';
 
 final globalVideoServiceProvider = Provider<VideoService>((ref) {
@@ -75,13 +73,6 @@ final Provider<EventTriggerService> eventTriggerServiceProvider =
 
   final commentsService = CommentsService();
   commentsService.setEventTriggerService(eventTriggerService);
-
-  final followsService = FollowsService(); // This gets the singleton instance
-  followsService.setEventTriggerService(eventTriggerService);
-
-  final tagMentionService =
-      TagMentionService(); // This gets the singleton instance
-  tagMentionService.setEventTriggerService(eventTriggerService);
 
   debugPrint('🔧 EventTriggerService provider: Configured singleton services');
 

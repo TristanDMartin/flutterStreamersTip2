@@ -29,6 +29,8 @@ import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
 import 'drafts_sheet_view.dart';
+import 'bulk_edit_videos_sheet.dart';
+import '../services/video_actions_service.dart';
 
 const bool _profileGridBuildDiagnosticsEnabled = false;
 
@@ -2296,6 +2298,18 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   Widget _buildSelectionBottomBar() {
     final int count = _selectedVideoIds.length;
+    final List<HomeVideo> allVideos =
+        ref.watch(userVideosProvider(widget.userId ?? ''));
+    HomeVideo? selectedVideo;
+    if (count == 1) {
+      final String id = _selectedVideoIds.first;
+      for (final HomeVideo video in allVideos) {
+        if (video.id == id) {
+          selectedVideo = video;
+          break;
+        }
+      }
+    }
     return SafeArea(
       top: false,
       child: Container(
@@ -2316,7 +2330,27 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                 child: const Text('Cancel'),
               ),
             ),
-            const SizedBox(width: 12),
+            if (selectedVideo != null) ...<Widget>[
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _isBulkDeleting
+                      ? null
+                      : () => _openEditSelectedVideo(selectedVideo!),
+                  child: const Text('Edit'),
+                ),
+              ),
+            ],
+            if (count > 1) ...<Widget>[
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _isBulkDeleting ? null : _openBulkEditSelected,
+                  child: const Text('Edit'),
+                ),
+              ),
+            ],
+            const SizedBox(width: 8),
             Expanded(
               child: FilledButton(
                 style: FilledButton.styleFrom(
@@ -2337,6 +2371,44 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         ),
       ),
     );
+  }
+
+  Future<void> _openBulkEditSelected() async {
+    final List<String> ids = _selectedVideoIds.toList();
+    final bool saved = await showBulkEditVideosSheet(
+      context: context,
+      videoIds: ids,
+      actions: ref.read(videoActionsServiceProvider),
+    );
+    if (!mounted) {
+      return;
+    }
+    if (saved) {
+      _exitSelectionMode();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Videos updated'),
+          backgroundColor: Color(0xFF9248D2),
+        ),
+      );
+      setState(() {});
+    }
+  }
+
+  Future<void> _openEditSelectedVideo(HomeVideo video) async {
+    final bool? saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) => EditPostSheet(video: video),
+    );
+    if (!mounted) {
+      return;
+    }
+    if (saved == true) {
+      _exitSelectionMode();
+      setState(() {});
+    }
   }
 
   Future<void> _confirmBulkDelete() async {

@@ -6,6 +6,8 @@ import '../../models/forum_author.dart';
 import '../../models/forum_category.dart';
 import '../../constants/app_colors.dart';
 import '../../core/theme/support_shell_style.dart';
+import '../../features/threads/thread_visibility.dart';
+import 'thread_visibility_picker.dart';
 
 /// Screen for creating a new thread
 class CreateThreadScreen extends StatefulWidget {
@@ -30,6 +32,7 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
   final TextEditingController _contentController = TextEditingController();
   String? _selectedCategory;
   List<ForumCategory> _categories = [];
+  String _visibility = kThreadVisibilityPublic;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -101,6 +104,7 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
             ? <String>[]
             : <String>['video-discussion'],
         author: author,
+        visibility: _visibility,
         linkedVideoId: widget.attachedVideoId,
       );
 
@@ -309,6 +313,14 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
                           });
                         },
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    ThreadVisibilityPicker(
+                      value: _visibility,
+                      enabled: !_isLoading,
+                      onChanged: (String next) {
+                        setState(() => _visibility = next);
+                      },
                     ),
                   ],
                 ),

@@ -40,8 +40,7 @@ class ChatService {
         debugPrint("❌ ChatService: Canonical chat missing after create");
         return null;
       }
-      final Chat chat = Chat.fromJson(snapshot.data()!);
-      return chat.copyWith(id: snapshot.id);
+      return _chatFromFirestore(chatId, snapshot.data()!);
     } catch (e, stackTrace) {
       debugPrint("❌ ChatService: Error in fetchOrCreateChat: $e");
       debugPrint("❌ ChatService: Stack trace: $stackTrace");
@@ -55,6 +54,33 @@ class ChatService {
       }
       return null;
     }
+  }
+
+  Chat _chatFromFirestore(String id, Map<String, dynamic> data) {
+    final List<String> participants = (data['participants'] as List<dynamic>?)
+            ?.map((dynamic e) => e.toString())
+            .where((String id) => id.isNotEmpty)
+            .toList() ??
+        <String>[];
+    final Object? timestampRaw = data['lastTimestamp'];
+    final DateTime lastTimestamp = timestampRaw is Timestamp
+        ? timestampRaw.toDate()
+        : DateTime.now();
+    return Chat(
+      id: id,
+      participants: participants,
+      lastMessage: (data['lastMessage'] as String?) ?? '',
+      lastTimestamp: lastTimestamp,
+      chatType: (data['chatType'] as String?) ?? 'direct',
+      mutedBy: (data['mutedBy'] as List<dynamic>?)
+              ?.map((dynamic e) => e.toString())
+              .toList() ??
+          const <String>[],
+      archivedBy: (data['archivedBy'] as List<dynamic>?)
+              ?.map((dynamic e) => e.toString())
+              .toList() ??
+          const <String>[],
+    );
   }
 
   // New method: Create a placeholder chat immediately and then fetch/create the real one
@@ -180,8 +206,15 @@ class ChatService {
   }
 
   Future<void> deleteChat(String chatId) async {
+    final String? me = _auth.currentUser?.uid;
+    if (me == null || chatId.isEmpty) {
+      return;
+    }
     try {
-      await _firestore.collection("chats").doc(chatId).delete();
+      // Rules disallow hard delete; soft-hide for this user only.
+      await _firestore.collection("chats").doc(chatId).update({
+        "deletedFor": FieldValue.arrayUnion(<String>[me]),
+      });
     } catch (e) {
       // appLog("Error deleting chat: $e");
     }
@@ -189,14 +222,21 @@ class ChatService {
 
   // Bulk action methods
   Future<void> deleteMultipleChats(List<String> chatIds) async {
+    final String? me = _auth.currentUser?.uid;
+    if (me == null || chatIds.isEmpty) {
+      return;
+    }
     try {
-      final batch = _firestore.batch();
-      for (final chatId in chatIds) {
-        final chatRef = _firestore.collection("chats").doc(chatId);
-        batch.delete(chatRef);
+      final WriteBatch batch = _firestore.batch();
+      for (final String chatId in chatIds) {
+        batch.update(
+          _firestore.collection("chats").doc(chatId),
+          <String, dynamic>{
+            "deletedFor": FieldValue.arrayUnion(<String>[me]),
+          },
+        );
       }
       await batch.commit();
-      // appLog("✅ Deleted ${chatIds.length} chats");
     } catch (e) {
       // appLog("Error deleting multiple chats: $e");
       rethrow;

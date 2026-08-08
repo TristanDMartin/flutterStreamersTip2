@@ -173,5 +173,47 @@ void main() {
       expect(actual, contains('Post your first clip'));
       expect(actual, contains('Creators who post early'));
     });
+
+    test('message notifications expose preview only', () {
+      expect(
+        isActivityMessageNotification(type: 'new_message'),
+        isTrue,
+      );
+      expect(
+        activityNotificationDisplayMessage(<String, dynamic>{
+          'type': 'message',
+          'messagePreview': 'Hey there',
+        }),
+        'Hey there',
+      );
+    });
+
+    test('personal DMs are hidden from Activity feed', () {
+      expect(shouldHideFromActivityFeed('message'), isTrue);
+      expect(shouldHideFromActivityFeed('new_message'), isTrue);
+      expect(
+        shouldHideDmFromActivity(
+          type: 'unknown',
+          actionType: 'open_chat',
+          chatId: 'dm_a_b',
+        ),
+        isTrue,
+      );
+      expect(
+        shouldHideDmFromActivity(
+          type: 'admin_broadcast',
+          actionType: 'open_chat',
+          chatId: 'sys_1',
+        ),
+        isFalse,
+      );
+    });
+
+    test('generic video publish Activity is hidden', () {
+      expect(shouldHideFromActivityFeed('newVideo'), isTrue);
+      expect(shouldHideFromActivityFeed('new_video'), isTrue);
+      expect(isGenericVideoPublishActivityType('video_published'), isTrue);
+      expect(shouldHideFromActivityFeed('like'), isFalse);
+    });
   });
 }

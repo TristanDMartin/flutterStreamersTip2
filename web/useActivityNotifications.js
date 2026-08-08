@@ -170,20 +170,31 @@ export const useActivityNotifications = (maxNotifications = 50, useLegacyStructu
  */
 function _generateMessage(type, user) {
   const userName = user?.displayName || user?.username || 'Someone';
+  const normalized = String(type || '').trim().toLowerCase();
   
-  switch (type) {
+  switch (normalized) {
     case 'follow':
+    case 'follows':
       return `${userName} started following you`;
     case 'like':
+    case 'likes':
+    case 'like_video':
       return `${userName} liked your video`;
     case 'comment':
+    case 'comments':
       return `${userName} commented on your video`;
     case 'thread_reply':
       return `${userName} replied to your comment`;
+    case 'message':
+    case 'new_message':
+    case 'newmessage':
+    case 'dm':
+    case 'direct_message':
+      return `${userName} sent you a message`;
     case 'system':
       return 'You have a new notification';
     default:
-      return `${userName} interacted with your content`;
+      return `${userName} sent an update`;
   }
 }
 

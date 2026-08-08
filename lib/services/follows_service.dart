@@ -7,7 +7,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart' as user_model;
-import 'event_trigger_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
 import '../models/user_privacy_settings.dart';
@@ -111,7 +110,6 @@ class FollowsService {
   FirebaseFirestore get _firestore =>
       _firestoreOverride ?? FirebaseFirestore.instance;
   FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
-  EventTriggerService? _eventTriggerService;
 
   _FollowIdSets? _cachedIdSets;
   String? _cachedIdSetsUserId;
@@ -125,10 +123,6 @@ class FollowsService {
   static const String _networkDiskCacheKeyPrefix = 'network_tab_users_v1_';
   final Map<String, _FollowPaginationState> _paginationByUserId =
       <String, _FollowPaginationState>{};
-
-  void setEventTriggerService(EventTriggerService eventTriggerService) {
-    _eventTriggerService = eventTriggerService;
-  }
 
   @visibleForTesting
   static void debugSetOverrides({
@@ -328,12 +322,6 @@ class FollowsService {
       }
       await _ensureCounterFields(currentUserId);
       await _ensureCounterFields(targetUserId);
-      final Map<String, DocumentReference<Map<String, dynamic>>> legacyRefs =
-          await _queryLegacyFollowReferences(currentUserId, targetUserId);
-      final DocumentReference<Map<String, dynamic>> currentUserRef =
-          _firestore.collection('users').doc(currentUserId);
-      final DocumentReference<Map<String, dynamic>> targetUserRef =
-          _firestore.collection('users').doc(targetUserId);
       final DocumentReference<Map<String, dynamic>> followingEdgeRef =
           _firestore
               .collection('users')
@@ -344,26 +332,11 @@ class FollowsService {
           _firestore
               .collection('follows')
               .doc('${currentUserId}_$targetUserId');
-      bool shouldTriggerFollowEvent = false;
       await _firestore.runTransaction<void>((Transaction transaction) async {
         final DocumentSnapshot<Map<String, dynamic>> followerSnap =
             await transaction.get(followerEdgeRef);
         if (followerSnap.exists) {
           return;
-        }
-        final DocumentSnapshot<Map<String, dynamic>> currentSnap =
-            await transaction.get(currentUserRef);
-        final DocumentSnapshot<Map<String, dynamic>> targetSnap =
-            await transaction.get(targetUserRef);
-        bool anyLegacy = false;
-        for (final DocumentReference<Map<String, dynamic>> ref
-            in legacyRefs.values) {
-          final DocumentSnapshot<Map<String, dynamic>> leg =
-              await transaction.get(ref);
-          if (leg.exists) {
-            anyLegacy = true;
-            break;
-          }
         }
         transaction.set(followerEdgeRef, <String, dynamic>{
           'userId': currentUserId,
@@ -385,30 +358,9 @@ class FollowsService {
           },
           SetOptions(merge: true),
         );
-        if (!anyLegacy) {
-          shouldTriggerFollowEvent = true;
-          final int nextFollowers =
-              _readCounter(targetSnap, 'followerCount') + 1;
-          final int aligned = math.max(0, nextFollowers);
-          transaction.update(targetUserRef, <String, dynamic>{
-            'followerCount': aligned,
-            'followersCount': aligned,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-          final int nextFollowing =
-              _readCounter(currentSnap, 'followingCount') + 1;
-          transaction.update(currentUserRef, <String, dynamic>{
-            'followingCount': math.max(0, nextFollowing),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
+        // Counter SoT + Activity notification: Cloud Function onFollowCreate
+        // (users + publicUsers counters, notifications/{uid}/items write).
       });
-      if (shouldTriggerFollowEvent && _eventTriggerService != null) {
-        await _eventTriggerService!.triggerFollowEvent(
-          followerId: currentUserId,
-          followingId: targetUserId,
-        );
-      }
       scheduleEngagementGamificationEvent(
         type: GamificationEventTypes.engagementFollowCreated,
         entityType: 'user',
@@ -458,19 +410,11 @@ class FollowsService {
       if (!followerPre.exists && !followingPre.exists && legacyRefs.isEmpty) {
         return true;
       }
-      final DocumentReference<Map<String, dynamic>> currentUserRef =
-          _firestore.collection('users').doc(currentUserId);
-      final DocumentReference<Map<String, dynamic>> targetUserRef =
-          _firestore.collection('users').doc(targetUserId);
       await _firestore.runTransaction<void>((Transaction transaction) async {
         final DocumentSnapshot<Map<String, dynamic>> followerSnap =
             await transaction.get(followerEdgeRef);
         final DocumentSnapshot<Map<String, dynamic>> followingSnap =
             await transaction.get(followingEdgeRef);
-        final DocumentSnapshot<Map<String, dynamic>> currentSnap =
-            await transaction.get(currentUserRef);
-        final DocumentSnapshot<Map<String, dynamic>> targetSnap =
-            await transaction.get(targetUserRef);
         final List<DocumentReference<Map<String, dynamic>>> legacyRefList =
             legacyRefs.values.toList();
         final List<DocumentSnapshot<Map<String, dynamic>>> legacySnaps =
@@ -497,18 +441,7 @@ class FollowsService {
             transaction.delete(legacyRefList[i]);
           }
         }
-        final int curFollow = _readCounter(targetSnap, 'followerCount');
-        final int nextFollow = math.max(0, curFollow - 1);
-        transaction.update(targetUserRef, <String, dynamic>{
-          'followerCount': nextFollow,
-          'followersCount': nextFollow,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        final int curFollowing = _readCounter(currentSnap, 'followingCount');
-        transaction.update(currentUserRef, <String, dynamic>{
-          'followingCount': math.max(0, curFollowing - 1),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        // Counter SoT: Cloud Function onFollowDelete (users + publicUsers).
       });
       invalidateFollowIdSetsCache();
       return true;
@@ -531,7 +464,6 @@ class FollowsService {
       await _deleteFollowEdge(
         followerUserId: followerUserId,
         targetUserId: currentUser.uid,
-        decrementCounters: true,
       );
       invalidateFollowIdSetsCache();
       return true;
@@ -554,12 +486,10 @@ class FollowsService {
       await _deleteFollowEdge(
         followerUserId: currentUser.uid,
         targetUserId: otherUserId,
-        decrementCounters: true,
       );
       await _deleteFollowEdge(
         followerUserId: otherUserId,
         targetUserId: currentUser.uid,
-        decrementCounters: true,
       );
       return true;
     } catch (e) {
@@ -571,7 +501,6 @@ class FollowsService {
   Future<void> _deleteFollowEdge({
     required String followerUserId,
     required String targetUserId,
-    required bool decrementCounters,
   }) async {
     await _ensureCounterFields(followerUserId);
     await _ensureCounterFields(targetUserId);
@@ -587,14 +516,10 @@ class FollowsService {
         .doc(targetUserId);
     final legacyRefs =
         await _queryLegacyFollowReferences(followerUserId, targetUserId);
-    final followerUserRef = _firestore.collection('users').doc(followerUserId);
-    final targetUserRef = _firestore.collection('users').doc(targetUserId);
 
     await _firestore.runTransaction<void>((transaction) async {
       final followerSnap = await transaction.get(followerEdgeRef);
       final followingSnap = await transaction.get(followingEdgeRef);
-      final followerUserSnap = await transaction.get(followerUserRef);
-      final targetUserSnap = await transaction.get(targetUserRef);
       final legacyRefList = legacyRefs.values.toList();
       final legacySnaps = <DocumentSnapshot<Map<String, dynamic>>>[];
       for (final ref in legacyRefList) {
@@ -612,31 +537,8 @@ class FollowsService {
           transaction.delete(legacyRefList[i]);
         }
       }
-
-      if (decrementCounters) {
-        final nextFollowers =
-            math.max(0, _readCounter(targetUserSnap, 'followerCount') - 1);
-        transaction.update(targetUserRef, <String, dynamic>{
-          'followerCount': nextFollowers,
-          'followersCount': nextFollowers,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        final nextFollowing =
-            math.max(0, _readCounter(followerUserSnap, 'followingCount') - 1);
-        transaction.update(followerUserRef, <String, dynamic>{
-          'followingCount': nextFollowing,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
+      // Counter SoT: Cloud Function onFollowDelete (users + publicUsers).
     });
-  }
-
-  int _readCounter(
-    DocumentSnapshot<Map<String, dynamic>> snapshot,
-    String field,
-  ) {
-    final value = snapshot.data()?[field];
-    return value is num ? value.toInt().clamp(0, 1 << 31).toInt() : 0;
   }
 
   Future<Map<String, DocumentReference<Map<String, dynamic>>>>

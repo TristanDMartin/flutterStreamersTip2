@@ -154,6 +154,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   bool _hasMoreFollowGraph = false;
   bool _hasInitialNetworkLoad = false;
   bool _isBootstrappingNetwork = false;
+  DateTime? _lastNetworkRefreshAt;
+  static const Duration _backgroundRefreshMinInterval = Duration(minutes: 2);
   Timer? _followsDebounceTimer;
   ProviderSubscription<int>? _tabBackgroundRefreshSubscription;
   ProviderSubscription<int>? _mainTabVisibilitySubscription;
@@ -220,7 +222,17 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
           return;
         }
-        unawaited(_refreshDataInstantly());
+        // Tab open should not force a full reload when lists are already warm.
+        if (_isNetworkCompletelyEmpty || !_hasInitialNetworkLoad) {
+          unawaited(_refreshDataInstantly());
+          return;
+        }
+        final DateTime? lastRefresh = _lastNetworkRefreshAt;
+        if (lastRefresh == null ||
+            DateTime.now().difference(lastRefresh) >=
+                _backgroundRefreshMinInterval) {
+          unawaited(_refreshDataInstantly());
+        }
       },
     );
     _mainTabVisibilitySubscription = ref.listenManual<int>(
@@ -395,11 +407,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     }
     _listenersPaused = true;
     _followsDebounceTimer?.cancel();
-    _scopedFollowsSubscription1?.cancel();
-    _scopedFollowsSubscription2?.cancel();
-    _scopedFollowsSubscription1 = null;
-    _scopedFollowsSubscription2 = null;
-    _listenersInitialized = false;
+    // Keep Firestore subscriptions alive. Canceling them on every tab leave
+    // re-fires snapshots on return and forces a full network reload.
     PerformanceMonitoringService().stopMonitoring();
   }
 
@@ -410,7 +419,6 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
       return;
     }
-    final bool wasPaused = _listenersPaused;
     _listenersPaused = false;
     PerformanceMonitoringService().startMonitoring();
     if (!_listenersInitialized) {
@@ -418,10 +426,6 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     }
     if (!_hasInitialNetworkLoad || _isNetworkCompletelyEmpty) {
       unawaited(_bootstrapNetworkData());
-      return;
-    }
-    if (wasPaused || !_hasInitialNetworkLoad) {
-      unawaited(_refreshDataInstantly());
     }
   }
 
@@ -453,7 +457,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     );
 
     void onFollowsUpdate(QuerySnapshot _) {
-      if (!isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
+      if (_listenersPaused ||
+          !isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
         return;
       }
       FollowsService().invalidateFollowIdSetsCache();
@@ -465,6 +470,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       _followsDebounceTimer?.cancel();
       _followsDebounceTimer = Timer(const Duration(milliseconds: 800), () {
         if (!mounted ||
+            _listenersPaused ||
             !isMainTabNetworkVisible(ref.read(mainTabActiveIndexProvider))) {
           return;
         }
@@ -635,6 +641,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         _networkErrorMessage = null;
         _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
         _hasInitialNetworkLoad = true;
+        _lastNetworkRefreshAt = DateTime.now();
       });
 
       _logDriftIfAny(
@@ -2202,6 +2209,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           _hasMoreFollowGraph = bundle.hasMoreFollowGraph;
           _isLoadingUsers = false;
           _hasInitialNetworkLoad = true;
+          _lastNetworkRefreshAt = DateTime.now();
         });
         if (listsChanged) {
           debugPrint('✅ NetworkView: UI updated with new data');

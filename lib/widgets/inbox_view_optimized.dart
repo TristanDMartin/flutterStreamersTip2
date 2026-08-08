@@ -453,7 +453,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
     final Set<String> blockedUserIds =
         (await _blockingService.getBlockedUsers()).toSet();
-    return validChats.where((chat) {
+    final List<app_chat.Chat> filtered = validChats.where((chat) {
       final List<dynamic> deletedRaw =
           (chat.metadata?['deletedFor'] as List<dynamic>?) ??
               const <dynamic>[];
@@ -471,6 +471,47 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       );
       return otherUserId.isNotEmpty && !blockedUserIds.contains(otherUserId);
     }).toList();
+    return _dedupeDirectChats(filtered, currentUser.uid);
+  }
+
+  /// Keep one thread per DM pair when Phase 1 created empty dm_* duplicates.
+  List<app_chat.Chat> _dedupeDirectChats(
+    List<app_chat.Chat> chats,
+    String currentUserId,
+  ) {
+    final Map<String, app_chat.Chat> byPair = <String, app_chat.Chat>{};
+    for (final app_chat.Chat chat in chats) {
+      if ((chat.chatType ?? 'direct') != 'direct' ||
+          chat.participants.length != 2) {
+        final String key = chat.id ?? 'group_${chat.hashCode}';
+        byPair[key] = chat;
+        continue;
+      }
+      final List<String> sorted = List<String>.from(chat.participants)..sort();
+      final String pairKey = sorted.join('_');
+      final app_chat.Chat? existing = byPair[pairKey];
+      if (existing == null) {
+        byPair[pairKey] = chat;
+        continue;
+      }
+      final bool candidateHasMessage =
+          (chat.lastMessage ?? '').trim().isNotEmpty;
+      final bool existingHasMessage =
+          (existing.lastMessage ?? '').trim().isNotEmpty;
+      if (candidateHasMessage && !existingHasMessage) {
+        byPair[pairKey] = chat;
+      } else if (!candidateHasMessage && existingHasMessage) {
+        continue;
+      } else if (chat.lastTimestamp.isAfter(existing.lastTimestamp)) {
+        byPair[pairKey] = chat;
+      }
+    }
+    final List<app_chat.Chat> result = byPair.values.toList();
+    result.sort(
+      (app_chat.Chat a, app_chat.Chat b) =>
+          b.lastTimestamp.compareTo(a.lastTimestamp),
+    );
+    return result;
   }
 
   Future<void> _loadUserDataForChats(List<app_chat.Chat> chats) async {
@@ -1103,22 +1144,27 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       radius: 22,
                       showOnlineIndicator: !isSystem,
                     ),
-                    // Selection indicator
+                    // Selection / unread sit ABOVE the avatar in the stack
+                    // (later children paint on top; clipBehavior: none so badges aren't cut).
                     if (isSelected)
                       Positioned(
                         right: -2,
                         top: -2,
-                        child: Container(
-                          width: 20,
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: ChatUiTokens.unreadAccent,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.check,
-                            color: _onP,
-                            size: 12,
+                        child: Material(
+                          color: Colors.transparent,
+                          elevation: 2,
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: const BoxDecoration(
+                              color: ChatUiTokens.unreadAccent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.check,
+                              color: _onP,
+                              size: 12,
+                            ),
                           ),
                         ),
                       )
@@ -1126,34 +1172,38 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       Positioned(
                         right: -4,
                         top: -4,
-                        child: Container(
-                          constraints: const BoxConstraints(
-                            minWidth: 18,
-                            minHeight: 18,
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 5),
-                          decoration: BoxDecoration(
-                            color: ChatUiTokens.unreadAccent,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: AppColors.profileViewBackground,
-                              width: 1.5,
+                        child: Material(
+                          color: Colors.transparent,
+                          elevation: 3,
+                          child: Container(
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
                             ),
-                            boxShadow: <BoxShadow>[
-                              BoxShadow(
-                                color: ChatUiTokens.unreadAccent
-                                    .withValues(alpha: 0.45),
-                                blurRadius: 8,
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            decoration: BoxDecoration(
+                              color: ChatUiTokens.unreadAccent,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: AppColors.profileViewBackground,
+                                width: 1.5,
                               ),
-                            ],
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            unreadCount > 99 ? '99+' : '$unreadCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color: ChatUiTokens.unreadAccent
+                                      .withValues(alpha: 0.45),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              unreadCount > 99 ? '99+' : '$unreadCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
@@ -2164,26 +2214,29 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final validOtherUserId = otherUserId;
       debugPrint('✅ InboxView: Opening chat with user: $validOtherUserId');
 
-      // Ensure chat document exists in Firestore BEFORE opening ChatView
-      // This is the Instagram/TikTok pattern - create chat proactively
-      final chatService = ChatService.shared;
-
+      // Prefer the inbox row's existing chat doc — reminting dm_* hid history.
       app_chat.Chat? ensuredChat;
-      try {
-        ensuredChat = await chatService.fetchOrCreateChat(validOtherUserId);
-      } catch (e) {
-        _isNavigating = false;
-        debugPrint('❌ InboxView: Exception while fetching/creating chat: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error opening chat: ${e.toString()}'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+      final String? existingChatId = chat.id;
+      if (existingChatId != null && existingChatId.isNotEmpty) {
+        ensuredChat = chat;
+      } else {
+        final chatService = ChatService.shared;
+        try {
+          ensuredChat = await chatService.fetchOrCreateChat(validOtherUserId);
+        } catch (e) {
+          _isNavigating = false;
+          debugPrint('❌ InboxView: Exception while fetching/creating chat: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error opening chat: ${e.toString()}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
         }
-        return;
       }
 
       if (ensuredChat == null) {

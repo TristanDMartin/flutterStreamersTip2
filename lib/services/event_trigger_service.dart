@@ -35,14 +35,9 @@ class EventTriggerService extends ChangeNotifier {
     required String followerId,
     required String followingId,
   }) async {
-    // Note: FollowsService already handles database updates (follow relationship and counters)
-    // This service only needs to create the notification
-
-    // Create notification
-    await _notificationService?.handleFollowEvent(
-      followerId: followerId,
-      followingId: followingId,
-    );
+    // Note: FollowsService already handles database updates (follow relationship
+    // and counters). Activity notifications are server-only — Cloud Function
+    // onFollowCreate owns that write, so this is a no-op today.
   }
 
   Future<void> triggerUnfollowEvent({
@@ -72,17 +67,8 @@ class EventTriggerService extends ChangeNotifier {
     // Update like count
     await _updateLikeCount(videoId, 1);
 
-    // Create notification
-    debugPrint(
-        "🔄 EventTriggerService: Calling NotificationService.handleLikeEvent");
-    await _notificationService?.handleLikeEvent(
-      likerId: likerId,
-      videoOwnerId: videoOwnerId,
-      videoId: videoId,
-      postThumbnailUrl: postThumbnailUrl,
-    );
-    debugPrint(
-        "🔄 EventTriggerService: NotificationService.handleLikeEvent completed");
+    // Activity notifications are server-only — Cloud Function onLikeCreate
+    // owns that write from likes/{videoId}/byUser/{userId}.
 
     // Store like in Firestore
     await _createLike(likerId: likerId, videoId: videoId);
@@ -117,18 +103,8 @@ class EventTriggerService extends ChangeNotifier {
     // Update comment count
     await _updateCommentCount(videoId, 1);
 
-    // Create notification
-    debugPrint(
-        "🔄 EventTriggerService: Calling NotificationService.handleCommentEvent");
-    await _notificationService?.handleCommentEvent(
-      commenterId: commenterId,
-      videoOwnerId: videoOwnerId,
-      videoId: videoId,
-      commentText: commentText,
-      postThumbnailUrl: postThumbnailUrl,
-    );
-    debugPrint(
-        "🔄 EventTriggerService: NotificationService.handleCommentEvent completed");
+    // Activity notifications are server-only — Cloud Function onCommentCreate
+    // owns that write from videos/{videoId}/comments/{commentId}.
 
     // Store comment in Firestore
     await _createComment(
@@ -161,13 +137,8 @@ class EventTriggerService extends ChangeNotifier {
     debugPrint(
         "🔄 EventTriggerService: Tag event triggered - $taggerId -> $taggedUserId");
 
-    // Create notification
-    await _notificationService?.handleTagEvent(
-      taggerId: taggerId,
-      taggedUserId: taggedUserId,
-      videoId: videoId,
-      postThumbnailUrl: postThumbnailUrl,
-    );
+    // Activity notifications are server-only — Cloud Function onTagCreate
+    // owns that write from tags/{tagId}.
 
     // Store tag in Firestore
     await _createTag(
@@ -188,13 +159,8 @@ class EventTriggerService extends ChangeNotifier {
     debugPrint(
         "🔄 EventTriggerService: Mention event triggered - $mentionerId -> $mentionedUserId");
 
-    // Create notification
-    await _notificationService?.handleMentionEvent(
-      mentionerId: mentionerId,
-      mentionedUserId: mentionedUserId,
-      videoId: videoId,
-      postThumbnailUrl: postThumbnailUrl,
-    );
+    // Activity notifications are server-only — Cloud Function onMentionCreate
+    // owns that write from mentions/{mentionId}.
 
     // Store mention in Firestore
     await _createMention(

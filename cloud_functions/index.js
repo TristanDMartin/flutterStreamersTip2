@@ -489,151 +489,137 @@ exports.onAuthUserCreate = functions.auth.user().onCreate(async (user) => {
   }
 });
 
-// Cloud Function to schedule notifications when a bookmark is created
+const {
+  scheduleEventReminderTask,
+  cancelEventReminderTask,
+  deliverEventReminderPayload,
+  assertTaskRequestAuthorized,
+  parseNotifyAt,
+} = require('./src/event_reminder_tasks');
+
+// Schedule Cloud Tasks reminder when a calendar event bookmark is created.
 exports.onBookmarkCreate = functions.firestore
   .document('users/{uid}/bookmarks/{eventId}')
   .onCreate(async (snap, context) => {
-    const data = snap.data();
-    
-    // Only schedule if notifications are enabled
-    if (!data.notify) return null;
+    const data = snap.data() || {};
+    if (data.notify === false) return null;
 
-    const { uid, eventId } = context.params;
-    const notifyAt = data.notifyAt.toDate();
-    
-    // Schedule the notification task
-    const taskId = await scheduleNotificationTask({
-      uid,
-      eventId,
-      runAt: notifyAt,
-      title: data.title,
-      creatorId: data.creatorId,
-    });
+    const {uid, eventId} = context.params;
+    const notifyAt = parseNotifyAt(data.notifyAt);
+    if (!notifyAt) {
+      console.log(`⏭️ Bookmark ${eventId}: missing/invalid notifyAt`);
+      return null;
+    }
 
-    // Update the bookmark with the scheduled task ID
-    await snap.ref.update({ scheduledTaskId: taskId });
-    
-    console.log(`Scheduled notification for event ${eventId} at ${notifyAt}`);
+    try {
+      const taskName = await scheduleEventReminderTask({
+        uid,
+        eventId,
+        runAt: notifyAt,
+        title: data.title,
+        creatorId: data.creatorId,
+        creatorName: data.creatorName,
+      });
+      await snap.ref.update({
+        scheduledTaskId: taskName,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.log(`Scheduled Cloud Tasks reminder for event ${eventId} at ${notifyAt.toISOString()}`);
+    } catch (error) {
+      console.error(`❌ onBookmarkCreate schedule failed for ${eventId}:`, error);
+    }
     return null;
   });
 
-// Cloud Function to cancel notifications when a bookmark is deleted
+// Reschedule when notifyAt / notify changes on an existing bookmark.
+exports.onBookmarkUpdate = functions.firestore
+  .document('users/{uid}/bookmarks/{eventId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data() || {};
+    const after = change.after.data() || {};
+    const {uid, eventId} = context.params;
+
+    const beforeAt = parseNotifyAt(before.notifyAt);
+    const afterAt = parseNotifyAt(after.notifyAt);
+    const notifyChanged = before.notify !== after.notify;
+    const timeChanged =
+      (beforeAt && afterAt && beforeAt.getTime() !== afterAt.getTime()) ||
+      (!!beforeAt !== !!afterAt);
+
+    if (!notifyChanged && !timeChanged) return null;
+
+    if (before.scheduledTaskId) {
+      await cancelEventReminderTask(before.scheduledTaskId);
+    }
+
+    if (after.notify === false || !afterAt) {
+      await change.after.ref.update({
+        scheduledTaskId: admin.firestore.FieldValue.delete(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return null;
+    }
+
+    try {
+      const taskName = await scheduleEventReminderTask({
+        uid,
+        eventId,
+        runAt: afterAt,
+        title: after.title,
+        creatorId: after.creatorId,
+        creatorName: after.creatorName,
+      });
+      await change.after.ref.update({
+        scheduledTaskId: taskName,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (error) {
+      console.error(`❌ onBookmarkUpdate schedule failed for ${eventId}:`, error);
+    }
+    return null;
+  });
+
+// Cancel Cloud Tasks reminder when bookmark is removed.
 exports.onBookmarkDelete = functions.firestore
   .document('users/{uid}/bookmarks/{eventId}')
   .onDelete(async (snap, _context) => {
-    const data = snap.data();
-    const taskId = data.scheduledTaskId;
-    
-    if (taskId) {
-      await cancelNotificationTask(taskId);
-      console.log(`Cancelled notification task ${taskId}`);
+    const data = snap.data() || {};
+    if (data.scheduledTaskId) {
+      await cancelEventReminderTask(data.scheduledTaskId);
+      console.log(`Cancelled notification task ${data.scheduledTaskId}`);
     }
-    
     return null;
   });
 
-// Cloud Function to send the actual notification
-async function sendEventNotificationData(data) {
-  const { uid, eventId, title, creatorId } = data;
-  
-  // Verify the bookmark still exists and notifications are enabled
-  const bookmarkDoc = await admin.firestore()
-    .collection('users')
-    .doc(uid)
-    .collection('bookmarks')
-    .doc(eventId)
-    .get();
-    
-  if (!bookmarkDoc.exists) {
-    console.log(`Bookmark ${eventId} no longer exists for user ${uid}`);
-    return { success: false, reason: 'Bookmark not found' };
+// HTTP target for Cloud Tasks (and manual/admin invoke).
+exports.deliverEventReminder = functions.https.onRequest(async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).send('Method Not Allowed');
+    return;
   }
-  
-  const bookmarkData = bookmarkDoc.data();
-  if (!bookmarkData.notify) {
-    console.log(`Notifications disabled for bookmark ${eventId}`);
-    return { success: false, reason: 'Notifications disabled' };
+  if (!assertTaskRequestAuthorized(req)) {
+    res.status(401).json({error: 'Unauthorized'});
+    return;
   }
-  
-  // Get user's FCM tokens
-  const tokensSnapshot = await admin.firestore()
-    .collection('users')
-    .doc(uid)
-    .collection('deviceTokens')
-    .get();
-    
-  const tokens = tokensSnapshot.docs.map(doc => doc.id);
-  
-  if (tokens.length === 0) {
-    console.log(`No FCM tokens found for user ${uid}`);
-    return { success: false, reason: 'No FCM tokens' };
-  }
-  
-  // Send notification
-  const message = {
-    notification: {
-      title: 'Event is live now',
-      body: `@${creatorId} — ${title}`,
-    },
-    data: {
-      eventId,
-      creatorId,
-      deeplink: `streamerstip://event/${eventId}`,
-    },
-    tokens,
-  };
-  
   try {
-    const response = await admin.messaging().sendMulticast(message);
-    console.log(`Sent notification to ${response.successCount} devices`);
-    
-    // Mark as notified
-    await bookmarkDoc.ref.update({ 
-      notifiedAt: admin.firestore.FieldValue.serverTimestamp() 
-    });
-    
-    return { success: true, sentCount: response.successCount };
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+    const result = await deliverEventReminderPayload(body);
+    res.status(200).json(result);
   } catch (error) {
-    console.error('Error sending notification:', error);
-    return { success: false, error: error.message };
+    console.error('❌ deliverEventReminder failed:', error);
+    res.status(500).json({error: error.message || 'Internal error'});
   }
-}
+});
 
-exports.sendEventNotification = functions.https.onCall(
-  async (data, _context) => sendEventNotificationData(data),
-);
+// Callable kept for admin/manual tests.
+exports.sendEventNotification = functions.https.onCall(async (data, _context) => {
+  return deliverEventReminderPayload({
+    ...(data || {}),
+    phase: 'deliver',
+  });
+});
 
-// Helper function to schedule a notification task
-async function scheduleNotificationTask({ uid, eventId, runAt, title, creatorId }) {
-  // This would integrate with Cloud Tasks or a similar scheduling service
-  // For now, we'll use a simple setTimeout approach (not recommended for production)
-  
-  const delay = runAt.getTime() - Date.now();
-  
-  if (delay <= 0) {
-    // Event is in the past, send immediately
-    return await sendEventNotificationData({ uid, eventId, title, creatorId });
-  }
-  
-  // Schedule for later
-  setTimeout(async () => {
-    try {
-      await sendEventNotificationData({ uid, eventId, title, creatorId });
-    } catch (error) {
-      console.error('Error in scheduled notification:', error);
-    }
-  }, delay);
-  
-  return `task_${Date.now()}_${eventId}`;
-}
-
-// Helper function to cancel a notification task
-async function cancelNotificationTask(taskId) {
-  // This would integrate with Cloud Tasks to cancel the scheduled task
-  console.log(`Would cancel task: ${taskId}`);
-  return true;
-}
-
+/* Legacy setTimeout scheduler removed — see src/event_reminder_tasks.js */
 // ============================================================================
 // POST COUNTER TRIGGERS - Single source of truth for post counts
 // ============================================================================
@@ -977,11 +963,18 @@ exports.onFollowCreate = functions.firestore
   .onCreate(async (snap, _context) => {
     const followData = snap.data();
     const followerId = followData.followerId;
-    const followedId = followData.followedId;
+    // Flutter writes followingId/targetUserId; React writes followedId — accept all.
+    const followedId =
+      followData.followedId || followData.followingId || followData.targetUserId;
 
     console.log(`👥 Follow created: ${followerId} -> ${followedId}`);
 
     try {
+      if (!followerId || !followedId) {
+        console.log(`❌ Follow doc missing followerId/followedId: ${snap.id}`);
+        return null;
+      }
+
       // Don't notify if user somehow follows themselves
       if (followerId === followedId) {
         console.log(`ℹ️ User tried to follow themselves, skipping notification`);
@@ -1027,6 +1020,192 @@ exports.onFollowCreate = functions.firestore
         followedId,
         error: error.message,
       });
+      return null;
+    }
+  });
+
+// Trigger: When a user is tagged in a video (TagMentionService writes tags/{tagId})
+exports.onTagCreate = functions.firestore
+  .document('tags/{tagId}')
+  .onCreate(async (snap, _context) => {
+    const tagData = snap.data();
+    const taggerId = tagData.taggerId;
+    const taggedUserId = tagData.taggedUserId;
+    const videoId = tagData.videoId;
+
+    console.log(`🏷️ Tag created: ${taggerId} tagged ${taggedUserId} in video ${videoId}`);
+
+    try {
+      if (!taggerId || !taggedUserId || !videoId) {
+        console.log(`❌ Tag doc missing required fields: ${snap.id}`);
+        return null;
+      }
+
+      if (taggerId === taggedUserId) {
+        console.log(`ℹ️ User tagged themselves, skipping notification`);
+        return null;
+      }
+
+      const [taggerDoc, videoDoc] = await Promise.all([
+        admin.firestore().collection('users').doc(taggerId).get(),
+        admin.firestore().collection('videos').doc(videoId).get(),
+      ]);
+
+      if (!taggerDoc.exists) {
+        console.log(`❌ Tagger user ${taggerId} not found`);
+        return null;
+      }
+
+      const taggerData = taggerDoc.data();
+      const videoData = videoDoc.exists ? videoDoc.data() : {};
+
+      await admin.firestore()
+        .collection('notifications')
+        .doc(taggedUserId)
+        .collection('items')
+        .add({
+          type: 'tag',
+          videoId: videoId,
+          user: {
+            id: taggerId,
+            displayName: taggerData.displayName || 'Unknown',
+            username: taggerData.username || 'unknown',
+            avatarUrl: taggerData.avatarURL || null,
+          },
+          postThumbnailUrl: videoData.thumbnailUrl || null,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          isRead: false,
+          status: 'delivered',
+        });
+
+      console.log(`✅ Tag notification created for user ${taggedUserId}`);
+      return null;
+    } catch (error) {
+      console.error(`❌ Error creating tag notification:`, error);
+      return null;
+    }
+  });
+
+// Trigger: When a user is mentioned in a caption (TagMentionService writes mentions/{mentionId})
+exports.onMentionCreate = functions.firestore
+  .document('mentions/{mentionId}')
+  .onCreate(async (snap, _context) => {
+    const mentionData = snap.data();
+    const mentionerId = mentionData.mentionerId;
+    const mentionedUserId = mentionData.mentionedUserId;
+    const videoId = mentionData.videoId;
+
+    console.log(`💬 Mention created: ${mentionerId} mentioned ${mentionedUserId} in video ${videoId}`);
+
+    try {
+      if (!mentionerId || !mentionedUserId || !videoId) {
+        console.log(`❌ Mention doc missing required fields: ${snap.id}`);
+        return null;
+      }
+
+      if (mentionerId === mentionedUserId) {
+        console.log(`ℹ️ User mentioned themselves, skipping notification`);
+        return null;
+      }
+
+      const [mentionerDoc, videoDoc] = await Promise.all([
+        admin.firestore().collection('users').doc(mentionerId).get(),
+        admin.firestore().collection('videos').doc(videoId).get(),
+      ]);
+
+      if (!mentionerDoc.exists) {
+        console.log(`❌ Mentioner user ${mentionerId} not found`);
+        return null;
+      }
+
+      const mentionerData = mentionerDoc.data();
+      const videoData = videoDoc.exists ? videoDoc.data() : {};
+
+      await admin.firestore()
+        .collection('notifications')
+        .doc(mentionedUserId)
+        .collection('items')
+        .add({
+          type: 'mention',
+          videoId: videoId,
+          user: {
+            id: mentionerId,
+            displayName: mentionerData.displayName || 'Unknown',
+            username: mentionerData.username || 'unknown',
+            avatarUrl: mentionerData.avatarURL || null,
+          },
+          postThumbnailUrl: videoData.thumbnailUrl || null,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          isRead: false,
+          status: 'delivered',
+        });
+
+      console.log(`✅ Mention notification created for user ${mentionedUserId}`);
+      return null;
+    } catch (error) {
+      console.error(`❌ Error creating mention notification:`, error);
+      return null;
+    }
+  });
+
+// Trigger: When a draft is shared with connections (draft_sharing_service.dart
+// writes shared_drafts/{sharedDraftId} with a `recipients` array of user IDs)
+exports.onSharedDraftCreate = functions.firestore
+  .document('shared_drafts/{sharedDraftId}')
+  .onCreate(async (snap, context) => {
+    const { sharedDraftId } = context.params;
+    const sharedDraftData = snap.data();
+    const sharerId = sharedDraftData.sharerId;
+    const recipientIds = Array.isArray(sharedDraftData.recipients)
+      ? sharedDraftData.recipients
+      : [];
+
+    console.log(`📤 Shared draft created: ${sharerId} -> ${recipientIds.length} recipient(s)`);
+
+    try {
+      if (!sharerId || recipientIds.length === 0) {
+        console.log(`❌ Shared draft doc missing sharerId/recipients: ${snap.id}`);
+        return null;
+      }
+
+      const sharerDoc = await admin.firestore().collection('users').doc(sharerId).get();
+      if (!sharerDoc.exists) {
+        console.log(`❌ Sharer user ${sharerId} not found`);
+        return null;
+      }
+
+      const sharerData = sharerDoc.data();
+      const batch = admin.firestore().batch();
+
+      for (const recipientId of recipientIds) {
+        if (!recipientId || recipientId === sharerId) continue;
+        const notificationRef = admin.firestore()
+          .collection('notifications')
+          .doc(recipientId)
+          .collection('items')
+          .doc();
+        batch.set(notificationRef, {
+          type: 'shared_draft',
+          sharedDraftId: sharedDraftId,
+          user: {
+            id: sharerId,
+            displayName: sharerData.displayName || 'Unknown',
+            username: sharerData.username || 'unknown',
+            avatarUrl: sharerData.avatarURL || null,
+          },
+          postThumbnailUrl: sharedDraftData.draftThumbnailUrl || null,
+          message: sharedDraftData.message || null,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          isRead: false,
+          status: 'delivered',
+        });
+      }
+
+      await batch.commit();
+      console.log(`✅ Shared draft notifications created for ${recipientIds.length} recipient(s)`);
+      return null;
+    } catch (error) {
+      console.error(`❌ Error creating shared draft notifications:`, error);
       return null;
     }
   });
@@ -1177,6 +1356,8 @@ exports.onMessageCreate = functions.firestore
         (messageData.gifUrl ? 'Sent a GIF' : null) ||
         (messageData.type === 'video_share' ? 'Shared a video' : 'New message');
 
+      // Soft-hidden Inbox rows (deletedFor) must reappear when a new message
+      // arrives — same as IG/Messenger: conversation never dies on hide.
       await chatRef.update({
         [`unreadCount_${recipientId}`]: admin.firestore.FieldValue.increment(1),
         [`unreadCountByUser.${recipientId}`]: admin.firestore.FieldValue.increment(1),
@@ -1187,6 +1368,7 @@ exports.onMessageCreate = functions.firestore
         lastMessageType: messageData.type || messageData.messageType || 'text',
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         [`processedClientIds.${clientId}`]: true,
+        deletedFor: admin.firestore.FieldValue.arrayRemove(recipientId, senderId),
       });
 
       console.log(`✅ Unread count incremented for ${recipientId} in chat ${chatId}`);
@@ -1197,6 +1379,7 @@ exports.onMessageCreate = functions.firestore
         return null;
       }
 
+      // DMs stay in Inbox only (IG-style) — do not write Activity rows.
       await sendMessagePushNotification(
         recipientId,
         senderId,
@@ -1210,6 +1393,105 @@ exports.onMessageCreate = functions.firestore
       return null;
     }
   });
+
+/**
+ * When a message is soft-unsent, rebuild chat preview from the newest
+ * remaining visible message. Never remove the conversation document.
+ */
+exports.onMessageUpdate = functions.firestore
+  .document('chats/{chatId}/messages/{messageId}')
+  .onUpdate(async (change, context) => {
+    try {
+      const before = change.before.data() || {};
+      const after = change.after.data() || {};
+      const wasVisible =
+        before.isUnsent !== true &&
+        before.deleted !== true &&
+        before.deletedForEveryone !== true;
+      const isHidden =
+        after.isUnsent === true ||
+        after.deleted === true ||
+        after.deletedForEveryone === true;
+      if (!wasVisible || !isHidden) {
+        return null;
+      }
+
+      const chatId = context.params.chatId;
+      const messageId = context.params.messageId;
+      const chatRef = admin.firestore().doc(`chats/${chatId}`);
+      const chatDoc = await chatRef.get();
+      if (!chatDoc.exists) {
+        return null;
+      }
+      const chatData = chatDoc.data() || {};
+      const lastMessageId = chatData.lastMessageId || '';
+      // Only rebuild when the unsent message was the inbox preview source
+      // (or lastMessageId is missing / stale).
+      if (
+        lastMessageId &&
+        lastMessageId !== messageId &&
+        typeof chatData.lastMessage === 'string' &&
+        chatData.lastMessage.length > 0
+      ) {
+        return null;
+      }
+
+      await rebuildChatPreviewFromMessages(chatRef, chatId);
+      return null;
+    } catch (error) {
+      console.error('❌ Error in onMessageUpdate preview rebuild:', error);
+      return null;
+    }
+  });
+
+async function rebuildChatPreviewFromMessages(chatRef, chatId) {
+  const messagesSnap = await admin
+    .firestore()
+    .collection('chats')
+    .doc(chatId)
+    .collection('messages')
+    .orderBy('timestamp', 'desc')
+    .limit(40)
+    .get();
+
+  for (const doc of messagesSnap.docs) {
+    const data = doc.data() || {};
+    if (
+      data.isUnsent === true ||
+      data.deleted === true ||
+      data.deletedForEveryone === true
+    ) {
+      continue;
+    }
+    const previewText =
+      (typeof data.text === 'string' && data.text.trim()) ||
+      (data.gifUrl ? 'Sent a GIF' : null) ||
+      (data.type === 'video_share' || data.messageType === 'video_share'
+        ? 'Shared a video'
+        : null) ||
+      'Message';
+    const senderId = data.from || data.senderId || '';
+    await chatRef.update({
+      lastMessage: previewText,
+      lastMessageId: doc.id,
+      lastMessageSenderId: senderId,
+      lastMessageType: data.type || data.messageType || 'text',
+      lastTimestamp: data.timestamp || admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log(`✅ Rebuilt chat preview for ${chatId} from message ${doc.id}`);
+    return;
+  }
+
+  await chatRef.update({
+    lastMessage: '',
+    lastMessageId: '',
+    lastMessageSenderId: '',
+    lastMessageType: 'text',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  console.log(`✅ Cleared chat preview for ${chatId} (no visible messages)`);
+}
 
 /**
  * Send push notification for new message
@@ -1439,119 +1721,40 @@ async function sendToTokens(tokens, message, uid) {
 }
 
 /**
- * Send notifications to followers when a new video is published
+ * PRODUCT DECISION (2026-08):
+ * Video published → update feeds and profile
+ * Video published → do NOT create follower Activity records
+ *
+ * Generic "posted a new video" fan-out is feed content, not Activity.
+ * Valid video-related Activity remains: likes, comments, mentions, tags,
+ * shares in messaging, approval workflows.
+ *
+ * This trigger is retained as a no-op so targeted deploys do not leave a
+ * stale remote function still fan-outing. Do not restore the follower write
+ * loop without an explicit opt-in product decision + idempotent keys.
  */
 exports.onVideoPublish = functions.firestore
   .document('videos/{videoId}')
   .onCreate(async (snap, context) => {
-    let videoId = context.params.videoId;
-    let creatorId = null;
-    try {
-      const videoData = snap.data();
-      creatorId = videoData.userId || videoData.creatorId;
-      
-      console.log(`📹 New video published: ${videoId} by ${creatorId}`);
-      
-      // Only notify for published videos, not drafts
-      if (videoData.status === 'draft' || videoData.isDraft === true) {
-        console.log(`📹 Video is a draft, skipping follower notifications`);
-      safeEmitTelemetry('video_publish_skipped', {
-        videoId,
-        creatorId,
-        reason: 'draft',
-      });
-        return null;
-      }
-      
-      // Get creator data
-      const creatorDoc = await admin.firestore()
-        .collection('users')
-        .doc(creatorId)
-        .get();
-      
-      if (!creatorDoc.exists) {
-        console.log(`❌ Creator not found: ${creatorId}`);
-        return null;
-      }
-      
-      const creatorData = creatorDoc.data();
-      
-      // Get all followers
-      const followersSnapshot = await admin.firestore()
-        .collection('relationships')
-        .where('followingId', '==', creatorId)
-        .get();
-      
-      if (followersSnapshot.empty) {
-        console.log(`📹 No followers to notify for ${creatorId}`);
-      safeEmitTelemetry('video_publish_no_followers', {videoId, creatorId});
-        return null;
-      }
-      
-      console.log(`📹 Notifying ${followersSnapshot.size} followers`);
-      
-      // Create notifications in batches
-      const batch = admin.firestore().batch();
-      let notificationCount = 0;
-      
-      for (const doc of followersSnapshot.docs) {
-        const followerId = doc.data().followerId;
-        
-        // Create notification
-        const notifRef = admin.firestore()
-          .collection('notifications')
-          .doc(followerId)
-          .collection('items')
-          .doc();
-        
-        batch.set(notifRef, {
-          type: 'newVideo',
-          user: {
-            id: creatorId,
-            username: creatorData.username || 'Unknown',
-            displayName: creatorData.displayName || 'Unknown',
-            avatarURL: creatorData.avatarURL || creatorData.avatarUrl || ''
-          },
-          videoId: videoId,
-          postThumbnailUrl: videoData.thumbnailURL || videoData.thumbnailUrl || '',
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          isRead: false,
-          status: 'delivered'
-        });
-        
-        notificationCount++;
-        
-        // Commit batch every 500 writes (Firestore limit)
-        if (notificationCount % 500 === 0) {
-          await batch.commit();
-        }
-      }
-      
-      // Commit remaining writes
-      if (notificationCount % 500 !== 0) {
-        await batch.commit();
-      }
-      
-      console.log(`✅ Created ${notificationCount} new video notifications`);
-    safeEmitTelemetry('video_publish', {
+    const videoId = context.params.videoId;
+    const videoData = snap.data() || {};
+    const creatorId = videoData.userId || videoData.creatorId || null;
+    console.log(
+      `📹 onVideoPublish no-op (Activity fan-out disabled): ${videoId} by ${creatorId}`,
+    );
+    safeEmitTelemetry('video_publish_activity_disabled', {
       videoId,
       creatorId,
-      followerCount: followersSnapshot.size,
-      notified: notificationCount,
+      status: videoData.status || null,
     });
-      
-      return null;
-    } catch (error) {
-      console.error('❌ Error in onVideoPublish:', error);
-    safeEmitTelemetry('video_publish_error', {
-      videoId,
-      creatorId,
-      error: error.message,
-    });
-      return null;
-    }
+    return null;
   });
 
+/* LEGACY onVideoPublish follower fan-out removed — see git history.
+ * It wrote notifications/{followerId}/items with type: 'newVideo' on every
+ * non-draft videos/{id} onCreate (including status=uploading), with no
+ * idempotency key — causing duplicate "posted a new video" Activity rows.
+ */
 // DISABLED: onVideoMilestone - saves Cloud Run invocations on every video update.
 // Milestone push notifications (100/1K/10K views) no longer sent.
 // exports.onVideoMilestone = ...

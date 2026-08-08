@@ -221,9 +221,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     final bool viewerIsOwner = widget.currentUserId != null &&
         widget.currentUserId ==
             (_resolvedUserDocId ?? widget.userId);
-    // Match website streamer page: streamer mirror only (not profile calendarEvents).
+    // Match website streamer page: keep past events for 7 days, then drop.
     final List<CalendarEvent> events =
-        filterActiveUpcomingCalendarEvents(
+        filterStreamerPageCalendarEvents(
       events: UserProfileFirestore.parseStreamerFacingCalendarEvents(
         _userData,
         viewerIsOwner: viewerIsOwner,
@@ -447,6 +447,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     HapticFeedback.lightImpact();
 
     final isBookmarked = _bookmarkedEventIds.contains(event.id);
+    final bool isPast = event.date.isBefore(DateTime.now());
+    if (!isBookmarked && isPast) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          _streamerSnackBar(
+            context,
+            'This event has passed',
+            kind: _StreamerSnackKind.error,
+          ),
+        );
+      }
+      return;
+    }
 
     if (kDebugMode) {
       // debugPrint('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
@@ -1726,7 +1739,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
     if (result == StreamerCardRelationshipActionResult.success) {
       _notifyFollowStateChanged();
-      await _removeFollowNotification();
       _navigateToAppropriateTab();
       return;
     }
@@ -1937,26 +1949,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // ProfileVideoFeedView now handles video taps directly and opens the real PlayerScreen
 
   // MARK: - Helper Methods for Follow/Unfollow Operations
-
-  Future<void> _removeFollowNotification() async {
-    try {
-      final notificationQuery = await FirebaseFirestore.instance
-          .collection('notifications')
-          .where('userId', isEqualTo: widget.userId)
-          .where('type', isEqualTo: 'follow')
-          .where('fromUserId', isEqualTo: widget.currentUserId!)
-          .get();
-
-      for (final doc in notificationQuery.docs) {
-        await doc.reference.delete();
-      }
-    } catch (error) {
-      if (kDebugMode) {
-        // debugPrint("❌ Error removing follow notification: $error");
-      }
-      // Don't throw here - notification cleanup is not critical
-    }
-  }
 
   List<StreamerCardTabItem> get _tabs {
     return const <StreamerCardTabItem>[
@@ -2394,6 +2386,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildCalendar(List<CalendarEvent> events) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final DateTime now = DateTime.now();
+    final List<CalendarEvent> upcoming = events
+        .where((CalendarEvent e) => !e.date.isBefore(now))
+        .toList(growable: false)
+      ..sort(
+        (CalendarEvent a, CalendarEvent b) => a.date.compareTo(b.date),
+      );
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Column(
@@ -2419,7 +2418,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 fontWeight: FontWeight.w500,
               ),
             ),
-          ] else ...<Widget>[
+          ] else if (upcoming.isNotEmpty) ...<Widget>[
             const SizedBox(height: 14),
             Text(
               'Upcoming',
@@ -2430,10 +2429,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               ),
             ),
             const SizedBox(height: 8),
-            ...events.take(5).map(
+            ...upcoming.take(5).map(
               (CalendarEvent event) => _UpcomingCalendarRow(
                 event: event,
                 isBookmarked: _bookmarkedEventIds.contains(event.id),
+                isPast: false,
                 onTap: () => unawaited(_toggleBookmark(event)),
               ),
             ),
@@ -3017,73 +3017,85 @@ class _UpcomingCalendarRow extends StatelessWidget {
   const _UpcomingCalendarRow({
     required this.event,
     required this.isBookmarked,
+    required this.isPast,
     required this.onTap,
   });
 
   final CalendarEvent event;
   final bool isBookmarked;
+  final bool isPast;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final String meta = DateFormat('EEE, MMM d · h:mm a').format(event.date);
+    final bool remindLocked = isPast && !isBookmarked;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: remindLocked ? null : onTap,
           borderRadius: BorderRadius.circular(14),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: shell.surfaceCard,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: shell.surfaceCardBorder),
-            ),
-            child: Row(
-              children: <Widget>[
-                Icon(
-                  Icons.event_outlined,
-                  color: shell.onChrome,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        event.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: shell.onChrome,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        meta,
-                        style: TextStyle(
-                          color: shell.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+          child: Opacity(
+            opacity: remindLocked ? 0.45 : 1,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: shell.surfaceCard,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: shell.surfaceCardBorder),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.event_outlined,
+                    color: shell.onChrome,
+                    size: 20,
                   ),
-                ),
-                Icon(
-                  isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                  color: isBookmarked
-                      ? StThemeColors.brandPurple
-                      : shell.mutedStrong,
-                  size: 20,
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          event.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: shell.onChrome,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          remindLocked ? '$meta · Ended' : meta,
+                          style: TextStyle(
+                            color: shell.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    remindLocked
+                        ? Icons.bookmark_border
+                        : isBookmarked
+                            ? Icons.bookmark
+                            : Icons.bookmark_border,
+                    color: remindLocked
+                        ? shell.muted
+                        : isBookmarked
+                            ? StThemeColors.brandPurple
+                            : shell.mutedStrong,
+                    size: 20,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

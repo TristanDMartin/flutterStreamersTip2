@@ -37,6 +37,10 @@ _Message _$MessageFromJson(Map<String, dynamic> json) => _Message(
       replyThumbnailUrl: json['replyThumbnailUrl'] as String?,
       replyVideoId: json['replyVideoId'] as String?,
       deletedForEveryone: json['deletedForEveryone'] as bool? ?? false,
+      reactions: json['reactions'] as Map<String, dynamic>? ??
+          const <String, dynamic>{},
+      edited: json['edited'] as bool? ?? false,
+      editedAt: const TimestampConverter().fromJson(json['editedAt']),
     );
 
 Map<String, dynamic> _$MessageToJson(_Message instance) => <String, dynamic>{
@@ -65,6 +69,10 @@ Map<String, dynamic> _$MessageToJson(_Message instance) => <String, dynamic>{
       'replyThumbnailUrl': instance.replyThumbnailUrl,
       'replyVideoId': instance.replyVideoId,
       'deletedForEveryone': instance.deletedForEveryone,
+      'reactions': instance.reactions,
+      'edited': instance.edited,
+      'editedAt': _$JsonConverterToJson<Object?, DateTime>(
+          instance.editedAt, const TimestampConverter().toJson),
     };
 
 Json? _$JsonConverterToJson<Json, Value>(

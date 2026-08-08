@@ -81,7 +81,9 @@ class ForumPost {
       likedBy: List<String>.from(data['likedBy'] ?? []),
       bookmarkedBy: List<String>.from(data['bookmarkedBy'] ?? []),
       followedBy: List<String>.from(data['followedBy'] ?? []),
-      linkedVideoId: data['linkedVideoId'] as String?,
+      linkedVideoId: (data['linkedVideoId'] as String?) ??
+          (data['sourceVideoId'] as String?) ??
+          (data['relatedVideoId'] as String?),
       linkedCommentId: data['linkedCommentId'] as String?,
       status: data['status'] as String?,
       deletedReason: data['deletedReason'] as String?,

@@ -167,6 +167,8 @@ abstract class ChatViewService {
   Future<bool> sendGifMessage(String chatId, String gifUrl);
   Future<bool> sendPastedImageBytes(String chatId, Uint8List bytes);
   Future<bool> deleteMessage(String chatId, String messageId);
+  Future<bool> toggleReaction(String chatId, String messageId, String emoji);
+  Future<bool> editMessage(String chatId, String messageId, String newText);
   Stream<bool> listenToTypingStatus(String chatId, String userId);
   Future<void> setTypingStatus(String chatId, bool isTyping);
   Future<void> muteChat(String chatId, String userId);
@@ -264,6 +266,14 @@ class ChatViewServiceAdapter implements ChatViewService {
   @override
   Future<bool> deleteMessage(String chatId, String messageId) =>
       _chatService.deleteMessage(chatId, messageId);
+
+  @override
+  Future<bool> toggleReaction(String chatId, String messageId, String emoji) =>
+      _chatService.toggleReaction(chatId, messageId, emoji);
+
+  @override
+  Future<bool> editMessage(String chatId, String messageId, String newText) =>
+      _chatService.editMessage(chatId, messageId, newText);
 
   @override
   Stream<bool> listenToTypingStatus(String chatId, String userId) =>
@@ -572,6 +582,62 @@ class ChatViewController extends ChangeNotifier {
           ? 'We couldn’t unsend selected messages.'
           : '$deletedCount of ${ownMessages.length} messages unsent.',
       isError: deletedCount == 0,
+    );
+  }
+
+  Future<ChatActionFeedback> toggleReactionOnMessage(
+    app_message.Message message,
+    String emoji,
+  ) async {
+    final String? messageId = message.id;
+    final String chatId = _chat.id ?? '';
+    if (messageId == null || messageId.isEmpty || chatId.isEmpty) {
+      return const ChatActionFeedback(
+        message: 'Unable to react to this message.',
+        isError: true,
+      );
+    }
+    final bool success =
+        await _chatService.toggleReaction(chatId, messageId, emoji);
+    if (success) {
+      return const ChatActionFeedback(message: '');
+    }
+    return const ChatActionFeedback(
+      message: 'Couldn’t update reaction.',
+      isError: true,
+    );
+  }
+
+  Future<ChatActionFeedback> editOwnMessage(
+    app_message.Message message,
+    String newText,
+  ) async {
+    final String? actorUserId = currentUserId;
+    final String? messageId = message.id;
+    final String chatId = _chat.id ?? '';
+    if (actorUserId == null ||
+        messageId == null ||
+        messageId.isEmpty ||
+        chatId.isEmpty) {
+      return const ChatActionFeedback(
+        message: 'Unable to edit this message.',
+        isError: true,
+      );
+    }
+    if (message.from != actorUserId) {
+      return const ChatActionFeedback(
+        message: 'You can only edit your own messages.',
+        isError: true,
+      );
+    }
+    final bool success =
+        await _chatService.editMessage(chatId, messageId, newText);
+    if (success) {
+      return const ChatActionFeedback(message: 'Message edited.');
+    }
+    return const ChatActionFeedback(
+      message: 'Couldn’t edit message.',
+      isError: true,
     );
   }
 

@@ -7,7 +7,6 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import '../features/activity/activity_notification_rules.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart' as app_user;
-import '../services/public_profile_firestore.dart';
 import '../services/user_blocking_service.dart';
 
 part 'activity_provider.freezed.dart';
@@ -462,7 +461,13 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     }
 
     final notificationType = (data['type'] ?? '').toString();
-    if (shouldHideFromActivityFeed(notificationType)) {
+    if (shouldHideFromActivityFeed(
+      notificationType,
+      actionType: data['actionType']?.toString(),
+      chatId: _stringField(data, const ['chatId']).ifEmpty(null),
+      messageId: _stringField(data, const ['messageId']).ifEmpty(null),
+      actionUrl: _stringField(data, const ['actionUrl']).ifEmpty(null),
+    )) {
       return null;
     }
     final bool isRead = !isActivityNotificationDocUnread(data) ||
@@ -1050,270 +1055,26 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     }
   }
 
-  /// Test method to manually create notifications of all types
+  /// Activity notification docs are server-only — firestore.rules forbids
+  /// client creates on notifications/{uid}/items, so this is a no-op.
   Future<void> createTestNotification(String userId) async {
-    try {
-      debugPrint('🧪 Creating test notifications for user: $userId');
-
-      // Get current user data for more realistic test notifications
-      final currentUser = fa.FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
-        debugPrint('❌ No current user found for test notifications');
-        return;
-      }
-
-      // Get current user's display name and photo URL
-      final userDoc = await _db.collection('users').doc(currentUser.uid).get();
-      final userData = userDoc.data() ?? {};
-
-      final testUser = {
-        'id': currentUser.uid,
-        'username': userData['username'] ?? 'current_user',
-        'displayName': userData['displayName'] ??
-            currentUser.displayName ??
-            'Current User',
-        'avatarURL': userData['avatarURL'] ??
-            currentUser.photoURL ??
-            'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face',
-      };
-
-      // Create all notification types
-      final notificationTypes = [
-        {
-          'type': 'like',
-          'data': {
-            'videoId': 'test_video',
-            'postThumbnailUrl':
-                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
-          }
-        },
-        {'type': 'follow', 'data': {}},
-        {
-          'type': 'comment',
-          'data': {
-            'videoId': 'test_video',
-            'commentText': 'Great video!',
-            'postThumbnailUrl':
-                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
-          }
-        },
-        {
-          'type': 'tag',
-          'data': {
-            'videoId': 'test_video',
-            'postThumbnailUrl':
-                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
-          }
-        },
-        {
-          'type': 'mention',
-          'data': {
-            'videoId': 'test_video',
-            'postThumbnailUrl':
-                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
-          }
-        },
-      ];
-
-      for (final notificationType in notificationTypes) {
-        final notificationData = {
-          'type': notificationType['type'],
-          'user': testUser,
-          'timestamp': FieldValue.serverTimestamp(),
-          'isRead': false,
-          'status': 'pending',
-          ...notificationType['data'] as Map<String, dynamic>,
-        };
-
-        await _db
-            .collection('notifications')
-            .doc(userId)
-            .collection('items')
-            .add(notificationData);
-      }
-
-      debugPrint('✅ Test notifications created successfully (all types)');
-    } catch (e) {
-      debugPrint('❌ Error creating test notifications: $e');
-    }
+    debugPrint(
+        '🚫 createTestNotification: server-only contract — client creates on notifications/{uid}/items are forbidden');
   }
 
-  /// Method to create test notifications with different users for more realistic testing
+  /// Activity notification docs are server-only — firestore.rules forbids
+  /// client creates on notifications/{uid}/items, so this is a no-op.
   Future<void> createRealisticTestNotifications(String userId) async {
-    try {
-      debugPrint('🧪 Creating realistic test notifications for user: $userId');
-
-      // Create notifications from different users with high-quality avatars
-      final testUsers = [
-        {
-          'id': 'test_user_1',
-          'username': 'gamer_pro',
-          'displayName': 'Gamer Pro',
-          'avatarURL':
-              'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
-        },
-        {
-          'id': 'test_user_2',
-          'username': 'art_creator',
-          'displayName': 'Art Creator',
-          'avatarURL':
-              'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
-        },
-        {
-          'id': 'test_user_3',
-          'username': 'music_lover',
-          'displayName': 'Music Lover',
-          'avatarURL':
-              'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
-        },
-        {
-          'id': 'test_user_4',
-          'username': 'tech_reviewer',
-          'displayName': 'Tech Reviewer',
-          'avatarURL':
-              'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
-        },
-        {
-          'id': 'test_user_5',
-          'username': 'fitness_coach',
-          'displayName': 'Fitness Coach',
-          'avatarURL':
-              'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
-        },
-      ];
-
-      final now = DateTime.now();
-
-      // Create various notification types from different users with high-quality video thumbnails
-      final notifications = [
-        {
-          'type': 'like',
-          'user': testUsers[0],
-          'videoId': 'video_1',
-          'postThumbnailUrl':
-              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp':
-              Timestamp.fromDate(now.subtract(const Duration(minutes: 5))),
-          'status': 'pending',
-        },
-        {
-          'type': 'follow',
-          'user': testUsers[1],
-          'timestamp':
-              Timestamp.fromDate(now.subtract(const Duration(hours: 1))),
-          'status': 'delivered',
-        },
-        {
-          'type': 'comment',
-          'user': testUsers[2],
-          'videoId': 'video_2',
-          'commentText': 'Amazing content! Keep it up! 🎵',
-          'postThumbnailUrl':
-              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp':
-              Timestamp.fromDate(now.subtract(const Duration(hours: 2))),
-          'status': 'delivered',
-        },
-        {
-          'type': 'like',
-          'user': testUsers[3],
-          'videoId': 'video_3',
-          'postThumbnailUrl':
-              'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp':
-              Timestamp.fromDate(now.subtract(const Duration(hours: 3))),
-          'status': 'pending',
-        },
-        {
-          'type': 'mention',
-          'user': testUsers[4],
-          'videoId': 'video_4',
-          'postThumbnailUrl':
-              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp':
-              Timestamp.fromDate(now.subtract(const Duration(days: 1))),
-          'status': 'delivered',
-        },
-        {
-          'type': 'comment',
-          'user': testUsers[0],
-          'videoId': 'video_5',
-          'commentText': 'This is incredible! 🔥',
-          'postThumbnailUrl':
-              'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp':
-              Timestamp.fromDate(now.subtract(const Duration(hours: 4))),
-          'status': 'delivered',
-        },
-        {
-          'type': 'like',
-          'user': testUsers[2],
-          'videoId': 'video_6',
-          'postThumbnailUrl':
-              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp':
-              Timestamp.fromDate(now.subtract(const Duration(hours: 6))),
-          'status': 'pending',
-        },
-      ];
-
-      for (final notification in notifications) {
-        await _db
-            .collection('notifications')
-            .doc(userId)
-            .collection('items')
-            .add(notification);
-      }
-
-      debugPrint('✅ Realistic test notifications created successfully');
-    } catch (e) {
-      debugPrint('❌ Error creating realistic test notifications: $e');
-    }
+    debugPrint(
+        '🚫 createRealisticTestNotifications: server-only contract — client creates on notifications/{uid}/items are forbidden');
   }
 
-  /// Method to simulate a comment notification from another user
+  /// Activity notification docs are server-only — firestore.rules forbids
+  /// client creates on notifications/{uid}/items, so this is a no-op.
   Future<void> simulateCommentNotification(
       String userId, String commenterId, String videoId) async {
-    try {
-      debugPrint('🧪 Simulating comment notification for user: $userId');
-
-      // Get commenter user data
-      final Map<String, dynamic>? commenterData =
-          await PublicProfileFirestore.instance.getProfileMap(commenterId);
-      if (commenterData == null) {
-        debugPrint('❌ Commenter user not found: $commenterId');
-        return;
-      }
-
-      // Create notification data
-      final notificationData = {
-        'type': 'comment',
-        'user': {
-          'id': commenterId,
-          'username': commenterData['username'] ?? 'Unknown',
-          'displayName': commenterData['displayName'] ?? 'Unknown',
-          'avatarURL': commenterData['avatarURL'] ?? commenterData['avatarUrl'],
-        },
-        'videoId': videoId,
-        'commentText': 'Great video! This is a test comment.',
-        'postThumbnailUrl':
-            'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop',
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'status': 'pending',
-      };
-
-      // Add notification to Firestore
-      await _db
-          .collection('notifications')
-          .doc(userId)
-          .collection('items')
-          .add(notificationData);
-
-      debugPrint('✅ Comment notification simulated successfully');
-    } catch (e) {
-      debugPrint('❌ Error simulating comment notification: $e');
-    }
+    debugPrint(
+        '🚫 simulateCommentNotification: server-only contract — client creates on notifications/{uid}/items are forbidden');
   }
 
   /// Reset the provider to allow re-initialization
@@ -1462,7 +1223,13 @@ final unreadActivityCountProvider = StreamProvider<int>((ref) {
       .listen((snapshot) {
     primaryUnread = snapshot.docs.where((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
       final Map<String, dynamic> data = doc.data();
-      if (shouldHideFromActivityUnreadBadge(data['type'] as String?)) {
+      if (shouldHideFromActivityUnreadBadge(
+        data['type'] as String?,
+        actionType: data['actionType'] as String?,
+        chatId: data['chatId'] as String?,
+        messageId: data['messageId'] as String?,
+        actionUrl: data['actionUrl'] as String?,
+      )) {
         return false;
       }
       return isActivityNotificationDocUnread(data);
@@ -1483,7 +1250,13 @@ final unreadActivityCountProvider = StreamProvider<int>((ref) {
       .listen((snapshot) {
     forumUnread = snapshot.docs.where((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
       final Map<String, dynamic> data = doc.data();
-      if (shouldHideFromActivityUnreadBadge(data['type'] as String?)) {
+      if (shouldHideFromActivityUnreadBadge(
+        data['type'] as String?,
+        actionType: data['actionType'] as String?,
+        chatId: data['chatId'] as String?,
+        messageId: data['messageId'] as String?,
+        actionUrl: data['actionUrl'] as String?,
+      )) {
         return false;
       }
       return isActivityNotificationDocUnread(data);

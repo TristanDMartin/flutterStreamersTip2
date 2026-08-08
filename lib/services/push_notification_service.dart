@@ -514,16 +514,8 @@ class PushNotificationService {
         data: data ?? {},
       );
 
-      // Also store in Firestore for persistence
-      await _firestore.collection('notifications').add({
-        'userId': _auth.currentUser?.uid,
-        'title': title,
-        'body': body,
-        'type': data?['type'] ?? 'general',
-        'data': data ?? {},
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-      });
+      // Activity notification docs are server-only (Cloud Functions own
+      // notifications/{uid}/items creates) — no flat Firestore write here.
 
       LoggingService.instance.debug('✅ Local notification sent successfully',
           tag: 'PushNotificationService');

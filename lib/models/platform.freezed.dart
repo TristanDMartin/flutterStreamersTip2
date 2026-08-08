@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 
 /// @nodoc
 mixin _$Platform {
-  String get id;
+  String get id; // ignore: invalid_annotation_target
   @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
   PlatformType get type;
   String get username;
@@ -305,6 +305,7 @@ class _Platform implements Platform {
 
   @override
   final String id;
+// ignore: invalid_annotation_target
   @override
   @JsonKey(fromJson: platformTypeFromJson, toJson: platformTypeToJson)
   final PlatformType type;
