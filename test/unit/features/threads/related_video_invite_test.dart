@@ -17,6 +17,14 @@ Discussion body
       expect(stripRelatedVideoMarkdown(input), 'Discussion body');
     });
 
+    test('cleans legacy video-comment body for card display', () {
+      const String input =
+          '**Original Comment from @TechnQs:** "lmao" --- **Related Video:** [Watch Video](http://localhost:3000/video/video_1780286682796_gRoRo0FL)';
+      expect(displayThreadBody(input), 'lmao');
+      expect(displayThreadBody(input), isNot(contains('localhost')));
+      expect(displayThreadBody(input), isNot(contains('Watch Video')));
+    });
+
     test('prefers canonical field ids over markdown', () {
       expect(
         resolveRelatedVideoId(

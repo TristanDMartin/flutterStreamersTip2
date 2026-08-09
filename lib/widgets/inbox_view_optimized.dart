@@ -22,6 +22,7 @@ import '../utils/user_facing_error.dart';
 import '../providers/unread_messages_provider.dart';
 import '../providers/main_tab_provider.dart';
 import '../routing/app_navigator.dart';
+import '../features/messaging/data/messaging_repository.dart';
 import 'new_message_view.dart';
 import 'draft_feedback_view.dart';
 import 'screen_feedback_state.dart';
@@ -1856,13 +1857,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               label: 'Mark unread',
               onTap: () async {
                 Navigator.of(context).pop();
-                await FirebaseFirestore.instance
-                    .collection('chats')
-                    .doc(chatId)
-                    .set(<String, Object?>{
-                  'unreadCount_$userId': 1,
-                  'updatedAt': FieldValue.serverTimestamp(),
-                }, SetOptions(merge: true));
+                await MessagingRepository.instance.markChatUnread(
+                  chatId: chatId,
+                  userId: userId,
+                );
                 if (!mounted) return;
                 setState(() => _unreadCounts[chatId] = 1);
                 ref.invalidate(unreadMessagesProvider);

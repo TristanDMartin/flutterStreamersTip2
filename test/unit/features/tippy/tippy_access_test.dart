@@ -122,4 +122,82 @@ void main() {
       expect(snapshot.tippyAi.enabled, isTrue);
     });
   });
+
+  group('resolveTippyEnabledForPublish', () {
+    test('true for Pro snapshot', () {
+      final SubscriptionSnapshot snapshot = SubscriptionSnapshot.fromResponseJson(
+        <String, dynamic>{
+          'tier': 'pro',
+          'effectiveTier': 'pro',
+          'isPro': true,
+          'subscriptionStatus': 'active',
+          'entitlements': <String, dynamic>{
+            'canUseAICaptionRewrite': true,
+            'monthlyAiCredits': 300,
+          },
+        },
+      );
+      expect(
+        resolveTippyEnabledForPublish(entitlements: snapshot),
+        isTrue,
+      );
+      expect(resolveTippyPublishAssistUnlocked(snapshot), isTrue);
+    });
+
+    test('true for Studio snapshot', () {
+      final SubscriptionSnapshot snapshot = SubscriptionSnapshot.fromResponseJson(
+        <String, dynamic>{
+          'tier': 'studio',
+          'effectiveTier': 'studio',
+          'isStudio': true,
+          'subscriptionStatus': 'active',
+          'entitlements': <String, dynamic>{
+            'canUseAICaptionRewrite': true,
+          },
+        },
+      );
+      expect(
+        resolveTippyEnabledForPublish(entitlements: snapshot),
+        isTrue,
+      );
+    });
+
+    test('false for starter snapshot even if tippyAi enabled', () {
+      final SubscriptionSnapshot snapshot = SubscriptionSnapshot.fromResponseJson(
+        <String, dynamic>{
+          'tier': 'starter',
+          'effectiveTier': 'starter',
+          'isStarter': true,
+          'tippyAi': <String, dynamic>{'enabled': true},
+          'entitlements': <String, dynamic>{
+            'canUseAICaptionRewrite': false,
+          },
+        },
+      );
+      expect(
+        resolveTippyEnabledForPublish(entitlements: snapshot),
+        isFalse,
+      );
+      expect(resolveTippyPublishAssistUnlocked(snapshot), isFalse);
+    });
+
+    test('false for starter bundle without paid plan', () {
+      final UserProgressBundle bundle = UserProgressBundle(
+        progress: const GamificationSummaryModel(
+          level: 1,
+          totalXp: 0,
+          streakDays: 0,
+          creatorScore: 0,
+          rankTitle: 'Rookie',
+        ),
+        subscription: const UserSubscriptionModel(
+          plan: SubscriptionPlan.starter,
+          status: 'active',
+        ),
+        entitlements: const UserEntitlementsModel(tippyAi: false),
+        missions: const [],
+      );
+      expect(resolveTippyEnabledForPublish(bundle: bundle), isFalse);
+    });
+  });
 }

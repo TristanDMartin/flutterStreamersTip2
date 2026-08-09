@@ -214,6 +214,8 @@ class ChatService {
       // Rules disallow hard delete; soft-hide for this user only.
       await _firestore.collection("chats").doc(chatId).update({
         "deletedFor": FieldValue.arrayUnion(<String>[me]),
+        "unreadCount_$me": 0,
+        "unreadCountByUser.$me": 0,
       });
     } catch (e) {
       // appLog("Error deleting chat: $e");
@@ -233,6 +235,8 @@ class ChatService {
           _firestore.collection("chats").doc(chatId),
           <String, dynamic>{
             "deletedFor": FieldValue.arrayUnion(<String>[me]),
+            "unreadCount_$me": 0,
+            "unreadCountByUser.$me": 0,
           },
         );
       }

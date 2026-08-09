@@ -20,7 +20,7 @@ bool _statusAllowsTippy(String status) {
   );
 }
 
-/// Prefer [resolveTippyEnabledFromSnapshot] for gated UI.
+/// Prefer [resolveTippyEnabledFromSnapshot] for Tippy chat / general UI.
 bool resolveTippyEnabledFromSnapshot(SubscriptionSnapshot? snapshot) {
   if (snapshot == null) {
     return false;
@@ -29,6 +29,17 @@ bool resolveTippyEnabledFromSnapshot(SubscriptionSnapshot? snapshot) {
     return true;
   }
   return snapshot.canUseTippy;
+}
+
+/// Publish caption/hashtag Tippy assist — Creator Pro / Studio only.
+bool resolveTippyPublishAssistUnlocked(SubscriptionSnapshot snapshot) {
+  if (snapshot.hasFullAccess) {
+    return true;
+  }
+  if (snapshot.entitlements.canUseAICaptionRewrite) {
+    return true;
+  }
+  return snapshot.isPro || snapshot.isStudio;
 }
 
 /// Whether Tippy chat / assist entry points are available for the signed-in user.
@@ -53,30 +64,27 @@ bool resolveTippyEnabled(UserProgressBundle bundle) {
   return false;
 }
 
-/// New Post and other screens: API snapshot first, then legacy bundle/Firestore.
+/// New Post Tippy caption/hashtag assist: Pro/Studio via canonical entitlements.
 bool resolveTippyEnabledForPublish({
   UserProgressBundle? bundle,
   SubscriptionSnapshot? entitlements,
   BillingTierAccess? billing,
 }) {
-  if (entitlements != null && resolveTippyEnabledFromSnapshot(entitlements)) {
-    return true;
+  if (entitlements != null) {
+    return resolveTippyPublishAssistUnlocked(entitlements);
+  }
+  if (billing != null && billing.usedCanonicalFields) {
+    return _isPaidPlan(billing.effectivePlan) &&
+        _statusAllowsTippy(billing.subscriptionStatusForDisplay ?? 'active');
   }
   if (bundle != null && bundle.entitlements.tippyAi) {
     return true;
   }
-  if (billing != null && billing.usedCanonicalFields) {
-    if (billing.effectivePlan == SubscriptionPlan.starter ||
-        billing.effectivePlan == SubscriptionPlan.unknown) {
-      return true;
-    }
-    if (_isPaidPlan(billing.effectivePlan) &&
-        _statusAllowsTippy(billing.subscriptionStatusForDisplay ?? '')) {
-      return true;
-    }
-  }
-  if (bundle != null) {
-    return resolveTippyEnabled(bundle);
+  final UserSubscriptionModel? sub = bundle?.subscription;
+  if (sub != null &&
+      _isPaidPlan(sub.plan) &&
+      _statusAllowsTippy(sub.status)) {
+    return true;
   }
   return false;
 }

@@ -48,7 +48,18 @@ class InboxServiceOptimized {
       final chats = <app_chat.Chat>[];
       for (final doc in query.docs) {
         try {
-          final chat = _mapChat(doc.id, doc.data());
+          final Map<String, dynamic> data = doc.data();
+          if (data['supersededBy'] != null) {
+            continue;
+          }
+          final List<dynamic> deletedRaw =
+              (data['deletedFor'] as List<dynamic>?) ?? const <dynamic>[];
+          if (deletedRaw
+              .map((dynamic e) => e.toString())
+              .contains(currentUser.uid)) {
+            continue;
+          }
+          final chat = _mapChat(doc.id, data);
           _chatCache[doc.id] = chat;
           chats.add(chat);
         } catch (e) {
@@ -206,27 +217,23 @@ class InboxServiceOptimized {
   Map<String, int> snapshotUnreadCounts() =>
       Map<String, int>.from(_unreadCounts);
 
-  /// Get unread message count for a chat
+  /// Get unread message count for a chat (chat-level counter, CF-owned).
   Future<int> getUnreadCount(String chatId) async {
     if (_unreadCounts.containsKey(chatId)) {
       return _unreadCounts[chatId]!;
     }
-
     final currentUser = _auth.currentUser;
     if (currentUser == null) return 0;
-
     try {
-      final query = await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .where('senderId', isNotEqualTo: currentUser.uid)
-          .get();
-
-      final unreadCount = query.docs.where((doc) {
-        final readBy = List<String>.from(doc.data()['readBy'] ?? const []);
-        return !readBy.contains(currentUser.uid);
-      }).length;
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await _firestore.collection('chats').doc(chatId).get();
+      if (!snap.exists) {
+        return 0;
+      }
+      final int unreadCount = _messaging.unreadCountForUser(
+        snap.data() ?? <String, dynamic>{},
+        currentUser.uid,
+      );
       _unreadCounts[chatId] = unreadCount;
       return unreadCount;
     } catch (e) {
@@ -235,48 +242,15 @@ class InboxServiceOptimized {
     }
   }
 
-  /// Mark messages as read
+  /// Mark messages as read — zeros both canonical unread fields for this chat.
   Future<void> markAsRead(String chatId) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return;
-
     try {
-      // Get all messages in this chat where current user is recipient but not in readBy
-      final query = await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .where('recipients', arrayContains: currentUser.uid)
-          .get();
-
-      final batch = _firestore.batch();
-      var hasUpdates = false;
-      for (final doc in query.docs) {
-        final messageData = doc.data();
-        final readBy = List<String>.from(messageData['readBy'] ?? []);
-
-        // Only update if user is not already in readBy
-        if (!readBy.contains(currentUser.uid)) {
-          batch.update(doc.reference, {
-            'readBy': FieldValue.arrayUnion([currentUser.uid]),
-            'isRead': true,
-          });
-          hasUpdates = true;
-        }
-      }
-
-      batch.set(
-        _firestore.collection('chats').doc(chatId),
-        {
-          'unreadCount_${currentUser.uid}': 0,
-          'lastReadTimestamp': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
+      await _messaging.markChatRead(
+        chatId: chatId,
+        userId: currentUser.uid,
       );
-
-      if (hasUpdates || _chatCache.containsKey(chatId)) {
-        await batch.commit();
-      }
       _unreadCounts[chatId] = 0;
     } catch (e) {
       LoggingService.instance.error('Error marking as read: $e');
@@ -328,8 +302,11 @@ class InboxServiceOptimized {
     try {
       await _firestore.collection('chats').doc(chatId).update(<String, dynamic>{
         'deletedFor': FieldValue.arrayUnion(<String>[me]),
+        'unreadCount_$me': 0,
+        'unreadCountByUser.$me': 0,
       });
       _chatCache.remove(chatId);
+      _unreadCounts.remove(chatId);
       return true;
     } catch (e) {
       LoggingService.instance.error('Error deleting chat: $e');
@@ -350,9 +327,12 @@ class InboxServiceOptimized {
           _firestore.collection('chats').doc(chatId),
           <String, dynamic>{
             'deletedFor': FieldValue.arrayUnion(<String>[me]),
+            'unreadCount_$me': 0,
+            'unreadCountByUser.$me': 0,
           },
         );
         _chatCache.remove(chatId);
+        _unreadCounts.remove(chatId);
       }
       await batch.commit();
       return true;
@@ -397,28 +377,17 @@ class InboxServiceOptimized {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return false;
-
       final query = await _firestore
           .collection('chats')
           .where('participants', arrayContains: currentUser.uid)
           .get();
-
-      final batch = _firestore.batch();
       for (final doc in query.docs) {
-        batch.update(doc.reference, {
-          'unreadCount': 0,
-          'lastReadTimestamp': FieldValue.serverTimestamp(),
-        });
+        await _messaging.markChatRead(
+          chatId: doc.id,
+          userId: currentUser.uid,
+        );
+        _unreadCounts[doc.id] = 0;
       }
-
-      await batch.commit();
-
-      // Update cache
-      for (final chatId in _chatCache.keys) {
-        final chat = _chatCache[chatId]!;
-        _chatCache[chatId] = chat;
-      }
-
       return true;
     } catch (e) {
       LoggingService.instance.error('Error marking all chats as read: $e');
@@ -453,16 +422,9 @@ class InboxServiceOptimized {
   /// Map Firestore document to Chat model
   app_chat.Chat _mapChat(String id, Map<String, dynamic> data) {
     final currentUser = _auth.currentUser;
-    // Extract unread count for current user from chat document
-    // Cloud Functions stores it as unreadCount_{userId}
     int unreadCount = 0;
     if (currentUser != null) {
-      final unreadField = 'unreadCount_${currentUser.uid}';
-      final dynamic unreadValue = data[unreadField];
-      if (unreadValue is num) {
-        unreadCount = unreadValue.toInt();
-      }
-      // Cache the unread count
+      unreadCount = _messaging.unreadCountForUser(data, currentUser.uid);
       _unreadCounts[id] = unreadCount;
     }
 
@@ -618,7 +580,18 @@ class InboxServiceOptimized {
       final chats = <app_chat.Chat>[];
       for (final doc in snapshot.docs) {
         try {
-          final chat = _mapChat(doc.id, doc.data());
+          final Map<String, dynamic> data = doc.data();
+          if (data['supersededBy'] != null) {
+            continue;
+          }
+          final List<dynamic> deletedRaw =
+              (data['deletedFor'] as List<dynamic>?) ?? const <dynamic>[];
+          if (deletedRaw
+              .map((dynamic e) => e.toString())
+              .contains(currentUser.uid)) {
+            continue;
+          }
+          final chat = _mapChat(doc.id, data);
           _chatCache[doc.id] = chat;
           chats.add(chat);
         } catch (e) {

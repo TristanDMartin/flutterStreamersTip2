@@ -330,7 +330,8 @@ class MessagingRepository {
         .where('participants', arrayContains: userId)
         .snapshots()
         .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
-      final List<Map<String, dynamic>> chats = snapshot.docs.map(
+      final List<Map<String, dynamic>> chats = snapshot.docs
+          .map(
         (QueryDocumentSnapshot<Map<String, dynamic>> doc) {
           final Map<String, dynamic> data =
               Map<String, dynamic>.from(doc.data());
@@ -338,7 +339,18 @@ class MessagingRepository {
           data['unreadCount'] = unreadCountForUser(data, userId);
           return data;
         },
-      ).toList();
+      )
+          .where((Map<String, dynamic> chat) {
+        if (chat['supersededBy'] != null) {
+          return false;
+        }
+        final Object? deletedRaw = chat['deletedFor'];
+        if (deletedRaw is List &&
+            deletedRaw.map((Object? e) => e.toString()).contains(userId)) {
+          return false;
+        }
+        return true;
+      }).toList();
       chats.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
         final DateTime aTime = _readTimestamp(a['lastTimestamp']) ??
             DateTime.fromMillisecondsSinceEpoch(0);

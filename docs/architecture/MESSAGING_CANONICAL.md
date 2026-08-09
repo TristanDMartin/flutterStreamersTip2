@@ -33,7 +33,8 @@ Website CSS (`InboxView.module.css`, `ChatView.module.css`) should track those t
 
 ## Data fields (shared)
 
-- `deletedFor[]`, `unreadCount_{uid}`, `mutedBy[]`
+- `deletedFor[]`, `unreadCount_{uid}`, `unreadCountByUser.{uid}`, `mutedBy[]`
+- Badge skips `supersededBy` + soft-hidden chats; CF increments both unread fields
 - `pinnedUntilViewed` / system participant
 - Message: `deleted` / `deletedForEveryone`, `readBy`, `gifUrl`, `messageType`
 

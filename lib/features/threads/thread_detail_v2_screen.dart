@@ -580,7 +580,7 @@ class _ThreadDetailV2ScreenState extends State<ThreadDetailV2Screen> {
                                     0,
                                   ),
                                   child: Text(
-                                    stripRelatedVideoMarkdown(thread.body),
+                                    displayThreadBody(thread.body),
                                     style: TextStyle(
                                       color: scheme.onSurface
                                           .withValues(alpha: 0.88),

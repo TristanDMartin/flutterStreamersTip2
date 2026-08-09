@@ -14,27 +14,28 @@ final unreadMessagesProvider = StreamProvider<int>((ref) {
     return Stream.value(0);
   }
 
+  final MessagingRepository messaging = MessagingRepository.instance;
   return FirebaseFirestore.instance
       .collection('chats')
       .where('participants', arrayContains: currentUser.uid)
       .snapshots()
       .map((chatsSnapshot) {
     int totalUnread = 0;
-
-    for (final chatDoc in chatsSnapshot.docs) {
-      final chatData = chatDoc.data();
-      final List<dynamic> deletedRaw =
-          (chatData['deletedFor'] as List<dynamic>?) ?? const <dynamic>[];
-      if (deletedRaw.map((dynamic e) => e.toString()).contains(currentUser.uid)) {
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> chatDoc
+        in chatsSnapshot.docs) {
+      final Map<String, dynamic> chatData = chatDoc.data();
+      if (chatData['supersededBy'] != null) {
         continue;
       }
-      // Get unread count for this user from chat document
-      final unreadField = 'unreadCount_${currentUser.uid}';
-      final dynamic unreadCount = chatData[unreadField] ?? 0;
-      totalUnread +=
-          (unreadCount is int ? unreadCount : (unreadCount as num).toInt());
+      final List<dynamic> deletedRaw =
+          (chatData['deletedFor'] as List<dynamic>?) ?? const <dynamic>[];
+      if (deletedRaw
+          .map((dynamic e) => e.toString())
+          .contains(currentUser.uid)) {
+        continue;
+      }
+      totalUnread += messaging.unreadCountForUser(chatData, currentUser.uid);
     }
-
     return totalUnread;
   });
 });
@@ -59,10 +60,10 @@ final chatUnreadMessagesProvider =
     final chatData = snapshot.data();
     if (chatData == null) return 0;
 
-    // Get unread count for current user from chat document
-    final unreadField = 'unreadCount_${currentUser.uid}';
-    final dynamic unreadCount = chatData[unreadField] ?? 0;
-    return unreadCount is int ? unreadCount : (unreadCount as num).toInt();
+    return MessagingRepository.instance.unreadCountForUser(
+      chatData,
+      currentUser.uid,
+    );
   });
 });
 

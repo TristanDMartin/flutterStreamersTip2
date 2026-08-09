@@ -464,13 +464,6 @@ class ConnectionsService {
           .collection('messages')
           .add(messageData);
 
-      final String unreadField = 'unreadCount_$recipientId';
-      await _firestore.collection('chats').doc(chatId).update(<String, dynamic>{
-        'lastMessage': 'Shared a video',
-        'lastTimestamp': FieldValue.serverTimestamp(),
-        unreadField: FieldValue.increment(1),
-      });
-
       try {
         await _firestore
             .collection('users')

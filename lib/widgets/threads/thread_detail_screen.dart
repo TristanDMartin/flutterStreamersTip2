@@ -923,7 +923,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
           ),
           const SizedBox(height: 18),
           Text(
-            stripRelatedVideoMarkdown(_post!.content),
+            displayThreadBody(_post!.content),
             style: TextStyle(
               color: shell.onChrome.withValues(alpha: 0.88),
               fontSize: 16,

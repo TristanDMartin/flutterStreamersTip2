@@ -12,6 +12,7 @@ import 'threads_contract.dart';
 import 'threads_models.dart';
 import 'threads_repository.dart';
 import 'typed_create_thread_screen.dart';
+import 'related_video.dart';
 
 /// Creator Threads shell — consumes [ThreadsRepository] only (no forum heuristics).
 class CreatorThreadsShell extends StatefulWidget {
@@ -462,13 +463,20 @@ class _ThreadCardState extends State<_ThreadCard> {
     final ThreadDto thread = widget.thread;
     final String category = _threadCardCategoryLabel(thread);
     final String typeLabel = threadTypeLabel(thread.type);
-    final String quote = thread.body.trim().isNotEmpty
-        ? thread.body.trim()
-        : (thread.title.trim().isNotEmpty
-            ? thread.title.trim()
-            : 'Open thread');
+    final String quote = () {
+      final String cleaned = displayThreadBody(thread.body);
+      if (cleaned.isNotEmpty) {
+        return cleaned;
+      }
+      if (thread.title.trim().isNotEmpty) {
+        return thread.title.trim();
+      }
+      return 'Open thread';
+    }();
     final bool showTitle = thread.title.trim().isNotEmpty &&
-        thread.title.trim() != quote;
+        thread.title.trim() != quote &&
+        !RegExp(r'^discussion:\s*', caseSensitive: false)
+            .hasMatch(thread.title.trim());
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
