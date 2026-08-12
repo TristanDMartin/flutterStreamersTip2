@@ -147,15 +147,12 @@ class TippyOnboardingGuestSession {
       completedQuestionsAt != null &&
       answers.length >= kTippyOnboardingTotalQuestions;
 
-  /// Incomplete local Tippy session that sat idle too long.
-  bool isInactiveExpired({DateTime? now}) {
-    if (landingChoice != null) {
-      return false;
-    }
-    final DateTime reference = (now ?? DateTime.now()).toUtc();
-    return reference.difference(updatedAt.toUtc()) >=
-        kTippyOnboardingInactivityRestart;
-  }
+  /// True when the user has answered at least one DNA question.
+  bool get hasMeaningfulProgress =>
+      answers.isNotEmpty || questionIndex > 0 || hasCompletedQuestions;
+
+  /// Idle wipe disabled — always resume exact step until complete.
+  bool isInactiveExpired({DateTime? now}) => false;
 
   static String _createSessionId() {
     final Random random = Random.secure();
@@ -177,13 +174,6 @@ class TippyOnboardingSessionStore {
   Future<TippyOnboardingGuestSession> loadOrCreate() async {
     final TippyOnboardingGuestSession? existing = await load();
     if (existing != null) {
-      if (existing.isInactiveExpired()) {
-        await clear();
-        final TippyOnboardingGuestSession restarted =
-            TippyOnboardingGuestSession.empty();
-        await save(restarted);
-        return restarted;
-      }
       return existing;
     }
     final TippyOnboardingGuestSession created =
@@ -192,17 +182,9 @@ class TippyOnboardingSessionStore {
     return created;
   }
 
-  /// Loads a session only if it is still active; clears stale incomplete ones.
+  /// Loads any persisted session (progress is never wiped by idle timeout).
   Future<TippyOnboardingGuestSession?> loadActive() async {
-    final TippyOnboardingGuestSession? existing = await load();
-    if (existing == null) {
-      return null;
-    }
-    if (existing.isInactiveExpired()) {
-      await clear();
-      return null;
-    }
-    return existing;
+    return load();
   }
 
   Future<TippyOnboardingGuestSession?> load() async {

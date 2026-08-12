@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../models/calendar_event.dart';
-import '../core/theme/support_shell_style.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../features/content_planning/content_planning_api_client.dart';
 import '../features/content_planning/calendar_visibility_contract.dart';
@@ -18,9 +17,9 @@ import 'adult_external_link_dialog.dart';
 import '../utils/platform_rules.dart';
 import '../utils/user_profile_firestore.dart';
 import '../services/public_profile_firestore.dart';
-import '../constants/app_colors.dart';
 import '../features/creator_score/creator_score_widgets.dart';
 import 'profile/profile_username_utils.dart';
+import 'streamer_card_sections.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -230,13 +229,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     return merged;
   }
 
-  ColorScheme get _scheme => Theme.of(context).colorScheme;
-  Color get _onSurface => _scheme.onSurface;
-  Color get _onPrimary => _scheme.onPrimary;
-  StSupportShellStyle get _shell => StSupportShellStyle.of(context);
-  List<Color> get _accentGradientColors =>
-      <Color>[_scheme.primary, _scheme.secondary];
-
   @override
   Widget build(BuildContext context) {
     try {
@@ -281,54 +273,45 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _buildErrorState(Object? error) {
-    final StSupportShellStyle shell = _shell;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.profileViewBackground,
-          ),
-          child: SizedBox.expand(),
-        ),
-        Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: shell.onChrome,
-                  size: 64,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Error Loading Profile',
-                  style: TextStyle(
-                    color: shell.onChrome,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Please try again later',
-                  style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => setState(() {}),
-                  child: const Text('Retry'),
-                ),
-              ],
+    return ColoredBox(
+      color: StreamerCardBackStyle.background,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            const Icon(
+              Icons.error_outline,
+              color: StreamerCardBackStyle.softText,
+              size: 48,
             ),
-          ),
+            const SizedBox(height: 16),
+            const Text(
+              'Error Loading Profile',
+              style: TextStyle(
+                color: StreamerCardBackStyle.softText,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please try again later',
+              style: TextStyle(
+                color: StreamerCardBackStyle.muted,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () => setState(() {}),
+              child: const Text(
+                'Retry',
+                style: TextStyle(color: StreamerCardBackStyle.lavender),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -337,22 +320,22 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.profileViewBackground,
-          ),
+        const ColoredBox(
+          color: StreamerCardBackStyle.background,
           child: SizedBox.expand(),
         ),
         Scaffold(
           backgroundColor: Colors.transparent,
           body: SafeArea(
             child: CustomScrollView(
-              slivers: [
+              physics: const ClampingScrollPhysics(),
+              slivers: <Widget>[
                 SliverToBoxAdapter(child: _buildHeader()),
-                const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
                 SliverToBoxAdapter(child: _buildIdentity()),
                 const SliverToBoxAdapter(child: SizedBox(height: 12)),
                 SliverToBoxAdapter(child: _buildTags()),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 SliverToBoxAdapter(
                   child: _buildExpandableSection(
                     title: 'Bio',
@@ -361,6 +344,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                     child: _buildBioBody(),
                   ),
                 ),
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 SliverToBoxAdapter(
                   child: _buildExpandableSection(
                     title: 'Platforms',
@@ -371,6 +355,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                     child: _buildPlatforms(platforms),
                   ),
                 ),
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 SliverToBoxAdapter(
                   child: _buildExpandableSection(
                     title: 'Calendar',
@@ -381,7 +366,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                     child: _buildCalendar(events),
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                const SliverToBoxAdapter(child: SizedBox(height: 28)),
               ],
             ),
           ),
@@ -409,9 +394,9 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               'Profile Details',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
+                color: StreamerCardBackStyle.softText,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -429,7 +414,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     final String profileUserId =
         (_currentUserData['id'] ?? _currentUserData['uid'] ?? '').toString();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
@@ -442,32 +427,27 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    displayName.isNotEmpty ? displayName : 'Creator',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.visible,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      height: 1.05,
-                    ),
+                Text(
+                  displayName.isNotEmpty ? displayName : 'Creator',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    height: 1.1,
                   ),
                 ),
                 if (atHandle.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     atHandle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.68),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ],
@@ -487,38 +467,39 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _buildTags() {
-    final hashtagsData = _currentUserData['hashtags'];
-    List<String> tags = [];
-
-    if (hashtagsData != null) {
-      if (hashtagsData is List) {
-        // If it's already a list, convert it
-        tags = List<String>.from(hashtagsData);
-      } else if (hashtagsData is String) {
-        // If it's a string, split by comma and trim whitespace
-        tags = hashtagsData
-            .split(',')
-            .map((tag) => tag.trim())
-            .where((tag) => tag.isNotEmpty)
-            .toList();
+    final Object? hashtagsData = _currentUserData['hashtags'];
+    final List<String> tags = <String>[];
+    if (hashtagsData is List) {
+      for (final Object? item in hashtagsData) {
+        final String tag = item?.toString().trim() ?? '';
+        if (tag.isNotEmpty) {
+          tags.add(tag);
+        }
       }
+    } else if (hashtagsData is String && hashtagsData.trim().isNotEmpty) {
+      tags.addAll(
+        hashtagsData
+            .split(RegExp(r'[,\s]+'))
+            .map((String tag) => tag.trim())
+            .where((String tag) => tag.isNotEmpty),
+      );
     }
-
-    if (tags.isEmpty) return const SizedBox.shrink();
-
-    // Set first hashtag as selected if none is selected
+    if (tags.isEmpty) {
+      return const SizedBox.shrink();
+    }
     if (_selectedHashtag == null && tags.isNotEmpty) {
       _selectedHashtag = tags.first;
     }
-
-    return SizedBox(
-      height: 42,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        scrollDirection: Axis.horizontal,
-        itemBuilder: (BuildContext context, int index) {
-          final String tag = tags[index];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: tags.map((String tag) {
+          final String cleaned = tag.replaceAll('#', '').trim();
           final bool isSelected = _selectedHashtag == tag;
+          final bool isRole = StreamerCardBackStyle.roleHashtagKeys
+              .contains(cleaned.toLowerCase());
           return GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
@@ -527,82 +508,61 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               });
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                gradient: isSelected
-                    ? const LinearGradient(
-                        colors: <Color>[
-                          AppColors.primary,
-                          Color(0xFF7768DF),
-                          Color(0xFF4897D2),
-                        ],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      )
-                    : null,
-                color: isSelected
-                    ? null
-                    : Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(18),
+                color: isSelected || isRole
+                    ? StreamerCardBackStyle.accent.withValues(alpha: 0.2)
+                    : Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.18)
-                      : Colors.white.withValues(alpha: 0.10),
+                  color: isSelected || isRole
+                      ? StreamerCardBackStyle.accent.withValues(alpha: 0.28)
+                      : Colors.white.withValues(alpha: 0.08),
                 ),
               ),
-              alignment: Alignment.center,
               child: Text(
-                '#$tag',
+                '#$cleaned',
                 style: TextStyle(
-                  color: isSelected
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.68),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                  color: isSelected || isRole
+                      ? StreamerCardBackStyle.lavender
+                      : const Color(0xFFC0C0C8),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
           );
-        },
-        separatorBuilder: (BuildContext context, int index) =>
-            const SizedBox(width: 12),
-        itemCount: tags.length,
+        }).toList(growable: false),
       ),
     );
   }
 
   Widget _buildSectionHeader(String title, bool expanded, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: InkWell(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GestureDetector(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
-            ),
-          ),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Row(
             children: <Widget>[
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: StreamerCardBackStyle.softText,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-              const Spacer(),
               Icon(
                 expanded
                     ? Icons.keyboard_arrow_down
                     : Icons.keyboard_arrow_right,
-                color: Colors.white.withValues(alpha: 0.55),
-                size: 24,
+                color: StreamerCardBackStyle.muted,
+                size: 20,
               ),
             ],
           ),
@@ -617,60 +577,86 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     required VoidCallback onTap,
     required Widget child,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 20),
-      child: Column(
-        children: [
-          _buildSectionHeader(title, expanded, onTap),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeInOutCubic,
-            alignment: Alignment.topCenter,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) {
-                final fade = CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOut,
-                );
-                final slide = Tween<Offset>(
-                  begin: const Offset(0, -0.03),
-                  end: Offset.zero,
-                ).animate(fade);
-                return FadeTransition(
-                  opacity: fade,
-                  child: SlideTransition(position: slide, child: child),
-                );
-              },
-              child: expanded
-                  ? KeyedSubtree(
-                      key: ValueKey<String>('section-$title-open'),
-                      child: child,
-                    )
-                  : const SizedBox(
-                      key: ValueKey<String>('section-collapsed'),
-                    ),
-            ),
+    return Column(
+      children: <Widget>[
+        _buildSectionHeader(title, expanded, onTap),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeInOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              final Animation<double> fade = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOut,
+              );
+              final Animation<Offset> slide = Tween<Offset>(
+                begin: const Offset(0, -0.03),
+                end: Offset.zero,
+              ).animate(fade);
+              return FadeTransition(
+                opacity: fade,
+                child: SlideTransition(position: slide, child: child),
+              );
+            },
+            child: expanded
+                ? KeyedSubtree(
+                    key: ValueKey<String>('section-$title-open'),
+                    child: child,
+                  )
+                : const SizedBox(
+                    key: ValueKey<String>('section-collapsed'),
+                  ),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBackCard({required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: DecoratedBox(
+        decoration: StreamerCardBackStyle.cardDecoration,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: child,
+        ),
       ),
     );
   }
 
   Widget _buildBioBody() {
-    final String bio = (_currentUserData['bio'] ?? '') as String;
-    if (bio.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-      child: Text(
-        bio,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.72),
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          height: 1.35,
+    final String bio = (_currentUserData['bio'] ?? '').toString().trim();
+    if (bio.isEmpty) {
+      return _buildBackCard(
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            'No bio yet.',
+            style: TextStyle(
+              color: StreamerCardBackStyle.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ),
+      );
+    }
+    return _buildBackCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          bio,
+          style: const TextStyle(
+            color: StreamerCardBackStyle.softText,
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+            height: 1.4,
+          ),
         ),
       ),
     );
@@ -678,161 +664,148 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
   Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
     if (platforms.isEmpty) {
-      final StSupportShellStyle shell = _shell;
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: shell.surfaceCard,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: shell.surfaceCardBorder,
-              width: 1,
-            ),
-          ),
+      return _buildBackCard(
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
           child: Text(
             'No platforms added yet.',
             style: TextStyle(
-              color: shell.muted,
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
+              color: StreamerCardBackStyle.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ),
       );
     }
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
+    return _buildBackCard(
       child: Column(
-        children: [
-          for (final platform in platforms)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
-              child: _ClickablePlatformRow(
+        children: platforms
+            .map(
+              (Map<String, dynamic> platform) => _ClickablePlatformRow(
                 platform: platform,
                 onTap: () => _launchPlatformUrl(platform),
               ),
-            ),
-        ],
+            )
+            .toList(growable: false),
       ),
     );
   }
 
   Widget _buildCalendar(List<CalendarEvent> events) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-      child: Column(
-        children: [
-          for (final e in events)
-            _CalendarCard(
-              title: e.title,
-              subtitle: e.description,
-              meta: _formatDate(e.date),
-              onDelete: () async {
-                final originalEvents = List<CalendarEvent>.from(events);
-                setState(() {
-                  events.removeWhere((x) => x.id == e.id);
-                });
-                final String? uid = (_currentUserData['id'] ??
-                        _currentUserData['uid'])
-                    ?.toString();
-                if (uid == null || uid.isEmpty) {
-                  return;
-                }
-                try {
-                  final ({String planId, String itemId})? planRef =
-                      UserProfileFirestore.parseContentPlanEventRef(e.id);
-                  if (planRef != null) {
-                    await _contentPlanningApi.deleteProfileCalendarItem(
-                      userId: uid,
-                      planId: planRef.planId,
-                      itemId: planRef.itemId,
-                    );
-                  } else {
-                    // Legacy array-only row: strip from calendarEvents.
-                    final List<CalendarEvent> legacyOnly =
-                        UserProfileFirestore.parseCalendarEventsFromUserData(
-                      _currentUserData,
-                    ).where((CalendarEvent x) => x.id != e.id).toList();
-                    await ref
-                        .read(robustAuthServiceProvider)
-                        .updateUserCalendarEvents(legacyOnly);
+    return _buildBackCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          children: <Widget>[
+            for (final CalendarEvent e in events)
+              _CalendarCard(
+                title: e.title,
+                subtitle: e.description,
+                meta: _formatDate(e.date),
+                onDelete: () async {
+                  final List<CalendarEvent> originalEvents =
+                      List<CalendarEvent>.from(events);
+                  setState(() {
+                    events.removeWhere((CalendarEvent x) => x.id == e.id);
+                  });
+                  final String? uid = (_currentUserData['id'] ??
+                          _currentUserData['uid'])
+                      ?.toString();
+                  if (uid == null || uid.isEmpty) {
+                    return;
                   }
-                  await ProfileUpdateService().initialize();
-                } catch (error) {
-                  if (mounted) {
-                    setState(() {
-                      events.clear();
-                      events.addAll(originalEvents);
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Failed to delete event: $error'),
-                        backgroundColor: Colors.red,
-                        duration: const Duration(seconds: 3),
-                      ),
-                    );
+                  try {
+                    final ({String planId, String itemId})? planRef =
+                        UserProfileFirestore.parseContentPlanEventRef(e.id);
+                    if (planRef != null) {
+                      await _contentPlanningApi.deleteProfileCalendarItem(
+                        userId: uid,
+                        planId: planRef.planId,
+                        itemId: planRef.itemId,
+                      );
+                    } else {
+                      final List<CalendarEvent> legacyOnly =
+                          UserProfileFirestore.parseCalendarEventsFromUserData(
+                        _currentUserData,
+                      )
+                              .where((CalendarEvent x) => x.id != e.id)
+                              .toList();
+                      await ref
+                          .read(robustAuthServiceProvider)
+                          .updateUserCalendarEvents(legacyOnly);
+                    }
+                    await ProfileUpdateService().initialize();
+                  } catch (error) {
+                    if (mounted) {
+                      setState(() {
+                        events.clear();
+                        events.addAll(originalEvents);
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to delete event: $error'),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
                   }
-                }
-              },
-            ),
-          const SizedBox(height: 16),
-          _addToCalendarButton(),
-        ],
+                },
+              ),
+            if (events.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'No upcoming events.',
+                    style: TextStyle(
+                      color: StreamerCardBackStyle.muted,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            _addToCalendarButton(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _addToCalendarButton() {
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      child: GestureDetector(
-        onTap: () {
-          _showAddEventSheet();
-        },
-        child: Container(
-          height: 60,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: _accentGradientColors,
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            borderRadius: BorderRadius.circular(30),
-            boxShadow: [
-              BoxShadow(
-                color: _scheme.primary.withValues(alpha: 0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
-            border: Border.all(
-              color: _onSurface.withValues(alpha: 0.2),
-              width: 1,
-            ),
+    return GestureDetector(
+      onTap: _showAddEventSheet,
+      child: Container(
+        height: 44,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: StreamerCardBackStyle.accent.withValues(alpha: 0.22),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: StreamerCardBackStyle.accent.withValues(alpha: 0.35),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.add_circle,
-                color: _onPrimary,
-                size: 28,
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(
+              Icons.add_circle_outline,
+              color: StreamerCardBackStyle.lavender,
+              size: 18,
+            ),
+            SizedBox(width: 8),
+            Text(
+              'Add to Calendar',
+              style: TextStyle(
+                color: StreamerCardBackStyle.lavender,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(width: 12),
-              Text(
-                'Add to Calendar',
-                style: TextStyle(
-                  color: _onPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -857,85 +830,72 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surface
-                      .withValues(alpha: 0.96),
+                  color: StreamerCardBackStyle.card,
                   borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(28)),
+                      const BorderRadius.vertical(top: Radius.circular(20)),
                   border: Border.all(
-                    color: _onSurface.withValues(alpha: 0.14),
-                    width: 1,
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .shadow
-                          .withValues(alpha: 0.35),
-                      blurRadius: 28,
-                      offset: const Offset(0, -10),
-                    ),
-                  ],
                 ),
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                  children: <Widget>[
                     Center(
                       child: Container(
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: _onSurface.withValues(alpha: 0.24),
+                          color: StreamerCardBackStyle.muted
+                              .withValues(alpha: 0.35),
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
                     ),
                     const SizedBox(height: 18),
                     Row(
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Add Event',
-                              style: TextStyle(
-                                color: _onSurface,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
+                      children: <Widget>[
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                'Add Event',
+                                style: TextStyle(
+                                  color: StreamerCardBackStyle.softText,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Share your next stream, drop, or meetup.',
-                              style: TextStyle(
-                                color: _onSurface.withValues(alpha: 0.65),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                              SizedBox(height: 4),
+                              Text(
+                                'Share your next stream, drop, or meetup.',
+                                style: TextStyle(
+                                  color: StreamerCardBackStyle.muted,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                        const Spacer(),
                         GestureDetector(
                           onTap: () => Navigator.pop(context),
                           child: Container(
                             width: 36,
                             height: 36,
                             decoration: BoxDecoration(
-                              color: _onSurface.withValues(alpha: 0.08),
+                              color: Colors.white.withValues(alpha: 0.06),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: _onSurface.withValues(alpha: 0.12),
-                                width: 1,
+                                color: Colors.white.withValues(alpha: 0.08),
                               ),
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Icons.close,
-                              color: _onSurface,
-                              size: 20,
+                              color: StreamerCardBackStyle.softText,
+                              size: 18,
                             ),
                           ),
                         ),
@@ -944,69 +904,76 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                     const SizedBox(height: 22),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 6),
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
-                        color: _onSurface.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(22),
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: _onSurface.withValues(alpha: 0.10),
-                          width: 1,
+                          color: Colors.white.withValues(alpha: 0.08),
                         ),
                       ),
                       child: Column(
-                        children: [
+                        children: <Widget>[
                           TextField(
-                            onChanged: (v) {
+                            onChanged: (String v) {
                               title = v;
                               setModalState(() {
                                 isValid = title.trim().isNotEmpty;
                               });
                             },
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: 'Title *',
                               labelStyle: TextStyle(
-                                color: _onSurface.withValues(alpha: 0.7),
+                                color: StreamerCardBackStyle.muted,
                               ),
                               hintText: 'Event title',
                               hintStyle: TextStyle(
-                                  color: _onSurface.withValues(alpha: 0.45)),
+                                color: StreamerCardBackStyle.muted,
+                              ),
                               enabledBorder: UnderlineInputBorder(
                                 borderSide: BorderSide(
-                                  color: _onSurface.withValues(alpha: 0.24),
+                                  color: Color(0x33FFFFFF),
                                 ),
                               ),
                               focusedBorder: UnderlineInputBorder(
                                 borderSide: BorderSide(
-                                  color: _onSurface.withValues(alpha: 0.7),
+                                  color: StreamerCardBackStyle.lavender,
                                 ),
                               ),
                             ),
-                            style: TextStyle(color: _onSurface),
+                            style: const TextStyle(
+                              color: StreamerCardBackStyle.softText,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           TextField(
-                            onChanged: (v) => description = v,
+                            onChanged: (String v) => description = v,
                             maxLines: 3,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: 'Description',
                               labelStyle: TextStyle(
-                                color: _onSurface.withValues(alpha: 0.7),
+                                color: StreamerCardBackStyle.muted,
                               ),
                               hintText: 'Event description (optional)',
                               hintStyle: TextStyle(
-                                  color: _onSurface.withValues(alpha: 0.45)),
+                                color: StreamerCardBackStyle.muted,
+                              ),
                               enabledBorder: UnderlineInputBorder(
                                 borderSide: BorderSide(
-                                  color: _onSurface.withValues(alpha: 0.24),
+                                  color: Color(0x33FFFFFF),
                                 ),
                               ),
                               focusedBorder: UnderlineInputBorder(
                                 borderSide: BorderSide(
-                                  color: _onSurface.withValues(alpha: 0.7),
+                                  color: StreamerCardBackStyle.lavender,
                                 ),
                               ),
                             ),
-                            style: TextStyle(color: _onSurface),
+                            style: const TextStyle(
+                              color: StreamerCardBackStyle.softText,
+                            ),
                           ),
                         ],
                       ),
@@ -1014,39 +981,39 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                     const SizedBox(height: 18),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
-                        color: _onSurface.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(20),
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: _onSurface.withValues(alpha: 0.10),
-                          width: 1,
+                          color: Colors.white.withValues(alpha: 0.08),
                         ),
                       ),
                       child: Row(
-                        children: [
+                        children: <Widget>[
                           Container(
                             width: 36,
                             height: 36,
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: _accentGradientColors,
-                              ),
+                              color: StreamerCardBackStyle.accent
+                                  .withValues(alpha: 0.22),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Icons.calendar_today_rounded,
-                              color: _onPrimary,
-                              size: 18,
+                              color: StreamerCardBackStyle.lavender,
+                              size: 16,
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Expanded(
+                          const Expanded(
                             child: Text(
                               'Date & Time',
                               style: TextStyle(
-                                color: _onSurface.withValues(alpha: 0.7),
-                                fontSize: 15,
+                                color: StreamerCardBackStyle.muted,
+                                fontSize: 13,
                               ),
                             ),
                           ),
@@ -1081,10 +1048,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                             },
                             child: Text(
                               _formatDate(when),
-                              style: TextStyle(
-                                color: _onSurface,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
+                              style: const TextStyle(
+                                color: StreamerCardBackStyle.lavender,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
@@ -1094,31 +1061,32 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                     const SizedBox(height: 22),
                     SizedBox(
                       width: double.infinity,
-                      height: 50,
+                      height: 48,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isValid
-                              ? _scheme.primary
-                              : Colors.grey.withValues(alpha: 0.3),
-                          foregroundColor: isValid ? _onPrimary : _onSurface,
-                          elevation: isValid ? 6 : 0,
+                              ? StreamerCardBackStyle.accent
+                              : Colors.white.withValues(alpha: 0.08),
+                          foregroundColor: isValid
+                              ? Colors.white
+                              : StreamerCardBackStyle.muted,
+                          elevation: 0,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
                         onPressed: isValid
                             ? () async {
-                                final navigator = Navigator.of(context);
-                                final scaffoldMessenger =
+                                final NavigatorState navigator =
+                                    Navigator.of(context);
+                                final ScaffoldMessengerState
+                                    scaffoldMessenger =
                                     ScaffoldMessenger.of(context);
-
-                                // Create event object with your exact spec
                                 final CalendarEvent ev = CalendarEvent.create(
                                   title: title.trim(),
                                   description: description.trim(),
                                   date: when,
                                 );
-
                                 final String? uid = (_currentUserData['id'] ??
                                         _currentUserData['uid'])
                                     ?.toString();
@@ -1128,23 +1096,17 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                     source: 'ProfileBackView',
                                     count: 1,
                                   );
-
-                                  // Dismiss sheet immediately for instant feel
                                   navigator.pop();
-
-                                  // Show optimistic success message
                                   scaffoldMessenger.showSnackBar(
-                                    SnackBar(
-                                      content: const Text(
+                                    const SnackBar(
+                                      content: Text(
                                         'Event added to your profile',
                                       ),
                                       backgroundColor:
-                                          Theme.of(context).colorScheme.primary,
-                                      duration: const Duration(seconds: 2),
+                                          StreamerCardBackStyle.accent,
+                                      duration: Duration(seconds: 2),
                                     ),
                                   );
-
-                                  // Phase 0: write via Worker → contentPlans
                                   _contentPlanningApi
                                       .createProfileCalendarItem(
                                     userId: uid,
@@ -1170,8 +1132,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         child: const Text(
                           'Save Event',
                           style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
@@ -1350,64 +1312,52 @@ class _SmallAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final Color inner = shell.isLight
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
-        : Colors.black.withValues(alpha: 0.2);
     final String letter =
         ProfileUsernameUtils.resolveAvatarInitialLetter(userData);
     return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
+      width: 56,
+      height: 56,
+      padding: const EdgeInsets.all(2),
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: SweepGradient(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: <Color>[
-            scheme.primary,
-            scheme.secondary,
-            scheme.primary,
-            scheme.secondary,
+            StreamerCardBackStyle.ringBlue,
+            StreamerCardBackStyle.ringPurple,
           ],
         ),
       ),
-      child: Center(
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: inner,
-          ),
-          child: ClipOval(
-            child: imageUrl != null && imageUrl!.isNotEmpty
-                ? Image.network(
-                    imageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (BuildContext c, Object e, StackTrace? s) =>
-                            Center(
-                      child: Text(
-                        letter,
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  )
-                : Center(
+      child: ClipOval(
+        child: ColoredBox(
+          color: StreamerCardBackStyle.avatarFill,
+          child: imageUrl != null && imageUrl!.isNotEmpty
+              ? Image.network(
+                  imageUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (BuildContext c, Object e, StackTrace? s) =>
+                      Center(
                     child: Text(
                       letter,
-                      style: TextStyle(
-                        color: scheme.onSurface,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                      style: const TextStyle(
+                        color: StreamerCardBackStyle.softText,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
-          ),
+                )
+              : Center(
+                  child: Text(
+                    letter,
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.softText,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
         ),
       ),
     );
@@ -1425,79 +1375,55 @@ class _ClickablePlatformRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final String platformType = PlatformRules.normalizePlatformType(
       platform['type'] as String? ?? '',
     );
     final String username = platform['username'] as String? ?? '';
     final bool isAgeRestricted = PlatformRules.isAgeRestrictedEntry(platform);
     return GestureDetector(
-      onTap: () {
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-        decoration: BoxDecoration(
-          color: shell.surfaceCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: shell.surfaceCardBorder,
-            width: 1,
-          ),
-        ),
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: shell.chipUnselectedBg,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: BrandIcon(
-                  platformType: platformType,
-                  size: 22,
-                ),
-              ),
+          children: <Widget>[
+            BrandIcon(
+              platformType: platformType,
+              size: 18,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                children: <Widget>[
                   Text(
                     _getPlatformDisplayName(platformType),
-                    style: TextStyle(
-                      color: shell.onChrome,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.softText,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   Text(
                     isAgeRestricted
                         ? '18+ external link'
-                        : (username.isNotEmpty ? '@$username' : 'Open link'),
-                    style: TextStyle(
-                      color: shell.muted,
-                      fontSize: 14,
+                        : (username.isNotEmpty
+                            ? (username.startsWith('@')
+                                ? username
+                                : '@$username')
+                            : 'Open link'),
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.muted,
+                      fontSize: 12,
                     ),
                   ),
                 ],
               ),
             ),
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: shell.chipUnselectedBg,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                isAgeRestricted ? Icons.lock_outline : Icons.arrow_forward_ios,
-                color: shell.muted,
-                size: isAgeRestricted ? 16 : 14,
-              ),
+            Icon(
+              isAgeRestricted ? Icons.lock_outline : Icons.arrow_forward_ios,
+              color: StreamerCardBackStyle.muted,
+              size: isAgeRestricted ? 14 : 12,
             ),
           ],
         ),
@@ -1515,62 +1441,62 @@ class _CalendarCard extends StatelessWidget {
   final String subtitle;
   final String meta;
   final VoidCallback onDelete;
-  const _CalendarCard(
-      {required this.title,
-      required this.subtitle,
-      required this.meta,
-      required this.onDelete});
+  const _CalendarCard({
+    required this.title,
+    required this.subtitle,
+    required this.meta,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: shell.surfaceCardBorder,
-          width: 1,
+          color: Colors.white.withValues(alpha: 0.06),
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.calendar_today_outlined,
-            color: shell.onChrome,
-            size: 22,
+        children: <Widget>[
+          const Icon(
+            Icons.event_outlined,
+            color: StreamerCardBackStyle.lavender,
+            size: 18,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 Text(
                   title,
-                  style: TextStyle(
-                    color: shell.onChrome,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                  style: const TextStyle(
+                    color: StreamerCardBackStyle.softText,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                if (subtitle.trim().isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.muted,
+                      fontSize: 12,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
+                ],
+                const SizedBox(height: 2),
                 Text(
                   meta,
-                  style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 14,
+                  style: const TextStyle(
+                    color: StreamerCardBackStyle.muted,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -1578,9 +1504,11 @@ class _CalendarCard extends StatelessWidget {
           ),
           IconButton(
             onPressed: onDelete,
+            visualDensity: VisualDensity.compact,
             icon: Icon(
               Icons.delete_outline,
-              color: Theme.of(context).colorScheme.error,
+              color: Theme.of(context).colorScheme.error.withValues(alpha: 0.85),
+              size: 18,
             ),
           ),
         ],

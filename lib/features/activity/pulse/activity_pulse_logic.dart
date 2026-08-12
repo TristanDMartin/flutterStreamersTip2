@@ -4,15 +4,15 @@ import '../activity_notification_rules.dart';
 import 'activity_pulse_tokens.dart';
 
 /// Filter chips on Creator Pulse.
+/// Order + keys match website `ACTIVITY_PAGE_TABS`.
 enum ActivityPulseFilter {
   all,
-  threads,
-  mentions,
-  likes,
   follows,
-  momentum,
-  tippy,
-  live,
+  likes,
+  comments,
+  mentions,
+  threads,
+  global,
 }
 
 extension ActivityPulseFilterLabel on ActivityPulseFilter {
@@ -20,20 +20,38 @@ extension ActivityPulseFilterLabel on ActivityPulseFilter {
     switch (this) {
       case ActivityPulseFilter.all:
         return 'All';
-      case ActivityPulseFilter.threads:
-        return 'Threads';
-      case ActivityPulseFilter.mentions:
-        return 'Mentions';
-      case ActivityPulseFilter.likes:
-        return 'Likes';
       case ActivityPulseFilter.follows:
         return 'Follows';
-      case ActivityPulseFilter.momentum:
-        return 'Momentum';
-      case ActivityPulseFilter.tippy:
-        return 'Tippy';
-      case ActivityPulseFilter.live:
-        return 'Live';
+      case ActivityPulseFilter.likes:
+        return 'Likes';
+      case ActivityPulseFilter.comments:
+        return 'Comments';
+      case ActivityPulseFilter.mentions:
+        return 'Mentions';
+      case ActivityPulseFilter.threads:
+        return 'Threads';
+      case ActivityPulseFilter.global:
+        return 'Global';
+    }
+  }
+
+  /// Website `ActivityFilterKey` string.
+  String get contractKey {
+    switch (this) {
+      case ActivityPulseFilter.all:
+        return 'all';
+      case ActivityPulseFilter.follows:
+        return 'follows';
+      case ActivityPulseFilter.likes:
+        return 'likes';
+      case ActivityPulseFilter.comments:
+        return 'comments';
+      case ActivityPulseFilter.mentions:
+        return 'mentions';
+      case ActivityPulseFilter.threads:
+        return 'threads';
+      case ActivityPulseFilter.global:
+        return 'global';
     }
   }
 }
@@ -143,17 +161,64 @@ extension ActivityPulseNotificationX on ActivityNotification {
           commentText != null &&
           commentText!.toLowerCase().contains('live'));
 
-  bool get isThreadType =>
-      type == ActivityNotificationType.commentReply ||
-      (type == ActivityNotificationType.comment &&
-          (threadId?.isNotEmpty == true || postId?.isNotEmpty == true));
+  bool get _looksLikeThreadTarget =>
+      (threadId?.isNotEmpty == true || postId?.isNotEmpty == true) &&
+      (videoId == null || videoId!.isEmpty);
+
+  bool get isThreadType {
+    final String fromAction = normalizeActivityFilterType(actionType);
+    if (fromAction.isNotEmpty) {
+      return fromAction == 'COMMENT_THREAD' ||
+          fromAction == 'REPLY_THREAD_COMMENT' ||
+          fromAction == 'COLLAB_INVITE';
+    }
+    return (type == ActivityNotificationType.comment ||
+            type == ActivityNotificationType.commentReply) &&
+        _looksLikeThreadTarget;
+  }
+
+  /// Canonical type key for tab filters (website `normalizeActivityNotificationType`).
+  String get canonicalFilterType {
+    final String fromAction = normalizeActivityFilterType(actionType);
+    if (fromAction.isNotEmpty) {
+      return fromAction;
+    }
+    switch (type) {
+      case ActivityNotificationType.follow:
+        return 'FOLLOW';
+      case ActivityNotificationType.like:
+        return 'LIKE_VIDEO';
+      case ActivityNotificationType.comment:
+        return _looksLikeThreadTarget ? 'COMMENT_THREAD' : 'COMMENT_VIDEO';
+      case ActivityNotificationType.commentReply:
+        return _looksLikeThreadTarget
+            ? 'REPLY_THREAD_COMMENT'
+            : 'REPLY_VIDEO_COMMENT';
+      case ActivityNotificationType.mention:
+      case ActivityNotificationType.tag:
+        return 'MENTION';
+      case ActivityNotificationType.liveStream:
+        return 'newEvent';
+      case ActivityNotificationType.adminBroadcast:
+        if (isTippyType) {
+          return 'tippy_coach';
+        }
+        if (isContentPlanType) {
+          return 'content_plan_queue';
+        }
+        return 'admin_broadcast';
+      case ActivityNotificationType.newVideo:
+      case ActivityNotificationType.milestone:
+        return '';
+    }
+  }
 
   ActivityPulseAccent get pulseAccent {
     if (isTippyType) {
       return ActivityPulseAccent.tippy;
     }
     if (isContentPlanType) {
-      return ActivityPulseAccent.momentum;
+      return ActivityPulseAccent.action;
     }
     if (isMomentumType || type == ActivityNotificationType.milestone) {
       return ActivityPulseAccent.momentum;
@@ -178,24 +243,40 @@ extension ActivityPulseNotificationX on ActivityNotification {
   }
 
   bool matchesFilter(ActivityPulseFilter filter) {
+    if (filter == ActivityPulseFilter.all) {
+      return true;
+    }
+    final String key = canonicalFilterType;
+    if (key.isNotEmpty &&
+        activityTypeMatchesFilterTab(
+          rawType: key,
+          filterKey: filter.contractKey,
+        )) {
+      return true;
+    }
+    // Fallbacks when Firestore type was coarse / missing.
     switch (filter) {
-      case ActivityPulseFilter.all:
-        return true;
-      case ActivityPulseFilter.threads:
-        return isThreadType;
+      case ActivityPulseFilter.follows:
+        return type == ActivityNotificationType.follow &&
+            normalizeActivityFilterType(actionType) != 'COLLAB_INVITE';
+      case ActivityPulseFilter.likes:
+        return type == ActivityNotificationType.like;
+      case ActivityPulseFilter.comments:
+        return (type == ActivityNotificationType.comment ||
+                type == ActivityNotificationType.commentReply) &&
+            !isThreadType;
       case ActivityPulseFilter.mentions:
         return type == ActivityNotificationType.mention ||
             type == ActivityNotificationType.tag;
-      case ActivityPulseFilter.likes:
-        return type == ActivityNotificationType.like;
-      case ActivityPulseFilter.follows:
-        return type == ActivityNotificationType.follow;
-      case ActivityPulseFilter.momentum:
-        return isMomentumType || isContentPlanType;
-      case ActivityPulseFilter.tippy:
-        return isTippyType;
-      case ActivityPulseFilter.live:
-        return isLiveType || type == ActivityNotificationType.newVideo;
+      case ActivityPulseFilter.threads:
+        return isThreadType;
+      case ActivityPulseFilter.global:
+        return isTippyType ||
+            isContentPlanType ||
+            type == ActivityNotificationType.adminBroadcast ||
+            type == ActivityNotificationType.liveStream;
+      case ActivityPulseFilter.all:
+        return true;
     }
   }
 
@@ -245,18 +326,15 @@ abstract final class ActivityPulseLogic {
       result[entry.key] = groupNotifications(filtered);
     }
     if (filter == ActivityPulseFilter.all ||
-        filter == ActivityPulseFilter.momentum ||
-        filter == ActivityPulseFilter.tippy) {
+        filter == ActivityPulseFilter.global) {
       final List<ActivityPulseInsight> insights =
           insightsFromBundle(bundle).where((ActivityPulseInsight i) {
-        switch (filter) {
-          case ActivityPulseFilter.momentum:
-            return i.accent == ActivityPulseAccent.momentum;
-          case ActivityPulseFilter.tippy:
-            return i.accent == ActivityPulseAccent.tippy;
-          default:
-            return true;
+        if (filter == ActivityPulseFilter.global) {
+          return i.accent == ActivityPulseAccent.tippy ||
+              i.accent == ActivityPulseAccent.action ||
+              i.accent == ActivityPulseAccent.momentum;
         }
+        return true;
       }).toList();
       if (insights.isNotEmpty) {
         final List<ActivityPulseEntry> today =

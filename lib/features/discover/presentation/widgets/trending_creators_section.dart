@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/feature_flags.dart';
-import '../../../../core/theme/st_theme_tokens.dart';
 import '../../../../models/trending_creator.dart';
 import '../../../../providers/discover_provider.dart';
 import '../../../../routing/app_navigator.dart';
+import '../../../../widgets/streamer_card_sections.dart';
 import 'trending_creator_card.dart';
 import 'trending_creator_skeleton.dart';
 
@@ -20,7 +20,7 @@ class TrendingCreatorsSection extends ConsumerWidget {
   final bool isDark;
   final void Function(TrendingCreator creator) onCreatorTap;
 
-  static const double _gridHPadding = 20;
+  static const double _gridHPadding = 16;
   static const double _headerBottom = 12;
   static const double _cardMainExtent = 178;
   static const int _skeletonCount = 6;
@@ -28,8 +28,6 @@ class TrendingCreatorsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final DiscoverState state = ref.watch(discoverProvider);
-    final ThemeData theme = Theme.of(context);
-    final Color onSurface = theme.colorScheme.onSurface;
     return KeyedSubtree(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -47,27 +45,26 @@ class TrendingCreatorsSection extends ConsumerWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Expanded(
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
                             'Trending Creators',
                             style: TextStyle(
-                              color: onSurface,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              height: 1.05,
-                              letterSpacing: -0.3,
+                              color: StreamerCardBackStyle.softText,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              height: 1.1,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: 4),
                           Text(
                             'Creators gaining momentum right now',
                             style: TextStyle(
-                              color: onSurface.withValues(alpha: 0.68),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                              color: StreamerCardBackStyle.muted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
                               height: 1.25,
                             ),
                           ),
@@ -79,23 +76,12 @@ class TrendingCreatorsSection extends ConsumerWidget {
                         HapticFeedback.selectionClick();
                         AppNavigator.openSearch(context);
                       },
-                      child: ShaderMask(
-                        blendMode: BlendMode.srcIn,
-                        shaderCallback: (Rect bounds) {
-                          return const LinearGradient(
-                            colors: <Color>[
-                              StThemeColors.brandPurple,
-                              StThemeColors.brandBlue,
-                            ],
-                          ).createShader(bounds);
-                        },
-                        child: const Text(
-                          'See all',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      child: const Text(
+                        'See all',
+                        style: TextStyle(
+                          color: StreamerCardBackStyle.lavender,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),

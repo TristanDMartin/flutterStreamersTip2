@@ -4,14 +4,16 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
 import '../features/onboarding_tippy/tippy_onboarding_attach_pending.dart';
-import '../features/onboarding_tippy/tippy_onboarding_session.dart';
-import '../features/onboarding_tippy/tippy_onboarding_view.dart';
+import '../features/onboarding_tippy/tippy_onboarding_host_presence.dart';
 import '../routing/app_routes.dart';
 import '../services/pending_auth_redirect_service.dart';
 
 bool _consumeOrGoHomeInFlight = false;
 
-/// Routes after Firebase sign-in: Tippy guided setup, verification, or home.
+/// Routes after Firebase sign-in.
+///
+/// Never remounts Tippy. Guest Tippy continues in-place after auth; otherwise
+/// [OnboardingGate] resumes the exact Tippy step (or Home if complete).
 Future<void> navigateAfterAuthenticated(BuildContext context) async {
   final firebase_auth.User? user =
       firebase_auth.FirebaseAuth.instance.currentUser;
@@ -19,24 +21,11 @@ Future<void> navigateAfterAuthenticated(BuildContext context) async {
     return;
   }
   await attachPendingTippyOnboardingIfNeeded();
-  final TippyOnboardingGuestSession? tippySession =
-      await TippyOnboardingSessionStore().load();
-  final bool resumeLocalTippy = tippySessionNeedsResume(tippySession);
-  final bool resumeRemoteTippy =
-      await userNeedsTippyFunnelContinuation(user.uid);
-  if (resumeLocalTippy || resumeRemoteTippy) {
-    if (!context.mounted) {
-      return;
-    }
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => TippyOnboardingView(
-          initialSession: tippySession,
-          startAtWelcome: false,
-        ),
-      ),
-      (Route<dynamic> route) => false,
-    );
+  if (!context.mounted) {
+    return;
+  }
+  // Tippy route already owns the funnel — stay put.
+  if (TippyOnboardingHostPresence.isActive) {
     return;
   }
   try {

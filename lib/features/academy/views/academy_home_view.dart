@@ -8,6 +8,7 @@ import '../../gamification/missions/mission_engine.dart';
 import '../../gamification/models/user_progress_bundle.dart';
 import '../../gamification/utils/gamification_constants.dart';
 import '../../gamification/widgets/mission_sections_list.dart';
+import '../../../core/theme/support_shell_style.dart';
 import '../../../routing/app_navigator.dart';
 import '../../../services/creator_intelligence_analytics_service.dart';
 import '../academy_providers.dart';
@@ -42,6 +43,7 @@ class _AcademyHomeViewState extends ConsumerState<AcademyHomeView> {
     final List<MissionSection> questSections =
         ref.watch(academyQuestSectionsProvider);
     return Scaffold(
+      backgroundColor: StSupportShellStyle.of(context).scaffold,
       body: snapshotAsync.when(
         loading: () => const AcademySkeletonList(),
         error: (_, __) => AcademyEmptyState(
@@ -69,6 +71,9 @@ class _AcademyHomeViewState extends ConsumerState<AcademyHomeView> {
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(academyHomeSnapshotProvider);
+              ref.invalidate(academyPathsProvider);
+              ref.invalidate(academyCategoriesProvider);
+              ref.invalidate(academyGuideSummariesProvider);
               ref.invalidate(academyUserProgressProvider);
             },
             child: CustomScrollView(
@@ -150,16 +155,19 @@ class _AcademyHomeViewState extends ConsumerState<AcademyHomeView> {
                               const SizedBox(height: 12),
                           itemBuilder: (BuildContext context, int index) {
                             final AcademyPath path = snapshot.paths[index];
-                            final int completed = academyCompletedLessonCount(
+                            final int completed = academyCompletedPathStepCount(
                               progress: progress,
-                              lessonIds: path.lessonIds,
+                              path: path,
                             );
                             return AcademyPathCard(
                               title: path.title,
                               description: path.description,
                               completedLessons: completed,
-                              totalLessons: path.lessonIds.length,
+                              totalLessons: path.stepCount,
                               isLocked: level < path.unlockLevel,
+                              unlockLevel: path.unlockLevel > 0
+                                  ? path.unlockLevel
+                                  : null,
                               onTap: () {
                                 unawaited(
                                   CreatorIntelligenceAnalyticsService()

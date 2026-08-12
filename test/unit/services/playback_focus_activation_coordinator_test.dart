@@ -39,6 +39,7 @@ void main() {
         muteAllExcept: (_) async {},
         switchActiveTo: (_, __) async {},
         safePauseAndMute: (_) async {},
+        ensurePlayingUnmuted: (_) async {},
         isControllerSafe: (_, __) => true,
       );
 
@@ -66,6 +67,7 @@ void main() {
         muteAllExcept: (_) async {},
         switchActiveTo: (_, __) async {},
         safePauseAndMute: (_) async {},
+        ensurePlayingUnmuted: (_) async {},
         isControllerSafe: (_, __) => true,
       );
 

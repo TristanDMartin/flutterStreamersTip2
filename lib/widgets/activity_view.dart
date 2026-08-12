@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../features/activity/pulse/activity_pulse_logic.dart';
 import '../features/activity/pulse/activity_pulse_tokens.dart';
@@ -137,10 +138,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         !state.isLoading &&
         (unreadActivityCount > 0 || hasLocalPending)) {
       _isMarkingVisibleAsRead = true;
-      // Clear Discover/nav indicator as soon as the user is viewing Activity.
-      ref.read(activityNavUnreadCountProvider.notifier).clearAfterActivityViewed();
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
+        // Clear Discover/nav indicator after build completes.
+        ref
+            .read(activityNavUnreadCountProvider.notifier)
+            .clearAfterActivityViewed();
         final String? activeUserId =
             ref.read(authServiceProvider).currentUser?.id;
         if (activeUserId == null) {
@@ -387,11 +390,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: SizedBox(
-        height: 32,
+        height: 34,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: ActivityPulseLogic.filters.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (context, index) {
             final ActivityPulseFilter filter =
                 ActivityPulseLogic.filters[index];
@@ -403,43 +406,33 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   HapticFeedback.selectionClick();
                   setState(() => _selectedFilter = filter);
                 },
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(20),
                 child: Ink(
                   decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? ActivityPulseTokens.activeChipGradient
-                        : null,
-                    color: isSelected ? null : shell.chipUnselectedBg,
-                    borderRadius: BorderRadius.circular(999),
+                    color: isSelected
+                        ? shell.chipSelectedBg
+                        : shell.chipUnselectedBg,
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: isSelected
-                          ? Colors.transparent
+                          ? shell.chipSelectedBorder
                           : shell.chipUnselectedBorder,
                     ),
-                    boxShadow: isSelected
-                        ? <BoxShadow>[
-                            BoxShadow(
-                              color: ActivityPulseTokens.threadGlow
-                                  .withValues(alpha: 0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ]
-                        : null,
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
+                      horizontal: 14,
                       vertical: 6,
                     ),
                     child: Text(
                       filter.label,
                       style: TextStyle(
-                        color:
-                            isSelected ? Colors.white : shell.chipUnselectedFg,
+                        color: isSelected
+                            ? shell.chipSelectedFg
+                            : shell.chipUnselectedFg,
                         fontSize: 12,
                         fontWeight:
-                            isSelected ? FontWeight.w800 : FontWeight.w600,
+                            isSelected ? FontWeight.w700 : FontWeight.w600,
                       ),
                     ),
                   ),
@@ -894,37 +887,15 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   }
 
   Widget _buildSectionHeader(StSupportShellStyle shell, String title) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-      child: Row(
-        children: [
-          Container(
-            width: 4,
-            height: 18,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(2),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[
-                  scheme.primary,
-                  scheme.secondary,
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            title,
-            style: TextStyle(
-              color: shell.onChrome.withValues(alpha: 0.88),
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: shell.muted,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1261,13 +1232,25 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     if (key == 'Yesterday') {
       return DateTime.now().subtract(const Duration(days: 1));
     }
-    final parts = key.split('/');
-    if (parts.length == 3) {
-      final month = int.tryParse(parts[0]) ?? 1;
-      final day = int.tryParse(parts[1]) ?? 1;
-      final year = int.tryParse(parts[2]) ?? DateTime.now().year;
+    // Legacy numeric keys: M/d/yyyy
+    final List<String> slashParts = key.split('/');
+    if (slashParts.length == 3) {
+      final int month = int.tryParse(slashParts[0]) ?? 1;
+      final int day = int.tryParse(slashParts[1]) ?? 1;
+      final int year = int.tryParse(slashParts[2]) ?? DateTime.now().year;
       return DateTime(year, month, day);
     }
-    return DateTime(2000);
+    // Feed labels: "Aug 9"
+    try {
+      final DateTime parsed = DateFormat('MMM d').parse(key);
+      final DateTime now = DateTime.now();
+      DateTime withYear = DateTime(now.year, parsed.month, parsed.day);
+      if (withYear.isAfter(now.add(const Duration(days: 1)))) {
+        withYear = DateTime(now.year - 1, parsed.month, parsed.day);
+      }
+      return withYear;
+    } catch (_) {
+      return DateTime(2000);
+    }
   }
 }

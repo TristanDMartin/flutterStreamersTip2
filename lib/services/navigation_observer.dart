@@ -52,6 +52,7 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     debugPrint('🔍 NavigationObserver: didPop $poppedRouteName');
     debugPrint('   - Previous route: $previousRouteName');
 
+    final bool wasBlockingRoute = _blockingRoutes.contains(route);
     _handleRoutePop(route);
 
     final bool isPoppingDiscoverView =
@@ -65,6 +66,25 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
           '🔄 NavigationObserver: Returning to HomeView from DiscoverView',
         );
         _activateVideoSurface(PlaybackOwners.home);
+        return;
+      }
+    }
+
+    // StreamerCard / Network / Profile / other blocking routes: shell return
+    // must resume the visible Home video (do not wait for onPageChanged).
+    if (wasBlockingRoute &&
+        previousRoute != null &&
+        !_manager.isSuppressedForSignOut) {
+      final String previousName = previousRouteName.toLowerCase();
+      if (PlaybackRoutePolicies.isShellRoute(previousName)) {
+        debugPrint(
+          '🔄 NavigationObserver: Blocking route popped ($poppedRouteName) '
+          '→ resume Home feed',
+        );
+        _activateVideoSurface(PlaybackOwners.home);
+        _manager.setActiveOwner(PlaybackOwners.home);
+        _manager.clearTabPausedFlag();
+        _manager.restoreCurrentFeedFocus();
         return;
       }
     }

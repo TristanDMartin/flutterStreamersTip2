@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../constants/app_colors.dart';
 import '../../../core/theme/support_shell_style.dart';
+import '../../../widgets/streamer_card_sections.dart';
 import '../models/subscription_plan.dart';
 import '../models/user_subscription_model.dart';
 
@@ -26,74 +27,71 @@ class TierBadgeStrip extends StatelessWidget {
     final _PlanVisual visual = _visualFor(sub.plan);
     final String detail = _detailLine(sub, statusLabel);
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final List<Color> gradientColors = shell.isLight
+    final bool isLight = shell.isLight;
+    final List<Color> gradientColors = isLight
         ? <Color>[
             visual.start.withValues(alpha: 0.12),
             visual.end.withValues(alpha: 0.08),
             shell.surfaceCard,
           ]
-        : <Color>[
-            visual.start.withValues(alpha: 0.38),
-            visual.end.withValues(alpha: 0.22),
-            Colors.white.withValues(alpha: 0.06),
+        : const <Color>[
+            Color(0xFF2A1F4D),
+            Color(0xFF161320),
           ];
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: gradientColors,
         ),
-        border: Border.all(color: shell.surfaceCardBorder),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: visual.shadow.withValues(alpha: 0.18),
-            blurRadius: 24,
-            offset: const Offset(0, 14),
-          ),
-        ],
+        border: Border.all(
+          color: isLight
+              ? shell.surfaceCardBorder
+              : StreamerCardBackStyle.accent.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
           Container(
-            width: 60,
-            height: 60,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  visual.start,
-                  visual.end,
-                ],
-              ),
+              color: isLight
+                  ? null
+                  : StreamerCardBackStyle.accent.withValues(alpha: 0.2),
+              gradient: isLight
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        visual.start,
+                        visual.end,
+                      ],
+                    )
+                  : null,
               border: Border.all(
-                color: shell.isLight
+                color: isLight
                     ? Theme.of(context).colorScheme.onPrimary.withValues(
                           alpha: 0.35,
                         )
-                    : Colors.white.withValues(alpha: 0.22),
+                    : StreamerCardBackStyle.accent.withValues(alpha: 0.35),
               ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: visual.shadow.withValues(alpha: 0.28),
-                  blurRadius: 18,
-                  offset: const Offset(0, 10),
-                ),
-              ],
             ),
             child: Icon(
               visual.icon,
-              color: Theme.of(context).colorScheme.onPrimary,
-              size: 28,
+              color: isLight
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : StreamerCardBackStyle.lavender,
+              size: 22,
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,9 +99,11 @@ class TierBadgeStrip extends StatelessWidget {
                 Text(
                   'Current plan',
                   style: TextStyle(
-                    color: shell.muted,
+                    color: isLight
+                        ? shell.muted
+                        : StreamerCardBackStyle.muted,
                     fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -113,9 +113,11 @@ class TierBadgeStrip extends StatelessWidget {
                       child: Text(
                         label,
                         style: TextStyle(
-                          color: shell.onChrome,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
+                          color: isLight
+                              ? shell.onChrome
+                              : StreamerCardBackStyle.softText,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
                           height: 1,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -128,18 +130,24 @@ class TierBadgeStrip extends StatelessWidget {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: shell.surfaceCard.withValues(alpha: 0.9),
+                        color: isLight
+                            ? shell.surfaceCard.withValues(alpha: 0.9)
+                            : Colors.white.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: shell.surfaceCardBorder,
+                          color: isLight
+                              ? shell.surfaceCardBorder
+                              : Colors.white.withValues(alpha: 0.08),
                         ),
                       ),
                       child: Text(
                         statusLabel,
                         style: TextStyle(
-                          color: visual.accent,
+                          color: isLight
+                              ? visual.accent
+                              : StreamerCardBackStyle.lavender,
                           fontSize: 11,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -149,9 +157,11 @@ class TierBadgeStrip extends StatelessWidget {
                 Text(
                   detail,
                   style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    color: isLight
+                        ? shell.muted
+                        : StreamerCardBackStyle.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
                     height: 1.35,
                   ),
                 ),

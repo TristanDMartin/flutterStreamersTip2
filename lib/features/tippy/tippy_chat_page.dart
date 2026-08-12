@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:uuid/uuid.dart';
 
 import '../billing/api_feature_gate.dart';
 import '../billing/tier_display_names.dart';
@@ -88,6 +89,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   _RetryAction? _pendingRetryAction;
   TippyUiPayload _uiPayload = TippyUiPayload.empty;
   bool _memoryReady = false;
+  bool _didAttachLaunchContext = false;
 
   @override
   void initState() {
@@ -149,11 +151,47 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         _consentGranted = true;
         _consentSaving = false;
       });
+      unawaited(_maybeAutoSendLaunchPrompt());
     } catch (_) {
       if (mounted) {
         setState(() => _consentSaving = false);
       }
     }
+  }
+
+  Future<void> _maybeAutoSendLaunchPrompt() async {
+    if (!mounted || _busy || _lines.isNotEmpty) {
+      return;
+    }
+    if (!_consentGranted) {
+      try {
+        final bool granted = await _legalService.hasConsent();
+        if (!mounted) {
+          return;
+        }
+        if (!granted) {
+          return;
+        }
+        setState(() {
+          _consentGranted = true;
+          _consentLoading = false;
+        });
+      } catch (_) {
+        return;
+      }
+    }
+    if (!_tippyEnabled) {
+      return;
+    }
+    final String? prompt = widget.launchContext.prefilledPrompt ??
+        widget.launchContext.insightPrompt;
+    if (prompt == null || prompt.trim().isEmpty) {
+      return;
+    }
+    if (_input.text.trim().isEmpty) {
+      _input.text = prompt.trim();
+    }
+    await _send();
   }
 
   @override
@@ -188,11 +226,8 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         _memoryReady =
             contextSnapshot.memoryReady || credits.memoryReady;
       });
-      final String? prompt = widget.launchContext.prefilledPrompt ??
-          widget.launchContext.insightPrompt;
-      if (prompt != null && prompt.trim().isNotEmpty && _lines.isEmpty) {
-        await _send();
-      }
+      // Match website Ask Tippy: never auto-send before legal consent.
+      await _maybeAutoSendLaunchPrompt();
     } on TippyChatException {
       return;
     }
@@ -797,20 +832,30 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
   }
 
   Future<void> _send() async {
-    final String trimmed = _input.text.trim();
-    if (trimmed.isEmpty || _busy) {
+    final String rawInput = _input.text.trim();
+    final String visible = _stripTippyFrontendContextBlock(rawInput);
+    if (visible.isEmpty || _busy) {
       return;
     }
     HapticFeedback.lightImpact();
-    final String clientMessageId =
-        'm_${DateTime.now().millisecondsSinceEpoch}_${trimmed.hashCode.abs()}';
+    final String outbound;
+    if (!_didAttachLaunchContext &&
+        widget.launchContext.hasAcademyContext &&
+        !rawInput.toUpperCase().contains('TIPPY_FRONTEND_CONTEXT')) {
+      outbound = widget.launchContext.composeOutboundMessage(visible);
+      _didAttachLaunchContext = true;
+    } else {
+      outbound = rawInput;
+    }
+    // Canonical with website useAskTippy (UUID clientMessageId).
+    final String clientMessageId = const Uuid().v4();
     final String platform = switch (defaultTargetPlatform) {
       TargetPlatform.iOS => 'ios',
       TargetPlatform.android => 'android',
       _ => 'desktop',
     };
     setState(() {
-      _lines.add(_ChatLine(user: true, text: trimmed));
+      _lines.add(_ChatLine(user: true, text: visible));
       _lines.add(
         const _ChatLine(
           user: false,
@@ -825,7 +870,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     try {
       final TippyChatResult reply = await _service.sendMessage(
         messages: <TippyChatMessage>[
-          TippyChatMessage(role: 'user', content: trimmed),
+          TippyChatMessage(role: 'user', content: outbound),
         ],
         chatId: _conversationId,
         clientMessageId: clientMessageId,
@@ -866,10 +911,10 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     } on TippyChatException catch (e) {
       await _handleTippyError(
         error: e,
-        previousInput: trimmed,
+        previousInput: visible,
         retryAction: _RetryAction(
           _RetryActionType.sendMessage,
-          prompt: trimmed,
+          prompt: visible,
         ),
       );
     } catch (e) {
@@ -996,9 +1041,12 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
         showRetryButton: true,
       );
     }
-    if (error.status >= 500 && error.code == 'INTERNAL_ERROR') {
+    if (error.status >= 500 &&
+        (error.code == 'INTERNAL_ERROR' ||
+            error.code == 'INTERNAL' ||
+            error.code == 'PERSISTENCE_ERROR')) {
       return const _TippyErrorHandling(
-        message: 'Tippy hit a temporary issue. Your credits were not used.',
+        message: 'Tippy hit a temporary issue. Please try again.',
         shouldRestoreInput: true,
         showRetryButton: true,
       );
@@ -1079,6 +1127,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       _conversationId = null;
       _lines.clear();
       _pendingRetryAction = null;
+      _didAttachLaunchContext = false;
       _input.clear();
     });
   }
@@ -1094,13 +1143,16 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     }
     setState(() {
       _conversationId = conversation.id;
+      _didAttachLaunchContext = true;
       _lines
         ..clear()
         ..addAll(
           messages.map(
             (TippyStoredMessage message) => _ChatLine(
               user: message.role == 'user',
-              text: message.content,
+              text: message.role == 'user'
+                  ? _stripTippyFrontendContextBlock(message.content)
+                  : message.content,
             ),
           ),
         );
@@ -1308,6 +1360,43 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                 onNewChat: _startNewConversation,
                 onGoals: _openGoalsSheet,
               ),
+              if (widget.launchContext.hasAcademyContext &&
+                  widget.launchContext.academyContextLabel != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: TippyChatTokens.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: TippyChatTokens.border),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        const Icon(
+                          Icons.menu_book_rounded,
+                          size: 16,
+                          color: TippyChatTokens.accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.launchContext.academyContextLabel!,
+                            style: TippyChatTokens.nunito(
+                              size: 12,
+                              weight: FontWeight.w700,
+                              color: TippyChatTokens.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               Expanded(
                 child: hasConversation
                     ? ListView.builder(

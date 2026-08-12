@@ -9,6 +9,7 @@ import '../../utils/user_profile_firestore.dart';
 import '../../services/app_session_cache.dart';
 import 'onboarding_models.dart';
 import 'onboarding_v1_constants.dart';
+import 'resolve_onboarding_destination.dart';
 
 class OnboardingService {
   OnboardingService({FirebaseFirestore? firestore})
@@ -71,6 +72,29 @@ class OnboardingService {
       await _safeUserSet(userId, _newUserOnboardingPayload(step: 0));
       return OnboardingState.initial();
     }
+    final OnboardingDestination destination = resolveOnboardingDestination(
+      userData: data,
+      emailVerified: true,
+      isPasswordProvider: false,
+    );
+    if (destination.lifecycle == 'COMPLETE') {
+      if (((data['onboarding'] as Map?)?['lifecycle'] as String?)
+              ?.toUpperCase() !=
+          'COMPLETE') {
+        await _safeUserSet(
+          userId,
+          buildLifecycleCompletePayload(
+            isLegacy: destination.isLegacyComplete,
+          ),
+        );
+      }
+      return OnboardingState.fromUserMap(<String, dynamic>{
+        ...data,
+        ...buildLifecycleCompletePayload(
+          isLegacy: destination.isLegacyComplete,
+        ),
+      });
+    }
     final OnboardingState current = OnboardingState.fromUserMap(data);
     if (current.completed) {
       return current;
@@ -84,11 +108,13 @@ class OnboardingService {
       return fetchOnboarding(userId);
     }
     if (_isExistingUser(data)) {
-      await _safeUserSet(userId, _completedMigrationPayload());
+      await _safeUserSet(
+        userId,
+        buildLifecycleCompletePayload(isLegacy: true),
+      );
       return OnboardingState.fromUserMap(<String, dynamic>{
         ...data,
-        'hasCompletedOnboarding': true,
-        'onboarding': _completedMigrationPayload()['onboarding'],
+        ...buildLifecycleCompletePayload(isLegacy: true),
       });
     }
     await _safeUserSet(
@@ -127,10 +153,38 @@ class OnboardingService {
     Map<String, dynamic> data,
     Map<String, dynamic> onboarding,
   ) async {
+    // NEVER clear completion flags for established / legacy accounts.
+    // Missing photo/bio must not reopen onboarding.
+    final OnboardingDestination destination = resolveOnboardingDestination(
+      userData: data,
+      emailVerified: true,
+      isPasswordProvider: false,
+    );
+    if (destination.lifecycle == 'COMPLETE') {
+      if ((onboarding['lifecycle'] as String?)?.toUpperCase() != 'COMPLETE') {
+        await _safeUserSet(
+          userId,
+          buildLifecycleCompletePayload(
+            isLegacy: destination.isLegacyComplete,
+          ),
+        );
+      }
+      return;
+    }
+    final bool tippyAttached = onboarding['tippyOnboardingV1Attached'] == true;
+    final bool slim7 = onboarding['slim7Completed'] == true;
+    final bool midTippy = tippyAttached || slim7;
     final bool staleComplete = data['hasCompletedOnboarding'] == true ||
         data['onboardingCompleted'] == true ||
         onboarding['hasCompletedOnboarding'] == true;
-    if (!staleComplete) {
+    // Only clear stale complete flags for brand-new Tippy accounts with no
+    // username — never for returning users.
+    final String username = ((data['username'] as String?) ?? '').trim();
+    if (!staleComplete || !midTippy || username.isNotEmpty) {
+      return;
+    }
+    if (onboarding['tippyFunnelCompleted'] == true ||
+        onboarding['essentialProfileComplete'] == true) {
       return;
     }
     await _safeUserSet(
@@ -477,6 +531,25 @@ class OnboardingService {
   Future<void> markTippyFunnelInProgress(String userId) async {
     final OnboardingState? cached =
         AppSessionCache.instance.peekOnboarding(userId);
+    if (cached?.tippyFunnelCompleted == true || cached?.completed == true) {
+      return;
+    }
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await _userRef(userId).get();
+      final Map<String, dynamic>? data = snap.data();
+      final Map<String, dynamic> onboarding =
+          (data?['onboarding'] as Map?)?.cast<String, dynamic>() ??
+              <String, dynamic>{};
+      if (onboarding['tippyFunnelCompleted'] == true ||
+          onboarding['completed'] == true ||
+          data?['hasCompletedOnboarding'] == true ||
+          data?['onboardingComplete'] == true) {
+        return;
+      }
+    } catch (_) {
+      // Fall through — still mark Tippy ownership for brand-new accounts.
+    }
     final OnboardingState next = OnboardingState(
       version: OnboardingV1Constants.version,
       status: OnboardingStatus.inProgress,
@@ -618,6 +691,30 @@ class OnboardingService {
     );
   }
 
+  /// Optional photo step — skip/upload must never reopen Tippy later.
+  Future<void> markPhotoStatus({
+    required String userId,
+    required String status,
+  }) async {
+    final String normalized = status.trim().toLowerCase();
+    if (normalized != 'skipped' &&
+        normalized != 'uploaded' &&
+        normalized != 'not_started') {
+      return;
+    }
+    await _safeUserSet(
+      userId,
+      <String, dynamic>{
+        'onboarding': <String, dynamic>{
+          'photoStatus': normalized,
+          if (normalized == 'skipped') 'skippedAvatar': true,
+          'lastSeenAt': FieldValue.serverTimestamp(),
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    );
+  }
+
   /// Final Tippy landing choice — marks funnel complete for OnboardingGate.
   /// Always updates [AppSessionCache] so the overlay can dismiss even when
   /// Firestore client writes are soft-skipped (permission-denied).
@@ -635,6 +732,7 @@ class OnboardingService {
           'version': OnboardingV1Constants.version,
           'status': OnboardingStatus.completed,
           'completed': true,
+          'lifecycle': 'COMPLETE',
           'currentStep': OnboardingV1Constants.completedStepMarker,
           'hasSeenIntro': true,
           'creatorCardCompleted': true,

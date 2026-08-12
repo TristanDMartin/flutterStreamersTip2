@@ -766,6 +766,15 @@ class GlobalPlaybackManager {
         controller != null &&
         identical(_currentlyPlayingController, controller) &&
         _isControllerSafe(videoId, controller)) {
+      // Same "active" controller can still be paused after route return —
+      // force play instead of ignoring (frozen frame until swipe).
+      if (!controller.value.isPlaying) {
+        secureLog(
+          'GPM focus force-play id=$videoId owner=$owner '
+          'reason=active_but_paused',
+        );
+        return _ensurePlayingUnmuted(controller);
+      }
       secureLog('GPM focus ignored id=$videoId owner=$owner already active');
       return Future<void>.value();
     }
@@ -792,6 +801,7 @@ class GlobalPlaybackManager {
       muteAllExcept: _muteAllExcept,
       switchActiveTo: switchActiveTo,
       safePauseAndMute: _safePauseAndMute,
+      ensurePlayingUnmuted: _ensurePlayingUnmuted,
       isControllerSafe: _isControllerSafe,
       log: secureLog,
     )
@@ -1201,6 +1211,16 @@ class GlobalPlaybackManager {
   Duration? lastKnownPositionAt(int index) =>
       _feedIndex.lastPositionAt(index);
 
+  /// Persist the current feed video's playback position (tab / overlay leave).
+  void saveCurrentFeedPosition() {
+    _saveCurrentPosition();
+  }
+
+  /// Persist playback position for a specific Home feed index.
+  void savePositionForFeedIndex(int index) {
+    _savePositionForIndex(index);
+  }
+
   /// Pin home warm window and retain pooled controllers during main-tab leave.
   void beginHomeTabBackgroundRetention({int? currentIndex}) {
     _retainHomePoolForTabBackground = true;
@@ -1254,6 +1274,10 @@ class GlobalPlaybackManager {
       },
       log: secureLog,
     );
+  }
+
+  void clearTabPausedFlag() {
+    _tabLifecycle.isPaused = false;
   }
 
   /// Get a controller for a video ID (if it exists in the pool)

@@ -36,9 +36,6 @@ import '../routing/app_navigator.dart';
 import '../constants/app_colors.dart';
 import 'profile/profile_username_utils.dart';
 import '../core/theme/support_shell_style.dart';
-import '../core/theme/st_theme_tokens.dart';
-import '../features/creator_score/creator_score.dart';
-import '../features/creator_score/creator_score_service.dart';
 import '../features/creator_score/creator_score_widgets.dart';
 import '../features/content_planning/calendar_visibility_contract.dart';
 import '../models/creator_profile_snapshot.dart';
@@ -146,7 +143,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   late final StreamerCardRelationshipController _relationshipController;
 
   // Tab management
-  int _selectedTabIndex = 0; // 0: Video, 1: Platforms, 2: Calendar
+  int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
 
   // Chat UI State
   bool _showChatView = false;
@@ -847,7 +844,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       followButtonOnPressed: _getFollowButtonAction(),
       followButtonLoading: _isFollowingOperation || _isUnfollowingOperation,
       messageButtonOnPressed: _getMessageButtonAction(),
-      shareButtonOnPressed: () => widget.onShare?.call(widget.userId),
+      shareButtonOnPressed: _handleSharePressed,
       tabs: _tabs,
       selectedTabIndex: _selectedTabIndex,
       onTabSelected: (index) {
@@ -860,24 +857,36 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildProfileSection() {
+    final List<String> rolePills = _readRolePills(_userData);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Stack(
         clipBehavior: Clip.none,
         children: <Widget>[
           Center(
             child: Column(
-              children: [
-                const SizedBox(height: 14),
+              children: <Widget>[
+                const SizedBox(height: 8),
                 _buildAvatarWithOnlineIndicator(),
                 const SizedBox(height: 14),
                 _buildProfileTextInfo(),
-                const SizedBox(height: 8),
+                if (rolePills.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    alignment: WrapAlignment.center,
+                    children: rolePills
+                        .map((String pill) => _BackRolePill(label: pill))
+                        .toList(growable: false),
+                  ),
+                ],
+                const SizedBox(height: 4),
               ],
             ),
           ),
           Positioned(
-            top: 10,
+            top: 4,
             right: 0,
             child: CreatorScoreBadge(
               userId: _effectiveUserId,
@@ -1024,16 +1033,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
-        final StSupportShellStyle shell = StSupportShellStyle.of(sheetContext);
-        final ColorScheme scheme = Theme.of(sheetContext).colorScheme;
         final bool isSelf = _isViewingOwnStreamerCard;
+        final String resolvedName =
+            ProfileUsernameUtils.resolveDisplayName(_userData);
+        final String atHandle = ProfileUsernameUtils.formatAtHandle(_userData);
         return Container(
           decoration: BoxDecoration(
-            color: shell.panelSurface,
+            color: StreamerCardBackStyle.background,
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(20),
             ),
-            border: Border.all(color: shell.panelBorder),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
           ),
           child: SafeArea(
             child: Column(
@@ -1044,24 +1056,39 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: shell.muted.withValues(alpha: 0.35),
+                    color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     children: <Widget>[
-                      SizedBox(
-                        width: 48,
-                        height: 48,
+                      Container(
+                        width: 44,
+                        height: 44,
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: <Color>[
+                              StreamerCardBackStyle.ringBlue,
+                              StreamerCardBackStyle.ringPurple,
+                            ],
+                          ),
+                        ),
                         child: ClipOval(
-                          child: buildCachedAvatarCircle(
-                            context: sheetContext,
-                            url: avatarURL,
-                            size: 48,
-                            iconSize: 24,
+                          child: ColoredBox(
+                            color: StreamerCardBackStyle.avatarFill,
+                            child: buildCachedAvatarCircle(
+                              context: sheetContext,
+                              url: avatarURL,
+                              size: 40,
+                              iconSize: 20,
+                            ),
                           ),
                         ),
                       ),
@@ -1071,30 +1098,31 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              _userData?['displayName'] as String? ??
-                                  _userData?['username'] as String? ??
-                                  'Unknown',
-                              style: TextStyle(
-                                color: shell.onChrome,
+                              resolvedName.isNotEmpty
+                                  ? resolvedName
+                                  : 'Unknown',
+                              style: const TextStyle(
+                                color: Colors.white,
                                 fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              '@${_userData?['username'] ?? 'unknown'}',
-                              style: TextStyle(
-                                color: shell.muted,
-                                fontSize: 13,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
+                            if (atHandle.isNotEmpty)
+                              Text(
+                                atHandle,
+                                style: const TextStyle(
+                                  color: StreamerCardBackStyle.muted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
                             if (!isSelf)
                               Text(
                                 _getConnectionStatusText(),
-                                style: TextStyle(
-                                  color: scheme.primary,
+                                style: const TextStyle(
+                                  color: StreamerCardBackStyle.lavender,
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
                           ],
@@ -1104,143 +1132,159 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   ),
                 ),
                 const SizedBox(height: 16),
-                Divider(color: shell.surfaceCardBorder, height: 1),
-                _buildOptionTile(
-                  sheetContext,
-                  icon: Icons.person_outline_rounded,
-                  title: 'View profile',
-                  subtitle: 'Open this streamer profile',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        _openStreamerProfile();
-                      }
-                    });
-                  },
-                ),
-                _buildOptionTile(
-                  sheetContext,
-                  icon: Icons.ios_share_rounded,
-                  title: 'Share',
-                  subtitle: 'Share this streamer profile',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        _showShareSheet(context);
-                      }
-                    });
-                  },
-                ),
-                if (!isSelf) ...<Widget>[
-                  _buildOptionTile(
-                    sheetContext,
-                    icon: Icons.chat_bubble_outline,
-                    title: 'Message',
-                    subtitle: 'Send a direct message',
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          _handleMessage();
-                        }
-                      });
-                    },
-                  ),
-                  _buildOptionTile(
-                    sheetContext,
-                    icon: _isFollowing
-                        ? Icons.person_remove_outlined
-                        : Icons.person_add_outlined,
-                    title: _isFollowing ? 'Unfollow' : 'Follow',
-                    subtitle: _isConnected
-                        ? 'Remove from Connections (both will be unfollowed)'
-                        : (_isFollowing
-                            ? 'Stop following this user'
-                            : 'Follow this user'),
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!mounted) {
-                          return;
-                        }
-                        if (_isFollowing) {
-                          _confirmUnfollowWithConnectionWarning();
-                        } else {
-                          _handleFollow();
-                        }
-                      });
-                    },
-                    isDestructive: _isFollowing,
-                  ),
-                  const SizedBox(height: 8),
-                  Divider(color: shell.surfaceCardBorder, height: 1),
-                  _buildOptionTile(
-                    sheetContext,
-                    icon: Icons.flag_outlined,
-                    title: 'Report',
-                    subtitle: 'Report this user',
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          _showReportOptions();
-                        }
-                      });
-                    },
-                    isDestructive: true,
-                  ),
-                  _buildOptionTile(
-                    sheetContext,
-                    icon: Icons.block,
-                    title: 'Block',
-                    subtitle: 'Block this user',
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          _handleBlockUser();
-                        }
-                      });
-                    },
-                    isDestructive: true,
-                  ),
-                ],
-                _buildOptionTile(
-                  sheetContext,
-                  icon: Icons.link_rounded,
-                  title: 'Copy link',
-                  subtitle: 'Copy profile URL',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        _copyStreamerProfileLink();
-                      }
-                    });
-                  },
-                ),
-                const SizedBox(height: 8),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: DecoratedBox(
+                    decoration: StreamerCardBackStyle.cardDecoration,
+                    child: Column(
+                      children: <Widget>[
+                        _buildOptionTile(
+                          sheetContext,
+                          icon: Icons.person_outline_rounded,
+                          title: 'View profile',
+                          subtitle: 'Open this streamer profile',
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                _openStreamerProfile();
+                              }
+                            });
+                          },
+                        ),
+                        _sheetDivider(),
+                        _buildOptionTile(
+                          sheetContext,
+                          icon: Icons.ios_share_rounded,
+                          title: 'Share',
+                          subtitle: 'Share this streamer profile',
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                _showShareSheet(context);
+                              }
+                            });
+                          },
+                        ),
+                        if (!isSelf) ...<Widget>[
+                          _sheetDivider(),
+                          _buildOptionTile(
+                            sheetContext,
+                            icon: Icons.chat_bubble_outline,
+                            title: 'Message',
+                            subtitle: 'Send a direct message',
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) {
+                                  _handleMessage();
+                                }
+                              });
+                            },
+                          ),
+                          _sheetDivider(),
+                          _buildOptionTile(
+                            sheetContext,
+                            icon: _isFollowing
+                                ? Icons.person_remove_outlined
+                                : Icons.person_add_outlined,
+                            title: _isFollowing ? 'Unfollow' : 'Follow',
+                            subtitle: _isConnected
+                                ? 'Remove from Connections'
+                                : (_isFollowing
+                                    ? 'Stop following this user'
+                                    : 'Follow this user'),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted) {
+                                  return;
+                                }
+                                if (_isFollowing) {
+                                  _confirmUnfollowWithConnectionWarning();
+                                } else {
+                                  _handleFollow();
+                                }
+                              });
+                            },
+                            isDestructive: _isFollowing,
+                          ),
+                          _sheetDivider(),
+                          _buildOptionTile(
+                            sheetContext,
+                            icon: Icons.flag_outlined,
+                            title: 'Report',
+                            subtitle: 'Report this user',
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) {
+                                  _showReportOptions();
+                                }
+                              });
+                            },
+                            isDestructive: true,
+                          ),
+                          _sheetDivider(),
+                          _buildOptionTile(
+                            sheetContext,
+                            icon: Icons.block,
+                            title: 'Block',
+                            subtitle: 'Block this user',
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) {
+                                  _handleBlockUser();
+                                }
+                              });
+                            },
+                            isDestructive: true,
+                          ),
+                        ],
+                        _sheetDivider(),
+                        _buildOptionTile(
+                          sheetContext,
+                          icon: Icons.link_rounded,
+                          title: 'Copy link',
+                          subtitle: 'Copy profile URL',
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                _copyStreamerProfileLink();
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton(
+                    child: TextButton(
                       onPressed: () => Navigator.pop(sheetContext),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        foregroundColor: shell.onChrome,
-                        side: BorderSide(color: shell.surfaceCardBorder),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        foregroundColor: StreamerCardBackStyle.softText,
+                        backgroundColor: StreamerCardBackStyle.card,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
                         ),
                       ),
                       child: const Text(
                         'Cancel',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -1254,6 +1298,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
+  Widget _sheetDivider() {
+    return Divider(
+      height: 1,
+      thickness: 1,
+      color: Colors.white.withValues(alpha: 0.06),
+    );
+  }
+
   Widget _buildOptionTile(
     BuildContext context, {
     required IconData icon,
@@ -1262,22 +1314,20 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     required VoidCallback onTap,
     bool isDestructive = false,
   }) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final Color titleColor = isDestructive ? Colors.red : shell.onChrome;
-    final Color iconColor = isDestructive ? Colors.red : shell.onChrome;
+    final Color titleColor = isDestructive
+        ? const Color(0xFFF87171)
+        : StreamerCardBackStyle.softText;
+    final Color iconColor = isDestructive
+        ? const Color(0xFFF87171)
+        : StreamerCardBackStyle.lavender;
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: <Widget>[
-            Icon(
-              icon,
-              color: iconColor,
-              size: 24,
-            ),
-            const SizedBox(width: 16),
+            Icon(icon, color: iconColor, size: 18),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1286,25 +1336,26 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     title,
                     style: TextStyle(
                       color: titleColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 13,
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(
+            const Icon(
               Icons.chevron_right,
-              color: shell.muted,
-              size: 20,
+              color: StreamerCardBackStyle.muted,
+              size: 16,
             ),
           ],
         ),
@@ -1407,7 +1458,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   /// Show report options for the user
   void _showReportOptions() {
-    final reportReasons = [
+    final List<String> reportReasons = <String>[
       'Spam or scam',
       'Inappropriate content',
       'Harassment or bullying',
@@ -1420,14 +1471,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
-        final StSupportShellStyle shell = StSupportShellStyle.of(sheetContext);
         return Container(
           decoration: BoxDecoration(
-            color: shell.panelSurface,
+            color: StreamerCardBackStyle.background,
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(20),
             ),
-            border: Border.all(color: shell.panelBorder),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
           ),
           child: SafeArea(
             child: Column(
@@ -1438,76 +1490,93 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: shell.muted.withValues(alpha: 0.35),
+                    color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text(
-                    'Why are you reporting this user?',
-                    style: TextStyle(
-                      color: shell.onChrome,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+                const SizedBox(height: 16),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Why are you reporting this user?',
+                      style: TextStyle(
+                        color: StreamerCardBackStyle.softText,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Divider(color: shell.surfaceCardBorder, height: 1),
-                ...reportReasons.map(
-                  (String reason) => InkWell(
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      _submitReport(reason);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
-                      child: Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              reason,
-                              style: TextStyle(
-                                color: shell.onChrome,
-                                fontSize: 16,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: DecoratedBox(
+                    decoration: StreamerCardBackStyle.cardDecoration,
+                    child: Column(
+                      children: <Widget>[
+                        for (int i = 0; i < reportReasons.length; i++) ...<Widget>[
+                          if (i > 0) _sheetDivider(),
+                          InkWell(
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              _submitReport(reportReasons[i]);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              child: Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Text(
+                                      reportReasons[i],
+                                      style: const TextStyle(
+                                        color: StreamerCardBackStyle.softText,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: StreamerCardBackStyle.muted,
+                                    size: 16,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                          Icon(
-                            Icons.chevron_right,
-                            color: shell.muted,
-                            size: 20,
-                          ),
                         ],
-                      ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton(
+                    child: TextButton(
                       onPressed: () => Navigator.pop(sheetContext),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        foregroundColor: shell.onChrome,
-                        side: BorderSide(color: shell.surfaceCardBorder),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        foregroundColor: StreamerCardBackStyle.softText,
+                        backgroundColor: StreamerCardBackStyle.card,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
                         ),
                       ),
                       child: const Text(
                         'Cancel',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -1951,21 +2020,26 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // MARK: - Helper Methods for Follow/Unfollow Operations
 
   List<StreamerCardTabItem> get _tabs {
+    // Canonical StreamerCard front tabs — Platforms/Calendar live on the back.
     return const <StreamerCardTabItem>[
       StreamerCardTabItem(label: 'Video', index: 0),
-      StreamerCardTabItem(label: 'Platforms', index: 1),
-      StreamerCardTabItem(label: 'Calendar', index: 2),
+      StreamerCardTabItem(label: 'Favorites', index: 1),
+      StreamerCardTabItem(label: 'Tagged', index: 2),
     ];
   }
 
   Widget _buildSelectedTabContent() {
-    if (_selectedTabIndex == 1) {
-      return _buildPlatforms(_platforms);
-    }
-    if (_selectedTabIndex == 2) {
-      return _buildCalendar(_calendarEvents);
-    }
-    return _buildVideoFeed();
+    final ProfileVideoFeedType feedType = switch (_selectedTabIndex) {
+      1 => ProfileVideoFeedType.favorites,
+      2 => ProfileVideoFeedType.tagged,
+      _ => ProfileVideoFeedType.videos,
+    };
+    return ProfileVideoFeedView(
+      userId: _effectiveUserId,
+      feedType: feedType,
+      viewName: 'StreamerCardView',
+      onVideoTap: null,
+    );
   }
 
   Widget _buildVideoFeed() {
@@ -1973,8 +2047,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       userId: _effectiveUserId,
       feedType: ProfileVideoFeedType.videos,
       viewName: 'StreamerCardView',
-      // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
-      // It will open the real PlayerScreen with actual videos
       onVideoTap: null,
     );
   }
@@ -1993,76 +2065,63 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Widget _buildAvatarWithOnlineIndicator() {
     return Stack(
       clipBehavior: Clip.none,
-      children: [
+      children: <Widget>[
         Container(
-          width: 112,
-          height: 112,
+          width: 104,
+          height: 104,
+          padding: const EdgeInsets.all(2.5),
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: SweepGradient(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
               colors: <Color>[
-                Color(0xFFFF6CAB),
-                Color(0xFF8E54E9),
-                Color(0xFF3D99F7),
-                Color(0xFFFF6CAB),
+                StreamerCardBackStyle.ringBlue,
+                StreamerCardBackStyle.ringPurple,
               ],
             ),
           ),
-          child: Center(
-            child: Container(
-              width: 104,
-              height: 104,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.35),
-              ),
-              child: ClipOval(
-                child: buildCachedAvatarCircle(
-                  context: context,
-                  url: avatarURL,
-                  size: 104,
-                  iconSize: 48,
-                ),
+          child: ClipOval(
+            child: ColoredBox(
+              color: StreamerCardBackStyle.avatarFill,
+              child: buildCachedAvatarCircle(
+                context: context,
+                url: avatarURL,
+                size: 99,
+                iconSize: 44,
               ),
             ),
           ),
         ),
-        // Online status indicator - show based on real-time status
         Consumer(
-          builder: (context, ref, child) {
-            final statusAsync = ref.watch(userStatusProvider(widget.userId));
-
+          builder: (BuildContext context, WidgetRef ref, Widget? child) {
+            final AsyncValue<UserPresence> statusAsync =
+                ref.watch(userStatusProvider(widget.userId));
             return statusAsync.when(
-              data: (presence) {
-                if (presence.status != UserStatus.offline) {
-                  return Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: _getStatusColor(presence.status),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.profileViewBackground,
-                          width: 2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _getStatusColor(presence.status)
-                                .withValues(alpha: 0.5),
-                            blurRadius: 6,
-                          ),
-                        ],
+              data: (UserPresence presence) {
+                if (presence.status == UserStatus.offline) {
+                  return const SizedBox.shrink();
+                }
+                return Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(presence.status),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: StreamerCardBackStyle.background,
+                        width: 2,
                       ),
                     ),
-                  );
-                }
-                return const SizedBox.shrink();
+                  ),
+                );
               },
               loading: () => const SizedBox.shrink(),
-              error: (error, stack) => const SizedBox.shrink(),
+              error: (Object error, StackTrace stack) =>
+                  const SizedBox.shrink(),
             );
           },
         ),
@@ -2075,24 +2134,25 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         ProfileUsernameUtils.resolveDisplayName(_userData);
     final String atHandle = ProfileUsernameUtils.formatAtHandle(_userData);
     return Column(
-      children: [
+      children: <Widget>[
         Text(
           resolvedName.isNotEmpty ? resolvedName : displayName,
+          textAlign: TextAlign.center,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 30,
-            fontWeight: FontWeight.w900,
-            height: 1.05,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+            height: 1.1,
           ),
         ),
-        if (atHandle.isNotEmpty) ...[
+        if (atHandle.isNotEmpty) ...<Widget>[
           const SizedBox(height: 4),
           Text(
             atHandle,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+            style: const TextStyle(
+              color: StreamerCardBackStyle.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ],
@@ -2105,7 +2165,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       onFlip: _flipCard,
       identity: _buildIdentity(),
       tags: _buildTags(),
-      creatorScoreBreakdown: _buildCreatorScoreBreakdown(),
+      creatorScoreBreakdown: CreatorScoreInlinePanel(
+        userId: _effectiveUserId,
+        showImprove: false,
+      ),
       showBio: _showBio,
       onToggleBio: () => setState(() => _showBio = !_showBio),
       bioBody: _buildBioBody(),
@@ -2122,149 +2185,111 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     final String resolvedName =
         ProfileUsernameUtils.resolveDisplayName(_userData);
     final String atHandle = ProfileUsernameUtils.formatAtHandle(_userData);
+    final List<String> rolePills = _readRolePills(_userData);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
+        children: <Widget>[
           _SmallAvatar(imageUrl: avatarURL),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    resolvedName.isNotEmpty ? resolvedName : 'Creator',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.visible,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      height: 1.05,
-                    ),
+              children: <Widget>[
+                Text(
+                  resolvedName.isNotEmpty ? resolvedName : 'Creator',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    height: 1.1,
                   ),
                 ),
-                if (atHandle.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                if (atHandle.isNotEmpty)
                   Text(
                     atHandle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.68),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      height: 1.0,
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
-                ],
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          CreatorScoreBadge(
-            userId: _effectiveUserId,
-            compact: true,
-          ),
+          if (rolePills.isNotEmpty) ...<Widget>[
+            const SizedBox(width: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: rolePills
+                  .map((String pill) => _BackRolePill(label: pill))
+                  .toList(growable: false),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildCreatorScoreBreakdown() {
-    final AsyncValue<CreatorScore> scoreAsync =
-        ref.watch(creatorScoreProvider(_effectiveUserId));
-    final CreatorScore score = scoreAsync.value ?? CreatorScore.fallback;
-    if (!score.isAvailable) {
-      return const SizedBox.shrink();
+  List<String> _readHashtags() {
+    final Object? hashtagsData = _userData?['hashtags'];
+    final List<String> hashtags = <String>[];
+    if (hashtagsData is List) {
+      for (final Object? item in hashtagsData) {
+        final String tag = item?.toString().trim() ?? '';
+        if (tag.isNotEmpty) {
+          hashtags.add(tag);
+        }
+      }
+    } else if (hashtagsData is String && hashtagsData.trim().isNotEmpty) {
+      hashtags.addAll(
+        hashtagsData
+            .split(RegExp(r'[,\s]+'))
+            .map((String tag) => tag.trim())
+            .where((String tag) => tag.isNotEmpty),
+      );
     }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.10),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Expanded(
-                  child: Text(
-                    'Creator Score Breakdown',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                if (scoreAsync.isLoading)
-                  const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.primary,
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            CreatorScoreBreakdownRow(
-              label: 'Consistency',
-              value: score.consistencyScore,
-            ),
-            CreatorScoreBreakdownRow(
-              label: 'Content',
-              value: score.contentScore,
-            ),
-            CreatorScoreBreakdownRow(
-              label: 'Networking',
-              value: score.networkingScore,
-            ),
-            CreatorScoreBreakdownRow(
-              label: 'Engagement',
-              value: score.engagementScore,
-            ),
-          ],
-        ),
-      ),
-    );
+    return hashtags;
+  }
+
+  List<String> _readRolePills(Map<String, dynamic>? data) {
+    final List<String> pills = <String>[];
+    for (final String tag in _readHashtags()) {
+      final String cleaned = tag.replaceAll('#', '').trim().toLowerCase();
+      if (!StreamerCardBackStyle.roleHashtagKeys.contains(cleaned)) {
+        continue;
+      }
+      final String label = cleaned[0].toUpperCase() + cleaned.substring(1);
+      if (!pills.contains(label)) {
+        pills.add(label);
+      }
+    }
+    return pills;
   }
 
   Widget _buildTags() {
-    final hashtagsData = _userData?['hashtags'];
-    List<String> hashtags = [];
-
-    if (hashtagsData != null) {
-      if (hashtagsData is List) {
-        hashtags = hashtagsData.map((tag) => tag.toString()).toList();
-      } else if (hashtagsData is String) {
-        // If it's a string, split by comma or space
-        hashtags = hashtagsData
-            .split(RegExp(r'[,\s]+'))
-            .where((tag) => tag.isNotEmpty)
-            .toList();
-      }
+    final List<String> hashtags = _readHashtags()
+        .where((String tag) {
+          final String cleaned = tag.replaceAll('#', '').trim().toLowerCase();
+          return !StreamerCardBackStyle.roleHashtagKeys.contains(cleaned);
+        })
+        .toList(growable: false);
+    if (hashtags.isEmpty) {
+      return const SizedBox.shrink();
     }
-
-    if (hashtags.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: hashtags.map((hashtag) {
+        spacing: 6,
+        runSpacing: 6,
+        children: hashtags.map((String hashtag) {
+          final String cleaned = hashtag.replaceAll('#', '').trim();
           final bool isSelected = _selectedHashtag == hashtag;
           return GestureDetector(
             onTap: () {
@@ -2273,42 +2298,26 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               });
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                gradient: isSelected
-                    ? const LinearGradient(
-                        colors: <Color>[
-                          AppColors.primary,
-                          Color(0xFF7768DF),
-                          Color(0xFF4897D2),
-                        ],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      )
-                    : null,
                 color: isSelected
-                    ? null
-                    : Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.18)
-                      : Colors.white.withValues(alpha: 0.10),
-                ),
+                    ? StreamerCardBackStyle.accent.withValues(alpha: 0.2)
+                    : Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                '#$hashtag',
+                '#$cleaned',
                 style: TextStyle(
                   color: isSelected
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.68),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                      ? StreamerCardBackStyle.lavender
+                      : const Color(0xFFC0C0C8),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
           );
-        }).toList(),
+        }).toList(growable: false),
       ),
     );
   }
@@ -2316,16 +2325,26 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Widget _buildBioBody() {
     final String bio = (_userData?['bio'] as String?)?.trim() ?? '';
     if (bio.isEmpty) {
-      return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No bio yet.',
+          style: TextStyle(
+            color: StreamerCardBackStyle.muted,
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      );
     }
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(
         bio,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.72),
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
+        style: const TextStyle(
+          color: StreamerCardBackStyle.softText,
+          fontSize: 13,
+          fontWeight: FontWeight.w400,
           height: 1.35,
         ),
       ),
@@ -2333,59 +2352,38 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
-    if (kDebugMode) {
-      // ✅ FIX #5: Wrap in kDebugMode
-      debugPrint(
-          '🔗 _buildPlatforms: Building platforms section with ${platforms.length} platforms');
-    }
     if (platforms.isEmpty) {
-      if (kDebugMode) {
-        // ✅ FIX #5: Wrap in kDebugMode
-        debugPrint(
-            '🔗 _buildPlatforms: No platforms found, showing empty state');
-      }
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
-            ),
-          ),
-          child: Text(
-            'No platforms added yet.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-            ),
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No platforms added yet.',
+          style: TextStyle(
+            color: StreamerCardBackStyle.muted,
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
           ),
         ),
       );
     }
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        children: [
-          for (final platform in platforms)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
-              child: _ClickablePlatformRow(
-                platform: platform,
-                onTap: () => _launchPlatformUrl(platform),
-              ),
+    return Column(
+      children: <Widget>[
+        for (int i = 0; i < platforms.length; i++) ...<Widget>[
+          if (i > 0)
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: Colors.white.withValues(alpha: 0.06),
             ),
+          _ClickablePlatformRow(
+            platform: platforms[i],
+            onTap: () => _launchPlatformUrl(platforms[i]),
+          ),
         ],
-      ),
+      ],
     );
   }
 
   Widget _buildCalendar(List<CalendarEvent> events) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final DateTime now = DateTime.now();
     final List<CalendarEvent> upcoming = events
         .where((CalendarEvent e) => !e.date.isBefore(now))
@@ -2394,7 +2392,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         (CalendarEvent a, CalendarEvent b) => a.date.compareTo(b.date),
       );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -2409,23 +2407,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           ),
           if (events.isEmpty) ...<Widget>[
             const SizedBox(height: 12),
-            Text(
+            const Text(
               "This streamer hasn't scheduled any events yet",
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: shell.muted,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+                color: StreamerCardBackStyle.muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
               ),
             ),
           ] else if (upcoming.isNotEmpty) ...<Widget>[
             const SizedBox(height: 14),
-            Text(
+            const Text(
               'Upcoming',
               style: TextStyle(
-                color: shell.onChrome,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+                color: StreamerCardBackStyle.softText,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 8),
@@ -2552,8 +2550,32 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     return PlatformRules.displayNameForType(platformType);
   }
 
+  void _handleSharePressed() {
+    HapticFeedback.lightImpact();
+    debugPrint(
+      '[StreamerCardShare] creatorId=${widget.userId} '
+      'creatorUsername=${_userData?['username']} '
+      'viewerUid=${widget.currentUserId} '
+      'sourceView=StreamerCardView',
+    );
+    if (widget.onShare != null) {
+      widget.onShare!(widget.userId);
+      return;
+    }
+    // Default: share the viewed creator (never currentUser).
+    _showShareSheet(context);
+  }
+
   void _showShareSheet(BuildContext context) {
     HapticFeedback.lightImpact();
+    final String? username = (_userData?['username'] as String?)?.trim();
+    final String shareUrl = ProfileLinkService.publicProfileUrl(
+      username: username,
+      userId: widget.userId,
+    );
+    debugPrint(
+      '[StreamerCardShare] shareUrl=$shareUrl shareSheetOpened=true',
+    );
 
     showModalBottomSheet<void>(
       context: context,
@@ -2562,7 +2584,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.55),
       builder: (context) => StreamerShareSheet(
         userId: widget.userId,
-        username: _userData?['username'] as String?,
+        username: username,
         displayName: _userData?['displayName'] as String?,
         profileImageUrl: avatarURL,
         onDismiss: () {
@@ -2885,41 +2907,60 @@ class _SmallAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final Color inner = shell.isLight
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.85)
-        : Colors.black.withValues(alpha: 0.2);
     return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
+      width: 52,
+      height: 52,
+      padding: const EdgeInsets.all(2),
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: SweepGradient(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: <Color>[
-            scheme.primary,
-            scheme.secondary,
-            scheme.primary,
-            scheme.secondary,
+            StreamerCardBackStyle.ringBlue,
+            StreamerCardBackStyle.ringPurple,
           ],
         ),
       ),
-      child: Center(
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: inner,
+      child: ClipOval(
+        child: ColoredBox(
+          color: StreamerCardBackStyle.avatarFill,
+          child: buildCachedAvatarCircle(
+            context: context,
+            url: imageUrl,
+            size: 48,
+            iconSize: 24,
           ),
-          child: ClipOval(
-            child: buildCachedAvatarCircle(
-              context: context,
-              url: imageUrl,
-              size: 56,
-              iconSize: 28,
-            ),
-          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BackRolePill extends StatelessWidget {
+  const _BackRolePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isPrimary = label.toLowerCase() == 'owner';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isPrimary
+            ? StreamerCardBackStyle.accent.withValues(alpha: 0.2)
+            : Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isPrimary
+              ? StreamerCardBackStyle.lavender
+              : const Color(0xFFC0C0C8),
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -2937,51 +2978,38 @@ class _ClickablePlatformRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final platformType = platform['type'] as String? ?? '';
-    final username = platform['username'] as String? ?? '';
-
-    debugPrint(
-        '🔗 _ClickablePlatformRow: Building platform card - type: $platformType, username: $username');
-
+    final String platformType = platform['type'] as String? ?? '';
+    final String username = platform['username'] as String? ?? '';
     return GestureDetector(
-      onTap: () {
-        debugPrint('🔗 _ClickablePlatformRow: Platform card tapped!');
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.10),
-          ),
-        ),
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
-          children: [
+          children: <Widget>[
             BrandIcon(
               platformType: platformType,
-              size: 24,
+              size: 18,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                children: <Widget>[
                   Text(
                     _getPlatformDisplayName(platformType),
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      color: StreamerCardBackStyle.softText,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   if (username.isNotEmpty)
                     Text(
                       username.startsWith('@') ? username : '@$username',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.68),
-                        fontSize: 14,
+                      style: const TextStyle(
+                        color: StreamerCardBackStyle.muted,
+                        fontSize: 12,
                       ),
                     )
                   else if ((platform['url']?.toString() ?? '').isNotEmpty)
@@ -2989,18 +3017,18 @@ class _ClickablePlatformRow extends StatelessWidget {
                       platform['url'].toString(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.68),
-                        fontSize: 14,
+                      style: const TextStyle(
+                        color: StreamerCardBackStyle.muted,
+                        fontSize: 12,
                       ),
                     ),
                 ],
               ),
             ),
-            Icon(
+            const Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white.withValues(alpha: 0.55),
-              size: 16,
+              color: StreamerCardBackStyle.muted,
+              size: 12,
             ),
           ],
         ),
@@ -3028,7 +3056,6 @@ class _UpcomingCalendarRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final String meta = DateFormat('EEE, MMM d · h:mm a').format(event.date);
     final bool remindLocked = isPast && !isBookmarked;
     return Padding(
@@ -3037,22 +3064,24 @@ class _UpcomingCalendarRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: remindLocked ? null : onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: Opacity(
             opacity: remindLocked ? 0.45 : 1,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: shell.surfaceCard,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: shell.surfaceCardBorder),
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.06),
+                ),
               ),
               child: Row(
                 children: <Widget>[
-                  Icon(
+                  const Icon(
                     Icons.event_outlined,
-                    color: shell.onChrome,
-                    size: 20,
+                    color: StreamerCardBackStyle.lavender,
+                    size: 18,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -3063,36 +3092,34 @@ class _UpcomingCalendarRow extends StatelessWidget {
                           event.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: shell.onChrome,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                          style: const TextStyle(
+                            color: StreamerCardBackStyle.softText,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          remindLocked ? '$meta · Ended' : meta,
-                          style: TextStyle(
-                            color: shell.muted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                          meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: StreamerCardBackStyle.muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
                       ],
                     ),
                   ),
                   Icon(
-                    remindLocked
-                        ? Icons.bookmark_border
-                        : isBookmarked
-                            ? Icons.bookmark
-                            : Icons.bookmark_border,
-                    color: remindLocked
-                        ? shell.muted
-                        : isBookmarked
-                            ? StThemeColors.brandPurple
-                            : shell.mutedStrong,
-                    size: 20,
+                    isBookmarked
+                        ? Icons.bookmark
+                        : Icons.bookmark_border,
+                    color: isBookmarked
+                        ? StreamerCardBackStyle.lavender
+                        : StreamerCardBackStyle.muted,
+                    size: 18,
                   ),
                 ],
               ),

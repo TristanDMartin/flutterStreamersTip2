@@ -6,7 +6,6 @@ import 'dart:async';
 
 import '../models/creator_profile_snapshot.dart';
 import '../models/user.dart' as app_user;
-import '../constants/app_colors.dart';
 import '../providers/follow_refresh_provider.dart';
 import '../utils/interaction_diagnostics.dart';
 import '../utils/like_interaction_boundary.dart';
@@ -22,6 +21,7 @@ import 'profile_view/profile_post_count_reconcile.dart';
 import 'profile_view/profile_user_data_cache.dart';
 import 'profile/profile_streamer_card_visibility.dart';
 import 'profile_view/profile_view_front_shell.dart';
+import 'streamer_card_sections.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   const ProfileViewOptimized({
@@ -251,7 +251,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       _viewerDataForStreamerCardGate(),
     );
     return Scaffold(
-      backgroundColor: AppColors.profileViewBackground,
+      backgroundColor: StreamerCardBackStyle.background,
       extendBody: false,
       extendBodyBehindAppBar: false,
       body: KeyedSubtree(

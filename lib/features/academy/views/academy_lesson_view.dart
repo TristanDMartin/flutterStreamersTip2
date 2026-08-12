@@ -246,14 +246,10 @@ class _AcademyLessonViewState extends ConsumerState<AcademyLessonView> {
               final AcademyLesson? lesson = lessonAsync.valueOrNull;
               AppNavigator.openTippyChat(
                 context,
-                launchContext: TippyLaunchContext(
-                  surface: 'academy_lesson',
-                  academyLessonId: widget.lessonId,
-                  academyGuideId: widget.guideId ?? lesson?.summary.guideId,
-                  academyLessonTitle: lesson?.summary.title,
-                  prefilledPrompt: lesson == null
-                      ? 'Help me understand this Academy lesson.'
-                      : 'Explain "${lesson.summary.title}" in simpler terms.',
+                launchContext: TippyLaunchContext.forAcademyLessonExplain(
+                  lessonId: widget.lessonId,
+                  title: lesson?.summary.title ?? 'this lesson',
+                  guideId: widget.guideId ?? lesson?.summary.guideId,
                 ),
               );
             },

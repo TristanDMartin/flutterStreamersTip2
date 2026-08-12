@@ -137,6 +137,8 @@ class PlaybackFocusActivationCoordinator {
     required Future<void> Function(String videoId, String owner) switchActiveTo,
     required Future<void> Function(VideoPlayerController controller)
         safePauseAndMute,
+    required Future<void> Function(VideoPlayerController controller)
+        ensurePlayingUnmuted,
     required bool Function(String videoId, VideoPlayerController controller)
         isControllerSafe,
     void Function(String message)? log,
@@ -158,6 +160,13 @@ class PlaybackFocusActivationCoordinator {
       if (controller != null &&
           identical(controller, currentlyPlaying) &&
           isControllerSafe(videoId, controller)) {
+        if (!controller.value.isPlaying) {
+          log?.call(
+            '🎯 PlaybackManager: Active but paused — force play for $videoId',
+          );
+          await ensurePlayingUnmuted(controller);
+          return;
+        }
         log?.call('🎯 PlaybackManager: Focus already active for $videoId');
         return;
       }

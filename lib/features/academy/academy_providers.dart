@@ -78,12 +78,21 @@ final academyCategoriesProvider =
 });
 
 final academyPathsProvider = FutureProvider<List<AcademyPath>>((Ref ref) async {
+  final AcademyRepository repo = ref.watch(academyRepositoryProvider);
+  final AcademySiteCatalogService catalog =
+      ref.watch(academySiteCatalogServiceProvider);
+  List<AcademyPath> firestorePaths = const <AcademyPath>[];
   try {
-    return await ref.watch(academyRepositoryProvider).fetchPaths();
+    firestorePaths = await repo.fetchPaths();
   } catch (e) {
-    debugPrint('Academy providers: paths fallback: $e');
-    return const <AcademyPath>[];
+    debugPrint('Academy providers: paths firestore fallback: $e');
+    firestorePaths = const <AcademyPath>[];
   }
+  final List<AcademyPath> bundled = await catalog.loadBundledPaths();
+  return catalog.mergePaths(
+    firestorePaths: firestorePaths,
+    bundledPaths: bundled,
+  );
 });
 
 final academyUserProgressProvider =
@@ -138,13 +147,11 @@ final academyDiscoverCardStatusProvider =
     );
   }
   for (final AcademyPath path in paths) {
-    final int completedInPath = progress
-        .where(
-          (AcademyUserProgress p) =>
-              p.isCompleted && path.lessonIds.contains(p.lessonId),
-        )
-        .length;
-    if (completedInPath > 0 && completedInPath < path.lessonIds.length) {
+    final int completedInPath = academyCompletedPathStepCount(
+      progress: progress,
+      path: path,
+    );
+    if (completedInPath > 0 && completedInPath < path.stepCount) {
       return AcademyDiscoverCardStatus(
         headline: 'Continue: ${path.title}',
         actionLabel: 'Continue learning',
@@ -171,8 +178,9 @@ final academyHomeSnapshotProvider =
     debugPrint('Academy providers: guides fallback: $e');
     return const <AcademyGuideSummary>[];
   });
-  final List<AcademyPath> paths =
-      await repo.fetchPaths().catchError((Object e) {
+  final List<AcademyPath> paths = await ref
+      .watch(academyPathsProvider.future)
+      .catchError((Object e) {
     debugPrint('Academy providers: home paths fallback: $e');
     return const <AcademyPath>[];
   });
@@ -236,6 +244,36 @@ int academyCompletedLessonCount({
       .length;
 }
 
+int academyCompletedPathStepCount({
+  required List<AcademyUserProgress> progress,
+  required AcademyPath path,
+}) {
+  final List<AcademyPathStep> steps = path.steps;
+  if (steps.isEmpty) {
+    return 0;
+  }
+  int completed = 0;
+  for (final AcademyPathStep step in steps) {
+    final bool done = progress.any((AcademyUserProgress p) {
+      if (!p.isCompleted) {
+        return false;
+      }
+      if (p.lessonId == step.lessonId) {
+        return true;
+      }
+      final String guideId = step.displayGuideId;
+      if (guideId.isEmpty) {
+        return false;
+      }
+      return p.guideId == guideId || p.lessonId == '${guideId}__web';
+    });
+    if (done) {
+      completed += 1;
+    }
+  }
+  return completed;
+}
+
 double academyCompletionPercent({
   required int completed,
   required int total,
@@ -297,10 +335,22 @@ final academyLessonProvider =
 
 final academyPathProvider =
     FutureProvider.family<AcademyPath?, String>((Ref ref, String id) async {
+  final AcademyRepository repo = ref.watch(academyRepositoryProvider);
+  final AcademySiteCatalogService catalog =
+      ref.watch(academySiteCatalogServiceProvider);
   try {
-    return await ref.watch(academyRepositoryProvider).fetchPathById(id);
+    final AcademyPath? firestorePath = await repo.fetchPathById(id);
+    if (firestorePath != null) {
+      return firestorePath;
+    }
   } catch (e) {
-    debugPrint('Academy providers: path fallback for $id: $e');
-    return null;
+    debugPrint('Academy providers: path firestore fallback for $id: $e');
   }
+  final List<AcademyPath> bundled = await catalog.loadBundledPaths();
+  for (final AcademyPath path in bundled) {
+    if (path.id == id) {
+      return path;
+    }
+  }
+  return null;
 });

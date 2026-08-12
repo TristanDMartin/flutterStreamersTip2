@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'streamer_card_sections.dart';
+
 /// Options when the viewer is mutually connected with a creator.
 class ConnectedUserOptionsSheet extends StatelessWidget {
   const ConnectedUserOptionsSheet({
@@ -46,14 +48,16 @@ class ConnectedUserOptionsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(20),
+            color: StreamerCardBackStyle.background,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -63,43 +67,69 @@ class ConnectedUserOptionsSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: scheme.onSurface.withValues(alpha: 0.25),
+                  color: Colors.white.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text(
-                  displayName.isEmpty ? 'Connected' : displayName,
-                  style: Theme.of(context).textTheme.titleMedium,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    displayName.isEmpty ? 'Connected' : displayName,
+                    style: const TextStyle(
+                      color: StreamerCardBackStyle.softText,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
               ),
-              _OptionTile(
-                icon: Icons.chat_bubble_outline,
-                label: 'Message',
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  onMessage();
-                },
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: DecoratedBox(
+                  decoration: StreamerCardBackStyle.cardDecoration,
+                  child: Column(
+                    children: <Widget>[
+                      _OptionTile(
+                        icon: Icons.chat_bubble_outline,
+                        label: 'Message',
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          onMessage();
+                        },
+                      ),
+                      Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
+                      _OptionTile(
+                        icon: Icons.person_remove_outlined,
+                        label: 'Unfollow',
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          onUnfollow();
+                        },
+                      ),
+                      Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
+                      _OptionTile(
+                        icon: Icons.flag_outlined,
+                        label: 'Report',
+                        isDestructive: true,
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          onReport();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              _OptionTile(
-                icon: Icons.person_remove_outlined,
-                label: 'Unfollow',
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  onUnfollow();
-                },
-              ),
-              _OptionTile(
-                icon: Icons.flag_outlined,
-                label: 'Report',
-                isDestructive: true,
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  onReport();
-                },
-              ),
-              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -124,15 +154,38 @@ class _OptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color color = isDestructive
-        ? Theme.of(context).colorScheme.error
-        : Theme.of(context).colorScheme.onSurface;
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(
-        label,
-        style: TextStyle(color: color, fontWeight: FontWeight.w500),
-      ),
+        ? const Color(0xFFF87171)
+        : StreamerCardBackStyle.softText;
+    final Color iconColor = isDestructive
+        ? const Color(0xFFF87171)
+        : StreamerCardBackStyle.lavender;
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, color: iconColor, size: 18),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: StreamerCardBackStyle.muted,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

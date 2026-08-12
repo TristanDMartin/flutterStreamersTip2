@@ -65,6 +65,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
   int? _discoverExitControllerId;
   int? _discoverExitPositionMs;
   int? _discoverExitPoolSize;
+  int _homeResumeEpoch = 0;
 
   @override
   HomeViewControllerState build() {
@@ -146,6 +147,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
 
   void prepareForOverlay({required String reason}) {
     secureLog('⏸️ HomeViewController: Preparing overlay ($reason)');
+    savePlaybackCheckpointForActiveVideoFeed();
     _pauseAndBlock(
       reason: reason,
       leaveHomeView: false,
@@ -253,6 +255,8 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     manager.setVisibleOwner(PlaybackOwners.home);
     manager.setActiveOwner(PlaybackOwners.home);
     manager.endHomeTabBackgroundRetention();
+    // Clear tab-pause flag so return paths aren't stuck after IndexedStack leave.
+    manager.clearTabPausedFlag();
     pinHomeWarmWindowForCurrentIndex();
     markAsActiveOwner();
     manager.restoreCurrentFeedFocus();
@@ -284,6 +288,13 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
   }
 
   void resumeAfterOverlayDismissal() {
+    final FeedTab feed = ref.read(activeFeedProvider);
+    if (!feed.supportsVideoFeed) {
+      _clearPlaybackBlockWithoutResume(
+        reason: 'overlay_dismissed_non_video_feed',
+      );
+      return;
+    }
     _restoreHomePlaybackAfterSuppression(reason: 'overlay_dismissed');
   }
 
@@ -291,9 +302,86 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     _restoreHomePlaybackAfterSuppression(reason: 'onboarding_completed');
   }
 
+  /// Call before leaving For You for Threads/Progression so seek can restore.
+  void savePlaybackCheckpointForActiveVideoFeed() {
+    final FeedTab feed = ref.read(activeFeedProvider);
+    if (!feed.supportsVideoFeed) {
+      return;
+    }
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    manager.savePositionForFeedIndex(state.currentIndex);
+    manager.saveCurrentFeedPosition();
+    setCurrentIndexForFeed(feed, state.currentIndex);
+    secureLog(
+      '💾 HomeViewController: Saved feed checkpoint '
+      'feed=${feed.displayName} index=${state.currentIndex}',
+    );
+  }
+
+  /// Invalidate in-flight overlay/tab resume so late GPM focus cannot play
+  /// under Threads/Progression.
+  void invalidatePendingHomeResume({required String reason}) {
+    _homeResumeEpoch++;
+    secureLog(
+      '⏭️ HomeViewController: Invalidated pending resume '
+      '(epoch=$_homeResumeEpoch reason=$reason)',
+    );
+  }
+
+  /// Resume For You after returning from Threads/Progression.
+  void resumeAfterVideoFeedTabReturn() {
+    final FeedTab feed = ref.read(activeFeedProvider);
+    if (!feed.supportsVideoFeed) {
+      return;
+    }
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    final int homeIndex = state.currentIndex;
+    final Duration? savedPosition = manager.lastKnownPositionAt(homeIndex);
+    final int epoch = ++_homeResumeEpoch;
+    secureLog(
+      '▶️ HomeViewController: Resuming video feed after tab return '
+      'index=$homeIndex savedMs=${savedPosition?.inMilliseconds}',
+    );
+    if (manager.isPlaybackBlocked) {
+      manager.forceUnblock();
+    }
+    manager.setVisibleOwner(PlaybackOwners.home);
+    manager.setActiveOwner(PlaybackOwners.home);
+    manager.clearTabPausedFlag();
+    pinHomeWarmWindowForCurrentIndex();
+    markAsActiveOwner();
+    manager.restoreCurrentFeedFocus();
+    _resumeCurrentVideoInstantly(
+      savedPosition: savedPosition,
+      resumeEpoch: epoch,
+    );
+    state = state.copyWith(shouldResumeOnReturn: false);
+  }
+
+  void _clearPlaybackBlockWithoutResume({required String reason}) {
+    secureLog(
+      '⏭️ HomeViewController: Clearing playback block without resume '
+      '($reason)',
+    );
+    invalidatePendingHomeResume(reason: reason);
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    if (manager.isPlaybackBlocked) {
+      manager.forceUnblock();
+    }
+    manager.pauseAll();
+  }
+
   void _restoreHomePlaybackAfterSuppression({required String reason}) {
+    final FeedTab feed = ref.read(activeFeedProvider);
+    if (!feed.supportsVideoFeed) {
+      _clearPlaybackBlockWithoutResume(reason: reason);
+      return;
+    }
     secureLog('▶️ HomeViewController: Restoring home playback ($reason)');
     final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    final int epoch = ++_homeResumeEpoch;
+    final Duration? savedPosition =
+        manager.lastKnownPositionAt(state.currentIndex);
     if (manager.isPlaybackBlocked) {
       manager.forceUnblock();
     }
@@ -301,7 +389,10 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     manager.setActiveOwner(PlaybackOwners.home);
     markAsActiveOwner();
     manager.restoreCurrentFeedFocus();
-    _resumeCurrentVideoInstantly();
+    _resumeCurrentVideoInstantly(
+      savedPosition: savedPosition,
+      resumeEpoch: epoch,
+    );
   }
 
   void resumeCurrentVideoInstantly() {
@@ -393,12 +484,17 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     try {
       final hp.HomeState homeState = ref.read(hp.homeProvider);
       final FeedTab activeFeed = ref.read(activeFeedProvider);
+      final FeedTab resolveFeed =
+          activeFeed.supportsVideoFeed ? activeFeed : FeedTab.forYou;
       final List<HomeVideo> currentVideos =
-          homeState.feedData(activeFeed).videos;
+          homeState.feedData(resolveFeed).videos;
       if (currentVideos.isEmpty) {
         return null;
       }
-      final int safeIndex = state.currentIndex.clamp(
+      final int preferredIndex = resolveFeed == FeedTab.forYou
+          ? state.forYouIndex
+          : state.currentIndex;
+      final int safeIndex = preferredIndex.clamp(
         0,
         currentVideos.length - 1,
       );
@@ -415,8 +511,17 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     Duration? savedPosition,
     bool sameController = false,
     int? exitControllerId,
+    int? resumeEpoch,
   }) {
     try {
+      final FeedTab activeFeed = ref.read(activeFeedProvider);
+      if (!activeFeed.supportsVideoFeed) {
+        secureLog(
+          '⏭️ HomeViewController: Skip resume — '
+          '${activeFeed.displayName} has no video feed',
+        );
+        return false;
+      }
       final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
       final String? videoId = _resolveCurrentHomeVideoId();
       if (videoId == null) {
@@ -442,10 +547,27 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
           unawaited(retained.seekTo(savedPosition));
         }
       }
+      final int capturedEpoch = resumeEpoch ?? _homeResumeEpoch;
       final Stopwatch playWatch = Stopwatch()..start();
       unawaited(
         manager.requestFocus(videoId, ownerId).then((_) {
           playWatch.stop();
+          if (capturedEpoch != _homeResumeEpoch) {
+            secureLog(
+              '⏭️ HomeViewController: Stale resume ignored '
+              '(epoch=$capturedEpoch current=$_homeResumeEpoch)',
+            );
+            return;
+          }
+          final FeedTab feedAfter = ref.read(activeFeedProvider);
+          if (!feedAfter.supportsVideoFeed) {
+            secureLog(
+              '⏭️ HomeViewController: Late resume paused — '
+              'now on ${feedAfter.displayName}',
+            );
+            manager.pauseAll();
+            return;
+          }
           final VideoPlayerController? after = manager.getController(videoId);
           final bool sameAfter = exitControllerId != null &&
               after != null &&

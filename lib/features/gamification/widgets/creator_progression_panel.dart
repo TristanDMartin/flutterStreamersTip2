@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/support_shell_style.dart';
 import '../../../services/progression_service.dart';
+import '../../../widgets/streamer_card_sections.dart';
 import '../gamification_providers.dart';
 import '../models/gamification_summary_model.dart';
 import '../missions/mission_engine.dart';
@@ -32,10 +33,13 @@ class _CreatorProgressionPanelState
   Widget build(BuildContext context) {
     super.build(context);
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final Color scaffoldColor = shell.isLight
+        ? shell.scaffold
+        : StreamerCardBackStyle.background;
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       return ColoredBox(
-        color: shell.scaffold,
+        color: scaffoldColor,
         child: const _SignedOutMessage(),
       );
     }
@@ -92,7 +96,7 @@ class _CreatorProgressionPanelState
               );
             },
           );
-    return ColoredBox(color: shell.scaffold, child: body);
+    return ColoredBox(color: scaffoldColor, child: body);
   }
 }
 
@@ -164,6 +168,8 @@ class _FirstThingsToDoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final ProgressionService progressionService = ProgressionService.instance;
     final bool isLoading = progress == null;
@@ -177,17 +183,21 @@ class _FirstThingsToDoCard extends StatelessWidget {
         .where((ProgressionTask task) => !task.hidden)
         .length;
     final bool isComplete = activeTasks.isEmpty && progress != null;
+    final Color accent =
+        isLight ? scheme.primary : StreamerCardBackStyle.lavender;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow.withValues(alpha: 0.72),
+        color: isLight ? shell.surfaceCard : StreamerCardBackStyle.card,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isComplete
-              ? Colors.greenAccent.withValues(alpha: 0.28)
-              : scheme.outline.withValues(alpha: 0.16),
+              ? const Color(0xFF86EFAC).withValues(alpha: 0.28)
+              : (isLight
+                  ? shell.surfaceCardBorder
+                  : Colors.white.withValues(alpha: 0.08)),
         ),
       ),
       child: Column(
@@ -195,11 +205,7 @@ class _FirstThingsToDoCard extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(
-                Icons.flag_circle_rounded,
-                color: scheme.primary,
-                size: 22,
-              ),
+              Icon(Icons.flag_circle_rounded, color: accent, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -209,17 +215,19 @@ class _FirstThingsToDoCard extends StatelessWidget {
                           ? 'Setup complete'
                           : 'Onboarding progress',
                   style: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
+                    color: isLight
+                        ? shell.onChrome
+                        : StreamerCardBackStyle.softText,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
               Text(
                 '$completedCount/$totalCount',
                 style: TextStyle(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w900,
+                  color: accent,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -253,9 +261,11 @@ class _FirstThingsToDoCard extends StatelessWidget {
                     child: Text(
                       'Checking your account activity...',
                       style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: 0.64),
+                        color: isLight
+                            ? shell.muted
+                            : StreamerCardBackStyle.muted,
                         fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                   )
@@ -267,17 +277,19 @@ class _FirstThingsToDoCard extends StatelessWidget {
                           children: <Widget>[
                             Icon(
                               Icons.check_circle_rounded,
-                              color: Colors.greenAccent.withValues(alpha: 0.9),
-                              size: 20,
+                              color: const Color(0xFF86EFAC)
+                                  .withValues(alpha: 0.9),
+                              size: 18,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 'First steps are done. New missions will rotate in below.',
                                 style: TextStyle(
-                                  color:
-                                      scheme.onSurface.withValues(alpha: 0.78),
-                                  fontWeight: FontWeight.w800,
+                                  color: isLight
+                                      ? shell.onChrome.withValues(alpha: 0.78)
+                                      : StreamerCardBackStyle.softText,
+                                  fontWeight: FontWeight.w500,
                                   height: 1.25,
                                 ),
                               ),
@@ -300,18 +312,24 @@ class _FirstThingsToDoCard extends StatelessWidget {
                                 vertical: 9,
                               ),
                               decoration: BoxDecoration(
-                                color: scheme.surface.withValues(alpha: 0.34),
+                                color: isLight
+                                    ? scheme.surface.withValues(alpha: 0.34)
+                                    : Colors.white.withValues(alpha: 0.04),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: scheme.outline.withValues(alpha: 0.10),
+                                  color: isLight
+                                      ? scheme.outline.withValues(alpha: 0.10)
+                                      : Colors.white.withValues(alpha: 0.06),
                                 ),
                               ),
                               child: Row(
                                 children: <Widget>[
                                   Icon(
                                     Icons.radio_button_unchecked_rounded,
-                                    color: scheme.onSurface
-                                        .withValues(alpha: 0.42),
+                                    color: isLight
+                                        ? scheme.onSurface
+                                            .withValues(alpha: 0.42)
+                                        : StreamerCardBackStyle.muted,
                                     size: 18,
                                   ),
                                   const SizedBox(width: 9),
@@ -321,10 +339,12 @@ class _FirstThingsToDoCard extends StatelessWidget {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: scheme.onSurface
-                                            .withValues(alpha: 0.72),
+                                        color: isLight
+                                            ? scheme.onSurface
+                                                .withValues(alpha: 0.72)
+                                            : StreamerCardBackStyle.softText,
                                         fontSize: 13,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w400,
                                       ),
                                     ),
                                   ),
@@ -332,9 +352,9 @@ class _FirstThingsToDoCard extends StatelessWidget {
                                   Text(
                                     '+${task.xpReward} XP',
                                     style: TextStyle(
-                                      color: scheme.primary,
+                                      color: accent,
                                       fontSize: 11,
-                                      fontWeight: FontWeight.w900,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ],
@@ -365,15 +385,22 @@ class _StaticFirstThingsProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
+    final Color track = isLight
+        ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08)
+        : Colors.white.withValues(alpha: 0.08);
+    final Color fill = isLight
+        ? Theme.of(context).colorScheme.primary
+        : StreamerCardBackStyle.accent;
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: LinearProgressIndicator(
-        minHeight: 6,
+        minHeight: 4,
         value: 0,
-        backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
+        backgroundColor: track,
         valueColor: AlwaysStoppedAnimation<Color>(
-          scheme.primary.withValues(alpha: 0.22),
+          fill.withValues(alpha: 0.22),
         ),
       ),
     );
@@ -392,7 +419,14 @@ class _AnimatedFirstThingsProgressState
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
+    final Color track = isLight
+        ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08)
+        : Colors.white.withValues(alpha: 0.08);
+    final Color fill = isLight
+        ? Theme.of(context).colorScheme.primary
+        : StreamerCardBackStyle.accent;
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: TweenAnimationBuilder<double>(
@@ -404,10 +438,10 @@ class _AnimatedFirstThingsProgressState
         curve: Curves.easeOutCubic,
         builder: (BuildContext context, double value, Widget? child) {
           return LinearProgressIndicator(
-            minHeight: 6,
+            minHeight: 4,
             value: value,
-            backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
-            valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+            backgroundColor: track,
+            valueColor: AlwaysStoppedAnimation<Color>(fill),
           );
         },
       ),
@@ -436,16 +470,20 @@ class _ProgressionBody extends StatelessWidget {
     final bool hasHint =
         model.nextActionHint != null && model.nextActionHint!.isNotEmpty;
     return RefreshIndicator(
-      color: shell.refreshColor,
-      backgroundColor: shell.refreshBackground,
+      color: shell.isLight
+          ? shell.refreshColor
+          : StreamerCardBackStyle.lavender,
+      backgroundColor: shell.isLight
+          ? shell.refreshBackground
+          : StreamerCardBackStyle.card,
       onRefresh: onRefresh,
       child: ListView(
         key: const PageStorageKey<String>('creator_progression_scroll'),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
-          20,
+          16,
           MediaQuery.of(context).padding.top + 88,
-          20,
+          16,
           120,
         ),
         children: <Widget>[
@@ -550,6 +588,8 @@ class _ProgressionBody extends StatelessWidget {
       isScrollControlled: true,
       builder: (BuildContext context) {
         final ColorScheme scheme = Theme.of(context).colorScheme;
+        final StSupportShellStyle shell = StSupportShellStyle.of(context);
+        final bool isLight = shell.isLight;
         return _GlassSheet(
           title: 'Level rewards ladder',
           subtitle: 'See what your next creator milestones unlock.',
@@ -559,35 +599,49 @@ class _ProgressionBody extends StatelessWidget {
               final bool completed = level < model.level;
               final String reward =
                   GamificationConstants.rewardLabelForLevel(level);
-              final Color rowBg = scheme.surfaceContainerLow.withValues(
-                alpha: current ? 1.0 : 0.72,
-              );
+              final Color rowBg = isLight
+                  ? scheme.surfaceContainerLow.withValues(
+                      alpha: current ? 1.0 : 0.72,
+                    )
+                  : (current
+                      ? StreamerCardBackStyle.accent.withValues(alpha: 0.14)
+                      : Colors.white.withValues(alpha: 0.04));
               final Color rowBorder = current
-                  ? scheme.primary.withValues(alpha: 0.35)
-                  : scheme.outline.withValues(alpha: 0.28);
+                  ? (isLight
+                      ? scheme.primary.withValues(alpha: 0.35)
+                      : StreamerCardBackStyle.accent.withValues(alpha: 0.35))
+                  : (isLight
+                      ? scheme.outline.withValues(alpha: 0.28)
+                      : Colors.white.withValues(alpha: 0.08));
+              final Color accent = isLight
+                  ? scheme.primary
+                  : StreamerCardBackStyle.lavender;
               final List<Color> orbColors = completed
                   ? <Color>[
-                      Colors.greenAccent.withValues(alpha: 0.85),
-                      scheme.primary.withValues(alpha: 0.35),
+                      const Color(0xFF86EFAC).withValues(alpha: 0.85),
+                      accent.withValues(alpha: 0.35),
                     ]
                   : current
                       ? <Color>[
-                          scheme.primary,
-                          scheme.secondary.withValues(alpha: 0.55),
+                          StreamerCardBackStyle.accent,
+                          StreamerCardBackStyle.ringBlue,
                         ]
                       : <Color>[
-                          scheme.outline.withValues(alpha: 0.45),
-                          scheme.surfaceContainerHighest,
+                          Colors.white.withValues(alpha: 0.18),
+                          Colors.white.withValues(alpha: 0.06),
                         ];
-              final Color levelNumColor =
-                  completed || current ? scheme.onPrimary : scheme.onSurface;
+              final Color levelNumColor = completed || current
+                  ? Colors.white
+                  : (isLight
+                      ? scheme.onSurface
+                      : StreamerCardBackStyle.muted);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: rowBg,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: rowBorder),
                   ),
                   child: Row(
@@ -609,7 +663,7 @@ class _ProgressionBody extends StatelessWidget {
                             style: TextStyle(
                               color: levelNumColor,
                               fontSize: 15,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -622,16 +676,20 @@ class _ProgressionBody extends StatelessWidget {
                             Text(
                               GamificationConstants.rankTitleForLevel(level),
                               style: TextStyle(
-                                color: scheme.onSurface,
+                                color: isLight
+                                    ? scheme.onSurface
+                                    : StreamerCardBackStyle.softText,
                                 fontSize: 14,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               reward,
                               style: TextStyle(
-                                color: scheme.onSurface.withValues(alpha: 0.62),
+                                color: isLight
+                                    ? scheme.onSurface.withValues(alpha: 0.62)
+                                    : StreamerCardBackStyle.muted,
                                 fontSize: 12,
                                 height: 1.3,
                               ),
@@ -648,12 +706,14 @@ class _ProgressionBody extends StatelessWidget {
                                 : '${GamificationConstants.xpFloorForLevel(level)} XP',
                         style: TextStyle(
                           color: completed
-                              ? Colors.greenAccent
+                              ? const Color(0xFF86EFAC)
                               : current
-                                  ? scheme.primary
-                                  : scheme.onSurface.withValues(alpha: 0.55),
+                                  ? accent
+                                  : (isLight
+                                      ? scheme.onSurface.withValues(alpha: 0.55)
+                                      : StreamerCardBackStyle.muted),
                           fontSize: 11,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -674,24 +734,26 @@ class _ProgressionTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
           'Progression',
           style: TextStyle(
-            color: shell.onChrome,
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            height: 1,
+            color: isLight ? shell.onChrome : Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+            height: 1.1,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           'Track creator growth and daily momentum.',
           style: TextStyle(
-            color: shell.mutedStrong,
-            fontSize: 13,
+            color: isLight ? shell.mutedStrong : StreamerCardBackStyle.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
             height: 1.25,
           ),
         ),
@@ -709,15 +771,40 @@ class _HeroHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isLight = shell.isLight;
     final int safeNeed =
         model.xpNeededForNextLevel <= 0 ? 1 : model.xpNeededForNextLevel;
     final int into = model.xpIntoLevel.clamp(0, safeNeed);
+    final Color accent =
+        isLight ? scheme.primary : StreamerCardBackStyle.accent;
+    final Color lavender =
+        isLight ? scheme.primary : StreamerCardBackStyle.lavender;
+    final Color muted =
+        isLight ? shell.muted : StreamerCardBackStyle.muted;
+    final Color softText =
+        isLight ? shell.onChrome : StreamerCardBackStyle.softText;
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: shell.surfaceCardBorder),
+        gradient: isLight
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[
+                  Color(0xFF2A1F4D),
+                  Color(0xFF161320),
+                ],
+              ),
+        color: isLight
+            ? shell.surfaceCard
+            : null,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLight
+              ? shell.surfaceCardBorder
+              : StreamerCardBackStyle.accent.withValues(alpha: 0.3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,27 +813,27 @@ class _HeroHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Container(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: scheme.primary.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(15),
+                  color: accent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: scheme.primary.withValues(alpha: 0.22),
+                    color: accent.withValues(alpha: 0.35),
                   ),
                 ),
                 child: Center(
                   child: Text(
                     '${model.level}',
                     style: TextStyle(
-                      color: scheme.primary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                      color: lavender,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 13),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -754,13 +841,12 @@ class _HeroHeader extends StatelessWidget {
                     Text(
                       'Level ${model.level}',
                       style: TextStyle(
-                        color: shell.mutedStrong,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.45,
+                        color: muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 320),
                       child: Text(
@@ -769,20 +855,20 @@ class _HeroHeader extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: shell.onChrome,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          height: 1.08,
+                          color: softText,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          height: 1.1,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     _AnimatedXpText(
                       value: model.totalXp,
                       style: TextStyle(
-                        color: shell.muted,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
+                        color: muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                   ],
@@ -790,11 +876,11 @@ class _HeroHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 14),
           _AnimatedLevelProgressBar(
             value: model.progressInLevel.clamp(0, 1),
-            backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
-            foregroundColor: scheme.primary,
+            backgroundColor: Colors.white.withValues(alpha: isLight ? 0.12 : 0.1),
+            foregroundColor: accent,
           ),
           const SizedBox(height: 10),
           Row(
@@ -803,18 +889,18 @@ class _HeroHeader extends StatelessWidget {
                 child: Text(
                   '$into / $safeNeed XP to Level ${model.level + 1}',
                   style: TextStyle(
-                    color: shell.mutedStrong,
+                    color: muted,
                     fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
               ),
               Text(
                 '${(model.progressInLevel * 100).round()}%',
                 style: TextStyle(
-                  color: scheme.primary,
+                  color: lavender,
                   fontSize: 12,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -831,7 +917,7 @@ class _HeroHeader extends StatelessWidget {
               _HeroMetric(
                 icon: Icons.auto_awesome_rounded,
                 label: '${model.creatorScore.toStringAsFixed(0)} score',
-                color: scheme.primary,
+                color: lavender,
               ),
               const SizedBox(width: 8),
               _HeroMetric(
@@ -860,20 +946,24 @@ class _HeroMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
     return Expanded(
       child: Container(
         height: 34,
         padding: const EdgeInsets.symmetric(horizontal: 9),
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerLow.withValues(alpha: 0.56),
+          color: isLight
+              ? Colors.black.withValues(alpha: 0.04)
+              : Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: isLight ? 0.0 : 0.08),
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon, size: 15, color: color),
+            Icon(icon, size: 14, color: color),
             const SizedBox(width: 5),
             Flexible(
               child: Text(
@@ -881,9 +971,14 @@ class _HeroMetric extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: 0.78),
+                  color: isLight
+                      ? Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.78)
+                      : StreamerCardBackStyle.softText,
                   fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -906,38 +1001,54 @@ class _WeeklySnapshotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isLight = shell.isLight;
     final int momentum = (model.creatorScore / 10).round().clamp(0, 10);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow.withValues(alpha: 0.62),
+        color: isLight ? shell.surfaceCard : StreamerCardBackStyle.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
+        border: Border.all(
+          color: isLight
+              ? shell.surfaceCardBorder
+              : Colors.white.withValues(alpha: 0.08),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(Icons.insights_rounded, color: scheme.primary, size: 18),
+              Icon(
+                Icons.insights_rounded,
+                color: isLight
+                    ? Theme.of(context).colorScheme.primary
+                    : StreamerCardBackStyle.lavender,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Weekly snapshot',
                   style: TextStyle(
-                    color: shell.onChrome,
+                    color: isLight
+                        ? shell.onChrome
+                        : StreamerCardBackStyle.softText,
                     fontSize: 14,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
               Text(
                 momentum > 0 ? '+$momentum% momentum' : 'Build momentum',
                 style: TextStyle(
-                  color: momentum > 0 ? Colors.greenAccent : shell.mutedStrong,
+                  color: momentum > 0
+                      ? const Color(0xFF86EFAC)
+                      : (isLight
+                          ? shell.mutedStrong
+                          : StreamerCardBackStyle.muted),
                   fontSize: 11,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -974,6 +1085,7 @@ class _SnapshotMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -983,18 +1095,20 @@ class _SnapshotMetric extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: shell.onChrome,
+              color: isLight
+                  ? shell.onChrome
+                  : StreamerCardBackStyle.softText,
               fontSize: 14,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 3),
           Text(
             label,
             style: TextStyle(
-              color: shell.muted,
+              color: isLight ? shell.muted : StreamerCardBackStyle.muted,
               fontSize: 10.5,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ],
@@ -1015,24 +1129,26 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
           title,
           style: TextStyle(
-            color: shell.onChrome,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
+            color: isLight ? shell.onChrome : StreamerCardBackStyle.softText,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           subtitle,
           style: TextStyle(
-            color: shell.mutedStrong,
+            color: isLight ? shell.mutedStrong : StreamerCardBackStyle.muted,
             fontSize: 12,
-            height: 1.4,
+            fontWeight: FontWeight.w400,
+            height: 1.35,
           ),
         ),
       ],
@@ -1111,21 +1227,30 @@ class _LevelCard extends StatelessWidget {
     final int need = model.xpNeededForNextLevel;
     final int safeNeed = need <= 0 ? 1 : need;
     final int into = model.xpIntoLevel.clamp(0, safeNeed);
+    final bool isLight = shell.isLight;
+    final Color accent =
+        isLight ? scheme.primary : StreamerCardBackStyle.accent;
+    final Color lavender =
+        isLight ? scheme.primary : StreamerCardBackStyle.lavender;
     final BoxDecoration outerDecoration = BoxDecoration(
-      color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.7),
+      color: isLight
+          ? shell.surfaceCard
+          : StreamerCardBackStyle.card,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: shell.surfaceCardBorder),
+      border: Border.all(
+        color: isLight
+            ? shell.surfaceCardBorder
+            : Colors.white.withValues(alpha: 0.08),
+      ),
     );
     final BoxDecoration orbDecoration = BoxDecoration(
-      color: scheme.primary.withValues(alpha: 0.12),
+      color: accent.withValues(alpha: 0.2),
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: scheme.primary.withValues(alpha: 0.22)),
+      border: Border.all(color: accent.withValues(alpha: 0.35)),
     );
-    final Color levelTextColor = scheme.primary;
-    final Color trackBg = shell.isLight
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.9)
-        : scheme.surfaceContainerHighest.withValues(alpha: 0.55);
-    final Color trackFg = scheme.primary;
+    final Color levelTextColor = lavender;
+    final Color trackBg = Colors.white.withValues(alpha: isLight ? 0.12 : 0.1);
+    final Color trackFg = accent;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1140,8 +1265,8 @@ class _LevelCard extends StatelessWidget {
               Row(
                 children: <Widget>[
                   Container(
-                    width: 46,
-                    height: 46,
+                    width: 44,
+                    height: 44,
                     decoration: orbDecoration,
                     child: Center(
                       child: AnimatedSwitcher(
@@ -1152,14 +1277,14 @@ class _LevelCard extends StatelessWidget {
                           key: ValueKey<int>(model.level),
                           style: TextStyle(
                             color: levelTextColor,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1171,9 +1296,11 @@ class _LevelCard extends StatelessWidget {
                             rankTitle,
                             key: ValueKey<String>(rankTitle),
                             style: TextStyle(
-                              color: shell.onChrome,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
+                              color: isLight
+                                  ? shell.onChrome
+                                  : StreamerCardBackStyle.softText,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -1181,9 +1308,11 @@ class _LevelCard extends StatelessWidget {
                         _AnimatedXpText(
                           value: model.totalXp,
                           style: TextStyle(
-                            color: shell.muted,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                            color: isLight
+                                ? shell.muted
+                                : StreamerCardBackStyle.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
                       ],
@@ -1202,20 +1331,22 @@ class _LevelCard extends StatelessWidget {
                 children: <Widget>[
                   Expanded(
                     child: Text(
-                      '$into / $safeNeed XP this level',
+                      '$into / $safeNeed XP',
                       style: TextStyle(
-                        color: shell.mutedStrong,
+                        color: isLight
+                            ? shell.muted
+                            : StreamerCardBackStyle.muted,
                         fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                   ),
                   Text(
-                    'View rewards',
+                    '${(model.progressInLevel * 100).round()}%',
                     style: TextStyle(
-                      color: scheme.primary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                      color: lavender,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -1227,7 +1358,6 @@ class _LevelCard extends StatelessWidget {
     );
   }
 }
-
 class _MiniStatCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -1246,28 +1376,39 @@ class _MiniStatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.7),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: shell.surfaceCardBorder),
+        color: isLight ? shell.surfaceCard : StreamerCardBackStyle.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLight
+              ? shell.surfaceCardBorder
+              : Colors.white.withValues(alpha: 0.08),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(icon, color: iconColor, size: 20),
+          Icon(
+            icon,
+            color: isLight ? iconColor : StreamerCardBackStyle.lavender,
+            size: 18,
+          ),
           const SizedBox(height: 8),
           Text(
             title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: shell.mutedStrong,
+              color: isLight
+                  ? shell.mutedStrong
+                  : StreamerCardBackStyle.muted,
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w400,
               height: 1.2,
             ),
           ),
@@ -1277,9 +1418,11 @@ class _MiniStatCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: shell.onChrome,
+              color: isLight
+                  ? shell.onChrome
+                  : StreamerCardBackStyle.softText,
               fontSize: 15,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
               height: 1.2,
             ),
           ),
@@ -1289,8 +1432,11 @@ class _MiniStatCard extends StatelessWidget {
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: shell.muted,
+              color: isLight
+                  ? shell.muted
+                  : StreamerCardBackStyle.muted,
               fontSize: 11,
+              fontWeight: FontWeight.w400,
               height: 1.35,
             ),
           ),
@@ -1399,7 +1545,7 @@ class _AnimatedXpTextState extends State<_AnimatedXpText>
                     style: TextStyle(
                       color: scheme.primary,
                       fontSize: 12,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -1486,7 +1632,7 @@ class _AnimatedLevelProgressBarState extends State<_AnimatedLevelProgressBar>
               builder: (BuildContext ctx, double value, Widget? _) {
                 return LinearProgressIndicator(
                   value: value,
-                  minHeight: 10,
+                  minHeight: 4,
                   backgroundColor: widget.backgroundColor,
                   valueColor: AlwaysStoppedAnimation<Color>(
                     widget.foregroundColor,
@@ -1508,21 +1654,26 @@ class _NextActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isLight = shell.isLight;
+    final Color accent = isLight
+        ? Theme.of(context).colorScheme.primary
+        : StreamerCardBackStyle.lavender;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.68),
-        borderRadius: BorderRadius.circular(14),
+        color: isLight ? shell.surfaceCard : StreamerCardBackStyle.card,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: scheme.primary.withValues(alpha: 0.24),
+          color: isLight
+              ? accent.withValues(alpha: 0.24)
+              : StreamerCardBackStyle.accent.withValues(alpha: 0.28),
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Icon(Icons.arrow_forward_rounded, color: scheme.primary, size: 20),
+          Icon(Icons.arrow_forward_rounded, color: accent, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1531,9 +1682,11 @@ class _NextActionCard extends StatelessWidget {
                 Text(
                   'Recommended next move',
                   style: TextStyle(
-                    color: shell.mutedStrong,
+                    color: isLight
+                        ? shell.mutedStrong
+                        : StreamerCardBackStyle.muted,
                     fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -1542,10 +1695,12 @@ class _NextActionCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: shell.onChrome,
+                    color: isLight
+                        ? shell.onChrome
+                        : StreamerCardBackStyle.softText,
                     fontSize: 13,
                     height: 1.25,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -1626,8 +1781,12 @@ class _AchievementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
+    final Color unlockedAccent = isLight
+        ? achievement.accent
+        : StreamerCardBackStyle.lavender;
     final Color accent =
-        achievement.unlocked ? achievement.accent : shell.iconDim;
+        achievement.unlocked ? unlockedAccent : shell.iconDim;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.97, end: 1),
       duration: const Duration(milliseconds: 420),
@@ -1639,27 +1798,20 @@ class _AchievementCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _showAchievementSheet(context, achievement),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 280),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: shell.surfaceCard,
-              borderRadius: BorderRadius.circular(18),
+              color: isLight ? shell.surfaceCard : StreamerCardBackStyle.card,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: achievement.unlocked
-                    ? accent.withValues(alpha: 0.26)
-                    : shell.surfaceCardBorder,
+                    ? accent.withValues(alpha: 0.28)
+                    : (isLight
+                        ? shell.surfaceCardBorder
+                        : Colors.white.withValues(alpha: 0.08)),
               ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: achievement.unlocked
-                      ? accent.withValues(alpha: 0.12)
-                      : shell.shadowSoft,
-                  blurRadius: achievement.unlocked ? 22 : 18,
-                  offset: const Offset(0, 10),
-                ),
-              ],
             ),
             child: Row(
               children: <Widget>[
@@ -1679,9 +1831,11 @@ class _AchievementCard extends StatelessWidget {
                             child: Text(
                               achievement.title,
                               style: TextStyle(
-                                color: shell.onChrome,
+                                color: isLight
+                                    ? shell.onChrome
+                                    : StreamerCardBackStyle.softText,
                                 fontSize: 14,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
@@ -1702,7 +1856,7 @@ class _AchievementCard extends StatelessWidget {
                               style: TextStyle(
                                 color: accent,
                                 fontSize: 10.5,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
@@ -1712,7 +1866,9 @@ class _AchievementCard extends StatelessWidget {
                       Text(
                         achievement.subtitle,
                         style: TextStyle(
-                          color: shell.muted,
+                          color: isLight
+                              ? shell.muted
+                              : StreamerCardBackStyle.muted,
                           fontSize: 11.5,
                           height: 1.3,
                         ),
@@ -1740,7 +1896,11 @@ class _AchievementCard extends StatelessWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (BuildContext context) {
-        final ColorScheme scheme = Theme.of(context).colorScheme;
+        final StSupportShellStyle shell = StSupportShellStyle.of(context);
+        final bool isLight = shell.isLight;
+        final Color accent = isLight
+            ? achievement.accent
+            : StreamerCardBackStyle.lavender;
         return _GlassSheet(
           title: achievement.title,
           subtitle: statusCopy,
@@ -1750,16 +1910,18 @@ class _AchievementCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: scheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(18),
+                  color: isLight
+                      ? Theme.of(context).colorScheme.surfaceContainerLow
+                      : Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: achievement.accent.withValues(alpha: 0.22),
+                    color: accent.withValues(alpha: 0.22),
                   ),
                 ),
                 child: Row(
                   children: <Widget>[
                     _AchievementOrb(
-                      accent: achievement.accent,
+                      accent: accent,
                       icon: achievement.icon,
                       unlocked: achievement.unlocked,
                     ),
@@ -1768,7 +1930,9 @@ class _AchievementCard extends StatelessWidget {
                       child: Text(
                         achievement.subtitle,
                         style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.76),
+                          color: isLight
+                              ? shell.onChrome.withValues(alpha: 0.76)
+                              : StreamerCardBackStyle.softText,
                           fontSize: 13,
                           height: 1.35,
                         ),
@@ -1862,16 +2026,6 @@ class _AchievementOrbState extends State<_AchievementOrb>
                 widget.accent.withValues(alpha: 0.18),
               ],
             ),
-            boxShadow: <BoxShadow>[
-              if (widget.unlocked)
-                BoxShadow(
-                  color: widget.accent.withValues(
-                    alpha: 0.22 + (_controller.value * 0.1),
-                  ),
-                  blurRadius: 18 + (_controller.value * 6),
-                  offset: const Offset(0, 8),
-                ),
-            ],
           ),
           child: child,
         );
@@ -1923,15 +2077,20 @@ class _GlassSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     return SafeArea(
       top: false,
       child: Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         decoration: BoxDecoration(
-          color: shell.panelSurface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: shell.panelBorder),
+          color: isLight ? shell.panelSurface : StreamerCardBackStyle.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isLight
+                ? shell.panelBorder
+                : Colors.white.withValues(alpha: 0.08),
+          ),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -1944,7 +2103,8 @@ class _GlassSheet extends StatelessWidget {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
-                    color: shell.muted.withValues(alpha: 0.35),
+                    color: (isLight ? shell.muted : StreamerCardBackStyle.muted)
+                        .withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -1952,16 +2112,18 @@ class _GlassSheet extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                  color: shell.onChrome,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
+                  color: isLight
+                      ? shell.onChrome
+                      : StreamerCardBackStyle.softText,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: shell.muted,
+                  color: isLight ? shell.muted : StreamerCardBackStyle.muted,
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -1988,6 +2150,7 @@ class _SheetFactRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -1998,9 +2161,11 @@ class _SheetFactRow extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: shell.mutedStrong,
+                color: isLight
+                    ? shell.mutedStrong
+                    : StreamerCardBackStyle.muted,
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -2008,7 +2173,9 @@ class _SheetFactRow extends StatelessWidget {
             child: Text(
               value,
               style: TextStyle(
-                color: shell.onChrome.withValues(alpha: 0.88),
+                color: isLight
+                    ? shell.onChrome.withValues(alpha: 0.88)
+                    : StreamerCardBackStyle.softText,
                 fontSize: 12.5,
                 height: 1.35,
               ),

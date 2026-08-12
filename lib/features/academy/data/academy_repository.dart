@@ -38,33 +38,43 @@ class AcademyRepository {
   }
 
   Future<List<AcademyCategory>> _refreshCategoriesCache() async {
-    final QuerySnapshot<Map<String, dynamic>> snap =
-        await _queryPublishedOrdered(categoriesCollection);
-    final List<AcademyCategory> categories = snap.docs
-        .map(AcademyCategory.fromFirestore)
-        .where((AcademyCategory c) => c.isPublished)
-        .toList(growable: true)
-      ..sort(
-        (AcademyCategory a, AcademyCategory b) =>
-            a.sortOrder.compareTo(b.sortOrder),
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snap =
+          await _queryPublishedOrdered(categoriesCollection);
+      final List<AcademyCategory> categories = snap.docs
+          .map(AcademyCategory.fromFirestore)
+          .where((AcademyCategory c) => c.isPublished)
+          .toList(growable: true)
+        ..sort(
+          (AcademyCategory a, AcademyCategory b) =>
+              a.sortOrder.compareTo(b.sortOrder),
+        );
+      await _writeCache(
+        _cacheCategoriesKey,
+        categories.map((AcademyCategory c) => <String, dynamic>{
+          'id': c.id,
+          'name': c.name,
+          'description': c.description,
+          'iconKey': c.iconKey,
+          'iconUrl': c.iconUrl,
+          'sortOrder': c.sortOrder,
+          'isPublished': c.isPublished,
+          'guideCount': c.guideCount,
+          'slug': c.slug,
+          'keywords': c.keywords,
+          'unlockLevel': c.unlockLevel,
+        }).toList(),
       );
-    await _writeCache(
-      _cacheCategoriesKey,
-      categories.map((AcademyCategory c) => <String, dynamic>{
-        'id': c.id,
-        'name': c.name,
-        'description': c.description,
-        'iconKey': c.iconKey,
-        'iconUrl': c.iconUrl,
-        'sortOrder': c.sortOrder,
-        'isPublished': c.isPublished,
-        'guideCount': c.guideCount,
-        'slug': c.slug,
-        'keywords': c.keywords,
-        'unlockLevel': c.unlockLevel,
-      }).toList(),
-    );
-    return categories;
+      return categories;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: categories permission-denied, empty list',
+        );
+        return const <AcademyCategory>[];
+      }
+      rethrow;
+    }
   }
 
   Future<List<AcademyGuideSummary>> fetchGuideSummaries({
@@ -86,6 +96,12 @@ class AcademyRepository {
       }
       snap = await query.limit(limit).get();
     } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: guides permission-denied, empty list',
+        );
+        return const <AcademyGuideSummary>[];
+      }
       if (!_isMissingIndexError(e)) {
         rethrow;
       }
@@ -164,30 +180,39 @@ class AcademyRepository {
     if (trimmed.isEmpty) {
       return null;
     }
-    final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
-        .collection(guidesCollection)
-        .doc(trimmed)
-        .get();
-    if (doc.exists) {
-      final AcademyGuideSummary guide = AcademyGuideSummary.fromFirestore(doc);
-      if (guide.isPublished) {
-        return guide;
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
+          .collection(guidesCollection)
+          .doc(trimmed)
+          .get();
+      if (doc.exists) {
+        final AcademyGuideSummary guide = AcademyGuideSummary.fromFirestore(doc);
+        if (guide.isPublished) {
+          return guide;
+        }
       }
-    }
-    // Website flat slugs may differ slightly from doc ids (nested hubs).
-    final QuerySnapshot<Map<String, dynamic>> bySlug = await _firestore
-        .collection(guidesCollection)
-        .where('slug', isEqualTo: trimmed)
-        .limit(1)
-        .get();
-    if (bySlug.docs.isNotEmpty) {
-      final AcademyGuideSummary guide =
-          AcademyGuideSummary.fromFirestore(bySlug.docs.first);
-      if (guide.isPublished) {
-        return guide;
+      final QuerySnapshot<Map<String, dynamic>> bySlug = await _firestore
+          .collection(guidesCollection)
+          .where('slug', isEqualTo: trimmed)
+          .limit(1)
+          .get();
+      if (bySlug.docs.isNotEmpty) {
+        final AcademyGuideSummary guide =
+            AcademyGuideSummary.fromFirestore(bySlug.docs.first);
+        if (guide.isPublished) {
+          return guide;
+        }
       }
+      return null;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: guide $trimmed permission-denied',
+        );
+        return null;
+      }
+      rethrow;
     }
-    return null;
   }
 
   Future<List<AcademyLessonSummary>> fetchLessonSummariesForGuide(
@@ -202,6 +227,12 @@ class AcademyRepository {
           .orderBy('sortOrder')
           .get();
     } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: lessons for $guideId permission-denied',
+        );
+        return const <AcademyLessonSummary>[];
+      }
       if (!_isMissingIndexError(e)) {
         rethrow;
       }
@@ -251,44 +282,63 @@ class AcademyRepository {
   }
 
   Future<List<AcademyPath>> _refreshPathsCache() async {
-    final QuerySnapshot<Map<String, dynamic>> snap =
-        await _queryPublishedOrdered(pathsCollection);
-    final List<AcademyPath> paths = snap.docs
-        .map(AcademyPath.fromFirestore)
-        .where((AcademyPath p) => p.isPublished)
-        .toList(growable: true)
-      ..sort(
-        (AcademyPath a, AcademyPath b) => a.sortOrder.compareTo(b.sortOrder),
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snap =
+          await _queryPublishedOrdered(pathsCollection);
+      final List<AcademyPath> paths = snap.docs
+          .map(AcademyPath.fromFirestore)
+          .where((AcademyPath p) => p.isPublished)
+          .toList(growable: true)
+        ..sort(
+          (AcademyPath a, AcademyPath b) => a.sortOrder.compareTo(b.sortOrder),
+        );
+      await _writeCache(
+        _cachePathsKey,
+        paths.map((AcademyPath p) => <String, dynamic>{
+          'id': p.id,
+          'title': p.title,
+          'description': p.description,
+          'lessonIds': p.lessonIds,
+          'guideIds': p.guideIds,
+          'sortOrder': p.sortOrder,
+          'isPublished': p.isPublished,
+          'unlockLevel': p.unlockLevel,
+          'iconKey': p.iconKey,
+        }).toList(),
       );
-    await _writeCache(
-      _cachePathsKey,
-      paths.map((AcademyPath p) => <String, dynamic>{
-        'id': p.id,
-        'title': p.title,
-        'description': p.description,
-        'lessonIds': p.lessonIds,
-        'sortOrder': p.sortOrder,
-        'isPublished': p.isPublished,
-        'unlockLevel': p.unlockLevel,
-        'iconKey': p.iconKey,
-      }).toList(),
-    );
-    return paths;
+      return paths;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint('AcademyRepository: paths permission-denied, empty list');
+        return const <AcademyPath>[];
+      }
+      rethrow;
+    }
   }
 
   Future<AcademyPath?> fetchPathById(String pathId) async {
-    final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
-        .collection(pathsCollection)
-        .doc(pathId)
-        .get();
-    if (!doc.exists) {
-      return null;
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
+          .collection(pathsCollection)
+          .doc(pathId)
+          .get();
+      if (!doc.exists) {
+        return null;
+      }
+      final AcademyPath path = AcademyPath.fromFirestore(doc);
+      if (!path.isPublished) {
+        return null;
+      }
+      return path;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: path $pathId permission-denied',
+        );
+        return null;
+      }
+      rethrow;
     }
-    final AcademyPath path = AcademyPath.fromFirestore(doc);
-    if (!path.isPublished) {
-      return null;
-    }
-    return path;
   }
 
   Future<AcademyXpRewards> fetchXpRewards() async {
@@ -304,48 +354,89 @@ class AcademyRepository {
     }
   }
 
-  Stream<List<AcademyUserProgress>> watchUserProgress(String userId) {
-    return _firestore
-        .collection(progressCollection)
-        .where('userId', isEqualTo: userId)
-        .snapshots()
-        .map(
-          (QuerySnapshot<Map<String, dynamic>> snap) => snap.docs
-              .map(AcademyUserProgress.fromFirestore)
-              .toList(growable: false),
+  Stream<List<AcademyUserProgress>> watchUserProgress(String userId) async* {
+    try {
+      await for (final QuerySnapshot<Map<String, dynamic>> snap
+          in _firestore
+              .collection(progressCollection)
+              .where('userId', isEqualTo: userId)
+              .snapshots()) {
+        yield snap.docs
+            .map(AcademyUserProgress.fromFirestore)
+            .toList(growable: false);
+      }
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: progress listen permission-denied',
         );
+        yield const <AcademyUserProgress>[];
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<AcademyUserProgress?> fetchProgressForLesson({
     required String userId,
     required String lessonId,
   }) async {
-    final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
-        .collection(progressCollection)
-        .doc('${userId}_$lessonId')
-        .get();
-    if (!doc.exists) {
-      return null;
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
+          .collection(progressCollection)
+          .doc('${userId}_$lessonId')
+          .get();
+      if (!doc.exists) {
+        return null;
+      }
+      return AcademyUserProgress.fromFirestore(doc);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: progress fetch permission-denied',
+        );
+        return null;
+      }
+      rethrow;
     }
-    return AcademyUserProgress.fromFirestore(doc);
   }
 
   Future<void> upsertProgress(AcademyUserProgress progress) async {
-    await _firestore
-        .collection(progressCollection)
-        .doc(progress.documentId)
-        .set(progress.toFirestore(), SetOptions(merge: true));
+    try {
+      await _firestore
+          .collection(progressCollection)
+          .doc(progress.documentId)
+          .set(progress.toFirestore(), SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: progress write permission-denied',
+        );
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<List<AcademyUserProgress>> fetchSavedGuides(String userId) async {
-    final QuerySnapshot<Map<String, dynamic>> snap = await _firestore
-        .collection(progressCollection)
-        .where('userId', isEqualTo: userId)
-        .where('isSaved', isEqualTo: true)
-        .get();
-    return snap.docs
-        .map(AcademyUserProgress.fromFirestore)
-        .toList(growable: false);
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snap = await _firestore
+          .collection(progressCollection)
+          .where('userId', isEqualTo: userId)
+          .where('isSaved', isEqualTo: true)
+          .get();
+      return snap.docs
+          .map(AcademyUserProgress.fromFirestore)
+          .toList(growable: false);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          'AcademyRepository: saved guides permission-denied',
+        );
+        return const <AcademyUserProgress>[];
+      }
+      rethrow;
+    }
   }
 
   Future<List<AcademyCategory>?> _readCachedCategories() async {
@@ -395,15 +486,9 @@ class AcademyRepository {
           .map((Map<dynamic, dynamic> m) {
             final Map<String, dynamic> data =
                 Map<String, dynamic>.from(m);
-            return AcademyPath(
-              id: data['id']?.toString() ?? '',
-              title: data['title']?.toString() ?? 'Path',
-              description: data['description']?.toString() ?? '',
-              lessonIds: _readStringListCached(data['lessonIds']),
-              sortOrder: data['sortOrder'] as int? ?? 0,
-              isPublished: data['isPublished'] != false,
-              unlockLevel: data['unlockLevel'] as int? ?? 0,
-              iconKey: data['iconKey']?.toString(),
+            return AcademyPath.fromMap(
+              data['id']?.toString() ?? '',
+              data,
             );
           })
           .toList(growable: false);

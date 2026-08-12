@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/support_shell_style.dart';
+import '../../../widgets/streamer_card_sections.dart';
 import '../services/gamification_event_service.dart';
 import '../missions/mission_engine.dart';
 import '../models/daily_mission_model.dart';
@@ -19,18 +20,23 @@ class MissionSectionsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     if (sections.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: shell.surfaceCard,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: shell.surfaceCardBorder),
+          color: isLight ? shell.surfaceCard : StreamerCardBackStyle.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isLight
+                ? shell.surfaceCardBorder
+                : Colors.white.withValues(alpha: 0.08),
+          ),
         ),
         child: Text(
           'No missions available yet. Check back after your next creator activity.',
           style: TextStyle(
-            color: shell.muted,
+            color: isLight ? shell.muted : StreamerCardBackStyle.muted,
             fontSize: 13,
             height: 1.4,
           ),
@@ -48,10 +54,13 @@ class MissionSectionsList extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color:
-                  shell.surfaceCard.withValues(alpha: shell.isLight ? 1 : 0.68),
+              color: isLight ? shell.surfaceCard : StreamerCardBackStyle.card,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: shell.surfaceCardBorder),
+              border: Border.all(
+                color: isLight
+                    ? shell.surfaceCardBorder
+                    : Colors.white.withValues(alpha: 0.08),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -62,9 +71,11 @@ class MissionSectionsList extends StatelessWidget {
                       child: Text(
                         section.title,
                         style: TextStyle(
-                          color: shell.onChrome,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                          color: isLight
+                              ? shell.onChrome
+                              : StreamerCardBackStyle.softText,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -74,18 +85,24 @@ class MissionSectionsList extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: shell.chipUnselectedBg,
+                        color: isLight
+                            ? shell.chipUnselectedBg
+                            : Colors.white.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: shell.surfaceCardBorder,
+                          color: isLight
+                              ? shell.surfaceCardBorder
+                              : Colors.white.withValues(alpha: 0.08),
                         ),
                       ),
                       child: Text(
                         '$completed/${section.missions.length}',
                         style: TextStyle(
-                          color: shell.muted,
+                          color: isLight
+                              ? shell.muted
+                              : StreamerCardBackStyle.muted,
                           fontSize: 11,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -116,14 +133,15 @@ class _MissionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    final bool isLight = shell.isLight;
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool done = mission.isCompleted;
     final bool claimed = mission.isClaimed;
     final Color accent = claimed
-        ? shell.muted
+        ? (isLight ? shell.muted : StreamerCardBackStyle.muted)
         : done
-            ? Colors.greenAccent.withValues(alpha: 0.9)
-            : scheme.primary;
+            ? const Color(0xFF86EFAC)
+            : (isLight ? scheme.primary : StreamerCardBackStyle.lavender);
     final IconData icon = claimed
         ? Icons.check_circle_rounded
         : done
@@ -151,15 +169,16 @@ class _MissionTile extends StatelessWidget {
               duration: const Duration(milliseconds: 260),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerLow
-                    .withValues(alpha: 0.38),
+                color: isLight
+                    ? scheme.surfaceContainerLow.withValues(alpha: 0.38)
+                    : Colors.white.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: done
-                      ? accent.withValues(alpha: 0.32)
-                      : shell.surfaceCardBorder.withValues(alpha: 0.72),
+                      ? accent.withValues(alpha: 0.28)
+                      : (isLight
+                          ? shell.surfaceCardBorder.withValues(alpha: 0.72)
+                          : Colors.white.withValues(alpha: 0.06)),
                 ),
               ),
               child: Row(
@@ -191,9 +210,11 @@ class _MissionTile extends StatelessWidget {
                               child: Text(
                                 mission.title,
                                 style: TextStyle(
-                                  color: shell.onChrome,
+                                  color: isLight
+                                      ? shell.onChrome
+                                      : StreamerCardBackStyle.softText,
                                   fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                   height: 1.15,
                                 ),
                               ),
@@ -216,7 +237,9 @@ class _MissionTile extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: shell.muted,
+                              color: isLight
+                                  ? shell.muted
+                                  : StreamerCardBackStyle.muted,
                               fontSize: 11.5,
                               height: 1.3,
                             ),
@@ -239,9 +262,11 @@ class _MissionTile extends StatelessWidget {
                                   builder: (context, value, _) {
                                     return LinearProgressIndicator(
                                       value: value,
-                                      minHeight: 5,
-                                      backgroundColor: scheme.onSurface
-                                          .withValues(alpha: 0.12),
+                                      minHeight: 4,
+                                      backgroundColor: isLight
+                                          ? scheme.onSurface
+                                              .withValues(alpha: 0.12)
+                                          : Colors.white.withValues(alpha: 0.08),
                                       valueColor:
                                           AlwaysStoppedAnimation<Color>(accent),
                                     );
@@ -253,9 +278,11 @@ class _MissionTile extends StatelessWidget {
                             Text(
                               progressLabel,
                               style: TextStyle(
-                                color: shell.onChrome.withValues(alpha: 0.78),
+                                color: isLight
+                                    ? shell.onChrome.withValues(alpha: 0.78)
+                                    : StreamerCardBackStyle.muted,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
@@ -282,11 +309,19 @@ class _MissionTile extends StatelessWidget {
     bool readyToClaim,
     Future<void> Function()? onRefreshRequested,
   ) {
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
     final Color accent = readyToClaim
-        ? Colors.greenAccent
+        ? const Color(0xFF86EFAC)
         : mission.isClaimed
-            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55)
-            : Theme.of(context).colorScheme.primary;
+            ? (isLight
+                ? Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.55)
+                : StreamerCardBackStyle.muted)
+            : (isLight
+                ? Theme.of(context).colorScheme.primary
+                : StreamerCardBackStyle.lavender);
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -326,7 +361,7 @@ class _MissionStatusChip extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontSize: 10.5,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -366,7 +401,6 @@ class _ClaimAffordanceChipState extends State<_ClaimAffordanceChip>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        final double glow = 0.14 + (_controller.value * 0.08);
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
@@ -376,13 +410,6 @@ class _ClaimAffordanceChipState extends State<_ClaimAffordanceChip>
               color: widget.accent
                   .withValues(alpha: 0.26 + (_controller.value * 0.16)),
             ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: widget.accent.withValues(alpha: glow),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -398,7 +425,7 @@ class _ClaimAffordanceChipState extends State<_ClaimAffordanceChip>
                 style: TextStyle(
                   color: widget.accent,
                   fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -435,12 +462,12 @@ class _MissionSheet extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         decoration: BoxDecoration(
-          color: isLight ? scheme.surface : const Color(0xFF1A1440),
-          borderRadius: BorderRadius.circular(24),
+          color: isLight ? scheme.surface : StreamerCardBackStyle.card,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isLight
                 ? scheme.outline.withValues(alpha: 0.35)
-                : Colors.white.withValues(alpha: 0.1),
+                : Colors.white.withValues(alpha: 0.08),
           ),
         ),
         child: Column(
@@ -453,7 +480,10 @@ class _MissionSheet extends StatelessWidget {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 14),
                 decoration: BoxDecoration(
-                  color: scheme.onSurface.withValues(alpha: 0.15),
+                  color: (isLight
+                          ? scheme.onSurface
+                          : StreamerCardBackStyle.muted)
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -461,9 +491,11 @@ class _MissionSheet extends StatelessWidget {
             Text(
               mission.title,
               style: TextStyle(
-                color: scheme.onSurface,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
+                color: isLight
+                    ? scheme.onSurface
+                    : StreamerCardBackStyle.softText,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 6),
@@ -472,7 +504,9 @@ class _MissionSheet extends StatelessWidget {
                   ? 'Keep progressing this mission to move your creator track forward.'
                   : mission.description,
               style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.65),
+                color: isLight
+                    ? scheme.onSurface.withValues(alpha: 0.65)
+                    : StreamerCardBackStyle.muted,
                 fontSize: 13,
                 height: 1.35,
               ),
@@ -521,8 +555,8 @@ class _MissionSheet extends StatelessWidget {
                   icon: const Icon(Icons.redeem_rounded),
                   label: const Text('Claim reward'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    foregroundColor: Colors.black,
+                    backgroundColor: StreamerCardBackStyle.accent,
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -535,10 +569,14 @@ class _MissionSheet extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: scheme.surfaceContainerLow,
+                  color: isLight
+                      ? scheme.surfaceContainerLow
+                      : Colors.white.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: scheme.outline.withValues(alpha: 0.25),
+                    color: isLight
+                        ? scheme.outline.withValues(alpha: 0.25)
+                        : Colors.white.withValues(alpha: 0.08),
                   ),
                 ),
                 child: Text(
@@ -546,7 +584,9 @@ class _MissionSheet extends StatelessWidget {
                       ? 'This reward has already been collected.'
                       : 'Complete the objective to unlock claiming.',
                   style: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: 0.65),
+                    color: isLight
+                        ? scheme.onSurface.withValues(alpha: 0.65)
+                        : StreamerCardBackStyle.muted,
                     fontSize: 12.5,
                     height: 1.35,
                   ),
@@ -571,6 +611,7 @@ class _MissionSheetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -581,9 +622,11 @@ class _MissionSheetRow extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.5),
+                color: isLight
+                    ? scheme.onSurface.withValues(alpha: 0.5)
+                    : StreamerCardBackStyle.muted,
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -591,7 +634,9 @@ class _MissionSheetRow extends StatelessWidget {
             child: Text(
               value,
               style: TextStyle(
-                color: scheme.onSurface.withValues(alpha: 0.85),
+                color: isLight
+                    ? scheme.onSurface.withValues(alpha: 0.85)
+                    : StreamerCardBackStyle.softText,
                 fontSize: 12.5,
                 height: 1.35,
               ),

@@ -6,14 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/playback_owners.dart';
 import '../../controllers/home_view_controller.dart';
-import '../../features/onboarding_tippy/tippy_onboarding_attach_pending.dart';
-import '../../features/onboarding_tippy/tippy_onboarding_contract.dart';
+import '../../features/onboarding_tippy/tippy_onboarding_host_presence.dart';
 import '../../features/onboarding_tippy/tippy_onboarding_session.dart';
 import '../../features/onboarding_tippy/tippy_onboarding_view.dart';
 import '../../services/global_playback_manager.dart';
-import '../../utils/auth_post_login_navigation.dart';
 import '../../utils/secure_log.dart';
-import '../../widgets/email_verification_view.dart';
 import 'onboarding_engagement_coordinator.dart';
 import 'onboarding_models.dart';
 import 'onboarding_service.dart';
@@ -22,7 +19,6 @@ import '../../services/app_session_cache.dart';
 import 'onboarding_tester_config.dart';
 import 'onboarding_style.dart';
 import 'onboarding_v1_constants.dart';
-import 'onboarding_view.dart';
 import 'widgets/onboarding_full_screen_shell.dart';
 
 /// Single onboarding gate — Firestore is source of truth.
@@ -56,22 +52,24 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
   bool _checkedTesterReset = false;
   bool _isTesterSession = false;
   bool _onboardingPlaybackBlocked = false;
-  bool _emailGateDismissed = false;
   bool _onboardingStatusConfirmed = false;
   StreamSubscription<OnboardingState>? _subscription;
   TippyOnboardingGuestSession? _localTippySession;
-  bool _resumeLocalTippy = false;
 
   bool get _shouldShowTippyOnboarding {
-    // Server-confirmed Tippy completion always wins over a stale local resume
-    // flag (landing used to remount Tippy via nested Navigator → old stage).
+    // Another Tippy host is already mounted (guest route) — do not stack.
+    if (TippyOnboardingHostPresence.isActive) {
+      return false;
+    }
+    // Sticky COMPLETE always wins — missing photo/bio never reopens Tippy.
+    if (_state.completed) {
+      return false;
+    }
     if (_state.tippyFunnelCompleted && _state.essentialProfileComplete) {
       return false;
     }
-    if (_state.completed && !_state.isTippyFunnelIncomplete) {
-      return false;
-    }
-    return _state.isTippyFunnelIncomplete || _resumeLocalTippy;
+    // Canonical: every incomplete signed-in user resumes Tippy (no Classic).
+    return true;
   }
 
   bool get _shouldShowMainApp {
@@ -81,12 +79,13 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     if (_isTesterSession) {
       return _testerSessionDismissed;
     }
-    // Tippy funnel owns the rest of setup — never drop into classic onboarding
-    // or the feed after Google/Apple until landing choice is done.
+    // Guest Tippy route owns the funnel — show navigator child only.
+    if (TippyOnboardingHostPresence.isActive) {
+      return true;
+    }
     if (_shouldShowTippyOnboarding) {
       return false;
     }
-    // Keep Home visible until Firestore confirms onboarding is incomplete.
     if (!_onboardingStatusConfirmed) {
       return true;
     }
@@ -103,17 +102,6 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     unawaited(_bootstrap());
   }
 
-  bool get _needsEmailGate {
-    if (_emailGateDismissed || _isTesterSession) {
-      return false;
-    }
-    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
-    if (user == null || !firebaseUserNeedsEmailVerification(user)) {
-      return false;
-    }
-    return !_state.hasSeenIntro && !_state.completed;
-  }
-
   @override
   void didUpdateWidget(OnboardingGate oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -123,7 +111,6 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
       _service = widget.service ?? OnboardingService();
       _isReady = false;
       _testerSessionDismissed = false;
-      _emailGateDismissed = false;
       _checkedTesterReset = false;
       _releaseOnboardingPlaybackBlock();
       unawaited(_bootstrap());
@@ -333,7 +320,6 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
           setState(() {
             _state = state;
             if (tippyDone || (state.completed && !state.isTippyFunnelIncomplete)) {
-              _resumeLocalTippy = false;
               _localTippySession = null;
             }
           });
@@ -365,21 +351,9 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     try {
       final TippyOnboardingSessionStore store = TippyOnboardingSessionStore();
       final TippyOnboardingGuestSession? session = await store.loadActive();
-      final bool resume = tippySessionNeedsResume(session) ||
-          (session != null &&
-              session.landingChoice == null &&
-              (session.hasCompletedQuestions ||
-                  TippyOnboardingStages.isPostQuizStage(session.stage)));
-      if (!mounted) {
-        _localTippySession = session;
-        _resumeLocalTippy = resume;
-        return;
-      }
       _localTippySession = session;
-      _resumeLocalTippy = resume;
     } catch (_) {
       _localTippySession = null;
-      _resumeLocalTippy = false;
     }
   }
 
@@ -463,7 +437,6 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
         tippyFunnelCompleted: true,
         essentialProfileComplete: true,
       );
-      _resumeLocalTippy = false;
       _localTippySession = null;
     });
     _scheduleHomePlaybackRestoreAfterOnboarding();
@@ -484,12 +457,6 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     }
   }
 
-  void _onEmailGateContinue() {
-    setState(() {
-      _emailGateDismissed = true;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_shouldShowMainApp) {
@@ -505,30 +472,11 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
         widget.child,
         OnboardingFullScreenShell(
           child: _OnboardingNavigator(
-            child: _needsEmailGate
-                ? EmailVerificationView(
-                    email: widget.email ??
-                        fa.FirebaseAuth.instance.currentUser?.email ??
-                        '',
-                    navigateToHomeOnVerify: false,
-                    manageSystemUi: false,
-                    onContinueToSetup: _onEmailGateContinue,
-                    onVerified: _onEmailGateContinue,
-                  )
-                : _shouldShowTippyOnboarding
-                    ? TippyOnboardingView(
-                        startAtWelcome: false,
-                        initialSession: _localTippySession,
-                        onCompleted: _onOnboardingCompleted,
-                      )
-                    : OnboardingView(
-                        key: ValueKey<String>('onboarding-${widget.userId}'),
-                        userId: widget.userId,
-                        initialState: _state,
-                        service: _service,
-                        showTesterSkip: _isTesterSession,
-                        onCompleted: _onOnboardingCompleted,
-                      ),
+            child: TippyOnboardingView(
+              startAtWelcome: false,
+              initialSession: _localTippySession,
+              onCompleted: _onOnboardingCompleted,
+            ),
           ),
         ),
       ],

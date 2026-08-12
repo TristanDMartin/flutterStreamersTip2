@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 
 /// Visual accents for Creator Pulse activity categories.
+///
+/// Keep colors in sync with website:
+/// `streamerstipReact/lib/activity/activityDesignTokens.ts`
+/// Source mock: `streamerstip_activity_redesign.html`
 enum ActivityPulseAccent {
   thread,
   like,
   follow,
   momentum,
+  /// Content-plan / due-today action items (distinct from social).
+  action,
   tippy,
   live,
   mention,
@@ -21,6 +27,8 @@ abstract final class ActivityPulseTokens {
   static const Color likeGlow = Color(0xFFE879A8);
   static const Color followGlow = Color(0xFF4897D2);
   static const Color momentumGlow = Color(0xFFF5A623);
+  /// Amber accent for planner due / action reminders.
+  static const Color actionAmber = Color(0xFFFACD75);
   static const Color tippyGlow = Color(0xFF4FD1C5);
   static const Color liveGlow = Color(0xFF4ADE80);
   static const Color mentionGlow = Color(0xFFB794F6);
@@ -39,6 +47,8 @@ abstract final class ActivityPulseTokens {
         return followGlow;
       case ActivityPulseAccent.momentum:
         return momentumGlow;
+      case ActivityPulseAccent.action:
+        return actionAmber;
       case ActivityPulseAccent.tippy:
         return tippyGlow;
       case ActivityPulseAccent.live:

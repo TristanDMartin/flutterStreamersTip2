@@ -145,6 +145,13 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     _controllerGeneration++;
   }
 
+  int _initialPageIndex() {
+    if (widget.videos.isEmpty) {
+      return 0;
+    }
+    return clampHomeVideoIndex(widget.currentIndex, widget.videos.length);
+  }
+
   void _disposePageController() {
     final controller = _pageController;
     if (controller != null) {
@@ -364,7 +371,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     super.initState();
     // Only create PageController if videos exist
     if (widget.videos.isNotEmpty) {
-      const int safeIndex = 0;
+      final int safeIndex = _initialPageIndex();
       _createPageController(safeIndex);
       _rememberVisibleIndex(safeIndex);
     }
@@ -385,7 +392,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     }
     // Log first impression once videos are available.
     if (widget.videos.isNotEmpty) {
-      const int safeIndex = 0;
+      final int safeIndex = _initialPageIndex();
       _pageEnteredAt = DateTime.now();
       _lastImpressionVideo = widget.videos[safeIndex];
       _telemetry.logVideoImpression(
@@ -500,7 +507,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     }
 
     if (_pageController == null) {
-      const int safeIndex = 0;
+      final int safeIndex = _initialPageIndex();
       _createPageController(safeIndex);
       _rememberVisibleIndex(safeIndex);
       return;
@@ -592,7 +599,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     }
 
     if (_pageController == null) {
-      const int safeIndex = 0;
+      final int safeIndex = _initialPageIndex();
       _createPageController(safeIndex);
       _rememberVisibleIndex(safeIndex);
     }

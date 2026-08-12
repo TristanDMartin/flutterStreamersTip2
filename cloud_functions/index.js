@@ -1884,6 +1884,8 @@ const {
 
 /** Bind in prod: `firebase functions:secrets:set ANTHROPIC_API_KEY` */
 const tippyAnthropicSecret = defineSecret('ANTHROPIC_API_KEY');
+/** Optional: `firebase functions:secrets:set BRAINTRUST_API_KEY` */
+const tippyBraintrustSecret = defineSecret('BRAINTRUST_API_KEY');
 const {handleMeEntitlements} = require('./src/me/me_entitlements_http');
 
 /** Optional fallback only — prefer Cloudflare Worker `POST /gamification/events` (same contract). */
@@ -1911,7 +1913,7 @@ exports.verifyMobilePurchase = onRequest(
 );
 
 exports.tippyApi = onRequest(
-    {region, cors: true, secrets: [tippyAnthropicSecret]},
+    {region, cors: true, secrets: [tippyAnthropicSecret, tippyBraintrustSecret]},
     handleTippyRequest,
 );
 

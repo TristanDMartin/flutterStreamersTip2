@@ -30,6 +30,7 @@
     "@apple/app-store-server-library": "^1.6.0",
     "@google-cloud/storage": "^7.7.0",
     "@google-cloud/tasks": "^5.5.2",
+    "braintrust": "^3.27.0",
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.0.1",
     "firebase-admin": "^11.8.0",

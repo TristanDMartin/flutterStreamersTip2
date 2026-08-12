@@ -135,6 +135,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
 
     final ActivityNotification n = widget.notification;
     final bool highPriority = n.isHighPriority;
+    final bool isActionItem = n.isContentPlanType ||
+        n.pulseAccent == ActivityPulseAccent.action;
     final Color accent = ActivityPulseTokens.accentColor(n.pulseAccent);
     return FadeTransition(
       opacity: _fadeController,
@@ -168,122 +170,184 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               scale: 1.0 - (_scaleController.value * 0.025),
               child: Container(
                 margin: EdgeInsets.symmetric(
-                  vertical: highPriority ? 5 : 3,
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: highPriority ? 14 : 12,
-                  vertical: highPriority ? 14 : 11,
+                  vertical: isActionItem || highPriority ? 5 : 3,
                 ),
                 decoration: BoxDecoration(
                   color: _isPressed
                       ? accent.withValues(alpha: 0.1)
                       : shell.surfaceCard,
                   borderRadius: BorderRadius.circular(
-                    highPriority ? 18 : 14,
+                    isActionItem || highPriority ? 16 : 14,
                   ),
                   border: Border.all(
-                    color: _isPressed
-                        ? accent.withValues(alpha: 0.45)
-                        : highPriority
-                            ? accent.withValues(alpha: 0.32)
-                            : shell.surfaceCardBorder,
-                    width: highPriority ? 1.2 : 1,
+                    color: isActionItem
+                        ? shell.surfaceCardBorder
+                        : (_isPressed
+                            ? accent.withValues(alpha: 0.45)
+                            : highPriority
+                                ? accent.withValues(alpha: 0.32)
+                                : shell.surfaceCardBorder),
+                    width: !isActionItem && highPriority ? 1.2 : 1,
                   ),
-                  boxShadow: <BoxShadow>[
-                    if (highPriority)
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.14),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
-                      )
-                    else
-                      BoxShadow(
-                        color: shell.shadowSoft,
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                  ],
-                ),
-                child: Stack(
-                  children: <Widget>[
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            _buildAvatarWithRing(context, shell, accent),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildNotificationText(shell, accent),
+                  boxShadow: isActionItem
+                      ? null
+                      : <BoxShadow>[
+                          if (highPriority)
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.14),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6),
+                            )
+                          else
+                            BoxShadow(
+                              color: shell.shadowSoft,
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              flex: 0,
-                              child: _buildActionItem(
-                                context,
-                                shell,
-                                isFollowing,
-                                isMutualFollow,
-                                currentUserId,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (n.showThreadContinueCta) ...<Widget>[
-                          const SizedBox(height: 10),
-                          _ThreadContinueCta(accent: accent),
                         ],
-                      ],
-                    ),
-
-                    // Unread indicator
-                    if (widget.notification.status == 'pending')
-                      Positioned(
-                        top: 10,
-                        right: 10,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: AppColors.accent,
-                            shape: BoxShape.circle,
-                          ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      if (isActionItem)
+                        Container(
+                          width: 3,
+                          color: accent,
                         ),
-                      ),
-
-                    // Processing indicator overlay
-                    if (widget.notification.status == 'processing')
-                      Positioned(
-                        right: 8,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.7),
-                              shape: BoxShape.circle,
-                            ),
-                            child: SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  shell.onChrome,
-                                ),
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isActionItem || highPriority ? 14 : 12,
+                            vertical: isActionItem || highPriority ? 14 : 11,
+                          ),
+                          child: Stack(
+                            children: <Widget>[
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: <Widget>[
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      if (isActionItem)
+                                        _buildActionAvatar(shell, accent)
+                                      else
+                                        _buildAvatarWithRing(
+                                          context,
+                                          shell,
+                                          accent,
+                                        ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _buildNotificationText(
+                                          shell,
+                                          accent,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        flex: 0,
+                                        child: isActionItem
+                                            ? _buildActionRelativeTime(shell)
+                                            : _buildActionItem(
+                                                context,
+                                                shell,
+                                                isFollowing,
+                                                isMutualFollow,
+                                                currentUserId,
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (n.showThreadContinueCta) ...<Widget>[
+                                    const SizedBox(height: 10),
+                                    _ThreadContinueCta(accent: accent),
+                                  ],
+                                ],
                               ),
-                            ),
+                              if (widget.notification.status == 'pending')
+                                Positioned(
+                                  top: 0,
+                                  right: 0,
+                                  child: Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.accent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              if (widget.notification.status == 'processing')
+                                Positioned(
+                                  right: 0,
+                                  top: 0,
+                                  bottom: 0,
+                                  child: Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.7),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            shell.onChrome,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildActionRelativeTime(StSupportShellStyle shell) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        _getCompactRelativeTime(),
+        style: TextStyle(
+          color: shell.mutedStrong,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionAvatar(StSupportShellStyle shell, Color accent) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: accent.withValues(alpha: 0.15),
+      ),
+      child: Icon(
+        Icons.checklist_rounded,
+        size: 18,
+        color: accent,
       ),
     );
   }
@@ -390,6 +454,11 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     Color accent,
   ) {
     final ActivityNotification n = widget.notification;
+    final bool isActionItem = n.isContentPlanType ||
+        n.pulseAccent == ActivityPulseAccent.action;
+    if (isActionItem) {
+      return _buildActionItemText(shell);
+    }
     final bool isMessage = isActivityMessageNotification(
       type: n.actionType,
       actionType: n.actionType,
@@ -494,6 +563,61 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+      ],
+    );
+  }
+
+  Widget _buildActionItemText(StSupportShellStyle shell) {
+    final String fullText = widget.notification.commentText?.trim() ?? '';
+    final List<String> lines = fullText
+        .split('\n')
+        .map((String line) => line.trim())
+        .where((String line) => line.isNotEmpty)
+        .toList(growable: false);
+    final String title = lines.isNotEmpty
+        ? lines.first
+        : (widget.notification.user.displayName.isNotEmpty
+            ? widget.notification.user.displayName
+            : 'Reminder');
+    String? body = lines.length > 1 ? lines.sublist(1).join(' ') : null;
+    if (body != null) {
+      body = body
+          .replaceAll(' · Tap to open Content Planner.', '')
+          .replaceAll(' • Tap to open Content Planner.', '')
+          .replaceAll('Tap to open Content Planner.', '')
+          .trim();
+      if (body.isEmpty) {
+        body = null;
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: shell.onChrome,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            height: 1.3,
+          ),
+        ),
+        if (body != null) ...<Widget>[
+          const SizedBox(height: 2),
+          Text(
+            body,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: shell.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.5,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -740,6 +864,21 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     } else {
       return 'now';
     }
+  }
+
+  String _getCompactRelativeTime() {
+    final Duration difference =
+        DateTime.now().difference(widget.notification.timestamp);
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d';
+    }
+    if (difference.inHours > 0) {
+      return '${difference.inHours}h';
+    }
+    if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m';
+    }
+    return 'now';
   }
 
   String _formatMilestone(int value) {

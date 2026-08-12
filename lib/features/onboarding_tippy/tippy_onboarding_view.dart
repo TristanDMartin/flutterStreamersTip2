@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -12,13 +13,16 @@ import '../../services/robust_auth_service.dart';
 import '../../views/upgrade_view.dart';
 import '../../widgets/signup_view.dart';
 import '../../components/onboarding/onboarding_service.dart';
+import '../../components/onboarding/resolve_onboarding_destination.dart';
 import '../../services/contacts_service.dart';
 import '../tippy/mascot/tippy_mascot.dart';
 import '../tippy/mascot/tippy_mascot_types.dart';
 import 'tippy_guided_profile_host.dart';
 import 'tippy_onboarding_analytics.dart';
+import 'tippy_onboarding_attach_pending.dart';
 import 'tippy_onboarding_attach_service.dart';
 import 'tippy_onboarding_contract.dart';
+import 'tippy_onboarding_host_presence.dart';
 import 'tippy_onboarding_session.dart';
 import 'tippy_profile_draft.dart';
 
@@ -33,7 +37,8 @@ class TippyOnboardingView extends ConsumerStatefulWidget {
 
   final TippyOnboardingGuestSession? initialSession;
 
-  /// Get Started should always open on Meet Tippy (not a mid-quiz resume).
+  /// When true and there is no progress yet, open on Meet Tippy.
+  /// Mid-progress sessions always resume the exact step.
   final bool startAtWelcome;
 
   /// Fired after landing choice so [OnboardingGate] can dismiss the overlay.
@@ -60,6 +65,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
   List<String> _multiDraft = <String>[];
   /// 0 = meet Tippy, 1 = explain the seven questions.
   int _welcomeBeat = 0;
+  bool _showWelcomeBack = false;
   final GlobalKey<TippyGuidedProfileHostState> _guidedProfileKey =
       GlobalKey<TippyGuidedProfileHostState>();
   bool _trialCheckoutOffered = false;
@@ -67,6 +73,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
   @override
   void initState() {
     super.initState();
+    TippyOnboardingHostPresence.enter();
     unawaited(_bootstrap());
     ref.listenManual<RobustAuthenticationService>(
       robustAuthServiceProvider,
@@ -86,46 +93,71 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
   Future<void> _bootstrap() async {
     TippyOnboardingGuestSession session =
         widget.initialSession ?? await _store.loadOrCreate();
-    // Abandoned incomplete funnels restart at Meet Tippy after idle timeout.
-    if (session.isInactiveExpired()) {
-      await _store.clear();
-      session = TippyOnboardingGuestSession.empty();
-      await _store.save(session);
-    }
-    // Get Started (and unfinished quiz resumes without intro) always Meet Tippy first.
-    if (widget.startAtWelcome && !_isPostQuizStage(session.stage)) {
+    // First-time Get Started only — never wipe mid-progress for return visits.
+    final bool resumeWithProgress = session.hasMeaningfulProgress ||
+        _isPostQuizStage(session.stage);
+    if (widget.startAtWelcome &&
+        !_isPostQuizStage(session.stage) &&
+        !session.hasMeaningfulProgress) {
       session = session.forceMeetTippyIntro();
       await _store.save(session);
     } else if (!session.hasSeenTippyIntro &&
-        !_isPostQuizStage(session.stage)) {
+        !_isPostQuizStage(session.stage) &&
+        !session.hasMeaningfulProgress) {
       session = session.forceMeetTippyIntro();
       await _store.save(session);
     }
-    // Gate / post-auth resume: authenticated users with incomplete identity
-    // should land in guided profile, not Meet Tippy or the feed.
+    final bool offerWelcomeBack =
+        widget.startAtWelcome && resumeWithProgress;
+    // Gate / post-auth resume: use canonical resolver — never force avatar
+    // just because the local session was wiped or photo is missing.
     if (!widget.startAtWelcome) {
       final firebase_auth.User? user =
           firebase_auth.FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final String stage = TippyOnboardingStages.normalize(session.stage);
-        final bool needsVerify = !user.emailVerified &&
-            user.providerData.any(
-              (firebase_auth.UserInfo info) => info.providerId == 'password',
+        Map<String, dynamic>? userData;
+        try {
+          final DocumentSnapshot<Map<String, dynamic>> snap =
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get();
+          userData = snap.data();
+        } catch (error) {
+          debugPrint('Tippy resume profile load soft-skip: $error');
+        }
+        final bool isPassword = user.providerData.any(
+          (firebase_auth.UserInfo info) => info.providerId == 'password',
+        );
+        final OnboardingDestination destination = resolveOnboardingDestination(
+          userData: userData,
+          emailVerified: user.emailVerified,
+          isPasswordProvider: isPassword,
+          localTippyStage: session.stage,
+        );
+        debugPrint(
+          '[Onboarding] tippy_resume lifecycle=${destination.lifecycle} '
+          'hint=${destination.tippyStageHint} reason=${destination.reason} '
+          'photo=${destination.photoStatus}',
+        );
+        if (destination.lifecycle == 'COMPLETE' || destination.allowApp) {
+          await _store.clear();
+          if (!mounted) {
+            return;
+          }
+          widget.onCompleted?.call();
+          return;
+        }
+        final String? hint = destination.tippyStageHint;
+        if (hint != null && hint.isNotEmpty) {
+          final String normalizedHint = TippyOnboardingStages.normalize(hint);
+          if (normalizedHint != TippyOnboardingStages.normalize(session.stage)) {
+            session = session.copyWith(
+              stage: normalizedHint,
+              hasSeenTippyIntro: true,
             );
-        final bool beforeGuided = stage == TippyOnboardingStages.welcome ||
-            stage == TippyOnboardingStages.questions ||
-            stage == TippyOnboardingStages.notifications ||
-            stage == TippyOnboardingStages.trial ||
-            stage == TippyOnboardingStages.signup ||
-            stage == TippyOnboardingStages.verifyEmail;
-        if (beforeGuided) {
-          session = session.copyWith(
-            stage: needsVerify
-                ? TippyOnboardingStages.verifyEmail
-                : TippyOnboardingStages.accountSecured,
-            hasSeenTippyIntro: true,
-          );
-          await _store.save(session);
+            await _store.save(session);
+          }
         }
       }
     }
@@ -136,6 +168,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
       _session = session;
       _isLoading = false;
       _welcomeBeat = 0;
+      _showWelcomeBack = offerWelcomeBack;
       _mascotState = TippyMascotState.wave;
       _hydrateQuestionDraft(session);
     });
@@ -173,10 +206,9 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
         return TippyMascotState.wave;
       case TippyOnboardingStages.questions:
         return TippyMascotState.thinking;
-      case TippyOnboardingStages.success:
+      case TippyOnboardingStages.creatorSpaceReady:
         return TippyMascotState.celebrate;
       case TippyOnboardingStages.signup:
-      case TippyOnboardingStages.trial:
       case TippyOnboardingStages.notifications:
         return TippyMascotState.speaking;
       default:
@@ -212,9 +244,8 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
   bool _isPostVerifyCheckoutStage(String stage) {
     final String normalized = TippyOnboardingStages.normalize(stage);
     return TippyOnboardingStages.isGuidedProfileStage(normalized) ||
-        normalized == TippyOnboardingStages.findFriends ||
-        normalized == TippyOnboardingStages.success ||
-        normalized == TippyOnboardingStages.landingChoice;
+        normalized == TippyOnboardingStages.creatorSpaceReady ||
+        normalized == TippyOnboardingStages.firstMission;
   }
 
   /// After account create + verify: open Pro IAP checkout once when
@@ -251,6 +282,26 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
     );
   }
 
+  Future<void> _exitAsReturningUser() async {
+    await _store.clear();
+    if (!mounted) {
+      return;
+    }
+    widget.onCompleted?.call();
+    final NavigatorState? rootNav =
+        Navigator.maybeOf(context, rootNavigator: true);
+    final NavigatorState? localNav = Navigator.maybeOf(context);
+    final bool isOverlayOnHome =
+        rootNav != null && localNav != null && !identical(rootNav, localNav);
+    if (isOverlayOnHome) {
+      return;
+    }
+    await (rootNav ?? localNav)?.pushNamedAndRemoveUntil(
+      AppRoutes.home,
+      (Route<dynamic> route) => false,
+    );
+  }
+
   Future<void> _handleAuthenticated() async {
     final TippyOnboardingGuestSession? session = _session;
     if (session == null || _isBusy) {
@@ -264,6 +315,11 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
       final firebase_auth.User? user =
           firebase_auth.FirebaseAuth.instance.currentUser;
       if (user != null) {
+        // Existing Google/Apple accounts must not restart Tippy as a new signup.
+        if (await isReturningCompleteTippyUser(user.uid)) {
+          await _exitAsReturningUser();
+          return;
+        }
         // Write Tippy ownership flags before/without attach API so the gate
         // never falls through to classic "creator focus".
         await OnboardingService().markTippyFunnelInProgress(user.uid);
@@ -307,6 +363,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
 
   @override
   void dispose() {
+    TippyOnboardingHostPresence.leave();
     _textController.dispose();
     _attachService.dispose();
     super.dispose();
@@ -476,16 +533,25 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
   }
 
   Widget _buildStage(TippyOnboardingGuestSession session) {
+    if (_showWelcomeBack) {
+      return _buildWelcomeBack(session);
+    }
     final String stage = TippyOnboardingStages.normalize(session.stage);
     switch (stage) {
       case TippyOnboardingStages.welcome:
         return _buildMeetTippyIntro();
       case TippyOnboardingStages.questions:
         return _buildQuestions(session);
+      case TippyOnboardingStages.dnaReveal:
+        return _tippyScene(
+          speech: TippyOnboardingCopy.dnaRevealIntro,
+          secondarySpeech: TippyOnboardingCopy.dnaRevealBody,
+          primaryLabel: TippyOnboardingCopy.dnaRevealCta,
+          onPrimary: () => _advanceStage(TippyOnboardingStages.signup),
+          mascotOverride: TippyMascotState.thinking,
+        );
       case TippyOnboardingStages.notifications:
         return _buildNotifications(session);
-      case TippyOnboardingStages.trial:
-        return _buildTrial(session);
       case TippyOnboardingStages.signup:
         return _buildSignup(session);
       case TippyOnboardingStages.verifyEmail:
@@ -495,8 +561,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
       case TippyOnboardingStages.displayName:
       case TippyOnboardingStages.username:
       case TippyOnboardingStages.bio:
-      case TippyOnboardingStages.platforms:
-      case TippyOnboardingStages.categories:
+      case TippyOnboardingStages.platformHandles:
       case TippyOnboardingStages.profileReview:
         return TippyGuidedProfileHost(
           key: _guidedProfileKey,
@@ -506,21 +571,19 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
           busy: _isBusy,
           error: _error,
         );
-      case TippyOnboardingStages.findFriends:
-        return _buildFindFriends();
-      case TippyOnboardingStages.success:
+      case TippyOnboardingStages.creatorSpaceReady:
         final Object? contactSync = session.answers['contactSync'];
         final String? contactSpeech = _contactSyncResultSpeech(
           contactSync: contactSync is String ? contactSync : null,
         );
         return _tippyScene(
-          speech: TippyOnboardingCopy.success,
+          speech: TippyOnboardingCopy.creatorSpaceTitle,
           secondarySpeech: contactSpeech,
-          primaryLabel: 'CONTINUE',
-          onPrimary: () => _advanceStage(TippyOnboardingStages.landingChoice),
+          primaryLabel: TippyOnboardingCopy.creatorSpaceCta,
+          onPrimary: () => _advanceStage(TippyOnboardingStages.firstMission),
           mascotOverride: TippyMascotState.celebrate,
         );
-      case TippyOnboardingStages.landingChoice:
+      case TippyOnboardingStages.firstMission:
         return _buildLandingChoice(session);
       default:
         return _tippyScene(
@@ -529,6 +592,53 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
           onPrimary: () => _advanceStage(TippyOnboardingStages.questions),
         );
     }
+  }
+
+  /// Return visit with saved progress — resume exact step after CONTINUE.
+  Widget _buildWelcomeBack(TippyOnboardingGuestSession session) {
+    final int step = (session.questionIndex + 1).clamp(
+      1,
+      kTippyOnboardingTotalQuestions,
+    );
+    final String support = TippyOnboardingStages.normalize(session.stage) ==
+            TippyOnboardingStages.questions
+        ? 'Step $step of $kTippyOnboardingTotalQuestions'
+        : 'Picking up where you left off.';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        const Spacer(flex: 2),
+        const _SpeechBubble(
+          text: TippyOnboardingCopy.welcomeBack,
+          showTail: true,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          support,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const TippyMascot(
+          state: TippyMascotState.wave,
+          size: 196,
+        ),
+        const Spacer(flex: 3),
+        _PrimaryButton(
+          label: TippyOnboardingCopy.welcomeBackCta,
+          busy: _isBusy,
+          onPressed: () {
+            setState(() {
+              _showWelcomeBack = false;
+            });
+          },
+        ),
+      ],
+    );
   }
 
   /// Duolingo-style Tippy introduction before any questions.
@@ -686,18 +796,18 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
     return Column(
       children: <Widget>[
         _SpeechBubble(text: question.tippySpeech),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           question.why,
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.62),
-            fontSize: 13,
+            fontSize: 12,
           ),
         ),
+        const SizedBox(height: 10),
+        TippyMascot(state: _mascotState, size: 72),
         const SizedBox(height: 12),
-        TippyMascot(state: _mascotState, size: 120),
-        const SizedBox(height: 16),
         Expanded(child: _buildQuestionInput(question)),
         _PrimaryButton(
           label: session.questionIndex >= kTippyOnboardingTotalQuestions - 1
@@ -735,6 +845,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
               padding: const EdgeInsets.only(bottom: 10),
               child: _OptionChip(
                 label: option.label,
+                iconName: option.icon,
                 selected: false,
                 onTap: () => unawaited(_selectSingle(question, option.id)),
               ),
@@ -742,12 +853,14 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
           }).toList(),
         );
       case TippyOnboardingInputType.multiSelect:
-        return ListView(
-          children: question.options.map((TippyOnboardingOption option) {
-            final bool selected = _multiDraft.contains(option.id);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _OptionChip(
+        return SingleChildScrollView(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: question.options.map((TippyOnboardingOption option) {
+              final bool selected = _multiDraft.contains(option.id);
+              return _CompactOptionChip(
                 label: option.label,
                 selected: selected,
                 onTap: () {
@@ -763,9 +876,9 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
                     }
                   });
                 },
-              ),
-            );
-          }).toList(),
+              );
+            }).toList(),
+          ),
         );
     }
   }
@@ -814,7 +927,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
         current.copyWith(
           answers: answers,
           questionIndex: kTippyOnboardingTotalQuestions - 1,
-          stage: TippyOnboardingStages.notifications,
+          stage: TippyOnboardingStages.dnaReveal,
           completedQuestionsAt: DateTime.now().toUtc(),
         ),
       );
@@ -857,21 +970,29 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
             );
           }
         } catch (_) {}
-        await _persist(
-          session.copyWith(
-            notificationsChoice: 'enabled',
-            stage: TippyOnboardingStages.trial,
-          ),
+        final TippyOnboardingGuestSession next = session.copyWith(
+          notificationsChoice: 'enabled',
+          stage: TippyOnboardingStages.creatorSpaceReady,
         );
+        await _persist(next);
+        try {
+          await _attachService.attach(next);
+        } catch (attachError) {
+          debugPrint('Tippy notifications attach soft-skip: $attachError');
+        }
       },
-      secondaryLabel: 'Not now',
+      secondaryLabel: TippyOnboardingCopy.notificationsSkip,
       onSecondary: () async {
-        await _persist(
-          session.copyWith(
-            notificationsChoice: 'declined',
-            stage: TippyOnboardingStages.trial,
-          ),
+        final TippyOnboardingGuestSession next = session.copyWith(
+          notificationsChoice: 'declined',
+          stage: TippyOnboardingStages.creatorSpaceReady,
         );
+        await _persist(next);
+        try {
+          await _attachService.attach(next);
+        } catch (attachError) {
+          debugPrint('Tippy notifications attach soft-skip: $attachError');
+        }
       },
     );
   }
@@ -1138,7 +1259,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
     await _persist(
       current.copyWith(
         answers: answers,
-        stage: TippyOnboardingStages.success,
+        stage: TippyOnboardingStages.creatorSpaceReady,
       ),
     );
   }
@@ -1191,7 +1312,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView> {
     });
     final TippyOnboardingGuestSession next = session.copyWith(
       landingChoice: choice,
-      stage: TippyOnboardingStages.landingChoice,
+      stage: TippyOnboardingStages.firstMission,
     );
     await _persist(next);
     try {
@@ -1430,8 +1551,8 @@ class _PrimaryButton extends StatelessWidget {
   }
 }
 
-class _OptionChip extends StatelessWidget {
-  const _OptionChip({
+class _CompactOptionChip extends StatelessWidget {
+  const _CompactOptionChip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -1443,6 +1564,79 @@ class _OptionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Material(
+      color: selected
+          ? AppColors.primary.withValues(alpha: 0.28)
+          : Colors.white.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? AppColors.primary
+                  : Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.82),
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OptionChip extends StatelessWidget {
+  const _OptionChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.iconName,
+  });
+
+  final String label;
+  final String? iconName;
+  final bool selected;
+  final VoidCallback onTap;
+
+  IconData? get _iconData {
+    switch (iconName) {
+      case 'video':
+        return Icons.videocam_outlined;
+      case 'play':
+        return Icons.play_circle_outline;
+      case 'scissors':
+        return Icons.content_cut;
+      case 'zap':
+        return Icons.bolt_outlined;
+      case 'sprout':
+        return Icons.eco_outlined;
+      case 'rocket':
+        return Icons.rocket_launch_outlined;
+      case 'flame':
+        return Icons.local_fire_department_outlined;
+      case 'trophy':
+        return Icons.emoji_events_outlined;
+      default:
+        return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData? icon = _iconData;
     return Material(
       color: selected
           ? AppColors.primary.withValues(alpha: 0.28)
@@ -1462,12 +1656,28 @@ class _OptionChip extends StatelessWidget {
                   : Colors.white.withValues(alpha: 0.12),
             ),
           ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
+          child: Row(
+            children: <Widget>[
+              if (icon != null) ...<Widget>[
+                Icon(
+                  icon,
+                  size: 20,
+                  color: selected
+                      ? const Color(0xFFC4A3F0)
+                      : const Color(0xFF9AA6B8),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

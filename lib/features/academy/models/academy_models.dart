@@ -333,12 +333,40 @@ class AcademyLesson {
   }
 }
 
+class AcademyPathStep {
+  const AcademyPathStep({
+    required this.index,
+    required this.lessonId,
+    this.guideId,
+  });
+
+  final int index;
+  final String lessonId;
+  final String? guideId;
+
+  bool get isWebsiteBacked =>
+      lessonId.endsWith('__web') ||
+      (guideId != null && guideId!.isNotEmpty && lessonId == '${guideId!}__web');
+
+  String get displayGuideId {
+    final String? guide = guideId?.trim();
+    if (guide != null && guide.isNotEmpty) {
+      return guide;
+    }
+    if (lessonId.endsWith('__web')) {
+      return lessonId.substring(0, lessonId.length - '__web'.length);
+    }
+    return '';
+  }
+}
+
 class AcademyPath {
   const AcademyPath({
     required this.id,
     required this.title,
     required this.description,
     this.lessonIds = const <String>[],
+    this.guideIds = const <String>[],
     this.sortOrder = 0,
     this.isPublished = true,
     this.unlockLevel = 0,
@@ -349,20 +377,68 @@ class AcademyPath {
   final String title;
   final String description;
   final List<String> lessonIds;
+  final List<String> guideIds;
   final int sortOrder;
   final bool isPublished;
   final int unlockLevel;
   final String? iconKey;
 
+  int get stepCount {
+    if (guideIds.isNotEmpty) {
+      return guideIds.length;
+    }
+    return lessonIds.length;
+  }
+
+  /// Ordered steps for the path detail UI (guide-first for website paths).
+  List<AcademyPathStep> get steps {
+    if (guideIds.isNotEmpty) {
+      return List<AcademyPathStep>.generate(guideIds.length, (int index) {
+        final String guideId = guideIds[index];
+        final String lessonId = index < lessonIds.length
+            ? lessonIds[index]
+            : '${guideId}__web';
+        return AcademyPathStep(
+          index: index,
+          lessonId: lessonId,
+          guideId: guideId,
+        );
+      });
+    }
+    return List<AcademyPathStep>.generate(lessonIds.length, (int index) {
+      final String lessonId = lessonIds[index];
+      final String guideId = lessonId.endsWith('__web')
+          ? lessonId.substring(0, lessonId.length - '__web'.length)
+          : '';
+      return AcademyPathStep(
+        index: index,
+        lessonId: lessonId,
+        guideId: guideId.isEmpty ? null : guideId,
+      );
+    });
+  }
+
   factory AcademyPath.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
+    return AcademyPath.fromMap(doc.id, data);
+  }
+
+  factory AcademyPath.fromMap(String id, Map<String, dynamic> data) {
+    final List<String> guideIds = _readStringList(data['guideIds']);
+    List<String> lessonIds = _readStringList(data['lessonIds']);
+    if (lessonIds.isEmpty && guideIds.isNotEmpty) {
+      lessonIds = guideIds
+          .map((String guideId) => '${guideId}__web')
+          .toList(growable: false);
+    }
     return AcademyPath(
-      id: doc.id,
+      id: id,
       title: _readString(data['title']) ?? 'Learning Path',
       description: _readString(data['description']) ?? '',
-      lessonIds: _readStringList(data['lessonIds']),
+      lessonIds: lessonIds,
+      guideIds: guideIds,
       sortOrder: _readInt(data['sortOrder']),
       isPublished: data['isPublished'] != false && data['status'] != 'draft',
       unlockLevel: _readInt(data['unlockLevel']),

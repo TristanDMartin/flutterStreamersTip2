@@ -76,6 +76,30 @@ void main() {
     });
   });
 
+  group('normalizeActivityFilterType website parity', () {
+    test('maps legacy and canonical types like activityPageContract', () {
+      expect(normalizeActivityFilterType('follow'), 'FOLLOW');
+      expect(normalizeActivityFilterType('forum_like'), 'LIKE_THREAD');
+      expect(normalizeActivityFilterType('COMMENT_VIDEO'), 'COMMENT_VIDEO');
+      expect(normalizeActivityFilterType('collab_invite'), 'COLLAB_INVITE');
+      expect(normalizeActivityFilterType('new_event'), 'newEvent');
+      expect(
+        activityTypeMatchesFilterTab(
+          rawType: 'tippy_coach',
+          filterKey: 'global',
+        ),
+        isTrue,
+      );
+      expect(
+        activityTypeMatchesFilterTab(
+          rawType: 'COMMENT_THREAD',
+          filterKey: 'threads',
+        ),
+        isTrue,
+      );
+    });
+  });
+
   group('tippy and planner notification helpers', () {
     test('maps tippy_coach and content_plan_queue as system types', () {
       expect(isTippyCoachNotificationType('tippy_coach'), isTrue);

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/theme/support_shell_style.dart';
 import '../../../routing/app_navigator.dart';
 import '../../../services/creator_intelligence_analytics_service.dart';
 import '../../../shared/analytics/analytics_event_constants.dart';
@@ -82,6 +83,7 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
 
   @override
   Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final AsyncValue<AcademyGuideSummary?> guideAsync =
         ref.watch(academyGuideProvider(widget.guideId));
     final AsyncValue<List<AcademyLessonSummary>> lessonsAsync =
@@ -89,7 +91,11 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
     final List<AcademyUserProgress> progress =
         ref.watch(academyUserProgressProvider).valueOrNull ??
             const <AcademyUserProgress>[];
+    final List<AcademyUserProgress> saved =
+        ref.watch(academySavedGuidesProvider).valueOrNull ??
+            const <AcademyUserProgress>[];
     return Scaffold(
+      backgroundColor: shell.scaffold,
       body: guideAsync.when(
         loading: () => const AcademySkeletonList(),
         error: (_, __) => AcademyEmptyState(
@@ -108,6 +114,8 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
           }
           final List<AcademyLessonSummary> lessons =
               lessonsAsync.valueOrNull ?? const <AcademyLessonSummary>[];
+          final int lessonTotal =
+              lessons.isNotEmpty ? lessons.length : guide.lessonCount;
           final int completedLessons = progress
               .where(
                 (AcademyUserProgress p) =>
@@ -116,33 +124,27 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
               .length;
           final double guideProgress = academyCompletionPercent(
             completed: completedLessons,
-            total: lessons.isNotEmpty ? lessons.length : guide.lessonCount,
+            total: lessonTotal,
+          );
+          final bool isSaved = saved.any(
+            (AcademyUserProgress p) => p.guideId == guide.id && p.isSaved,
           );
           return CustomScrollView(
             slivers: <Widget>[
               SliverAppBar(
                 pinned: true,
-                expandedHeight: 220,
-                flexibleSpace: FlexibleSpaceBar(
-                  title: Text(
-                    guide.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  background: guide.imageUrl.isNotEmpty
-                      ? Image.network(
-                          guide.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const ColoredBox(color: Colors.black26),
-                        )
-                      : null,
-                ),
+                backgroundColor: shell.scaffold,
+                foregroundColor: shell.onChrome,
+                title: const Text('Guide'),
                 actions: <Widget>[
                   IconButton(
-                    tooltip: 'Save guide',
+                    tooltip: isSaved ? 'Remove bookmark' : 'Save guide',
                     onPressed: () => _toggleSave(guide),
-                    icon: const Icon(Icons.bookmark_add_outlined),
+                    icon: Icon(
+                      isSaved
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_add_outlined,
+                    ),
                   ),
                   IconButton(
                     tooltip: 'Share guide',
@@ -153,129 +155,187 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
                   ),
                 ],
               ),
+              SliverToBoxAdapter(
+                child: AcademyGradientHeader(
+                  title: guide.title,
+                  subtitle: guide.description.isNotEmpty
+                      ? guide.description
+                      : 'Streamer Academy guide',
+                  icon: Icons.menu_book_rounded,
+                  xpLabel: difficultyLabel(guide.difficulty),
+                  streakLabel: guide.estimatedMinutes > 0
+                      ? '${guide.estimatedMinutes} min'
+                      : null,
+                  weeklyGoalLabel: guide.isWebsiteBacked
+                      ? 'Website guide'
+                      : (lessonTotal > 0
+                          ? '$completedLessons of $lessonTotal lessons'
+                          : null),
+                  completionPercent:
+                      lessonTotal > 0 ? guideProgress : null,
+                ),
+              ),
               SliverPadding(
-                padding: const EdgeInsets.all(AcademyTokens.pagePadding),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate(<Widget>[
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: <Widget>[
-                        Chip(label: Text(difficultyLabel(guide.difficulty))),
-                        Chip(label: Text('${guide.estimatedMinutes} min')),
-                        if (guide.author != null)
-                          Chip(label: Text(guide.author!)),
-                      ],
-                    ),
-                    if (guide.updatedAt != null) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Updated ${DateFormat.yMMMd().format(guide.updatedAt!)}',
-                        style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.6),
-                          fontSize: 12,
-                        ),
+                padding: const EdgeInsets.fromLTRB(
+                  AcademyTokens.pagePadding,
+                  0,
+                  AcademyTokens.pagePadding,
+                  12,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: <Widget>[
+                      AcademyMetaChip(
+                        label: difficultyLabel(guide.difficulty),
                       ),
+                      if (guide.estimatedMinutes > 0)
+                        AcademyMetaChip(
+                          label: '${guide.estimatedMinutes}m',
+                        ),
+                      if (guide.author != null && guide.author!.isNotEmpty)
+                        AcademyMetaChip(label: guide.author!),
+                      if (guide.isWebsiteBacked)
+                        const AcademyMetaChip(label: 'Live on web'),
+                      if (guide.updatedAt != null)
+                        AcademyMetaChip(
+                          label:
+                              'Updated ${DateFormat.MMMd().format(guide.updatedAt!)}',
+                        ),
                     ],
-                    const SizedBox(height: 12),
-                    Text(guide.description),
-                    const SizedBox(height: 16),
-                    AcademyAnimatedProgressBar(value: guideProgress),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Lessons',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (lessonsAsync.isLoading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else if (lessons.isEmpty && guide.isWebsiteBacked)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          Text(
-                            'This guide lives on StreamersTip and stays '
-                            'up to date when new pages are published.',
-                            style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.72),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: () {
-                              unawaited(
-                                AcademyWebLauncher.openGuideUrl(
-                                  guide.webUrl ?? guide.shareUrl,
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.menu_book_rounded),
-                            label: const Text('Read full guide'),
-                          ),
-                        ],
-                      )
-                    else if (lessons.isEmpty)
-                      const Text('Lessons for this guide are coming soon.')
-                    else
-                      ...lessons.map((AcademyLessonSummary lesson) {
-                        final AcademyUserProgress? lessonProgress = progress
-                            .where(
-                              (AcademyUserProgress p) =>
-                                  p.lessonId == lesson.id,
-                            )
-                            .cast<AcademyUserProgress?>()
-                            .firstWhere(
-                              (AcademyUserProgress? p) => p != null,
-                              orElse: () => null,
-                            );
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            lessonProgress?.isCompleted == true
-                                ? Icons.check_circle_rounded
-                                : Icons.play_lesson_rounded,
-                          ),
-                          title: Text(lesson.title),
-                          subtitle: Text(
-                            lessonProgress?.isCompleted == true
-                                ? 'Completed'
-                                : '${lesson.estimatedMinutes} min',
-                          ),
-                          onTap: () => AppNavigator.openAcademyLesson(
-                            context,
-                            lessonId: lesson.id,
-                            guideId: guide.id,
+                  ),
+                ),
+              ),
+              if (lessonsAsync.isLoading)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              else if (lessons.isEmpty && guide.isWebsiteBacked)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AcademyTokens.pagePadding,
+                    0,
+                    AcademyTokens.pagePadding,
+                    12,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: AcademyShellActionCard(
+                      title: 'Read the full guide',
+                      body:
+                          'This guide lives on StreamersTip and stays '
+                          'up to date when new pages are published.',
+                      actionLabel: 'Open guide',
+                      icon: Icons.open_in_new_rounded,
+                      onPressed: () {
+                        unawaited(
+                          AcademyWebLauncher.openGuideUrl(
+                            guide.webUrl ?? guide.shareUrl,
                           ),
                         );
-                      }),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: () => AppNavigator.openTippyChat(
-                        context,
-                        launchContext: TippyLaunchContext(
-                          surface: 'academy_guide',
-                          academyGuideId: guide.id,
-                          academyGuideTitle: guide.title,
-                          prefilledPrompt:
-                              'What should I learn next after '
-                              '"${guide.title}"?',
-                        ),
-                      ),
-                      icon: const Icon(Icons.auto_awesome_rounded),
-                      label: const Text('Ask Tippy about this guide'),
+                      },
                     ),
-                  ]),
+                  ),
+                )
+              else ...<Widget>[
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AcademyTokens.pagePadding,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: Text(
+                      lessons.isEmpty ? 'Lessons' : 'Lessons in this guide',
+                      style: TextStyle(
+                        color: shell.onChrome,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AcademyTokens.pagePadding,
+                    10,
+                    AcademyTokens.pagePadding,
+                    12,
+                  ),
+                  sliver: lessons.isEmpty
+                      ? SliverToBoxAdapter(
+                          child: Text(
+                            'Lessons for this guide are coming soon.',
+                            style: TextStyle(
+                              color: shell.muted,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                        )
+                      : SliverList.separated(
+                          itemCount: lessons.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (BuildContext context, int index) {
+                            final AcademyLessonSummary lesson =
+                                lessons[index];
+                            final bool done = progress.any(
+                              (AcademyUserProgress p) =>
+                                  p.lessonId == lesson.id && p.isCompleted,
+                            );
+                            return AcademyPathStepCard(
+                              stepNumber: index + 1,
+                              title: lesson.title,
+                              subtitle: done
+                                  ? 'Completed'
+                                  : (lesson.estimatedMinutes > 0
+                                      ? '${lesson.estimatedMinutes} min read'
+                                      : 'Tap to start'),
+                              isCompleted: done,
+                              isWebsiteBacked: false,
+                              estimatedMinutes: lesson.estimatedMinutes > 0
+                                  ? lesson.estimatedMinutes
+                                  : null,
+                              onTap: () => AppNavigator.openAcademyLesson(
+                                context,
+                                lessonId: lesson.id,
+                                guideId: guide.id,
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AcademyTokens.pagePadding,
+                  4,
+                  AcademyTokens.pagePadding,
+                  32,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: AcademyShellActionCard(
+                    title: 'Ask Tippy',
+                    body:
+                        'Open Tippy on "${guide.title}" and get a clear '
+                        'explanation plus next steps.',
+                    actionLabel: 'Ask Tippy to explain this guide',
+                    icon: Icons.auto_awesome_rounded,
+                    isPrimary: false,
+                    onPressed: () => AppNavigator.openTippyChat(
+                      context,
+                      launchContext: TippyLaunchContext.forAcademyGuideExplain(
+                        guideId: guide.id,
+                        title: guide.title,
+                        description: guide.description,
+                        webUrl: guide.webUrl ?? guide.shareUrl,
+                        categoryId: guide.categoryId,
+                        difficulty: difficultyLabel(guide.difficulty),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

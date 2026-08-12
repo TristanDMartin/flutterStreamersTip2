@@ -102,9 +102,11 @@ class OnboardingState {
     final bool tippyFunnelCompleted =
         onboarding['tippyFunnelCompleted'] == true ||
             onboarding['landingChoice'] != null;
+    final bool lifecycleComplete =
+        (onboarding['lifecycle'] as String?)?.toUpperCase() == 'COMPLETE';
     // New Tippy accounts keep going through Tippy until landing — do not treat
     // a provisional Google username as "essential profile complete".
-    final bool essentialProfileComplete =
+    final bool essentialProfileComplete = lifecycleComplete ||
         onboarding['essentialProfileComplete'] == true ||
             onboarding['creatorCardCompleted'] == true ||
             (hasPublicIdentity &&
@@ -116,9 +118,12 @@ class OnboardingState {
     final bool tippyPathActive = tippyAttached || slim7Completed;
     final bool tippyPathDone =
         tippyFunnelCompleted && essentialProfileComplete;
-    bool resolvedCompleted = completed || tippyPathDone;
-    // While Tippy owns setup, never hand off to classic onboarding or feed.
-    if (tippyPathActive &&
+    bool resolvedCompleted =
+        lifecycleComplete || completed || tippyPathDone || legacyCompleted;
+    // While Tippy owns setup, never hand off to classic onboarding or feed —
+    // unless lifecycle was sticky-completed (legacy / returning).
+    if (!lifecycleComplete &&
+        tippyPathActive &&
         (!tippyFunnelCompleted || !essentialProfileComplete)) {
       resolvedCompleted = false;
     }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:intl/intl.dart';
 import '../features/activity/activity_notification_rules.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart' as app_user;
@@ -1116,7 +1117,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     final diff = today.difference(d).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
-    return '${dt.month}/${dt.day}/${dt.year}';
+    return DateFormat('MMM d').format(dt);
   }
 }
 

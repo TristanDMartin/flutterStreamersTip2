@@ -30,7 +30,8 @@ Future<void> attachPendingTippyOnboardingIfNeeded() async {
     final bool alreadyDone = onboarding['tippyFunnelCompleted'] == true ||
         onboarding['landingChoice'] != null ||
         onboarding['completed'] == true ||
-        data?['hasCompletedOnboarding'] == true;
+        data?['hasCompletedOnboarding'] == true ||
+        data?['onboardingComplete'] == true;
     if (alreadyDone) {
       await store.clear();
       return;
@@ -44,6 +45,14 @@ Future<void> attachPendingTippyOnboardingIfNeeded() async {
     // and are in the post-quiz Tippy funnel.
     if (existingCreatorIdentity &&
         !TippyOnboardingStages.isPostQuizStage(session.stage)) {
+      await store.clear();
+      return;
+    }
+    // Established account (has username, Tippy not mid-funnel) signing in
+    // after a guest quiz — do not attach / restart.
+    final bool midTippy = onboarding['tippyOnboardingV1Attached'] == true ||
+        onboarding['slim7Completed'] == true;
+    if (username.isNotEmpty && !midTippy) {
       await store.clear();
       return;
     }
@@ -93,6 +102,39 @@ Future<bool> userNeedsTippyFunnelContinuation(String uid) async {
   }
 }
 
+/// Existing account chosen via Continue with Google/Apple — do not treat as new.
+Future<bool> isReturningCompleteTippyUser(String uid) async {
+  try {
+    final DocumentSnapshot<Map<String, dynamic>> snap =
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final Map<String, dynamic>? data = snap.data();
+    if (data == null) {
+      return false;
+    }
+    final Map<String, dynamic> onboarding =
+        (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+    final bool alreadyDone = onboarding['tippyFunnelCompleted'] == true ||
+        onboarding['landingChoice'] != null ||
+        onboarding['completed'] == true ||
+        data['hasCompletedOnboarding'] == true ||
+        data['onboardingComplete'] == true;
+    if (alreadyDone) {
+      return true;
+    }
+    final String username = (data['username'] as String?)?.trim() ?? '';
+    if (username.isEmpty) {
+      return false;
+    }
+    // Mid-Tippy (attached, not finished) still needs the funnel.
+    final bool midTippy = onboarding['tippyOnboardingV1Attached'] == true ||
+        onboarding['slim7Completed'] == true;
+    return !midTippy;
+  } catch (_) {
+    return false;
+  }
+}
+
 bool tippySessionNeedsResume(
   TippyOnboardingGuestSession? session, {
   DateTime? now,
@@ -100,8 +142,6 @@ bool tippySessionNeedsResume(
   if (session == null || session.landingChoice != null) {
     return false;
   }
-  if (session.isInactiveExpired(now: now)) {
-    return false;
-  }
-  return TippyOnboardingStages.isPostQuizStage(session.stage);
+  return TippyOnboardingStages.isPostQuizStage(session.stage) ||
+      session.hasMeaningfulProgress;
 }

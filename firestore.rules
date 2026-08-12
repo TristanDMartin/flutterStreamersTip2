@@ -1119,6 +1119,44 @@ service cloud.firestore {
       }
     }
     
+    // Streamer Academy catalog (published docs are readable; writes admin-only).
+    match /academyCategories/{categoryId} {
+      allow read: if isAuthenticated() &&
+        resource.data.get('isPublished', false) == true;
+      allow write: if isPlatformAdmin();
+    }
+    match /academyGuides/{guideId} {
+      allow read: if isAuthenticated() &&
+        resource.data.get('isPublished', false) == true;
+      allow write: if isPlatformAdmin();
+    }
+    match /academyLessons/{lessonId} {
+      allow read: if isAuthenticated() &&
+        resource.data.get('isPublished', false) == true;
+      allow write: if isPlatformAdmin();
+    }
+    match /academyPaths/{pathId} {
+      allow read: if isAuthenticated() &&
+        resource.data.get('isPublished', false) == true;
+      allow write: if isPlatformAdmin();
+    }
+    match /academyConfig/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isPlatformAdmin();
+    }
+    match /academyUserProgress/{docId} {
+      allow read: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+      allow create: if hasVerifiedEmail() &&
+        request.resource.data.userId == request.auth.uid &&
+        docId == request.auth.uid + '_' + request.resource.data.lessonId;
+      allow update: if hasVerifiedEmail() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid;
+      allow delete: if hasVerifiedEmail() &&
+        resource.data.userId == request.auth.uid;
+    }
+
     // Opaque public ID redirects (legacy UID-prefixed → vid_*)
     // Writes via Admin SDK / migration scripts only.
     match /videoRedirects/{oldId} {

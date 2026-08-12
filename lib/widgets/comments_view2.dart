@@ -18,6 +18,7 @@ import '../widgets/threads/thread_detail_screen.dart';
 import '../widgets/threads/threads_list_view.dart';
 import '../utils/avatar_url_resolver.dart';
 import 'optimized_comment_tile.dart';
+import 'streamer_card_sections.dart';
 
 /// CommentsView2 - StreamersTip Comments Overlay
 ///
@@ -668,7 +669,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final Color sheetColor = isLight
         ? Colors.white.withValues(alpha: 0.98)
-        : const Color(0xFF070A16).withValues(alpha: 0.96);
+        : StreamerCardBackStyle.background;
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 200),
@@ -682,7 +683,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         snap: true,
         builder: (context, sheetScrollController) {
           return ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Material(
@@ -706,20 +707,41 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   }
 
   Color get _primaryTextColor {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return isLight ? StThemeColors.lightTextPrimary : Colors.white;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    return isLight
+        ? StThemeColors.lightTextPrimary
+        : Colors.white;
   }
 
   Color get _secondaryTextColor {
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
     return isLight
         ? StThemeColors.lightTextSecondary
-        : StThemeColors.darkTextSecondary;
+        : StreamerCardBackStyle.softText;
   }
 
   Color get _mutedTextColor {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return isLight ? StThemeColors.lightTextMuted : StThemeColors.darkTextMuted;
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    return isLight
+        ? StThemeColors.lightTextMuted
+        : StreamerCardBackStyle.muted;
+  }
+
+  Color get _accentColor {
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    return isLight ? StThemeColors.brandPurple : StreamerCardBackStyle.accent;
+  }
+
+  Color get _accentSoft {
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    return isLight
+        ? StThemeColors.brandPurple.withValues(alpha: 0.22)
+        : StreamerCardBackStyle.accent.withValues(alpha: 0.2);
+  }
+
+  Color get _lavender {
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    return isLight ? StThemeColors.brandPurple : StreamerCardBackStyle.lavender;
   }
 
   Widget _buildDragIndicator() {
@@ -736,11 +758,11 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      padding: const EdgeInsets.fromLTRB(16, 0, 12, 12),
       child: Column(
         children: [
           SizedBox(
-            height: 52,
+            height: 44,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -750,27 +772,30 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
                       'Comments',
                       style: TextStyle(
                         color: _primaryTextColor,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Text(
                       '${_comments.length}',
                       style: TextStyle(
                         color: _mutedTextColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                   ],
                 ),
                 SizedBox(
-                  width: 44,
-                  height: 44,
+                  width: 40,
+                  height: 40,
                   child: IconButton(
-                    icon: Icon(Icons.close, color: _secondaryTextColor),
+                    icon: Icon(
+                      Icons.close,
+                      color: _mutedTextColor,
+                      size: 20,
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ),
@@ -786,31 +811,32 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
                   'Most Liked', CommentSortOption.mostLiked, Icons.favorite),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
         ],
       ),
     );
   }
 
   Widget _buildSortChip(String label, CommentSortOption option, IconData icon) {
-    final isSelected = _sortOption == option;
+    final bool isSelected = _sortOption == option;
     return Expanded(
       child: GestureDetector(
         onTap: () => _changeSortOption(option),
         child: AnimatedContainer(
           duration: StMotion.fast,
-          height: 42,
+          height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isSelected
-                ? StThemeColors.brandPurple.withValues(alpha: 0.22)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(21),
+                ? _accentSoft
+                : (Theme.of(context).brightness == Brightness.light
+                    ? Colors.transparent
+                    : StreamerCardBackStyle.card),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isSelected
-                  ? StThemeColors.brandPurple
+                  ? _accentColor.withValues(alpha: 0.35)
                   : _mutedTextColor.withValues(alpha: 0.16),
-              width: 1,
             ),
           ),
           child: Row(
@@ -818,16 +844,16 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
             children: [
               Icon(
                 icon,
-                color: isSelected ? StThemeColors.brandPurple : _mutedTextColor,
-                size: 16,
+                color: isSelected ? _lavender : _mutedTextColor,
+                size: 15,
               ),
               const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? _primaryTextColor : _secondaryTextColor,
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? _lavender : _secondaryTextColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -840,7 +866,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   Widget _buildCommentList(ScrollController sheetScrollController) {
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: StThemeColors.brandPurple),
+        child: CircularProgressIndicator(color: StreamerCardBackStyle.lavender),
       );
     }
     if (_errorMessage != null) {
@@ -893,7 +919,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     }
     return ListView.builder(
       controller: sheetScrollController,
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       itemCount: _comments.length,
       itemBuilder: (context, index) {
         final comment = _comments[index];
@@ -996,9 +1022,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   }
 
   Widget _buildReplyIndicator() {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
-    final bool dark = theme.brightness == Brightness.dark;
+    final bool dark = Theme.of(context).brightness == Brightness.dark;
     final Comment reply = _replyingTo!;
     final String username = reply.user.username.trim().isNotEmpty
         ? reply.user.username.trim()
@@ -1011,11 +1035,11 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
         decoration: BoxDecoration(
           color: dark
-              ? scheme.surfaceContainerHighest.withValues(alpha: 0.84)
-              : scheme.primaryContainer.withValues(alpha: 0.42),
-          borderRadius: BorderRadius.circular(14),
+              ? StreamerCardBackStyle.card
+              : _accentSoft,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: scheme.primary.withValues(alpha: dark ? 0.38 : 0.24),
+            color: _accentColor.withValues(alpha: dark ? 0.3 : 0.24),
           ),
         ),
         child: Row(
@@ -1023,8 +1047,8 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
           children: [
             Icon(
               Icons.reply_rounded,
-              color: scheme.primary,
-              size: 18,
+              color: _lavender,
+              size: 16,
             ),
             const SizedBox(width: 9),
             Expanded(
@@ -1037,23 +1061,24 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: scheme.onSurface,
+                      color: _lavender,
                       fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    preview.isEmpty ? 'Original comment' : '“$preview”',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.72),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      height: 1.25,
+                  if (preview.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      preview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _mutedTextColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -1065,7 +1090,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
               onPressed: _cancelReply,
               icon: Icon(
                 Icons.close_rounded,
-                color: scheme.onSurface.withValues(alpha: 0.62),
+                color: _mutedTextColor,
                 size: 18,
               ),
             ),
@@ -1074,7 +1099,6 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
       ),
     );
   }
-
   Widget _buildInputRow() {
     return SizedBox(
       height: 58,
@@ -1095,52 +1119,47 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
     final avatarUrl = _currentUserAvatarUrl ?? currentUser?.photoURL;
 
-    // Always show a visible avatar
     return Container(
       width: 36,
       height: 36,
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.all(2),
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: SweepGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-            AppColors.tertiary,
-            AppColors.primary,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            StreamerCardBackStyle.ringBlue,
+            StreamerCardBackStyle.ringPurple,
           ],
         ),
       ),
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: StThemeColors.darkSurface,
-        ),
-        child: avatarUrl != null && avatarUrl.isNotEmpty
-            ? ClipOval(
-                child: Image.network(
+      child: ClipOval(
+        child: ColoredBox(
+          color: StreamerCardBackStyle.avatarFill,
+          child: avatarUrl != null && avatarUrl.isNotEmpty
+              ? Image.network(
                   avatarUrl,
-                  width: 28,
-                  height: 28,
+                  width: 32,
+                  height: 32,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => const Icon(
                     Icons.person,
-                    color: Colors.white,
+                    color: StreamerCardBackStyle.softText,
                     size: 16,
                   ),
+                )
+              : const Icon(
+                  Icons.person,
+                  color: StreamerCardBackStyle.softText,
+                  size: 16,
                 ),
-              )
-            : const Icon(
-                Icons.person,
-                color: Colors.white,
-                size: 16,
-              ),
+        ),
       ),
     );
   }
 
   Widget _buildTextField() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 40, maxHeight: 120),
@@ -1156,50 +1175,53 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         ),
         onSubmitted: (_) => _addComment(),
         style: TextStyle(
-          color: scheme.onSurface,
-          fontSize: 15,
+          color: _primaryTextColor,
+          fontSize: 13,
           height: 1.25,
+          fontWeight: FontWeight.w400,
         ),
-        cursorColor: scheme.primary,
+        cursorColor: _lavender,
         decoration: InputDecoration(
           hintText: _replyingTo != null ? 'Reply...' : 'Add a comment...',
           hintStyle: TextStyle(
-            color: scheme.onSurface.withValues(alpha: 0.50),
+            color: _mutedTextColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
           ),
           filled: true,
           fillColor: isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : scheme.surfaceContainerHighest.withValues(alpha: 0.78),
+              ? StreamerCardBackStyle.card
+              : Colors.black.withValues(alpha: 0.04),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(
-              color: scheme.outline.withValues(alpha: 0.22),
+              color: _mutedTextColor.withValues(alpha: 0.16),
             ),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(
-              color: scheme.outline.withValues(alpha: 0.22),
+              color: _mutedTextColor.withValues(alpha: 0.16),
             ),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(
-              color: scheme.primary.withValues(alpha: 0.72),
+              color: _accentColor.withValues(alpha: 0.45),
             ),
           ),
-          isDense: true,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14,
             vertical: 10,
           ),
+          isDense: true,
         ),
       ),
     );
   }
 
   Widget _buildSendButton() {
-    final canSend =
+    final bool canSend =
         _textController.text.trim().isNotEmpty && !_isSubmittingComment;
     return GestureDetector(
       onTap: canSend ? _addComment : null,
@@ -1208,22 +1230,20 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          gradient: canSend ? StThemeColors.gradient : null,
-          color: canSend ? null : _mutedTextColor.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            if (canSend)
-              BoxShadow(
-                color: StThemeColors.brandPurple.withValues(alpha: 0.35),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-          ],
+          color: canSend
+              ? _accentColor.withValues(alpha: 0.22)
+              : _mutedTextColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: canSend
+                ? _accentColor.withValues(alpha: 0.35)
+                : Colors.transparent,
+          ),
         ),
         child: Icon(
           Icons.arrow_upward_rounded,
-          color: canSend ? Colors.white : _mutedTextColor,
-          size: 20,
+          color: canSend ? _lavender : _mutedTextColor,
+          size: 18,
         ),
       ),
     );

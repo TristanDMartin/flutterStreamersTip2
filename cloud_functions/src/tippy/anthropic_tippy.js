@@ -119,6 +119,8 @@ async function postAnthropic({
   maxTokens,
   system,
   messages,
+  spanName,
+  metadata,
 }) {
   const fetch = (await import('node-fetch')).default;
   const body = {
@@ -129,23 +131,102 @@ async function postAnthropic({
   if (system && system.trim().length > 0) {
     body.system = system.trim();
   }
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify(body),
-  });
-  const raw = await res.text();
-  let parsed = null;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (_) {
-    parsed = null;
+
+  const runFetch = async () => {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+    const raw = await res.text();
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      parsed = null;
+    }
+    return {ok: res.ok, status: res.status, parsed, raw};
+  };
+
+  const braintrustKey = String(process.env.BRAINTRUST_API_KEY || '').trim();
+  if (!braintrustKey) {
+    return runFetch();
   }
-  return {ok: res.ok, status: res.status, parsed, raw};
+
+  try {
+    const braintrust = require('braintrust');
+    const projectId =
+      process.env.BRAINTRUST_PROJECT_ID ||
+      'b1aa4023-2359-4266-ac69-d01c754d6a5b';
+    braintrust.initLogger({
+      projectId,
+      projectName: process.env.BRAINTRUST_PROJECT_NAME || 'StreamersTip',
+      apiKey: braintrustKey,
+      appUrl: process.env.BRAINTRUST_APP_URL || 'https://www.braintrust.dev',
+      asyncFlush: false,
+    });
+    const startedAt = Date.now();
+    const result = await braintrust.traced(
+      async (span) => {
+        span.log({
+          input: body,
+          metadata: {
+            provider: 'anthropic',
+            model,
+            surface: 'flutter_tippyApi',
+            ...(metadata && typeof metadata === 'object' ? metadata : {}),
+          },
+        });
+        const response = await runFetch();
+        const usage =
+          response.parsed &&
+          typeof response.parsed === 'object' &&
+          response.parsed.usage &&
+          typeof response.parsed.usage === 'object'
+            ? response.parsed.usage
+            : null;
+        span.log({
+          output: response.parsed || response.raw,
+          metrics: {
+            duration_ms: Date.now() - startedAt,
+            http_status: response.status,
+            ...(typeof usage?.input_tokens === 'number'
+              ? {prompt_tokens: usage.input_tokens}
+              : {}),
+            ...(typeof usage?.output_tokens === 'number'
+              ? {completion_tokens: usage.output_tokens}
+              : {}),
+          },
+          metadata: {
+            provider: 'anthropic',
+            model,
+            ok: response.ok,
+            surface: 'flutter_tippyApi',
+            ...(metadata && typeof metadata === 'object' ? metadata : {}),
+          },
+        });
+        return response;
+      },
+      {
+        name: spanName || 'flutter.tippyApi.anthropic',
+        type: 'llm',
+      },
+    );
+    if (typeof braintrust.flush === 'function') {
+      await braintrust.flush();
+    }
+    return result;
+  } catch (error) {
+    console.warn(
+      '[braintrust] flutter tippyApi trace skipped:',
+      error && error.message ? error.message : error,
+    );
+    return runFetch();
+  }
 }
 
 function resolveModel(path, body) {

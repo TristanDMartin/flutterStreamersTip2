@@ -94,6 +94,16 @@ class AcademySiteCatalogService {
     }
   }
 
+  Future<List<AcademyPath>> loadBundledPaths() async {
+    try {
+      final String raw = await rootBundle.loadString(bundledAssetPath);
+      return _pathsFromCatalogJson(raw);
+    } catch (e) {
+      debugPrint('AcademySiteCatalogService: bundled paths failed: $e');
+      return const <AcademyPath>[];
+    }
+  }
+
   Future<List<AcademyGuideSummary>> fetchRemoteCatalogGuides() async {
     try {
       final DocumentSnapshot<Map<String, dynamic>> snap = await _firestore
@@ -232,6 +242,30 @@ class AcademySiteCatalogService {
     return bundledCategories;
   }
 
+  /// Firestore paths win by id; bundled fills gaps (same idea as guides).
+  List<AcademyPath> mergePaths({
+    required List<AcademyPath> firestorePaths,
+    List<AcademyPath> bundledPaths = const <AcademyPath>[],
+  }) {
+    final Map<String, AcademyPath> byId = <String, AcademyPath>{};
+    void putAll(List<AcademyPath> list) {
+      for (final AcademyPath path in list) {
+        if (path.id.isEmpty || !path.isPublished) {
+          continue;
+        }
+        byId.putIfAbsent(path.id, () => path);
+      }
+    }
+
+    putAll(firestorePaths);
+    putAll(bundledPaths);
+    final List<AcademyPath> merged = byId.values.toList(growable: true)
+      ..sort(
+        (AcademyPath a, AcademyPath b) => a.sortOrder.compareTo(b.sortOrder),
+      );
+    return merged;
+  }
+
   List<AcademyGuideSummary> _guidesFromCatalogJson(String raw) {
     final Object? decoded = jsonDecode(raw);
     if (decoded is! Map) {
@@ -252,6 +286,30 @@ class AcademySiteCatalogService {
           return AcademyGuideSummary.fromMap(id, data);
         })
         .whereType<AcademyGuideSummary>()
+        .toList(growable: false);
+  }
+
+  List<AcademyPath> _pathsFromCatalogJson(String raw) {
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      return const <AcademyPath>[];
+    }
+    final Object? paths = decoded['paths'];
+    if (paths is! List) {
+      return const <AcademyPath>[];
+    }
+    return paths
+        .whereType<Map>()
+        .map((Map<dynamic, dynamic> item) {
+          final Map<String, dynamic> data = Map<String, dynamic>.from(item);
+          final String id = (data['id'] ?? '').toString();
+          if (id.isEmpty) {
+            return null;
+          }
+          return AcademyPath.fromMap(id, data);
+        })
+        .whereType<AcademyPath>()
+        .where((AcademyPath path) => path.isPublished)
         .toList(growable: false);
   }
 

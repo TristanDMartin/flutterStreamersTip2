@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/recommended_content.dart';
+import 'streamer_card_sections.dart';
 
 class RecommendedContentCard extends StatefulWidget {
   final RecommendedContent content;
@@ -76,10 +77,12 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final foreground = isDark ? Colors.white : const Color(0xFF0F172A);
-    final muted = isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B);
+    final ThemeData theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color foreground =
+        isDark ? StreamerCardBackStyle.softText : const Color(0xFF0F172A);
+    final Color muted =
+        isDark ? StreamerCardBackStyle.muted : const Color(0xFF64748B);
     return GestureDetector(
       onTap: _onTap,
       onTapDown: _onTapDown,
@@ -87,65 +90,52 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
       onTapCancel: _onTapCancel,
       child: AnimatedBuilder(
         animation: _scaleAnimation,
-        builder: (context, child) {
+        builder: (BuildContext context, Widget? child) {
           return Transform.scale(
             scale: _scaleAnimation.value,
             child: Container(
-              height: 92,
-              padding: const EdgeInsets.all(16),
+              height: 84,
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: isDark
-                    ? const Color(0xFF0F172A).withValues(alpha: 0.72)
+                    ? Colors.white.withValues(alpha: 0.04)
                     : Colors.white.withValues(alpha: 0.94),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isDark
-                      ? Colors.white.withValues(alpha: 0.10)
+                      ? Colors.white.withValues(alpha: 0.08)
                       : const Color(0xFF0F172A).withValues(alpha: 0.08),
-                  width: 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.07),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
               ),
               child: Row(
-                children: [
-                  // Icon/Thumbnail
+                children: <Widget>[
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF9248D2).withValues(alpha: 0.22),
-                          const Color(0xFF4897D2).withValues(alpha: 0.22),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
+                      color: isDark
+                          ? StreamerCardBackStyle.accent.withValues(alpha: 0.2)
+                          : const Color(0xFF9248D2).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       _getIconForContent(widget.content.id),
-                      color: const Color(0xFF4897D2),
-                      size: 24,
+                      color: isDark
+                          ? StreamerCardBackStyle.lavender
+                          : const Color(0xFF4897D2),
+                      size: 20,
                     ),
                   ),
-
                   const SizedBox(width: 12),
-
-                  // Content info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                      children: <Widget>[
                         Text(
                           widget.content.title,
                           style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
                             color: foreground,
                           ),
                           maxLines: 1,
@@ -156,23 +146,14 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
                           widget.content.description,
                           style: TextStyle(
                             fontSize: 12,
+                            fontWeight: FontWeight.w400,
                             color: muted,
-                            height: 1.25,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  // Arrow indicator
-                  const Icon(
-                    Icons.north_east_rounded,
-                    color: Color(0xFF4897D2),
-                    size: 16,
                   ),
                 ],
               ),

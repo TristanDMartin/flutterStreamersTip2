@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../profile_video_feed_view.dart';
+import '../streamer_card_sections.dart';
 
 /// Segmented tabs plus animated tab content (videos / favorites / tagged).
 class ProfileViewTabbedSection extends StatelessWidget {
@@ -76,15 +77,9 @@ class _ProfileSegmentBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 52,
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
-        ),
-      ),
+      height: 48,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: StreamerCardBackStyle.cardDecoration,
       child: Row(
         children: <Widget>[
           _TabCell(
@@ -136,12 +131,12 @@ class _TabCell extends StatelessWidget {
           margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: isSelected
-                ? Colors.white.withValues(alpha: 0.16)
+                ? StreamerCardBackStyle.accent.withValues(alpha: 0.18)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
             border: isSelected
                 ? Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
+                    color: StreamerCardBackStyle.accent.withValues(alpha: 0.28),
                   )
                 : null,
           ),
@@ -150,10 +145,10 @@ class _TabCell extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
                 color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.55),
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+                    ? StreamerCardBackStyle.lavender
+                    : StreamerCardBackStyle.muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
               child: Text(label),
             ),

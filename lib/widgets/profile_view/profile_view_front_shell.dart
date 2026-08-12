@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../constants/app_colors.dart';
 import '../../routing/app_routes.dart';
 import '../../views/menu_view.dart';
+import '../streamer_card_sections.dart';
 import 'profile_view_header_section.dart';
 import 'profile_view_tabbed_section.dart';
 
@@ -41,7 +41,7 @@ class ProfileViewFrontShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     return ColoredBox(
-      color: AppColors.profileViewBackground,
+      color: StreamerCardBackStyle.background,
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
@@ -52,14 +52,14 @@ class ProfileViewFrontShell extends StatelessWidget {
             automaticallyImplyLeading: false,
             elevation: 0,
             scrolledUnderElevation: 0,
-            backgroundColor: AppColors.profileViewBackground,
+            backgroundColor: StreamerCardBackStyle.background,
             surfaceTintColor: Colors.transparent,
             actions: <Widget>[
               IconButton(
                 icon: const Icon(
                   Icons.flip,
                   color: Colors.white,
-                  size: 24,
+                  size: 22,
                 ),
                 onPressed: onFlip,
               ),
@@ -67,16 +67,16 @@ class ProfileViewFrontShell extends StatelessWidget {
                 IconButton(
                   icon: const Icon(
                     Icons.card_membership,
-                    color: Colors.white,
-                    size: 24,
+                    color: StreamerCardBackStyle.muted,
+                    size: 22,
                   ),
                   onPressed: onStreamerCard,
                 ),
               IconButton(
-                icon: Icon(
+                icon: const Icon(
                   Icons.more_horiz,
-                  color: Colors.white.withValues(alpha: 0.72),
-                  size: 24,
+                  color: StreamerCardBackStyle.muted,
+                  size: 22,
                 ),
                 onPressed: () {
                   HapticFeedback.lightImpact();

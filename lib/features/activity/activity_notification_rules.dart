@@ -46,6 +46,112 @@ const Set<String> kGlobalSystemNotificationTypes = <String>{
   'workspaceautomation',
 };
 
+/// Mirror website `ACTIVITY_LEGACY_TYPE_MAP` → canonical type keys.
+const Map<String, String> kActivityLegacyTypeMap = <String, String>{
+  'follow': 'FOLLOW',
+  'forum_follow': 'FOLLOW',
+  'like': 'LIKE_VIDEO',
+  'forum_like': 'LIKE_THREAD',
+  'comment': 'COMMENT_VIDEO',
+  'commentreply': 'REPLY_VIDEO_COMMENT',
+  'comment_reply': 'REPLY_VIDEO_COMMENT',
+  'forum_reply': 'REPLY_THREAD_COMMENT',
+  'thread_comment_reply': 'REPLY_THREAD_COMMENT',
+  'thread_comment': 'COMMENT_THREAD',
+  'mention': 'MENTION',
+  'tag': 'MENTION',
+};
+
+/// Mirror website `ACTIVITY_TAB_NORMALIZED_TYPES` (web + app must match).
+const Map<String, Set<String>> kActivityTabNormalizedTypes =
+    <String, Set<String>>{
+  'follows': <String>{'FOLLOW'},
+  'likes': <String>{'LIKE_VIDEO', 'LIKE_THREAD', 'LIKE_COMMENT'},
+  'comments': <String>{'COMMENT_VIDEO', 'REPLY_VIDEO_COMMENT'},
+  'mentions': <String>{'MENTION'},
+  'threads': <String>{
+    'COMMENT_THREAD',
+    'REPLY_THREAD_COMMENT',
+    'COLLAB_INVITE',
+  },
+  'global': <String>{
+    'admin_broadcast',
+    'newEvent',
+    'content_plan_expired',
+    'content_plan_queue',
+    'content_plan_recap',
+    'tippy_coach',
+    'message',
+  },
+};
+
+/// Normalize a Firestore/activity type for tab filters (website parity).
+String normalizeActivityFilterType(String? raw) {
+  final String trimmed = (raw ?? '').trim();
+  if (trimmed.isEmpty) {
+    return '';
+  }
+  final String lower = trimmed.toLowerCase();
+  final String? mapped = kActivityLegacyTypeMap[lower];
+  if (mapped != null) {
+    return mapped;
+  }
+  // Preserve known canonical casing used by the website contract.
+  switch (lower) {
+    case 'follow':
+      return 'FOLLOW';
+    case 'like_video':
+      return 'LIKE_VIDEO';
+    case 'like_thread':
+      return 'LIKE_THREAD';
+    case 'like_comment':
+      return 'LIKE_COMMENT';
+    case 'comment_video':
+      return 'COMMENT_VIDEO';
+    case 'reply_video_comment':
+      return 'REPLY_VIDEO_COMMENT';
+    case 'comment_thread':
+      return 'COMMENT_THREAD';
+    case 'reply_thread_comment':
+      return 'REPLY_THREAD_COMMENT';
+    case 'mention':
+      return 'MENTION';
+    case 'collab_invite':
+      return 'COLLAB_INVITE';
+    case 'admin_broadcast':
+      return 'admin_broadcast';
+    case 'newevent':
+    case 'new_event':
+      return 'newEvent';
+    case 'content_plan_expired':
+      return 'content_plan_expired';
+    case 'content_plan_queue':
+      return 'content_plan_queue';
+    case 'content_plan_recap':
+      return 'content_plan_recap';
+    case 'tippy_coach':
+      return 'tippy_coach';
+    case 'message':
+      return 'message';
+    default:
+      return trimmed;
+  }
+}
+
+bool activityTypeMatchesFilterTab({
+  required String? rawType,
+  required String filterKey,
+}) {
+  if (filterKey == 'all') {
+    return true;
+  }
+  final Set<String>? allowed = kActivityTabNormalizedTypes[filterKey];
+  if (allowed == null) {
+    return true;
+  }
+  return allowed.contains(normalizeActivityFilterType(rawType));
+}
+
 /// Canonical Activity row type. Unknown / system prompts must NOT default to
 /// [ActivityNotificationType.like] (that produces false "liked your clip" UI).
 ActivityNotificationType activityNotificationTypeFromString(String? raw) {
@@ -65,11 +171,14 @@ ActivityNotificationType activityNotificationTypeFromString(String? raw) {
     case 'likes':
     case 'like_comment':
     case 'liked_comment':
+    case 'like_thread':
       return ActivityNotificationType.like;
     case 'comment_video':
     case 'comment_post':
     case 'comment':
     case 'comments':
+    case 'comment_thread':
+    case 'thread_comment':
       return ActivityNotificationType.comment;
     case 'commentreply':
     case 'comment_reply':
@@ -79,6 +188,9 @@ ActivityNotificationType activityNotificationTypeFromString(String? raw) {
     case 'comment_video_reply':
     case 'reply':
     case 'replies':
+    case 'reply_thread_comment':
+    case 'thread_comment_reply':
+    case 'forum_reply':
       return ActivityNotificationType.commentReply;
     case 'tag':
     case 'tags':

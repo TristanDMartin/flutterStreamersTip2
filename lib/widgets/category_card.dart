@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/category.dart';
+import 'streamer_card_sections.dart';
 
 class CategoryCard extends StatelessWidget {
   final Category category;
@@ -18,7 +19,7 @@ class CategoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) {
+      builder: (BuildContext context, BoxConstraints constraints) {
         final ColorScheme cs = Theme.of(context).colorScheme;
         final bool isDark = Theme.of(context).brightness == Brightness.dark;
         return GestureDetector(
@@ -32,59 +33,62 @@ class CategoryCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? cs.primary.withValues(alpha: isDark ? 0.22 : 0.12)
+                    ? (isDark
+                        ? StreamerCardBackStyle.accent.withValues(alpha: 0.2)
+                        : cs.primary.withValues(alpha: 0.12))
                     : (isDark
-                        ? const Color(0xFF0F172A).withValues(alpha: 0.70)
+                        ? Colors.white.withValues(alpha: 0.04)
                         : Colors.white.withValues(alpha: 0.92)),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isSelected
-                      ? cs.primary
+                      ? (isDark
+                          ? StreamerCardBackStyle.accent.withValues(alpha: 0.4)
+                          : cs.primary)
                       : (isDark
                           ? Colors.white.withValues(alpha: 0.08)
                           : const Color(0xFF0F172A).withValues(alpha: 0.08)),
-                  width: isSelected ? 1.4 : 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isSelected
-                        ? cs.primary.withValues(alpha: 0.25)
-                        : cs.shadow.withValues(alpha: isDark ? 0.18 : 0.07),
-                    blurRadius: isSelected ? 18 : 12,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+                children: <Widget>[
                   Row(
-                    children: [
+                    children: <Widget>[
                       Icon(
                         _getIconData(category.icon),
-                        color: _getIconColor(category.id),
-                        size: 22,
+                        color: isSelected && isDark
+                            ? StreamerCardBackStyle.lavender
+                            : _getIconColor(category.id),
+                        size: 18,
                       ),
                       const Spacer(),
                       if (isSelected)
                         Icon(
                           Icons.check_circle_rounded,
-                          color: cs.primary,
-                          size: 18,
+                          color: isDark
+                              ? StreamerCardBackStyle.lavender
+                              : cs.primary,
+                          size: 16,
                         ),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                    children: <Widget>[
                       Text(
                         category.name,
                         style: TextStyle(
-                          fontSize: 13,
-                          fontWeight:
-                              isSelected ? FontWeight.w800 : FontWeight.w700,
-                          color: isSelected ? cs.primary : cs.onSurface,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: isSelected
+                              ? (isDark
+                                  ? StreamerCardBackStyle.lavender
+                                  : cs.primary)
+                              : (isDark
+                                  ? StreamerCardBackStyle.softText
+                                  : cs.onSurface),
                           height: 1.1,
                         ),
                         maxLines: 1,
@@ -95,8 +99,10 @@ class CategoryCard extends StatelessWidget {
                         'Explore clips',
                         style: TextStyle(
                           fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface.withValues(alpha: 0.55),
+                          fontWeight: FontWeight.w400,
+                          color: isDark
+                              ? StreamerCardBackStyle.muted
+                              : cs.onSurface.withValues(alpha: 0.55),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

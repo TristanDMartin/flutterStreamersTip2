@@ -5,7 +5,7 @@ import '../utils/sensitive_data_redactor.dart';
 class ProfileLinkService {
   ProfileLinkService._();
 
-  static const String webBaseUrl = 'https://streamerstip.app';
+  static const String webBaseUrl = 'https://www.streamerstip.com';
   static const String appScheme = 'streamerstip://';
 
   /// Username-first link for sharing (no UID in URL when username is known).
@@ -29,15 +29,15 @@ class ProfileLinkService {
 
   /// Legacy UID path; kept for inbound links only.
   static String webProfileUrlById(String userId) {
-    return '$webBaseUrl/profile/${Uri.encodeComponent(userId)}';
+    return '$webBaseUrl/streamer/${Uri.encodeComponent(userId)}';
   }
 
   static String webProfileUrlByUsername(String username) {
-    return '$webBaseUrl/user/${Uri.encodeComponent(username)}';
+    return '$webBaseUrl/streamer/${Uri.encodeComponent(username)}';
   }
 
   static String appProfileUrlByUsername(String username) {
-    return '${appScheme}user/${Uri.encodeComponent(username)}';
+    return '${appScheme}streamer/${Uri.encodeComponent(username)}';
   }
 
   /// Legacy app deep link with UID.

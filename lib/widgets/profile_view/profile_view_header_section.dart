@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../constants/app_colors.dart';
 import '../../models/home_video.dart';
 import '../../providers/video_service_provider.dart';
 import '../../utils/post_count_rules.dart';
@@ -13,6 +12,7 @@ import '../../routing/app_routes.dart';
 import '../../utils/avatar_url_resolver.dart';
 import '../edit_profile_view.dart';
 import '../share_profile_view.dart';
+import '../streamer_card_sections.dart';
 import '../user_stats_row.dart';
 import '../profile/profile_username_utils.dart';
 import 'user_status_color.dart';
@@ -34,31 +34,31 @@ class ProfileViewHeaderSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Stack(
         clipBehavior: Clip.none,
         children: <Widget>[
           Column(
             children: <Widget>[
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
               _ProfileAvatarRing(
                 userData: userData,
                 isCurrentUser: isCurrentUser,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               _ProfileNameAndHandle(userData: userData),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
               _ProfileQuietStats(
                 profileUserId: profileUserId,
               ),
               if (isCurrentUser) ...<Widget>[
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 _ProfilePrimaryButtonsRow(userData: userData),
               ],
             ],
           ),
           Positioned(
-            top: 10,
+            top: 4,
             right: 0,
             child: CreatorScoreBadge(
               userId: profileUserId,
@@ -87,39 +87,33 @@ class _ProfileAvatarRing extends StatelessWidget {
       clipBehavior: Clip.none,
       children: <Widget>[
         Container(
-          width: 112,
-          height: 112,
+          width: 104,
+          height: 104,
+          padding: const EdgeInsets.all(2.5),
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: SweepGradient(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
               colors: <Color>[
-                Color(0xFFFF6CAB),
-                Color(0xFF8E54E9),
-                Color(0xFF3D99F7),
-                Color(0xFFFF6CAB),
+                StreamerCardBackStyle.ringBlue,
+                StreamerCardBackStyle.ringPurple,
               ],
             ),
           ),
-          child: Center(
-            child: Container(
-              width: 104,
-              height: 104,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.35),
-              ),
-              child: ClipOval(
-                child: avatarUrl != null && avatarUrl.isNotEmpty
-                    ? Image.network(
-                        avatarUrl,
-                        key: ValueKey<String>(avatarUrl),
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (BuildContext c, Object e, StackTrace? s) =>
-                                _AvatarInitial(userData: userData),
-                      )
-                    : _AvatarInitial(userData: userData),
-              ),
+          child: ClipOval(
+            child: ColoredBox(
+              color: StreamerCardBackStyle.avatarFill,
+              child: avatarUrl != null && avatarUrl.isNotEmpty
+                  ? Image.network(
+                      avatarUrl,
+                      key: ValueKey<String>(avatarUrl),
+                      fit: BoxFit.cover,
+                      errorBuilder:
+                          (BuildContext c, Object e, StackTrace? s) =>
+                              _AvatarInitial(userData: userData),
+                    )
+                  : _AvatarInitial(userData: userData),
             ),
           ),
         ),
@@ -136,24 +130,18 @@ class _ProfileAvatarRing extends StatelessWidget {
                   }
                   final Color c = profileUserStatusColor(presence.status);
                   return Positioned(
-                    top: 8,
-                    right: 8,
+                    top: 6,
+                    right: 6,
                     child: Container(
-                      width: 20,
-                      height: 20,
+                      width: 16,
+                      height: 16,
                       decoration: BoxDecoration(
                         color: c,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: AppColors.profileViewBackground,
+                          color: StreamerCardBackStyle.background,
                           width: 2,
                         ),
-                        boxShadow: <BoxShadow>[
-                          BoxShadow(
-                            color: c.withValues(alpha: 0.5),
-                            blurRadius: 6,
-                          ),
-                        ],
                       ),
                     ),
                   );
@@ -178,14 +166,14 @@ class _AvatarInitial extends StatelessWidget {
     final String letter =
         ProfileUsernameUtils.resolveAvatarInitialLetter(userData);
     return ColoredBox(
-      color: Colors.black.withValues(alpha: 0.25),
+      color: StreamerCardBackStyle.avatarFill,
       child: Center(
         child: Text(
           letter,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.9),
-            fontSize: 40,
-            fontWeight: FontWeight.w700,
+          style: const TextStyle(
+            color: StreamerCardBackStyle.softText,
+            fontSize: 36,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
@@ -209,20 +197,20 @@ class _ProfileNameAndHandle extends StatelessWidget {
           displayName.isNotEmpty ? displayName : 'Unknown User',
           textAlign: TextAlign.center,
           style: const TextStyle(
-            color: Colors.white,
-            fontSize: 30,
-            fontWeight: FontWeight.w900,
-            height: 1.05,
+            color: StreamerCardBackStyle.softText,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+            height: 1.1,
           ),
         ),
         if (atHandle.isNotEmpty) ...<Widget>[
           const SizedBox(height: 4),
           Text(
             atHandle,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+            style: const TextStyle(
+              color: StreamerCardBackStyle.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
               height: 1.0,
             ),
           ),
@@ -255,15 +243,15 @@ class _ProfileQuietStats extends ConsumerWidget {
       postsCountOverride: postsCountOverride,
       spacing: 28,
       valueTextStyle: const TextStyle(
-        color: Colors.white,
-        fontSize: 20,
-        fontWeight: FontWeight.w800,
+        color: StreamerCardBackStyle.softText,
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
         height: 1.0,
       ),
-      labelTextStyle: TextStyle(
-        color: Colors.white.withValues(alpha: 0.55),
+      labelTextStyle: const TextStyle(
+        color: StreamerCardBackStyle.muted,
         fontSize: 12,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w400,
         height: 1.0,
       ),
     );
@@ -346,49 +334,37 @@ class _ProfileHeaderActionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onPressed,
       child: Container(
-        height: 50,
+        height: 44,
         decoration: BoxDecoration(
-          gradient: isPrimary
-              ? const LinearGradient(
-                  colors: <Color>[
-                    AppColors.primary,
-                    Color(0xFF7768DF),
-                    Color(0xFF4897D2),
-                  ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                )
-              : null,
           color: isPrimary
-              ? null
-              : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(18),
+              ? StreamerCardBackStyle.accent.withValues(alpha: 0.22)
+              : StreamerCardBackStyle.card,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isPrimary
-                ? Colors.white.withValues(alpha: 0.18)
-                : Colors.white.withValues(alpha: 0.12),
+                ? StreamerCardBackStyle.accent.withValues(alpha: 0.35)
+                : Colors.white.withValues(alpha: 0.08),
           ),
-          boxShadow: isPrimary
-              ? <BoxShadow>[
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.32),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon, color: Colors.white, size: 18),
+            Icon(
+              icon,
+              color: isPrimary
+                  ? StreamerCardBackStyle.lavender
+                  : StreamerCardBackStyle.softText,
+              size: 16,
+            ),
             const SizedBox(width: 8),
             Text(
               text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+              style: TextStyle(
+                color: isPrimary
+                    ? StreamerCardBackStyle.lavender
+                    : StreamerCardBackStyle.softText,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],

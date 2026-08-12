@@ -673,20 +673,43 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   void _navigateToNetworkViewWithTab(String tabName) {
     _closeCommandCenter();
-    Navigator.of(context).push(
+    unawaited(_pushNetworkAndResume(tabName));
+  }
+
+  Future<void> _pushNetworkAndResume(String tabName) async {
+    _controller.prepareForRouteNavigation(reason: 'leave_home_to_network');
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => NetworkView(initialTab: tabName),
         settings: const RouteSettings(name: '/network'),
       ),
     );
+    if (!mounted) {
+      return;
+    }
+    secureLog('🔄 HomeView: Returned from Network — resuming visible video');
+    _controller.resumeFromTabReturn();
+  }
+
+  void _navigateToNetwork() {
+    if (!mounted) return;
+
+    HapticFeedback.lightImpact();
+    _closeCommandCenter();
+    _navigateToNetworkViewWithTab('discover');
   }
 
   Future<void> _handleFeedTabChange(FeedTab newTab) async {
     if (!mounted) return;
 
+    final FeedTab previousTab = ref.read(activeFeedProvider);
     secureLog(
-      '🔄 HomeView: Switching from ${ref.read(activeFeedProvider).displayName} to ${newTab.displayName}',
+      '🔄 HomeView: Switching from ${previousTab.displayName} to ${newTab.displayName}',
     );
+
+    if (previousTab.supportsVideoFeed && !newTab.supportsVideoFeed) {
+      _controller.savePlaybackCheckpointForActiveVideoFeed();
+    }
 
     // Use the single source of truth provider
     await switchFeed(ref, newTab);
@@ -698,19 +721,26 @@ class _HomeViewState extends ConsumerState<HomeView>
     // Restore the user's last position for each feed to keep switches sticky.
     _controller.restoreFeedIndex(newTab);
 
-    if (newTab == FeedTab.threads || newTab == FeedTab.following) {
+    if (!newTab.supportsVideoFeed) {
+      _controller.invalidatePendingHomeResume(
+        reason: 'switched_to_${newTab.tabId}',
+      );
+      GlobalPlaybackManager.instance.clearDesiredFocusForOwner(
+        PlaybackOwners.home,
+      );
+      GlobalPlaybackManager.instance.pauseAll();
       secureLog('✅ HomeView: ${newTab.displayName} tab — skipping video focus');
       return;
     }
 
-    // ✅ FIX #2: Give focus to the first video in the new feed
+    // Returning to For You: restore index + seek leave-off position, then play.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       try {
-        _setDesiredFocusForCurrentIndex();
+        _controller.resumeAfterVideoFeedTabReturn();
       } catch (e) {
         secureLog(
-          '⚠️ HomeView: Error ensuring first video focus after feed switch: $e',
+          '⚠️ HomeView: Error resuming video after feed switch: $e',
         );
       }
     });
@@ -740,13 +770,29 @@ class _HomeViewState extends ConsumerState<HomeView>
     final index = videos.indexWhere((v) => v.id == video.id);
     final videoIndex = index >= 0 ? index : 0;
 
-    AppNavigator.openPlayer(
+    unawaited(_openPlayerAndResume(
+      videoIndex: videoIndex,
+      videos: videos,
+    ));
+  }
+
+  Future<void> _openPlayerAndResume({
+    required int videoIndex,
+    required List<HomeVideo> videos,
+  }) async {
+    _controller.prepareForRouteNavigation(reason: 'leave_home_to_player');
+    await AppNavigator.openPlayer(
       context,
       mode: PlayerMode.homeFeed,
       initialIndex: videoIndex,
       videoIds: videos.map((v) => v.id).toList(),
       videos: videos,
     );
+    if (!mounted) {
+      return;
+    }
+    secureLog('🔄 HomeView: Returned from Player — resuming visible video');
+    _controller.resumeFromTabReturn();
   }
 
   void _handleLeftSwipeVideo(HomeVideo video) {
@@ -795,16 +841,6 @@ class _HomeViewState extends ConsumerState<HomeView>
     // Always run the Discover return path after await — do not gate on
     // ModalRoute.isCurrent (shell root is `/`, which can race with observer).
     _controller.resumeFromTabReturn(fromDiscover: true);
-  }
-
-  /// ✅ FIX #2: Real route change - use onLeaveHomeView() to pause and save position
-  void _navigateToNetwork() {
-    if (!mounted) return;
-
-    HapticFeedback.lightImpact();
-    _closeCommandCenter();
-    _controller.prepareForRouteNavigation(reason: 'leave_home_to_network');
-    _navigateToNetworkViewWithTab('discover');
   }
 
   void _toggleCommandCenter() {
@@ -1080,9 +1116,6 @@ class _HomeViewState extends ConsumerState<HomeView>
                         _currentStreamerCard = null;
                       });
                       _setPlaybackOverlayActive('streamerCardOverlay', false);
-                      _controller.prepareForRouteNavigation(
-                        reason: 'leave_home_to_network_from_streamer_card',
-                      );
                       _navigateToNetworkViewWithTab(tabName);
                     },
                     onShare: (userId) {

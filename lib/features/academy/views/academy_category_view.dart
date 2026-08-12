@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/support_shell_style.dart';
 import '../../../routing/app_navigator.dart';
 import '../academy_providers.dart';
 import '../models/academy_models.dart';
@@ -13,10 +14,11 @@ class AcademyCategoryView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final AsyncValue<AcademyHomeSnapshot> snapshotAsync =
         ref.watch(academyHomeSnapshotProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Academy Category')),
+      backgroundColor: shell.scaffold,
       body: snapshotAsync.when(
         loading: () => const AcademySkeletonList(),
         error: (_, __) => AcademyEmptyState(
@@ -42,56 +44,63 @@ class AcademyCategoryView extends ConsumerWidget {
             );
           }
           final AcademyCategory resolvedCategory = category;
-          if (guides.isEmpty) {
-            return AcademyEmptyState(
-              title: 'No guides yet',
-              message:
-                  '${resolvedCategory.name} guides will appear here when published.',
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(AcademyTokens.pagePadding),
-            itemCount: guides.length + 1,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (BuildContext context, int index) {
-              if (index == 0) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      resolvedCategory.name,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      resolvedCategory.description,
-                      style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.65),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                );
-              }
-              final AcademyGuideSummary guide = guides[index - 1];
-              return AcademyGuideCard(
-                title: guide.title,
-                description: guide.description,
-                difficulty: difficultyLabel(guide.difficulty),
-                estimatedMinutes: guide.estimatedMinutes,
-                imageUrl: guide.imageUrl,
-                categoryName: resolvedCategory.name,
-                onTap: () => AppNavigator.openAcademyGuide(
-                  context,
-                  guideId: guide.id,
+          return CustomScrollView(
+            slivers: <Widget>[
+              SliverAppBar(
+                pinned: true,
+                backgroundColor: shell.scaffold,
+                foregroundColor: shell.onChrome,
+                title: const Text('Category'),
+              ),
+              SliverToBoxAdapter(
+                child: AcademyGradientHeader(
+                  title: resolvedCategory.name,
+                  subtitle: resolvedCategory.description.isNotEmpty
+                      ? resolvedCategory.description
+                      : 'Browse guides in this category',
+                  icon: Icons.auto_stories_rounded,
+                  xpLabel:
+                      '${guides.isNotEmpty ? guides.length : resolvedCategory.guideCount} guides',
                 ),
-              );
-            },
+              ),
+              if (guides.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: AcademyEmptyState(
+                    title: 'No guides yet',
+                    message:
+                        '${resolvedCategory.name} guides will appear here when published.',
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AcademyTokens.pagePadding,
+                    0,
+                    AcademyTokens.pagePadding,
+                    32,
+                  ),
+                  sliver: SliverList.separated(
+                    itemCount: guides.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (BuildContext context, int index) {
+                      final AcademyGuideSummary guide = guides[index];
+                      return AcademyGuideCard(
+                        title: guide.title,
+                        description: guide.description,
+                        difficulty: difficultyLabel(guide.difficulty),
+                        estimatedMinutes: guide.estimatedMinutes,
+                        imageUrl: guide.imageUrl,
+                        categoryName: resolvedCategory.name,
+                        onTap: () => AppNavigator.openAcademyGuide(
+                          context,
+                          guideId: guide.id,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
           );
         },
       ),

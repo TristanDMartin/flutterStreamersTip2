@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/support_shell_style.dart';
 import '../../../routing/app_navigator.dart';
 import '../academy_providers.dart';
 import '../models/academy_models.dart';
@@ -13,13 +14,21 @@ class AcademyPathView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final AsyncValue<AcademyPath?> pathAsync =
         ref.watch(academyPathProvider(pathId));
     final List<AcademyUserProgress> progress =
         ref.watch(academyUserProgressProvider).valueOrNull ??
             const <AcademyUserProgress>[];
+    final Map<String, AcademyGuideSummary> guidesById =
+        <String, AcademyGuideSummary>{
+      for (final AcademyGuideSummary guide
+          in ref.watch(academyGuideSummariesProvider).valueOrNull ??
+              const <AcademyGuideSummary>[])
+        guide.id: guide,
+    };
     return Scaffold(
-      appBar: AppBar(title: const Text('Learning Path')),
+      backgroundColor: shell.scaffold,
       body: pathAsync.when(
         loading: () => const AcademySkeletonList(),
         error: (_, __) => AcademyEmptyState(
@@ -34,61 +43,140 @@ class AcademyPathView extends ConsumerWidget {
               message: 'This learning path may have been removed.',
             );
           }
-          final int completed = academyCompletedLessonCount(
+          final List<AcademyPathStep> steps = path.steps;
+          final int completed = academyCompletedPathStepCount(
             progress: progress,
-            lessonIds: path.lessonIds,
+            path: path,
           );
-          return ListView(
-            padding: const EdgeInsets.all(AcademyTokens.pagePadding),
-            children: <Widget>[
-              Text(
-                path.title,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
+          final double completion = academyCompletionPercent(
+            completed: completed,
+            total: path.stepCount,
+          );
+          return CustomScrollView(
+            slivers: <Widget>[
+              SliverAppBar(
+                pinned: true,
+                backgroundColor: shell.scaffold,
+                foregroundColor: shell.onChrome,
+                title: const Text('Learning Path'),
+              ),
+              SliverToBoxAdapter(
+                child: AcademyGradientHeader(
+                  title: path.title,
+                  subtitle: path.description,
+                  icon: Icons.route_rounded,
+                  xpLabel: '$completed of ${path.stepCount} guides',
+                  completionPercent: completion,
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AcademyTokens.pagePadding,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Text(
+                    'Guides in this path',
+                    style: TextStyle(
+                      color: shell.onChrome,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
                     ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 8),
-              Text(path.description),
-              const SizedBox(height: 12),
-              AcademyPathCard(
-                title: path.title,
-                description: path.description,
-                completedLessons: completed,
-                totalLessons: path.lessonIds.length,
-                onTap: () {},
-              ),
-              const SizedBox(height: 16),
-              ...path.lessonIds.map((String lessonId) {
-                final AcademyUserProgress? lessonProgress = progress
-                    .where((AcademyUserProgress p) => p.lessonId == lessonId)
-                    .cast<AcademyUserProgress?>()
-                    .firstWhere(
-                      (AcademyUserProgress? p) => p != null,
-                      orElse: () => null,
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AcademyTokens.pagePadding,
+                  10,
+                  AcademyTokens.pagePadding,
+                  32,
+                ),
+                sliver: SliverList.separated(
+                  itemCount: steps.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (BuildContext context, int index) {
+                    final AcademyPathStep step = steps[index];
+                    final String guideId = step.displayGuideId;
+                    final AcademyGuideSummary? guide =
+                        guideId.isEmpty ? null : guidesById[guideId];
+                    final bool done = _isStepCompleted(
+                      progress: progress,
+                      step: step,
+                      guideId: guideId,
                     );
-                final bool done = lessonProgress?.isCompleted ?? false;
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    done
-                        ? Icons.check_circle_rounded
-                        : Icons.play_circle_outline_rounded,
-                    color: done
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  title: Text('Lesson ${path.lessonIds.indexOf(lessonId) + 1}'),
-                  subtitle: Text(done ? 'Completed' : 'Tap to start'),
-                  onTap: () => AppNavigator.openAcademyLesson(
-                    context,
-                    lessonId: lessonId,
-                  ),
-                );
-              }),
+                    final String title = guide?.title ??
+                        (guideId.isNotEmpty
+                            ? _titleFromGuideId(guideId)
+                            : 'Lesson ${step.index + 1}');
+                    final String subtitle = done
+                        ? 'Completed'
+                        : (guide?.description.isNotEmpty == true
+                            ? guide!.description
+                            : (step.isWebsiteBacked
+                                ? 'Open this Streamer Academy guide'
+                                : 'Tap to start this lesson'));
+                    return AcademyPathStepCard(
+                      stepNumber: step.index + 1,
+                      title: title,
+                      subtitle: subtitle,
+                      isCompleted: done,
+                      isWebsiteBacked: step.isWebsiteBacked,
+                      difficulty: guide == null
+                          ? null
+                          : difficultyLabel(guide.difficulty),
+                      estimatedMinutes: guide?.estimatedMinutes,
+                      onTap: () {
+                        if (step.isWebsiteBacked && guideId.isNotEmpty) {
+                          AppNavigator.openAcademyGuide(
+                            context,
+                            guideId: guideId,
+                          );
+                          return;
+                        }
+                        AppNavigator.openAcademyLesson(
+                          context,
+                          lessonId: step.lessonId,
+                          guideId: guideId.isEmpty ? null : guideId,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
             ],
           );
         },
       ),
     );
+  }
+
+  bool _isStepCompleted({
+    required List<AcademyUserProgress> progress,
+    required AcademyPathStep step,
+    required String guideId,
+  }) {
+    return progress.any((AcademyUserProgress p) {
+      if (!p.isCompleted) {
+        return false;
+      }
+      if (p.lessonId == step.lessonId) {
+        return true;
+      }
+      if (guideId.isEmpty) {
+        return false;
+      }
+      return p.guideId == guideId || p.lessonId == '${guideId}__web';
+    });
+  }
+
+  String _titleFromGuideId(String guideId) {
+    return guideId
+        .split('-')
+        .where((String part) => part.isNotEmpty)
+        .map(
+          (String part) =>
+              '${part[0].toUpperCase()}${part.substring(1)}',
+        )
+        .join(' ');
   }
 }

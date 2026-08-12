@@ -4,18 +4,20 @@ import 'package:streamers_tip/features/onboarding_tippy/tippy_onboarding_contrac
 import 'package:streamers_tip/features/onboarding_tippy/tippy_onboarding_session.dart';
 
 void main() {
-  group('TippyOnboardingGuestSession inactivity restart', () {
+  group('TippyOnboardingGuestSession progress persistence', () {
     TippyOnboardingGuestSession sessionAt({
       required DateTime updatedAt,
       String stage = TippyOnboardingStages.questions,
       String? landingChoice,
+      int questionIndex = 2,
+      Map<String, dynamic>? answers,
     }) {
       return TippyOnboardingGuestSession(
         schemaVersion: kTippyOnboardingSessionSchemaVersion,
         sessionId: 'tos_test',
         stage: stage,
-        questionIndex: 2,
-        answers: <String, dynamic>{'q1': 'a'},
+        questionIndex: questionIndex,
+        answers: answers ?? <String, dynamic>{'q1': 'a'},
         trialIntent: false,
         notificationsChoice: null,
         landingChoice: landingChoice,
@@ -25,48 +27,38 @@ void main() {
       );
     }
 
-    test('isInactiveExpired after idle timeout when incomplete', () {
+    test('isInactiveExpired never clears incomplete progress', () {
       final DateTime now = DateTime.utc(2026, 8, 2, 12);
       final TippyOnboardingGuestSession stale = sessionAt(
-        updatedAt: now.subtract(kTippyOnboardingInactivityRestart),
+        updatedAt: now.subtract(const Duration(days: 30)),
       );
-      expect(stale.isInactiveExpired(now: now), isTrue);
+      expect(stale.isInactiveExpired(now: now), isFalse);
     });
 
-    test('isInactiveExpired false within idle window', () {
+    test('mid-quiz sessions still need resume after a day', () {
       final DateTime now = DateTime.utc(2026, 8, 2, 12);
-      final TippyOnboardingGuestSession fresh = sessionAt(
-        updatedAt: now.subtract(const Duration(hours: 1)),
+      final TippyOnboardingGuestSession mid = sessionAt(
+        updatedAt: now.subtract(const Duration(days: 1)),
       );
-      expect(fresh.isInactiveExpired(now: now), isFalse);
+      expect(tippySessionNeedsResume(mid, now: now), isTrue);
+      expect(mid.hasMeaningfulProgress, isTrue);
     });
 
-    test('completed landing sessions are never stale', () {
+    test('completed landing sessions do not need resume', () {
       final DateTime now = DateTime.utc(2026, 8, 2, 12);
       final TippyOnboardingGuestSession done = sessionAt(
         updatedAt: now.subtract(const Duration(days: 2)),
         landingChoice: 'explore',
         stage: TippyOnboardingStages.landingChoice,
       );
-      expect(done.isInactiveExpired(now: now), isFalse);
+      expect(tippySessionNeedsResume(done, now: now), isFalse);
     });
 
-    test('tippySessionNeedsResume false when inactive expired', () {
-      final DateTime now = DateTime.utc(2026, 8, 2, 12);
-      final TippyOnboardingGuestSession stale = TippyOnboardingGuestSession(
-        schemaVersion: kTippyOnboardingSessionSchemaVersion,
-        sessionId: 'tos_test',
-        stage: TippyOnboardingStages.findFriends,
-        questionIndex: 0,
-        answers: <String, dynamic>{'q1': 'a'},
-        trialIntent: false,
-        notificationsChoice: 'enabled',
-        landingChoice: null,
-        updatedAt: now.subtract(kTippyOnboardingInactivityRestart),
-        completedQuestionsAt: now.subtract(const Duration(hours: 5)),
-        hasSeenTippyIntro: true,
-      );
-      expect(tippySessionNeedsResume(stale, now: now), isFalse);
+    test('empty welcome session does not count as resume', () {
+      final TippyOnboardingGuestSession empty =
+          TippyOnboardingGuestSession.empty();
+      expect(empty.hasMeaningfulProgress, isFalse);
+      expect(tippySessionNeedsResume(empty), isFalse);
     });
   });
 }

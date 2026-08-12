@@ -229,10 +229,8 @@ class TippyGuidedProfileHostState
         return _buildUsername();
       case TippyOnboardingStages.bio:
         return _buildBio();
-      case TippyOnboardingStages.platforms:
+      case TippyOnboardingStages.platformHandles:
         return _buildPlatforms();
-      case TippyOnboardingStages.categories:
-        return _buildCategories();
       case TippyOnboardingStages.profileReview:
         return _buildReview();
       default:
@@ -317,10 +315,28 @@ class TippyGuidedProfileHostState
     return _scene(
       TippyOnboardingCopy.avatarPrompt,
       primary: 'CONTINUE',
-      onPrimary: () => widget.onAdvanceStage(TippyOnboardingStages.displayName),
+      onPrimary: () async {
+        final String uid =
+            firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? '';
+        if (uid.isNotEmpty && hasPhoto) {
+          await OnboardingService().markPhotoStatus(
+            userId: uid,
+            status: 'uploaded',
+          );
+        }
+        await widget.onAdvanceStage(TippyOnboardingStages.displayName);
+      },
       secondary: 'Skip for now',
       onSecondary: () async {
         await _saveDraft(_draft.copyWith(skippedAvatar: true));
+        final String uid =
+            firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? '';
+        if (uid.isNotEmpty) {
+          await OnboardingService().markPhotoStatus(
+            userId: uid,
+            status: 'skipped',
+          );
+        }
         await widget.onAdvanceStage(TippyOnboardingStages.displayName);
       },
       body: Column(
@@ -616,12 +632,12 @@ class TippyGuidedProfileHostState
             skippedBio: _bioController.text.trim().isEmpty,
           ),
         );
-        await widget.onAdvanceStage(TippyOnboardingStages.platforms);
+        await widget.onAdvanceStage(TippyOnboardingStages.platformHandles);
       },
       secondary: 'Skip for now',
       onSecondary: () async {
         await _saveDraft(_draft.copyWith(bio: '', skippedBio: true));
-        await widget.onAdvanceStage(TippyOnboardingStages.platforms);
+        await widget.onAdvanceStage(TippyOnboardingStages.platformHandles);
       },
       body: TextField(
         controller: _bioController,
@@ -640,7 +656,8 @@ class TippyGuidedProfileHostState
     return _scene(
       TippyOnboardingCopy.platformsPrompt,
       primary: 'CONTINUE',
-      onPrimary: () => widget.onAdvanceStage(TippyOnboardingStages.categories),
+      onPrimary: () =>
+          widget.onAdvanceStage(TippyOnboardingStages.profileReview),
       body: ListView(
         children: TippyGuidedProfileOptions.platforms.map(
           (({String id, String label}) option) {
@@ -971,6 +988,8 @@ class TippyGuidedProfileHostState
         await widget.onAdvanceStage(TippyOnboardingStages.username);
         return;
       }
+      // Username claim requires a provisioned users/{uid} doc (same as web).
+      await _provisionVerifiedAccount(user);
       try {
         await UsernameLockService().reserveUsername(
           username: username,
@@ -1019,18 +1038,26 @@ class TippyGuidedProfileHostState
           'EMAIL_VERIFICATION: verify your email before creating your profile',
         );
       }
+      // Only persist linked handles — never write empty Tippy stubs that wipe
+      // Edit Profile / users.platforms after onboarding.
       final List<Map<String, dynamic>> platforms = _draft.platformIds
-          .map(
-            (String id) {
-              return PlatformRules.buildEditablePlatformEntry(
-                type: id,
-                username: _draft.platformHandles[id] ?? '',
-                url: _draft.platformUrls[id] ?? '',
-                id: 'tippy_$id',
-                isConnected: false,
-              );
-            },
-          )
+          .map((String id) {
+            final String handle = (_draft.platformHandles[id] ?? '')
+                .trim()
+                .replaceFirst(RegExp(r'^@+'), '');
+            final String url = (_draft.platformUrls[id] ?? '').trim();
+            if (handle.isEmpty && url.isEmpty) {
+              return null;
+            }
+            return PlatformRules.buildEditablePlatformEntry(
+              type: id,
+              username: handle,
+              url: url,
+              id: 'tippy_$id',
+              isConnected: true,
+            );
+          })
+          .whereType<Map<String, dynamic>>()
           .toList();
       final String categoryId = _draft.categoryIds.isNotEmpty
           ? _draft.categoryIds.first
@@ -1042,10 +1069,10 @@ class TippyGuidedProfileHostState
         bio: _draft.bio.trim(),
         categoryId: categoryId,
         categoryIds: _draft.categoryIds,
-        platforms: platforms,
+        platforms: platforms.isEmpty ? null : platforms,
         avatarUrl: _draft.avatarUrl,
       );
-      await widget.onAdvanceStage(TippyOnboardingStages.findFriends);
+      await widget.onAdvanceStage(TippyOnboardingStages.notifications);
     } catch (error, stackTrace) {
       debugPrint('Tippy create profile failed: $error');
       debugPrint('$stackTrace');
@@ -1056,6 +1083,35 @@ class TippyGuidedProfileHostState
       if (mounted) {
         setState(() => _saving = false);
       }
+    }
+  }
+
+  Future<void> _provisionVerifiedAccount(firebase_auth.User user) async {
+    final String? idToken = await user.getIdToken(true);
+    if (idToken == null || idToken.isEmpty) {
+      throw StateError('unauthenticated: missing id token');
+    }
+    final Map<String, String> headers = await buildAuthenticatedHttpHeaders(
+      idToken: idToken,
+      extra: const <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    );
+    final http.Response response = await http
+        .post(
+          Uri.parse(siteAccountProvisionUrl()),
+          headers: headers,
+          body: '{}',
+        )
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode == 401) {
+      throw StateError('unauthenticated: session expired');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'ACCOUNT_NOT_PROVISIONED: activation failed (${response.statusCode})',
+      );
     }
   }
 
@@ -1115,6 +1171,11 @@ class TippyGuidedProfileHostState
     }
     final String raw = error.toString();
     final String lower = raw.toLowerCase();
+    if (lower.contains('account_not_provisioned') ||
+        lower.contains('activation failed') ||
+        lower.contains('provision')) {
+      return 'Account activation is still finishing. Wait a moment and try again.';
+    }
     if (lower.contains('email_verification') ||
         lower.contains('verify your email') ||
         (lower.contains('email') && lower.contains('verif'))) {

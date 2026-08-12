@@ -57,6 +57,55 @@ void main() {
     });
   });
 
+  group('AcademySiteCatalogService.mergePaths', () {
+    final AcademySiteCatalogService service = AcademySiteCatalogService();
+
+    test('firestore paths win over bundled duplicates', () {
+      const AcademyPath firestore = AcademyPath(
+        id: 'beginner',
+        title: 'Firestore Beginner',
+        description: 'from firestore',
+        guideIds: <String>['obs-setup'],
+        lessonIds: <String>['obs-setup__web'],
+        sortOrder: 10,
+      );
+      const AcademyPath bundled = AcademyPath(
+        id: 'beginner',
+        title: 'Bundled Beginner',
+        description: 'from bundle',
+        guideIds: <String>['new-to-streaming'],
+        lessonIds: <String>['new-to-streaming__web'],
+        sortOrder: 10,
+      );
+      final List<AcademyPath> actual = service.mergePaths(
+        firestorePaths: const <AcademyPath>[firestore],
+        bundledPaths: const <AcademyPath>[bundled],
+      );
+      expect(actual, hasLength(1));
+      expect(actual.single.title, 'Firestore Beginner');
+      expect(actual.single.guideIds, <String>['obs-setup']);
+    });
+
+    test('bundled fills when firestore is empty', () {
+      const AcademyPath bundled = AcademyPath(
+        id: 'beginner',
+        title: 'Beginner Creator Path',
+        description: 'from bundle',
+        guideIds: <String>['obs-setup'],
+        lessonIds: <String>['obs-setup__web'],
+        sortOrder: 10,
+      );
+      final List<AcademyPath> actual = service.mergePaths(
+        firestorePaths: const <AcademyPath>[],
+        bundledPaths: const <AcademyPath>[bundled],
+      );
+      expect(actual.map((AcademyPath p) => p.id), <String>['beginner']);
+      expect(actual.single.stepCount, 1);
+      expect(actual.single.steps.single.isWebsiteBacked, isTrue);
+      expect(actual.single.steps.single.displayGuideId, 'obs-setup');
+    });
+  });
+
   group('AcademyGuideSummary', () {
     test('isWebsiteBacked when web content has no lessons', () {
       const AcademyGuideSummary guide = AcademyGuideSummary(

@@ -23,6 +23,7 @@ import '../constants/playback_owners.dart';
 import '../core/feature_flags.dart';
 import '../core/theme/st_theme_tokens.dart';
 import 'instant_response_button.dart';
+import 'streamer_card_sections.dart';
 import 'video_player_view_optimized.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
@@ -45,14 +46,14 @@ import '../utils/video_url_resolver.dart';
 // import 'video_thumbnail_view.dart'; // Removed - unused
 
 class STDiscoverTokens {
-  static const double pagePadding = 20.0;
-  static const double sectionGap = 24.0;
-  static const double cardRadius = 24.0;
-  static const double compactCardRadius = 18.0;
+  static const double pagePadding = 16.0;
+  static const double sectionGap = 20.0;
+  static const double cardRadius = 16.0;
+  static const double compactCardRadius = 16.0;
   static const double creatorCardHeight = 178.0;
   static const double categoryCardHeight = 82.0;
-  static const double heroHeight = 164.0;
-  static const double searchHeight = 56.0;
+  static const double heroHeight = 148.0;
+  static const double searchHeight = 48.0;
 }
 
 class _DiscoverPageStyle {
@@ -120,24 +121,24 @@ class _DiscoverPageStyle {
     }
     return _DiscoverPageStyle(
       isLight: false,
-      scaffold: t.scaffoldBackgroundColor,
+      scaffold: StreamerCardBackStyle.background,
       appBar: Colors.transparent,
-      onAppBar: c.onSurface,
-      refreshColor: c.primary,
-      refreshBackground: t.scaffoldBackgroundColor,
-      heroGradient: <Color>[
-        StThemeColors.brandPurple,
-        StThemeColors.brandBlue,
+      onAppBar: Colors.white,
+      refreshColor: StreamerCardBackStyle.lavender,
+      refreshBackground: StreamerCardBackStyle.card,
+      heroGradient: const <Color>[
+        Color(0xFF2A1F4D),
+        Color(0xFF161320),
       ],
-      heroBorder: c.outline.withValues(alpha: 0.28),
-      searchFill: c.surfaceContainerHigh.withValues(alpha: 0.88),
-      searchBorder: c.outline.withValues(alpha: 0.22),
-      searchPlaceholder: c.onSurfaceVariant,
-      searchChevron: c.onSurface.withValues(alpha: 0.4),
-      cardFill: c.surfaceContainerHigh.withValues(alpha: 0.72),
-      cardBorder: c.outline.withValues(alpha: 0.2),
-      onCard: c.onSurface,
-      muted: c.onSurfaceVariant,
+      heroBorder: StreamerCardBackStyle.accent.withValues(alpha: 0.3),
+      searchFill: StreamerCardBackStyle.card,
+      searchBorder: Colors.white.withValues(alpha: 0.08),
+      searchPlaceholder: StreamerCardBackStyle.muted,
+      searchChevron: StreamerCardBackStyle.muted,
+      cardFill: StreamerCardBackStyle.card,
+      cardBorder: Colors.white.withValues(alpha: 0.08),
+      onCard: StreamerCardBackStyle.softText,
+      muted: StreamerCardBackStyle.muted,
     );
   }
 }
@@ -736,9 +737,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
       onNavigateToTab: (String tabName) {
         HapticFeedback.lightImpact();
       },
-      onShare: (String userId) {
-        HapticFeedback.lightImpact();
-      },
+      // null → StreamerCardView defaults to viewed-creator share sheet
+      onShare: null,
     );
   }
 
@@ -1230,48 +1230,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
     });
 
     final discoverState = ref.watch(discoverProvider);
-    final ThemeData theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
     final _DiscoverPageStyle s = _DiscoverPageStyle.of(context);
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? <Color>[
-                    const Color(0xFF121A35),
-                    StThemeColors.darkBackground,
-                  ]
-                : <Color>[
-                    Colors.white,
-                    StThemeColors.lightBackground,
-                  ],
-          ),
-        ),
+      body: ColoredBox(
+        color: s.scaffold,
         child: Stack(
           children: [
-            Positioned(
-              top: -80,
-              right: -60,
-              child: IgnorePointer(
-                child: Container(
-                  width: 220,
-                  height: 220,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: <Color>[
-                        StThemeColors.brandPurple.withValues(alpha: 0.22),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
             SafeArea(
               bottom: false,
               child: RefreshIndicator(
@@ -1285,7 +1250,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                   ),
                   slivers: [
                     SliverAppBar(
-                      expandedHeight: 108,
+                      expandedHeight: 88,
                       pinned: false,
                       floating: false,
                       snap: false,
@@ -1298,7 +1263,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                           STDiscoverTokens.pagePadding,
                           8,
                           STDiscoverTokens.pagePadding,
-                          12,
+                          8,
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -1308,6 +1273,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                                 icon: Icon(
                                   Icons.arrow_back,
                                   color: s.onAppBar,
+                                  size: 22,
                                 ),
                                 onPressed: () => Navigator.of(context).pop(),
                                 hapticType: HapticFeedbackType.lightImpact,
@@ -1331,24 +1297,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: s.onAppBar,
-                                          fontSize: 30,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: -0.6,
-                                          height: 1.05,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.1,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 2),
                                       Text(
                                         'Find creators, clips, and growth tools',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          color: s.onAppBar.withValues(
-                                            alpha: 0.72,
-                                          ),
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          height: 1.05,
+                                          color: s.muted,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w400,
+                                          height: 1.1,
                                         ),
                                       ),
                                     ],
@@ -1643,8 +1606,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
               children: <Widget>[
                 const Icon(
                   Icons.search_rounded,
-                  color: StThemeColors.brandBlue,
-                  size: 22,
+                  color: StreamerCardBackStyle.lavender,
+                  size: 20,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1654,15 +1617,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: s.searchPlaceholder,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),
                 Icon(
                   Icons.north_east_rounded,
                   color: s.searchChevron,
-                  size: 18,
+                  size: 16,
                 ),
               ],
             ),
@@ -1686,34 +1649,29 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
         color: Colors.transparent,
         child: InkWell(
           onTap: () => AppNavigator.openAcademy(context),
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(STDiscoverTokens.cardRadius),
           child: Ink(
             height: STDiscoverTokens.heroHeight,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: s.heroGradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
-              borderRadius: BorderRadius.circular(26),
+              borderRadius: BorderRadius.circular(STDiscoverTokens.cardRadius),
               border: Border.all(color: s.heroBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: StThemeColors.brandPurple.withValues(alpha: 0.24),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
-                ),
-              ],
             ),
             child: Stack(
               children: [
                 Positioned(
-                  right: -24,
-                  top: -30,
+                  right: -18,
+                  top: -24,
                   child: Icon(
                     Icons.school_rounded,
-                    size: 150,
-                    color: Colors.white.withValues(alpha: 0.13),
+                    size: 120,
+                    color: StreamerCardBackStyle.lavender.withValues(
+                      alpha: 0.14,
+                    ),
                   ),
                 ),
                 Padding(
@@ -1736,9 +1694,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                         child: const Text(
                           'Streamer Academy',
                           style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
+                            color: StreamerCardBackStyle.lavender,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
@@ -1750,10 +1708,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 18,
-                          height: 1.1,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.3,
+                          fontSize: 15,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1764,10 +1721,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                               status.headline,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.88),
+                              style: const TextStyle(
+                                color: StreamerCardBackStyle.muted,
                                 fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w400,
                               ),
                             ),
                           ),
@@ -1778,8 +1735,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                               vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.16),
+                              color: StreamerCardBackStyle.accent.withValues(
+                                alpha: 0.22,
+                              ),
                               borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: StreamerCardBackStyle.accent.withValues(
+                                  alpha: 0.35,
+                                ),
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1787,15 +1751,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                                 Text(
                                   status.actionLabel,
                                   style: const TextStyle(
-                                    color: Colors.white,
+                                    color: StreamerCardBackStyle.lavender,
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(width: 4),
                                 const Icon(
                                   Icons.arrow_forward_rounded,
-                                  color: Colors.white,
+                                  color: StreamerCardBackStyle.lavender,
                                   size: 14,
                                 ),
                               ],
@@ -1819,19 +1783,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
     _DiscoverPageStyle s, {
     required bool heavy,
   }) {
-    final color = Theme.of(context).colorScheme.shadow;
-    if (s.isLight) {
-      return [
-        BoxShadow(
-          color: color.withValues(alpha: heavy ? 0.10 : 0.07),
-          blurRadius: heavy ? 24 : 16,
-          offset: Offset(0, heavy ? 14 : 8),
-        ),
-      ];
+    if (!s.isLight) {
+      return const <BoxShadow>[];
     }
-    return [
+    final Color color = Theme.of(context).colorScheme.shadow;
+    return <BoxShadow>[
       BoxShadow(
-        color: Colors.black.withValues(alpha: heavy ? 0.28 : 0.18),
+        color: color.withValues(alpha: heavy ? 0.10 : 0.07),
         blurRadius: heavy ? 24 : 16,
         offset: Offset(0, heavy ? 14 : 8),
       ),
@@ -1884,7 +1842,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             color: isActive
-                ? StThemeColors.brandPurple
+                ? StreamerCardBackStyle.accent
                 : _DiscoverPageStyle.of(context).muted.withValues(alpha: 0.28),
           ),
         );
@@ -1949,9 +1907,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
                 title,
                 style: TextStyle(
                   color: s.onCard,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -1959,15 +1916,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
               TextButton(
                 onPressed: onAction,
                 style: TextButton.styleFrom(
-                  foregroundColor: StThemeColors.brandPurple,
+                  foregroundColor: StreamerCardBackStyle.lavender,
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
                 child: Text(
                   actionLabel,
                   style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -1978,8 +1935,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
           subtitle,
           style: TextStyle(
             color: s.muted,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
             height: 1.3,
           ),
         ),

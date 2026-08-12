@@ -191,6 +191,21 @@ class TippyChatService {
       stopwatch.elapsed,
       statusCode: response.statusCode,
     );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final Map<String, dynamic>? errBody = _tryDecodeMap(response.body);
+      final String? errMsg = _readString(errBody?['error']);
+      final String? errCode = _readString(errBody?['code']);
+      final String? errDetail = _readString(errBody?['detail']);
+      final String? errName = _readString(errBody?['errorName']);
+      final String? requestId = _readString(errBody?['requestId']);
+      secureLog(
+        'frontend_send_persisted_failed status=${response.statusCode} '
+        'code=${errCode ?? 'none'} error=${errMsg ?? 'none'} '
+        'detail=${errDetail ?? 'none'} errorName=${errName ?? 'none'} '
+        'requestId=${requestId ?? 'none'}',
+        name: 'TippyLatency',
+      );
+    }
     final TippyChatResult result = _parseSiteChatResponse(response);
     _creditsCache = _creditsCache?.copyWith(
       creditsRemaining: result.creditsRemaining,
@@ -292,12 +307,16 @@ class TippyChatService {
     final bool failed = raw['success'] == false ||
         response.statusCode < 200 ||
         response.statusCode >= 300;
+    final String requestId = _readString(raw['requestId']) ??
+        _readString(data['requestId']) ??
+        '';
     if (failed) {
       if (response.statusCode == 401) {
         throw TippyAuthException(
           errorMessage ?? 'Authentication required.',
           code: errorCode ?? 'AUTH_REQUIRED',
           status: response.statusCode,
+          requestId: requestId,
         );
       }
       if (response.statusCode == 402 || errorCode == 'INSUFFICIENT_CREDITS') {
@@ -305,12 +324,16 @@ class TippyChatService {
           errorMessage ?? "You've used your Tippy credits.",
           code: errorCode ?? 'INSUFFICIENT_CREDITS',
           status: 402,
+          requestId: requestId,
         );
       }
+      final String baseMessage =
+          errorMessage ?? 'Tippy request failed (${response.statusCode}).';
       throw TippyChatException(
-        errorMessage ?? 'Tippy request failed (${response.statusCode}).',
+        requestId.isEmpty ? baseMessage : '$baseMessage (ref: $requestId)',
         code: errorCode ?? 'INTERNAL_ERROR',
         status: response.statusCode,
+        requestId: requestId,
       );
     }
     final String? assistantText = _readString(

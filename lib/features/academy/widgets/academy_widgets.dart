@@ -14,6 +14,7 @@ class AcademyGradientHeader extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
+    this.icon = Icons.school_rounded,
     this.level,
     this.xpLabel,
     this.streakLabel,
@@ -23,6 +24,7 @@ class AcademyGradientHeader extends StatelessWidget {
 
   final String title;
   final String subtitle;
+  final IconData icon;
   final int? level;
   final String? xpLabel;
   final String? streakLabel;
@@ -71,8 +73,8 @@ class AcademyGradientHeader extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.22),
                   ),
                 ),
-                child: const Icon(
-                  Icons.school_rounded,
+                child: Icon(
+                  icon,
                   color: Colors.white,
                 ),
               ),
@@ -395,6 +397,7 @@ class AcademyPathCard extends StatelessWidget {
     required this.totalLessons,
     required this.onTap,
     this.isLocked = false,
+    this.unlockLevel,
   });
 
   final String title;
@@ -403,6 +406,7 @@ class AcademyPathCard extends StatelessWidget {
   final int totalLessons;
   final VoidCallback onTap;
   final bool isLocked;
+  final int? unlockLevel;
 
   @override
   Widget build(BuildContext context) {
@@ -410,11 +414,13 @@ class AcademyPathCard extends StatelessWidget {
     final double progress = totalLessons <= 0
         ? 0
         : (completedLessons / totalLessons).clamp(0, 1);
+    final String stepNoun = totalLessons == 1 ? 'guide' : 'guides';
     return Semantics(
       button: true,
       label:
-          '$title. $completedLessons of $totalLessons lessons completed. '
-          '${(progress * 100).round()} percent complete.',
+          '$title. $completedLessons of $totalLessons $stepNoun completed. '
+          '${(progress * 100).round()} percent complete.'
+          '${isLocked ? ' Locked.' : ''}',
       child: Material(
         color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(AcademyTokens.cardRadius),
@@ -432,11 +438,22 @@ class AcademyPathCard extends StatelessWidget {
               children: <Widget>[
                 Row(
                   children: <Widget>[
-                    Icon(
-                      Icons.route_rounded,
-                      color: StThemeColors.brandPurple,
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: shell.heroGradient,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.route_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         title,
@@ -448,10 +465,16 @@ class AcademyPathCard extends StatelessWidget {
                       ),
                     ),
                     if (isLocked)
-                      Icon(Icons.lock_rounded, color: shell.muted, size: 18),
+                      Icon(Icons.lock_rounded, color: shell.muted, size: 18)
+                    else
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: shell.muted,
+                        size: 22,
+                      ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Text(
                   description,
                   maxLines: 2,
@@ -463,16 +486,172 @@ class AcademyPathCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  '$completedLessons of $totalLessons lessons complete',
-                  style: TextStyle(
-                    color: shell.mutedStrong,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  children: <Widget>[
+                    Text(
+                      '$completedLessons of $totalLessons $stepNoun',
+                      style: TextStyle(
+                        color: shell.mutedStrong,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (isLocked && unlockLevel != null) ...<Widget>[
+                      const Spacer(),
+                      Text(
+                        'Unlocks at Level $unlockLevel',
+                        style: TextStyle(
+                          color: shell.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 8),
                 AcademyAnimatedProgressBar(value: progress),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AcademyPathStepCard extends StatelessWidget {
+  const AcademyPathStepCard({
+    super.key,
+    required this.stepNumber,
+    required this.title,
+    required this.subtitle,
+    required this.isCompleted,
+    required this.isWebsiteBacked,
+    required this.onTap,
+    this.difficulty,
+    this.estimatedMinutes,
+  });
+
+  final int stepNumber;
+  final String title;
+  final String subtitle;
+  final bool isCompleted;
+  final bool isWebsiteBacked;
+  final VoidCallback onTap;
+  final String? difficulty;
+  final int? estimatedMinutes;
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Semantics(
+      button: true,
+      label:
+          'Step $stepNumber. $title. '
+          '${isCompleted ? 'Completed.' : subtitle}',
+      child: Material(
+        color: shell.surfaceCard,
+        borderRadius: BorderRadius.circular(AcademyTokens.cardRadius),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AcademyTokens.cardRadius),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AcademyTokens.cardRadius),
+              border: Border.all(
+                color: isCompleted
+                    ? StThemeColors.brandPurple.withValues(alpha: 0.45)
+                    : shell.surfaceCardBorder,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: isCompleted
+                        ? LinearGradient(colors: shell.heroGradient)
+                        : null,
+                    color: isCompleted
+                        ? null
+                        : StThemeColors.brandPurple.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: isCompleted
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        )
+                      : Text(
+                          '$stepNumber',
+                          style: TextStyle(
+                            color: StThemeColors.brandPurple,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: shell.onChrome,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: shell.muted,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: <Widget>[
+                          AcademyMetaChip(
+                            label: isCompleted
+                                ? 'Completed'
+                                : (isWebsiteBacked ? 'Guide' : 'Lesson'),
+                          ),
+                          if (difficulty != null && difficulty!.isNotEmpty)
+                            AcademyMetaChip(label: difficulty!),
+                          if (estimatedMinutes != null &&
+                              estimatedMinutes! > 0)
+                            AcademyMetaChip(label: '${estimatedMinutes}m'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    color: shell.muted,
+                    size: 22,
+                  ),
+                ),
               ],
             ),
           ),
@@ -576,9 +755,9 @@ class AcademyGuideCard extends StatelessWidget {
                     const SizedBox(height: 10),
                     Row(
                       children: <Widget>[
-                        _MetaChip(label: difficulty),
+                        AcademyMetaChip(label: difficulty),
                         const SizedBox(width: 6),
-                        _MetaChip(label: '${estimatedMinutes}m'),
+                        AcademyMetaChip(label: '${estimatedMinutes}m'),
                       ],
                     ),
                     if (progressPercent != null) ...<Widget>[
@@ -621,8 +800,8 @@ class _GuideImageFallback extends StatelessWidget {
   }
 }
 
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.label});
+class AcademyMetaChip extends StatelessWidget {
+  const AcademyMetaChip({super.key, required this.label});
 
   final String label;
 
@@ -643,6 +822,108 @@ class _MetaChip extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+class AcademyShellActionCard extends StatelessWidget {
+  const AcademyShellActionCard({
+    super.key,
+    required this.title,
+    required this.body,
+    required this.actionLabel,
+    required this.onPressed,
+    this.icon = Icons.menu_book_rounded,
+    this.isPrimary = true,
+  });
+
+  final String title;
+  final String body;
+  final String actionLabel;
+  final VoidCallback onPressed;
+  final IconData icon;
+  final bool isPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: shell.surfaceCard,
+        borderRadius: BorderRadius.circular(AcademyTokens.cardRadius),
+        border: Border.all(color: shell.surfaceCardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: shell.heroGradient),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: shell.onChrome,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            body,
+            style: TextStyle(
+              color: shell.muted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: isPrimary
+                ? FilledButton.icon(
+                    onPressed: onPressed,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: StThemeColors.brandPurple,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: Icon(icon, size: 18),
+                    label: Text(actionLabel),
+                  )
+                : OutlinedButton.icon(
+                    onPressed: onPressed,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: shell.onChrome,
+                      side: BorderSide(color: shell.surfaceCardBorder),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: Icon(icon, size: 18),
+                    label: Text(actionLabel),
+                  ),
+          ),
+        ],
       ),
     );
   }

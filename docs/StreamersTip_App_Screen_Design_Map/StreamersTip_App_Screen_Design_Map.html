@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>StreamersTip App Screen Design Map</title>
+<style>
+  @page { size: Letter; margin: 0.6in; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 32px; color: #111; background: #fff; line-height: 1.4;
+  }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  h2 { font-size: 20px; margin: 0 0 6px; page-break-after: avoid; }
+  h3 { font-size: 13px; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; color: #444; }
+  .subtitle { color: #555; margin-bottom: 20px; }
+  .overview {
+    white-space: pre-wrap; background: #f5f5f7; border: 1px solid #e5e5ea;
+    border-radius: 12px; padding: 16px; font-size: 13px; margin-bottom: 28px;
+  }
+  .toc { margin-bottom: 32px; font-size: 14px; }
+  .toc li { margin: 4px 0; }
+  .screen {
+    display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px;
+    align-items: start; padding: 24px 0; border-top: 1px solid #ddd;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .screen img {
+    width: 100%; max-width: 280px; justify-self: end;
+    border-radius: 18px; border: 1px solid #ccc; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  }
+  ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  li { margin: 4px 0; }
+  .meta { color: #666; font-size: 13px; margin: 0 0 8px; }
+  code { background: #f0f0f2; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  @media print {
+    body { padding: 0; }
+    .screen { page-break-before: always; border-top: none; padding-top: 0; }
+    .screen:first-of-type { page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+  <h1>StreamersTip App Screen Design Map</h1>
+  <p class="subtitle">Shareable design packet for ChatGPT / Claude · 12 device screenshots</p>
+  <div class="overview">StreamersTip mobile app — design review packet
+
+Routing: named routes via AppRoutes.
+Main shell: 5-tab IndexedStack — Home | Network | Create(+) | Inbox | Profile
+Floating liquid-glass bottom dock on main tabs.
+Immersive screens (chat, publish, academy, edit/share) hide the dock.
+Brand: dark navy + purple accent + purple→blue gradients.
+Patterns: full-bleed video feed, flip profile/streamer card, Tippy AI, Academy gamification.
+
+12 live screenshots included.
+Not yet photographed: Auth, Tippy onboarding, Home feed, Camera, Discover, Player, Menu, Settings, Tippy chat, Upgrade, Manage Posts, Planner, Bookmarks, Admin.</div>
+  <ol class="toc">
+    <li><strong>Streamer Academy (Home)</strong> — Academy · <code>/academy</code></li><li><strong>Academy Category — Beginner</strong> — Academy · <code>/academy/category</code></li><li><strong>Activity</strong> — Content · <code>/activity</code></li><li><strong>Your Network</strong> — Main Tabs · <code>/network</code></li><li><strong>Messages (Inbox)</strong> — Main Tabs · <code>tab Inbox</code></li><li><strong>Chat Thread</strong> — Content · <code>/chat</code></li><li><strong>New Post (Publish)</strong> — Content · <code>/camera/publish</code></li><li><strong>Edit Profile</strong> — Profile · <code>/edit_profile</code></li><li><strong>Share Profile</strong> — Profile · <code>/share_profile</code></li><li><strong>Profile Details (Back)</strong> — Profile · <code>Profile flip</code></li><li><strong>Creator Score</strong> — Profile · <code>overlay on Profile</code></li><li><strong>Streamer Details</strong> — Profile · <code>/streamer_card</code></li>
+  </ol>
+  
+<section class="screen">
+  <div class="meta-block">
+    <h2>Streamer Academy (Home)</h2>
+    <p class="meta">Academy · <code>/academy</code></p>
+    <p>Learning hub for creator skills with gamification.</p>
+    <h3>UI / features</h3>
+    <ul><li>App bar: back, title, bookmark, insights</li><li>Hero: Level / XP / streak / weekly goal + progress</li><li>Search guides</li><li>Learning Paths</li><li>Daily & Weekly Quests with XP</li></ul>
+  </div>
+  <img src="sitemap_screenshots/academy.png" alt="Streamer Academy (Home)"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Academy Category — Beginner</h2>
+    <p class="meta">Academy · <code>/academy/category</code></p>
+    <p>Category directory of Streamer Academy guides.</p>
+    <h3>UI / features</h3>
+    <ul><li>Academy Category title</li><li>Beginner header + copy</li><li>Guide cards with book thumb, labels, duration pills</li></ul>
+  </div>
+  <img src="sitemap_screenshots/academy-category.png" alt="Academy Category — Beginner"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Activity</h2>
+    <p class="meta">Content · <code>/activity</code></p>
+    <p>Creator pulse / notifications feed.</p>
+    <h3>UI / features</h3>
+    <ul><li>Your creator pulse subtitle</li><li>Filter pills (All active)</li><li>Date-grouped planner + social cards</li><li>Follow CTA</li></ul>
+  </div>
+  <img src="sitemap_screenshots/activity.png" alt="Activity"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Your Network</h2>
+    <p class="meta">Main Tabs · <code>/network</code></p>
+    <p>Manage creator circle: connections, followers, following.</p>
+    <h3>UI / features</h3>
+    <ul><li>Header + search/filter/refresh</li><li>Status chips</li><li>Connections/Followers/Following cards</li><li>Connection list + message action</li><li>Floating glass dock</li></ul>
+  </div>
+  <img src="sitemap_screenshots/network.png" alt="Your Network"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Messages (Inbox)</h2>
+    <p class="meta">Main Tabs · <code>tab Inbox</code></p>
+    <p>DM conversation list.</p>
+    <h3>UI / features</h3>
+    <ul><li>Messages + New</li><li>Search</li><li>Chat rows</li><li>Dock with Inbox active</li></ul>
+  </div>
+  <img src="sitemap_screenshots/inbox.png" alt="Messages (Inbox)"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Chat Thread</h2>
+    <p class="meta">Content · <code>/chat</code></p>
+    <p>1:1 messaging thread.</p>
+    <h3>UI / features</h3>
+    <ul><li>Header with OFFLINE status</li><li>Gradient outgoing bubbles</li><li>GIF + reactions</li><li>Composer</li></ul>
+  </div>
+  <img src="sitemap_screenshots/chat.png" alt="Chat Thread"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>New Post (Publish)</h2>
+    <p class="meta">Content · <code>/camera/publish</code></p>
+    <p>Compose and publish a video post.</p>
+    <h3>UI / features</h3>
+    <ul><li>Preview + Ready to post</li><li>Letterbox warning</li><li>Caption + Tippy improve/hashtags</li><li>Quick hashtags</li><li>Publish Now CTA</li></ul>
+  </div>
+  <img src="sitemap_screenshots/publish.png" alt="New Post (Publish)"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Edit Profile</h2>
+    <p class="meta">Profile · <code>/edit_profile</code></p>
+    <p>Edit identity fields and Streamer Card preferences.</p>
+    <h3>UI / features</h3>
+    <ul><li>Admin badge</li><li>Avatar edit</li><li>About rows</li><li>Show Favorites toggle</li></ul>
+  </div>
+  <img src="sitemap_screenshots/edit-profile.png" alt="Edit Profile"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Share Profile</h2>
+    <p class="meta">Profile · <code>/share_profile</code></p>
+    <p>Share profile via QR or link.</p>
+    <h3>UI / features</h3>
+    <ul><li>QR card</li><li>Copy link</li><li>Share link gradient CTA</li></ul>
+  </div>
+  <img src="sitemap_screenshots/share-profile.png" alt="Share Profile"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Profile Details (Back)</h2>
+    <p class="meta">Profile · <code>Profile flip</code></p>
+    <p>Profile flip-back: bio and platforms.</p>
+    <h3>UI / features</h3>
+    <ul><li>Score badge</li><li>Hashtag pills</li><li>Bio accordion</li><li>Platforms list</li><li>Dock</li></ul>
+  </div>
+  <img src="sitemap_screenshots/profile-back.png" alt="Profile Details (Back)"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Creator Score</h2>
+    <p class="meta">Profile · <code>overlay on Profile</code></p>
+    <p>Creator health score breakdown.</p>
+    <h3>UI / features</h3>
+    <ul><li>36/100 Growing Creator Level 3</li><li>Consistency/Content/Networking/Engagement bars</li><li>How to improve checklist</li></ul>
+  </div>
+  <img src="sitemap_screenshots/creator-score.png" alt="Creator Score"/>
+</section>
+
+<section class="screen">
+  <div class="meta-block">
+    <h2>Streamer Details</h2>
+    <p class="meta">Profile · <code>/streamer_card</code></p>
+    <p>Streamer card details with score + bio + platforms.</p>
+    <h3>UI / features</h3>
+    <ul><li>Score breakdown</li><li>Bio</li><li>Platforms</li></ul>
+  </div>
+  <img src="sitemap_screenshots/streamer-details.png" alt="Streamer Details"/>
+</section>
+
+</body>
+</html>

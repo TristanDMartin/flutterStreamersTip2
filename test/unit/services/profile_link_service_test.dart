@@ -10,14 +10,14 @@ void main() {
         username: 'coolcreator',
         userId: uid,
       );
-      expect(url, contains('/user/coolcreator'));
+      expect(url, contains('/streamer/coolcreator'));
       expect(url, isNot(contains(uid)));
     });
 
-    test('falls back to profile path when only uid is known', () {
+    test('falls back to streamer path when only uid is known', () {
       const String uid = 'abcdefghijklmnopqrstuvwxyz12';
       final String url = ProfileLinkService.publicProfileUrl(userId: uid);
-      expect(url, contains('/profile/'));
+      expect(url, contains('/streamer/'));
       expect(url, contains(uid));
     });
 
@@ -28,7 +28,7 @@ void main() {
         SensitiveDataRedactor.looksLikeFirebaseUid(uid),
         isTrue,
       );
-      expect(url, contains('/profile/'));
+      expect(url, contains('/streamer/'));
     });
   });
 }
