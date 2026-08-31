@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../components/onboarding/account_enforcement.dart';
 import '../services/robust_auth_service.dart';
 
-class BannedAccountView extends ConsumerWidget {
-  const BannedAccountView({super.key});
+class AccountUnavailableView extends ConsumerWidget {
+  const AccountUnavailableView({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -17,32 +16,25 @@ class BannedAccountView extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              const Icon(Icons.block, size: 64, color: Colors.redAccent),
+              Icon(
+                Icons.lock_outline,
+                size: 64,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(height: 16),
               Text(
-                kBannedAccountTitle,
+                kAccountUnavailableTitle,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
               ),
               const SizedBox(height: 12),
               Text(
-                kBannedAccountBody,
+                kAccountUnavailableBody,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               const Spacer(),
               FilledButton(
-                onPressed: () async {
-                  final Uri uri = Uri.parse(kHelpAppealUrl);
-                  await launchUrl(
-                    uri,
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-                child: const Text('Get Help / Appeal'),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
                 onPressed: () async {
                   await ref.read(robustAuthServiceProvider).signOut();
                 },

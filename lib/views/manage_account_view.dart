@@ -7,6 +7,7 @@ import '../widgets/two_factor_settings_view.dart';
 import '../widgets/screen_feedback_state.dart';
 import '../services/account_management_service.dart';
 import '../services/account_deletion_service.dart';
+import '../services/account_visibility_service.dart';
 import '../routing/app_routes.dart';
 import '../services/unified_avatar_service.dart' as nav;
 import '../utils/avatar_url_resolver.dart';
@@ -24,6 +25,8 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AccountManagementService _accountManagementService =
       const AccountManagementService();
+  final AccountVisibilityService _accountVisibilityService =
+      AccountVisibilityService();
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
   bool _isAccountActionInFlight = false;
@@ -257,6 +260,83 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
         }
       }
     }
+  }
+
+  bool get _isDeactivated =>
+      (_userData?['accountStatus'] as String?) == 'deactivated';
+
+  Future<void> _deactivateAccount() async {
+    if (_isAccountActionInFlight) {
+      return;
+    }
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        final TextTheme tt = Theme.of(ctx).textTheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text(
+            'Deactivate Account',
+            style: tt.titleLarge?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Your profile, videos, and public links will be hidden '
+            'immediately. Your data stays until you reactivate or delete. '
+            'This is reversible.',
+            style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Deactivate'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() => _isAccountActionInFlight = true);
+    _clearActionError();
+    final AccountVisibilityResult result =
+        await _accountVisibilityService.deactivateCurrentAccount();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isAccountActionInFlight = false);
+    if (!result.ok) {
+      _setActionError(result.message ?? 'Failed to deactivate account.');
+      return;
+    }
+    await _loadUserData();
+  }
+
+  Future<void> _reactivateAccount() async {
+    if (_isAccountActionInFlight) {
+      return;
+    }
+    setState(() => _isAccountActionInFlight = true);
+    _clearActionError();
+    final AccountVisibilityResult result =
+        await _accountVisibilityService.reactivateCurrentAccount();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isAccountActionInFlight = false);
+    if (!result.ok) {
+      _setActionError(result.message ?? 'Failed to reactivate account.');
+      return;
+    }
+    await _loadUserData();
   }
 
   Future<void> _deleteAccount() async {
@@ -1009,6 +1089,46 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
                   ),
                 ),
                 onTap: _signOut,
+              ),
+              Divider(color: c.outlineVariant, height: 1),
+              ListTile(
+                dense: _isIos,
+                visualDensity:
+                    _isIos ? VisualDensity.compact : VisualDensity.standard,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: c.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _isDeactivated ? Icons.visibility : Icons.visibility_off,
+                    color: c.onSurface,
+                    size: _isIos ? 18 : 20,
+                  ),
+                ),
+                title: Text(
+                  _isDeactivated ? 'Reactivate Account' : 'Deactivate Account',
+                  style: TextStyle(
+                    color: c.onSurface,
+                    fontWeight: FontWeight.w600,
+                    fontSize: _listTitleSize,
+                  ),
+                ),
+                subtitle: Text(
+                  _isDeactivated
+                      ? 'Make your profile and videos public again'
+                      : 'Hide your profile and videos. You can reactivate anytime.',
+                  style: TextStyle(
+                    color: c.onSurfaceVariant,
+                    fontSize: _listSubtitleSize,
+                  ),
+                ),
+                onTap: _isAccountActionInFlight
+                    ? null
+                    : (_isDeactivated
+                        ? _reactivateAccount
+                        : _deactivateAccount),
               ),
               Divider(color: c.outlineVariant, height: 1),
               ListTile(

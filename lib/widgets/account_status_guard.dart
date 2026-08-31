@@ -3,10 +3,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../components/onboarding/account_enforcement.dart';
 import '../services/robust_auth_service.dart';
+import '../views/account_unavailable_view.dart';
 import '../views/banned_account_view.dart';
+import '../views/deactivated_account_view.dart';
 
-/// Shows [BannedAccountView] when `users/{uid}.accountStatus == banned`.
+/// Routes signed-in users after users/{uid}.accountStatus resolves.
+/// Does not flash Home while the first snapshot is in flight.
 class AccountStatusGuard extends ConsumerWidget {
   const AccountStatusGuard({super.key, required this.child});
 
@@ -27,12 +31,25 @@ class AccountStatusGuard extends ConsumerWidget {
       stream:
           FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting &&
+            !snap.hasData) {
+          return const Scaffold(body: SizedBox.expand());
+        }
         if (snap.hasError || !snap.hasData || !snap.data!.exists) {
           return child;
         }
-        final String? st = snap.data!.data()?['accountStatus'] as String?;
-        if (st == 'banned') {
+        final Object? raw = snap.data!.data()?['accountStatus'];
+        final AccountEnforcementResult enforcement =
+            resolveAccountEnforcement(raw);
+        if (enforcement.destination == 'banned') {
           return const BannedAccountView();
+        }
+        if (enforcement.destination == 'deactivated') {
+          return const DeactivatedAccountView();
+        }
+        if (enforcement.destination == 'unavailable' ||
+            enforcement.destination == 'deleted') {
+          return const AccountUnavailableView();
         }
         return child;
       },

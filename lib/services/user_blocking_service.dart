@@ -3,6 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'follows_service.dart';
 
+bool isBlockedByEitherStore({
+  required bool inUserBlocks,
+  required bool inBlockedUsers,
+}) {
+  return inUserBlocks || inBlockedUsers;
+}
+
 class BlockedUserRecord {
   const BlockedUserRecord({
     required this.userId,
@@ -19,9 +26,22 @@ class UserBlockingService {
   factory UserBlockingService() => _instance;
   UserBlockingService._internal();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  static FirebaseFirestore? _firestoreOverride;
+  static FirebaseAuth? _authOverride;
+
+  FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
+  FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
   final ValueNotifier<int> _blockListRevision = ValueNotifier<int>(0);
+
+  @visibleForTesting
+  static void debugSetOverrides({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+  }) {
+    _firestoreOverride = firestore;
+    _authOverride = auth;
+  }
 
   ValueListenable<int> get blockListRevision => _blockListRevision;
 
@@ -44,15 +64,22 @@ class UserBlockingService {
         throw Exception('Cannot block yourself');
       }
 
-      // Add to blocked users collection
+      // Relationship only. Never writes accountStatus. No notify to B.
       await _firestore.collection('user_blocks').add({
         'blockerId': currentUserId,
         'blockedUserId': targetUserId,
         'reason': reason ?? 'User blocked',
         'createdAt': FieldValue.serverTimestamp(),
       });
-
-      // Update user's blocked list
+      await _firestore
+          .collection('users')
+          .doc(currentUserId)
+          .collection('blockedUsers')
+          .doc(targetUserId)
+          .set(<String, dynamic>{
+        'blockedUserId': targetUserId,
+        'blockedAt': FieldValue.serverTimestamp(),
+      });
       await _firestore.collection('users').doc(currentUserId).update({
         'blockedUsers': FieldValue.arrayUnion([targetUserId]),
       });
@@ -86,7 +113,14 @@ class UserBlockingService {
         await doc.reference.delete();
       }
 
-      // Update user's blocked list
+      try {
+        await _firestore
+            .collection('users')
+            .doc(currentUserId)
+            .collection('blockedUsers')
+            .doc(targetUserId)
+            .delete();
+      } catch (_) {}
       await _firestore.collection('users').doc(currentUserId).update({
         'blockedUsers': FieldValue.arrayRemove([targetUserId]),
       });
@@ -113,23 +147,56 @@ class UserBlockingService {
         return <BlockedUserRecord>[];
       }
 
-      final QuerySnapshot<Map<String, dynamic>> query = await _firestore
-          .collection('user_blocks')
-          .where('blockerId', isEqualTo: currentUserId)
-          .get();
-
-      return query.docs.map((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+      QuerySnapshot<Map<String, dynamic>>? rootSnap;
+      QuerySnapshot<Map<String, dynamic>>? subSnap;
+      try {
+        rootSnap = await _firestore
+            .collection('user_blocks')
+            .where('blockerId', isEqualTo: currentUserId)
+            .get();
+      } catch (_) {}
+      try {
+        subSnap = await _firestore
+            .collection('users')
+            .doc(currentUserId)
+            .collection('blockedUsers')
+            .get();
+      } catch (_) {}
+      final Map<String, BlockedUserRecord> byId = <String, BlockedUserRecord>{};
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in rootSnap?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
         final Map<String, dynamic> data = doc.data();
-        final Object? createdAt = data['createdAt'];
-        DateTime? blockedAt;
-        if (createdAt is Timestamp) {
-          blockedAt = createdAt.toDate();
+        final Object? rawId = data['blockedUserId'];
+        if (rawId is! String || rawId.isEmpty) {
+          continue;
         }
-        return BlockedUserRecord(
-          userId: data['blockedUserId'] as String,
-          blockedAt: blockedAt,
+        final Object? createdAt = data['createdAt'];
+        byId[rawId] = BlockedUserRecord(
+          userId: rawId,
+          blockedAt: createdAt is Timestamp ? createdAt.toDate() : null,
         );
-      }).toList();
+      }
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in subSnap?.docs ??
+              const <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+        final Map<String, dynamic> data = doc.data();
+        final String userId =
+            (data['blockedUserId'] as String?)?.trim().isNotEmpty == true
+                ? data['blockedUserId'] as String
+                : doc.id;
+        if (userId.isEmpty) {
+          continue;
+        }
+        final Object? blockedAtRaw = data['blockedAt'];
+        final DateTime? blockedAt =
+            blockedAtRaw is Timestamp ? blockedAtRaw.toDate() : null;
+        final BlockedUserRecord? existing = byId[userId];
+        byId[userId] = BlockedUserRecord(
+          userId: userId,
+          blockedAt: blockedAt ?? existing?.blockedAt,
+        );
+      }
+      return byId.values.toList();
     } catch (e) {
       debugPrint('❌ Error getting blocked users: $e');
       return <BlockedUserRecord>[];
@@ -145,27 +212,57 @@ class UserBlockingService {
       return false;
     }
     try {
-      final List<QuerySnapshot<Map<String, dynamic>>> results =
-          await Future.wait(<Future<QuerySnapshot<Map<String, dynamic>>>>[
-        _firestore
-            .collection('user_blocks')
-            .where('blockerId', isEqualTo: userId)
-            .where('blockedUserId', isEqualTo: otherUserId)
-            .limit(1)
-            .get(),
-        _firestore
-            .collection('user_blocks')
-            .where('blockerId', isEqualTo: otherUserId)
-            .where('blockedUserId', isEqualTo: userId)
-            .limit(1)
-            .get(),
-      ]);
-      return results.any(
-        (QuerySnapshot<Map<String, dynamic>> snap) => snap.docs.isNotEmpty,
+      bool inUserBlocks = false;
+      bool inBlockedUsers = false;
+      try {
+        final List<QuerySnapshot<Map<String, dynamic>>> root =
+            await Future.wait(<Future<QuerySnapshot<Map<String, dynamic>>>>[
+          _firestore
+              .collection('user_blocks')
+              .where('blockerId', isEqualTo: userId)
+              .where('blockedUserId', isEqualTo: otherUserId)
+              .limit(1)
+              .get(),
+          _firestore
+              .collection('user_blocks')
+              .where('blockerId', isEqualTo: otherUserId)
+              .where('blockedUserId', isEqualTo: userId)
+              .limit(1)
+              .get(),
+        ]);
+        inUserBlocks = root.any(
+          (QuerySnapshot<Map<String, dynamic>> snap) => snap.docs.isNotEmpty,
+        );
+      } catch (_) {}
+      try {
+        final DocumentSnapshot<Map<String, dynamic>> own = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('blockedUsers')
+            .doc(otherUserId)
+            .get();
+        if (own.exists) {
+          inBlockedUsers = true;
+        }
+      } catch (_) {}
+      try {
+        final DocumentSnapshot<Map<String, dynamic>> theirs = await _firestore
+            .collection('users')
+            .doc(otherUserId)
+            .collection('blockedUsers')
+            .doc(userId)
+            .get();
+        if (theirs.exists) {
+          inBlockedUsers = true;
+        }
+      } catch (_) {}
+      return isBlockedByEitherStore(
+        inUserBlocks: inUserBlocks,
+        inBlockedUsers: inBlockedUsers,
       );
     } catch (e) {
       debugPrint('❌ Error checking block between users: $e');
-      return false;
+      return true;
     }
   }
 
@@ -187,17 +284,34 @@ class UserBlockingService {
       final currentUserId = _auth.currentUser?.uid;
       if (currentUserId == null) return false;
 
-      final query = await _firestore
-          .collection('user_blocks')
-          .where('blockerId', isEqualTo: currentUserId)
-          .where('blockedUserId', isEqualTo: targetUserId)
-          .limit(1)
-          .get();
-
-      return query.docs.isNotEmpty;
+      bool inUserBlocks = false;
+      bool inBlockedUsers = false;
+      try {
+        final QuerySnapshot<Map<String, dynamic>> query = await _firestore
+            .collection('user_blocks')
+            .where('blockerId', isEqualTo: currentUserId)
+            .where('blockedUserId', isEqualTo: targetUserId)
+            .limit(1)
+            .get();
+        inUserBlocks = query.docs.isNotEmpty;
+      } catch (_) {}
+      try {
+        final DocumentSnapshot<Map<String, dynamic>> blockedUserDoc =
+            await _firestore
+                .collection('users')
+                .doc(currentUserId)
+                .collection('blockedUsers')
+                .doc(targetUserId)
+                .get();
+        inBlockedUsers = blockedUserDoc.exists;
+      } catch (_) {}
+      return isBlockedByEitherStore(
+        inUserBlocks: inUserBlocks,
+        inBlockedUsers: inBlockedUsers,
+      );
     } catch (e) {
       debugPrint('❌ Error checking if user is blocked: $e');
-      return false;
+      return true;
     }
   }
 }

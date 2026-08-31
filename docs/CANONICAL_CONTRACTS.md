@@ -91,13 +91,21 @@ Clients must not invent eligibility. Mux/backend sets processing + feed-ready fl
 
 ## 3. Account visibility / deletion
 
-Canonical `users/{uid}.accountStatus`:
+Canonical `users/{uid}.accountStatus` (ONLY these product states):
 
 ```
-active | deactivated | deleting | deleted
+active | deactivated | banned | deleting | deleted
 ```
 
-Moderation statuses (`banned`, `suspended`, `disabled`) are separate and also non-renderable. Do not invent client-only account states. StreamersTip does **not** support orphaned creator videos.
+Do **not** invent `probation`. Do **not** use `blocked` as `accountStatus`.
+
+Legacy admin writes `suspended` and `disabled` are **not** new product states. They are non-renderable. Signed-in enforcement for `banned` and existing `suspended` (and `disabled`) both use the **Account Suspended** screen. Backend may later split permanent vs temporary explicitly.
+
+`blocked` is a **user-to-user relationship** only. It never sets `accountStatus`. Neither account becomes globally unavailable.
+
+Signup / risk restrictions are **pre/during create** only. They never write `accountStatus = blocked` or `probation`. Disposable email is signup-only: an already-`active` account stays `active` (including existing disposable-domain users).
+
+Do not invent client-only account states. StreamersTip does **not** support orphaned creator videos.
 
 ### Deactivate (reversible)
 
@@ -222,7 +230,17 @@ Two independent paths:
 - **Path A — Get Started** opens canonical Tippy onboarding. It does not route to `/checkup`.
 - **Path B — Creator Checkup** is optional acquisition at `/checkup`, then **Build My Growth Plan** hands off into the same onboarding machine.
 
-### Inputs (guest answers only)
+Presentation: conversational acknowledgments after each answer; same 4 DNA fields. Optional public-profile look is Checkup-only and is **not** part of canonical onboarding.
+
+Conversation order: goal → bottleneck → platforms → **optional public profiles** → cadence → optional **one** dynamic follow-up → score preview → 3 findings → plan preview. After platforms, Tippy asks conversationally: “Want me to actually take a look? You've given me enough for an initial read. If you want, share public profiles and I'll see whether what I find matches what you're telling me.” Only selected platforms are shown, each optional. Skip or analyze, then cadence immediately (“Got them. Keep going. I'll look while we talk.”). Analysis runs in the background.
+
+Presentation/reasoning state lives on the guest Checkup session only. It is **not** lifecycle authority and is **not** added to canonical onboarding:
+
+`initialHypothesis`, `currentHypothesis`, `supportingSignals[]`, `contradictingSignals[]`, `openQuestions[]`, `selfReportedSignals[]`, `platformObservations[]`, `analysisStatuses`, `confidence`, `primaryOpportunity`, `recommendedFocus`, `dynamicFollowUpUsed`.
+
+Optional `bottleneckNote` (free text, chip-first) and at most one `followUp` are Checkup presentation only. Persist on close. Do not re-ask transferred DNA.
+
+### Inputs (guest answers)
 
 | Field | Kind | DNA handoff |
 |---|---|---|
@@ -230,12 +248,36 @@ Two independent paths:
 | `cadence` | single-select (`daily` / `few_week` / `weekly` / `few_month` / `whenever` / `not_started`) | `answers.schedule` |
 | `goal` | single-select (same ids as onboarding goals) | `answers.goals = [goal]` |
 | `bottleneck` | single-select (`consistency` / `discoverability` / `platforms` / `content` / `time` / `growth` / `starting`) | `answers.bottleneck` (extra; not re-asked) |
+| `profiles` (optional) | per selected platform: `platform`, `handleOrUrl` / `profileUrl` | never — Checkup public assessment only |
+
+Per-platform analysis (Checkup only):
+
+Guest session `analysisStatus`: `not_provided` \| `pending` \| `analyzed` \| `limited` \| `unavailable`
+
+`apiCheckupAnalyze` / server result per submitted profile persists:
+
+- `platform`, `profileUrl`, `status`, `observedSignals`, `strengths[]`, `weaknesses[]`, `opportunities[]`, `evidence[]`, `confidence`, `analyzedAt`, `analysisVersion`
+- `status`: `analyzed` \| `limited` \| `unavailable` \| `failed`
+- `source`: `youtube` \| `twitch` \| `self_reported_only`
+- `confidence`: `high` \| `medium` \| `low` (only when `analyzed`)
+- `observations`
+
+`handleOrUrl` remains an alias of `profileUrl`. `publicSignals` remains an alias of `observedSignals`.
+
+Map API → guest: `failed` → `limited`; `source` is stored on the guest profile. `analyzed` / `limited` / `unavailable` keep the same `analysisStatus`. Only `analyzed` may carry strengths / weaknesses / opportunities / evidence-based conclusions. `limited` / `failed` never become fake analysis.
+
+Also persist selected platforms, URLs, `analysisStatus`, observations, and the current Checkup step. Reopen must not re-ask provided URLs; welcome-back may mention saved profiles.
+
+Tippy must distinguish “I analyzed this” vs “You told me this.” Never say “I analyzed your YouTube/Twitch/TikTok” unless `analysisStatus === analyzed`. Pending / limited / unavailable / failed stay **Quick Checkup** — “Initial assessment based on: what you told Tippy.” YouTube/Twitch stronger findings only when the function really returned `analyzed`. Connecting YouTube/Twitch later = authorized data. Not duplicates. Do **not** add this URL step to onboarding.
+
+If a platform cannot be fetched with an official API already in this repo (no scrape, no fake data), status is `limited` or `unavailable` — not fake analysis. Analysis runs in parallel and must not block the conversation. If analysis is still pending at results, show Quick Checkup and upgrade in place when at least one profile becomes `analyzed`.
 
 ### Outputs
 
-- `checkupScore` / `scorePreview` + `scoreVersion` (`checkup_score.v1`) — overall + categories `consistency`, `discoverability`, `platformPresence`, `contentReadiness`, `growthOpportunity`, plus a `why`. Source is always `checkup_answers_only`. Never Mux, analytics, or post metrics. UI name: **Creator Score Preview** (Tippy’s initial assessment). Not the live Creator Score.
-- Exactly **3** findings, each `observation → implication → opportunity`, derived from those answers only.
-- `growthPlanPreview` — title, focus, why, first steps. Preview only. Do not create canonical plan docs from checkup.
+- `checkupScore` / `scorePreview` + `scoreVersion` (`checkup_score.v1`) — overall + categories `consistency`, `discoverability`, `platformPresence`, `contentReadiness`, `growthOpportunity`, plus a `why`. Source is `checkup_answers_only` (Quick Checkup — “Initial assessment based on: what you told Tippy”) or `checkup_answers_and_public_signals` when at least one profile is `analyzed` (Profile Checkup — “Initial assessment based on: what you told Tippy + N public profiles analyzed”). Never Mux, private analytics, or post metrics. UI name: **Creator Score Preview** (Tippy’s initial assessment). Not the live Creator Score.
+- Exactly **3** findings, each `observation → implication → opportunity`. Self-reported findings when no public look; evidence-based when public signals are ready.
+- Profile Checkup ( ≥1 `analyzed` ): concise initial results (short conclusion, then score, biggest opportunity, 3 things Tippy noticed, first growth focus) plus progressive **Learn more about my checkup** (overall read, what you told me, what I could see, platform breakdown for submitted platforms, how platforms work together only if 2+ analyzed, why this score, if I were working with you this week, first growth plan). Quick Checkup if nothing analyzed.
+- `growthPlanPreview` — title, focus, why, first steps. Preview only. Do not create canonical plan docs from checkup. Build My Growth Plan still transfers platforms, goal, cadence only. Bottleneck + public observations may be Tippy context, not new lifecycle fields.
 
 ### Persistence / guest isolation
 
@@ -259,6 +301,108 @@ Exact event names (do not spam; once per session id, question events once per qu
 `checkup_viewed`, `checkup_started`, `checkup_question_answered`, `checkup_completed`, `checkup_score_viewed`, `checkup_findings_viewed`, `growth_plan_preview_viewed`, `build_growth_plan_clicked`, `checkup_signup_started`, `checkup_signup_completed`, `checkup_activated`.
 
 Existing activation / `onboarding_completed` events add `source=checkup` when the session started from checkup.
+
+---
+
+## 7. CLOSE / RESUME UX (Checkup + Tippy onboarding)
+
+**X means NOT NOW, not START OVER.**
+
+- Visible Close (X) is always available on Creator Checkup and canonical Tippy onboarding.
+- Close is immediate. It does **not** delete progress, reset answers, restart, advance lifecycle, mark complete, or invent a fake completion.
+- Modal/page close is **not** lifecycle authority. Close must **not** write `activationState` or `accountStatus`.
+- Get Started still opens canonical Tippy onboarding. It does not route to `/checkup`.
+- Do not change onboarding question option text. Do not add Checkup questions to onboarding.
+- There is one activation machine. Checkup is not a second lifecycle.
+
+### Checkup resume
+
+Persist to the existing guest checkup session (`tippy_creator_checkup_v1`). Guest isolation and 24h expiration stay.
+
+- If the guest answered some questions and closed before finishing: reopen restores those answers (including entered profile URLs/handles, bottleneck note, follow-up, and hypothesis state) and resumes at the next unanswered step (conversation order: goal → bottleneck → platforms → optional URLs → cadence → optional follow-up). Do not re-ask profiles already provided.
+- If they already reached results: reopen results. Do not restart questions.
+- Welcome-back (not first-meet) when progress exists: `Welcome back. I saved where we left off.` If profile URLs/handles were entered: `Welcome back. I still have your YouTube, Twitch, and TikTok profiles. Ready to keep going?`
+- Do not say first-meet copy (`Hey! I'm Tippy…` / let's get started) when progress exists.
+
+### Onboarding resume
+
+Close preserves the guest/onboarding session, completed DNA, Checkup-transferred DNA, and saved avatar/username/bio.
+
+- Resume from canonical server state + `tippyStageHint`, never from “closed = done.”
+- If checkup transferred goal/platforms/cadence (`goals` / `platforms` / `schedule`): those stay skipped after close/reopen. Bottleneck stays context and is not re-asked.
+- Direct Get Started uses the same save → close → resume rules.
+- Welcome-back when they have progress: `Welcome back. Ready to keep going?`
+
+### Guest Ask Tippy widget (presentation gate)
+
+Guests can open the same Ask Tippy widget chrome from the header on marketing and app routes (`/`, `/checkup`, `/for-you`, etc.). Chat, send, and Tippy actions stay disabled until they create an account via Get Started. Close/X only hides the panel — it does not reset Creator Checkup or Tippy onboarding. Logged-in Ask Tippy is unchanged (full `toggleTippy`).
+
+---
+
+## 8. Account enforcement (signed-in + signup)
+
+One meaning on website and Flutter. Clients render the same backend decision. They do not reimplement abuse logic.
+
+### Relationship BLOCK (not platform moderation)
+
+Creator A blocks B:
+
+- A manages blocked accounts (`/settings/blocked` on web; Flutter blocked-accounts list) and can unblock.
+- B does **not** get a “this person blocked you” notification.
+- B cannot interact with A per existing block policy (comments, messages, feeds).
+- Writes go to the existing relationship stores (`users/{uid}/blockedUsers/{id}` and `user_blocks`). Never `users/{uid}.accountStatus`.
+- Interaction reads treat the pair as blocked if **either** store has it. New writes dual-write both. One-sided historical rows are reconciled by union backfill.
+
+### Signup restriction (shared backend reason codes)
+
+Decision lives on existing Next APIs / functions: `pending`, `provision`, `beforeUserCreated`, `enforceSignupSecurity`. Flutter consumes those APIs/codes. Do not keep a client-only denylist that can drift.
+
+Canonical `reason` values on the server response (keep legacy `code` for compatibility):
+
+| reason | Typical legacy `code` / signals | User copy |
+|---|---|---|
+| `disposable_email` | `DISPOSABLE_EMAIL` | Temporary email addresses are not allowed. Use a permanent email. |
+| `network_temporarily_restricted` | `SIGNUP_BLOCKED` + IP / network restriction | Account creation is temporarily restricted from this network. Please try again later. |
+| `device_temporarily_restricted` | `SIGNUP_BLOCKED` + device restriction | Account creation is temporarily restricted from this device. Please try again later. |
+| `signup_rate_limited` | `SIGNUP_BLOCKED` + extreme velocity | Too many accounts were created recently. Please try again later. |
+| `risk_review` | `SIGNUP_CHALLENGE_REQUIRED` / other risk | Account creation is temporarily restricted. Please try again later. |
+
+Restrictions expire per existing TTL. Disposable stays rejected until a permanent email is used. Copy is honest restriction language — not “you are banned.”
+
+### Bootstrap routing
+
+Firebase Auth → resolve StreamersTip account → `accountStatus` → destination:
+
+| status | destination |
+|---|---|
+| `active` | normal app |
+| missing/empty on existing non-deleted owner | legacy-active (existing contract) |
+| `deactivated` | Account deactivated screen |
+| `banned` (and legacy `suspended` / `disabled`) | Account Suspended screen |
+| `deleting` | block normal entry (unavailable + sign out) |
+| `deleted` | do not restore; later signup is a new account + full onboarding |
+
+Shell may load. **Protected creator functionality stays gated until enforcement resolves.** Intercept immediately after account-status resolution. Do not flash Home / For You, then swap.
+
+Observe/refresh `accountStatus` while signed in (`active → banned | deactivated | deleting`). Token revoke is not enough.
+
+### Banned — Account Suspended
+
+Full-screen on both clients. Title **Account suspended**. Body exactly:
+
+“Your StreamersTip account has been suspended because it did not meet our Community Guidelines or Terms of Service.”
+
+Actions: **Get Help / Appeal** (`/feedback-help` or `contact@streamerstip.com`) and **Sign Out**.
+
+Must not enter normal app: no Home/For You authenticated actions, Messages, Post, profile edit, dashboard, Tippy creator tools, Planner. Do not leak internal ban/risk reason. Public profile/videos stay hidden (owner-renderable contract).
+
+### Deactivated
+
+Title **Account deactivated**. Account is deactivated. Actions: **Reactivate**, **Settings**, **Sign Out**. Reactivate = same UID, no new account, no onboarding restart. Public content hidden per deactivation policy.
+
+### Deleted
+
+`deleting` then `deleted`. Deleted identity must never reach a “state screen” as if the account still exists. `deleting`: simple unavailable/sign-out gate. `deleted`: do not restore. Do not confuse with deactivation. Username/visibility deletion pipeline stays as specified above.
 
 ---
 
