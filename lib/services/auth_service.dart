@@ -11,6 +11,7 @@ import '../models/user.dart';
 import '../models/user_count_fields.dart';
 import '../models/user_status.dart';
 import 'username_lock_service.dart';
+import '../components/onboarding/account_status_client.dart';
 import '../core/firebase_app_check_startup.dart';
 import 'r2_media_service.dart';
 import '../utils/avatar_url_resolver.dart';
@@ -519,12 +520,18 @@ class AuthenticationService extends ChangeNotifier {
         providerPhotoUrl: user.photoURL,
         existingData: existingSnapshot.data(),
       );
+      final String? existingUsername =
+          (existingSnapshot.data()?['username'] as String?)?.trim();
+      final String? requestedUsername = username?.trim();
       final userData = <String, dynamic>{
         'id': user.uid,
         'uid': user.uid,
         'email': user.email,
-        'displayName': displayName ?? user.displayName ?? 'Unknown User',
-        'username': username ?? _generateUsernameFromEmail(user.email ?? ''),
+        'displayName': displayName ?? user.displayName ?? 'Creator',
+        if (requestedUsername != null && requestedUsername.isNotEmpty)
+          'username': requestedUsername.toLowerCase()
+        else if (existingUsername != null && existingUsername.isNotEmpty)
+          'username': existingUsername,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'lastSignIn': FieldValue.serverTimestamp(),
@@ -537,12 +544,6 @@ class AuthenticationService extends ChangeNotifier {
     } catch (e) {
       // appLog("❌ Error creating/updating user document: $e");
     }
-  }
-
-  // Generate username from email
-  String _generateUsernameFromEmail(String email) {
-    final emailPrefix = email.split('@')[0];
-    return emailPrefix.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
   }
 
   // Change password
@@ -660,22 +661,8 @@ class AuthenticationService extends ChangeNotifier {
       debugPrint('⬆️ Uploading avatar to R2...');
       final downloadUrl = await R2MediaService.instance.uploadAvatar(imageFile);
       debugPrint('✅ Avatar uploaded to R2: $downloadUrl');
-
-      // Update user profile in Firestore (website + legacy readers use photoURL)
-      debugPrint('💾 Updating user profile in Firestore...');
-      final nowTs = FieldValue.serverTimestamp();
-      await _firestore.collection('users').doc(user.uid).update({
-        'avatarURL': downloadUrl,
-        'avatarUrl': downloadUrl,
-        'photoURL': downloadUrl,
-        'avatarUpdatedAt': nowTs,
-        'updatedAt': nowTs,
-      });
-
-      debugPrint('✅ Firestore profile updated successfully');
-
-      // Best-effort mirror for list/discovery surfaces that read publicUsers.
-      await _syncPublicUserAvatar(user.uid, downloadUrl);
+      await saveOwnerAvatarUrl(uid: user.uid, avatarUrl: downloadUrl);
+      debugPrint('✅ Avatar URL saved');
 
       // Firebase Auth photoURL — web clients often read currentUser.photoURL
       try {

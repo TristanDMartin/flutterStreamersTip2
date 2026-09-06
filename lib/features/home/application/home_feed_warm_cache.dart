@@ -1,5 +1,9 @@
 import '../../../models/home_video.dart';
 import '../../../services/algorithm_cache_service.dart';
+import '../../../services/public_profile_firestore.dart';
+import '../../../utils/home_video_playback.dart';
+import '../../../utils/video_document_rules.dart';
+import '../domain/home_feed_processing.dart';
 
 /// Disk/memory warm-cache helpers for the home For You feed.
 class HomeFeedWarmCache {
@@ -20,7 +24,24 @@ class HomeFeedWarmCache {
     if (cachedFeed == null || cachedFeed.videos.isEmpty) {
       return null;
     }
-    return cachedFeed;
+    final List<HomeVideo> playable = _remotePlayableOnly(cachedFeed.videos);
+    final Set<String> ownerIds = playable
+        .map((HomeVideo video) => video.creator.id.trim())
+        .where((String id) => id.isNotEmpty)
+        .toSet();
+    final Set<String> renderableOwnerIds =
+        await PublicProfileFirestore.instance.filterExistingIds(ownerIds);
+    final List<HomeVideo> visible = keepHomeVideosWithRenderableOwners(
+      videos: playable,
+      renderableOwnerIds: renderableOwnerIds,
+    );
+    if (visible.isEmpty) {
+      return null;
+    }
+    return CachedFeedResult(
+      videos: visible,
+      nextCursor: cachedFeed.nextCursor,
+    );
   }
 
   Future<void> saveForYouFeed({
@@ -28,17 +49,37 @@ class HomeFeedWarmCache {
     required List<HomeVideo> videos,
     Map<String, dynamic>? nextCursor,
   }) async {
-    if (videos.isEmpty) {
+    final List<HomeVideo> playable = _remotePlayableOnly(videos);
+    if (playable.isEmpty) {
       return;
     }
     final List<HomeVideo> visibleVideos =
-        videos.take(30).toList(growable: false);
+        playable.take(30).toList(growable: false);
     await _cacheService.cacheForYouFeed(
       userId: userId,
       videos: visibleVideos,
       nextCursor: sanitizeCursor(nextCursor),
     );
     await _cacheService.cacheLastKnownForYouFeed(videos: visibleVideos);
+  }
+
+  /// Never warm-cache Instant Play locals, deleted, or empty/broken URLs.
+  static List<HomeVideo> remotePlayableOnly(List<HomeVideo> videos) {
+    return videos
+        .where(
+          (HomeVideo video) =>
+              !video.isDeleted &&
+              isHomeVideoVisibleInFeed(video) &&
+              !isHomeVideoOwnerPendingLocal(video) &&
+              !isHomeVideoLocalFileUrl(video.videoURL) &&
+              isHomeVideoPlayable(video) &&
+              video.videoURL.trim().startsWith('http'),
+        )
+        .toList(growable: false);
+  }
+
+  static List<HomeVideo> _remotePlayableOnly(List<HomeVideo> videos) {
+    return remotePlayableOnly(videos);
   }
 
   static Map<String, dynamic>? sanitizeCursor(Map<String, dynamic>? cursor) {

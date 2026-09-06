@@ -15,7 +15,16 @@ class GamificationCelebrationState {
   factory GamificationCelebrationState.fromFirestoreMap(
     Map<String, dynamic>? raw,
   ) {
-    if (raw == null || raw['showLevelUpModal'] != true) {
+    if (raw == null) {
+      return const GamificationCelebrationState(
+        showLevelUpModal: false,
+        level: 1,
+        previousLevel: 1,
+      );
+    }
+    final bool showLevelUpModal =
+        raw['showLevelUpModal'] == true || raw['pendingLevelUp'] == true;
+    if (!showLevelUpModal) {
       return const GamificationCelebrationState(
         showLevelUpModal: false,
         level: 1,

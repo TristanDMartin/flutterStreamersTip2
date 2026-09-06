@@ -1,14 +1,19 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 import '../core/firebase_app_check_startup.dart';
+import '../debug/agent_debug_log.dart';
 import '../models/optimistic_video.dart';
 import '../utils/category_schema.dart';
 import '../utils/firestore_strip_nulls.dart';
+import '../utils/home_video_playback.dart';
 import '../utils/upload_error_classifier.dart';
 import '../utils/video_caption_firestore.dart';
 import '../utils/video_caption_resolver.dart';
+import '../utils/video_url_resolver.dart';
+import 'optimistic_video_persistence.dart';
 
 class OptimisticVideoService extends ChangeNotifier {
   static final OptimisticVideoService _instance =
@@ -18,6 +23,8 @@ class OptimisticVideoService extends ChangeNotifier {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final OptimisticVideoPersistence _persistence =
+      OptimisticVideoPersistence.instance;
 
   final Map<String, OptimisticVideo> _optimisticVideos = {};
   final Map<String, StreamSubscription> _videoListeners = {};
@@ -29,6 +36,7 @@ class OptimisticVideoService extends ChangeNotifier {
       StreamController<List<String>>.broadcast();
 
   String? _pendingHomeScrollVideoId;
+  bool _didRestoreFromDisk = false;
 
   List<OptimisticVideo> get optimisticVideos =>
       _optimisticVideos.values.toList();
@@ -81,6 +89,65 @@ class OptimisticVideoService extends ChangeNotifier {
     _publishedCaptionByVideoId.remove(videoId);
   }
 
+  /// Cold start: reload Instant Publish rows so Home/Profile keep the same
+  /// videoId after kill (local MP4/cover when still on disk).
+  Future<int> restorePersistedOptimisticVideos() async {
+    if (_didRestoreFromDisk) {
+      return _optimisticVideos.length;
+    }
+    _didRestoreFromDisk = true;
+    final List<OptimisticVideo> stored = await _persistence.loadAll();
+    if (stored.isEmpty) {
+      debugPrint('OPTIMISTIC_RESTORE count=0');
+      return 0;
+    }
+    final String? uid = _auth.currentUser?.uid;
+    int restored = 0;
+    for (final OptimisticVideo video in stored) {
+      if (uid != null &&
+          uid.isNotEmpty &&
+          video.ownerId.isNotEmpty &&
+          video.ownerId != uid) {
+        unawaited(_persistence.remove(video.videoId));
+        continue;
+      }
+      if (_optimisticVideos.containsKey(video.videoId)) {
+        continue;
+      }
+      _optimisticVideos[video.videoId] = video;
+      rememberPublishedCaption(
+        videoId: video.videoId,
+        caption: video.caption,
+      );
+      attachServerListener(video.videoId);
+      restored += 1;
+    }
+    if (restored > 0) {
+      notifyListeners();
+      requestFeedRefresh();
+    }
+    debugPrint('OPTIMISTIC_RESTORE count=$restored');
+    return restored;
+  }
+
+  /// Rehydrate a single Instant Publish row (upload-job resume / cold start).
+  Future<OptimisticVideo> restoreOptimisticVideo(OptimisticVideo video) async {
+    _optimisticVideos[video.videoId] = video;
+    rememberPublishedCaption(
+      videoId: video.videoId,
+      caption: video.caption,
+    );
+    attachServerListener(video.videoId);
+    await _persistVideo(video);
+    notifyListeners();
+    requestFeedRefresh();
+    return video;
+  }
+
+  Future<void> _persistVideo(OptimisticVideo video) async {
+    await _persistence.save(video);
+  }
+
   /// In-memory optimistic row. Set [persistToFirestore] false during publish so
   /// the Worker owns the canonical `videos/{id}` create (avoids 409 collisions).
   Future<OptimisticVideo> createOptimisticVideo({
@@ -107,20 +174,61 @@ class OptimisticVideoService extends ChangeNotifier {
       metadata: metadata,
     );
 
-    final AppCheckReadiness appCheck = await ensureAppCheckReadyForFirestore();
-    if (!appCheck.isReady) {
-      final UploadFailureClassification failure = UploadFailureClassification(
-        kind: UploadFailureKind.appCheck,
-        logLabel: 'App Check',
-        userMessage: appCheck.detail.contains('attestation')
-            ? UploadFailureClassification.classify(appCheck.detail).userMessage
-            : 'App Check token unavailable. ${appCheck.detail}',
-      );
-      _logUploadFailure('optimistic_placeholder', failure);
-      throw Exception(failure.userMessage);
-    }
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'C',
+      location: 'optimistic_video_service.dart:createOptimisticVideo',
+      message: 'optimistic_create_enter',
+      data: <String, Object?>{
+        'persistToFirestore': persistToFirestore,
+        'videoId': videoId,
+      },
+    );
+    // #endregion
 
+    // App Check is only required when writing Firestore placeholders.
+    // Publish uses persistToFirestore=false; hanging on getToken blocked Share.
     if (persistToFirestore) {
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'C',
+        location: 'optimistic_video_service.dart:createOptimisticVideo',
+        message: 'optimistic_app_check_begin',
+        data: <String, Object?>{'videoId': videoId},
+      );
+      // #endregion
+      final AppCheckReadiness appCheck =
+          await ensureAppCheckReadyForFirestore().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => const AppCheckReadiness(
+          isReady: false,
+          detail: 'App Check readiness timed out',
+        ),
+      );
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'C',
+        location: 'optimistic_video_service.dart:createOptimisticVideo',
+        message: 'optimistic_app_check_done',
+        data: <String, Object?>{
+          'ready': appCheck.isReady,
+          'detail': appCheck.detail,
+        },
+      );
+      // #endregion
+      if (!appCheck.isReady) {
+        final UploadFailureClassification failure = UploadFailureClassification(
+          kind: UploadFailureKind.appCheck,
+          logLabel: 'App Check',
+          userMessage: appCheck.detail.contains('attestation')
+              ? UploadFailureClassification.classify(appCheck.detail)
+                  .userMessage
+              : 'App Check token unavailable. ${appCheck.detail}',
+        );
+        _logUploadFailure('optimistic_placeholder', failure);
+        throw Exception(failure.userMessage);
+      }
+
       try {
         await _createPlaceholderDocuments(pending);
       } catch (e) {
@@ -143,9 +251,52 @@ class OptimisticVideoService extends ChangeNotifier {
     );
     _optimisticVideos[videoId] = verified;
     rememberPublishedCaption(videoId: videoId, caption: caption);
-    _setupVideoListener(videoId);
+    await _persistVideo(verified);
+    // Only listen after Worker creates videos/{id}. Early snapshots on a
+    // missing doc evaluate canReadVideo(resource.data) → PERMISSION_DENIED.
+    if (persistToFirestore) {
+      _setupVideoListener(videoId);
+    }
+    requestHomeScrollToVideo(videoId);
     notifyListeners();
+    debugPrint('OPTIMISTIC_CREATED videoId=$videoId');
+    debugPrint(
+      'PENDING_OVERLAY_COUNT=${_optimisticVideos.values.where((OptimisticVideo v) => v.ownerId == user.uid && (v.status.isProcessing || v.status.isPlaceholderPending || v.status.hasFailed)).length}',
+    );
+    requestFeedRefresh(categories: categories);
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'C',
+      location: 'optimistic_video_service.dart:createOptimisticVideo',
+      message: 'optimistic_create_done',
+      data: <String, Object?>{
+        'videoId': videoId,
+        'localVideoPath': localVideoPath,
+      },
+    );
+    // #endregion
     return verified;
+  }
+
+  /// Attach Firestore listener once the Worker has created videos/{id}.
+  void attachServerListener(String videoId) {
+    if (videoId.isEmpty) {
+      return;
+    }
+    if (_videoListeners.containsKey(videoId)) {
+      return;
+    }
+    if (!_optimisticVideos.containsKey(videoId)) {
+      return;
+    }
+    try {
+      if (Firebase.apps.isEmpty) {
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+    _setupVideoListener(videoId);
   }
 
   /// Re-key optimistic UI after Worker allocates the canonical videoId.
@@ -168,6 +319,8 @@ class OptimisticVideoService extends ChangeNotifier {
       videoId: serverVideoId,
       caption: existing.caption,
     );
+    unawaited(_persistence.remove(clientVideoId));
+    unawaited(_persistVideo(rebound));
     _setupVideoListener(serverVideoId);
     notifyListeners();
   }
@@ -280,15 +433,23 @@ class OptimisticVideoService extends ChangeNotifier {
   }
 
   void _setupVideoListener(String videoId) {
+    _videoListeners[videoId]?.cancel();
     _videoListeners[videoId] = _firestore
         .collection('videos')
         .doc(videoId)
         .snapshots()
-        .listen((DocumentSnapshot<Map<String, dynamic>> snapshot) {
-      if (snapshot.exists && snapshot.data() != null) {
-        _handleVideoUpdate(videoId, snapshot.data()!);
-      }
-    });
+        .listen(
+      (DocumentSnapshot<Map<String, dynamic>> snapshot) {
+        if (snapshot.exists && snapshot.data() != null) {
+          _handleVideoUpdate(videoId, snapshot.data()!);
+        }
+      },
+      onError: (Object error) {
+        debugPrint(
+          '⚠️ OptimisticVideoService: videos/$videoId listen error: $error',
+        );
+      },
+    );
   }
 
   void _handleVideoUpdate(String videoId, Map<String, dynamic> data) {
@@ -303,11 +464,26 @@ class OptimisticVideoService extends ChangeNotifier {
 
     switch (status) {
       case VideoStatus.uploadSucceeded:
+        final String? resolvedRemote = resolveReadyPlaybackUrl(data);
+        final String hlsUrl = (data['hlsUrl'] as String?)?.trim().isNotEmpty ==
+                true
+            ? (data['hlsUrl'] as String).trim()
+            : (resolvedRemote ?? '');
+        final String videoUrl =
+            (data['videoUrl'] as String?)?.trim().isNotEmpty == true
+                ? (data['videoUrl'] as String).trim()
+                : (data['videoURL'] as String?)?.trim().isNotEmpty == true
+                    ? (data['videoURL'] as String).trim()
+                    : (resolvedRemote ?? '');
+        final String thumbnailUrl =
+            (data['thumbnailUrl'] as String?)?.trim().isNotEmpty == true
+                ? (data['thumbnailUrl'] as String).trim()
+                : (data['thumbnailURL'] as String?)?.trim() ?? '';
         updatedVideo = OptimisticVideoFactory.markAsReady(
           optimisticVideo: optimisticVideo,
-          videoUrl: data['videoUrl'] as String? ?? '',
-          thumbnailUrl: data['thumbnailUrl'] as String? ?? '',
-          hlsUrl: data['hlsUrl'] as String?,
+          videoUrl: videoUrl,
+          thumbnailUrl: thumbnailUrl,
+          hlsUrl: hlsUrl.isNotEmpty ? hlsUrl : resolvedRemote,
           duration: data['duration'] as int?,
           fileSize: data['fileSize'] as int?,
         );
@@ -333,10 +509,28 @@ class OptimisticVideoService extends ChangeNotifier {
           );
         }
         Timer(const Duration(seconds: 5), () {
+          final OptimisticVideo? still = _optimisticVideos[videoId];
+          if (still == null) {
+            return;
+          }
+          final String remote =
+              (still.hlsUrl ?? still.videoUrl ?? '').trim();
+          // Keep the Instant Publish row until a remote URL exists so Profile
+          // / Streamer cannot lose the card when Mux ready races local overlay.
+          if (remote.isEmpty || isHomeVideoLocalFileUrl(remote)) {
+            debugPrint(
+              'PENDING_KEEP_UNTIL_REMOTE videoId=$videoId',
+            );
+            return;
+          }
           _optimisticVideos.remove(videoId);
+          unawaited(_persistence.remove(videoId));
           _videoListeners[videoId]?.cancel();
           _videoListeners.remove(videoId);
+          notifyListeners();
+          _feedRefreshController.add('home');
         });
+        debugPrint('PENDING_CANONICAL_RECONCILED videoId=$videoId');
         break;
       case VideoStatus.uploadFailed:
         updatedVideo = OptimisticVideoFactory.markAsFailed(
@@ -351,6 +545,7 @@ class OptimisticVideoService extends ChangeNotifier {
     }
 
     _optimisticVideos[videoId] = updatedVideo;
+    unawaited(_persistVideo(updatedVideo));
     notifyListeners();
     if (status == VideoStatus.uploadSucceeded) {
       requestHomeScrollToVideo(videoId);
@@ -397,6 +592,7 @@ class OptimisticVideoService extends ChangeNotifier {
 
   void removeOptimisticVideo(String videoId) {
     _optimisticVideos.remove(videoId);
+    unawaited(_persistence.remove(videoId));
     _videoListeners[videoId]?.cancel();
     _videoListeners.remove(videoId);
     notifyListeners();
@@ -408,6 +604,7 @@ class OptimisticVideoService extends ChangeNotifier {
     }
     _videoListeners.clear();
     _optimisticVideos.clear();
+    unawaited(_persistence.clear());
     notifyListeners();
   }
 

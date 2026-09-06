@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import '../profile_video_feed_view.dart';
 import '../streamer_card_sections.dart';
 
+const Duration _profilePreviewTabSizeDuration = Duration(milliseconds: 150);
+const Duration _profilePreviewTabSelectDuration = Duration(milliseconds: 140);
+
 /// Segmented tabs plus animated tab content (videos / favorites / tagged).
 class ProfileViewTabbedSection extends StatelessWidget {
   const ProfileViewTabbedSection({
@@ -13,6 +16,7 @@ class ProfileViewTabbedSection extends StatelessWidget {
     required this.contentFade,
     required this.contentSlide,
     required this.profileUserId,
+    this.useInitialDataOnly = false,
   });
 
   final int selectedTabIndex;
@@ -20,6 +24,7 @@ class ProfileViewTabbedSection extends StatelessWidget {
   final Animation<double> contentFade;
   final Animation<Offset> contentSlide;
   final String profileUserId;
+  final bool useInitialDataOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -34,33 +39,64 @@ class ProfileViewTabbedSection extends StatelessWidget {
           child: SlideTransition(
             position: contentSlide,
             child: AnimatedSize(
-              duration: const Duration(milliseconds: 220),
+              duration: _profilePreviewTabSizeDuration,
               curve: Curves.easeOutCubic,
               alignment: Alignment.topCenter,
               child: IndexedStack(
                 index: selectedTabIndex,
-                children: <Widget>[
-                  ProfileVideoFeedView(
-                    feedType: ProfileVideoFeedType.videos,
-                    userId: profileUserId,
-                    onVideoTap: () => HapticFeedback.lightImpact(),
-                  ),
-                  ProfileVideoFeedView(
-                    feedType: ProfileVideoFeedType.favorites,
-                    userId: profileUserId,
-                    onVideoTap: () => HapticFeedback.lightImpact(),
-                  ),
-                  ProfileVideoFeedView(
-                    feedType: ProfileVideoFeedType.tagged,
-                    userId: profileUserId,
-                    onVideoTap: () => HapticFeedback.lightImpact(),
-                  ),
-                ],
+                children: useInitialDataOnly
+                    ? const <Widget>[
+                        _ProfilePreviewEmptyGrid(label: 'No posts yet'),
+                        _ProfilePreviewEmptyGrid(label: 'No favorites yet'),
+                        _ProfilePreviewEmptyGrid(label: 'No tagged posts yet'),
+                      ]
+                    : <Widget>[
+                        ProfileVideoFeedView(
+                          feedType: ProfileVideoFeedType.videos,
+                          userId: profileUserId,
+                          onVideoTap: () => HapticFeedback.lightImpact(),
+                        ),
+                        ProfileVideoFeedView(
+                          feedType: ProfileVideoFeedType.favorites,
+                          userId: profileUserId,
+                          onVideoTap: () => HapticFeedback.lightImpact(),
+                        ),
+                        ProfileVideoFeedView(
+                          feedType: ProfileVideoFeedType.tagged,
+                          userId: profileUserId,
+                          onVideoTap: () => HapticFeedback.lightImpact(),
+                        ),
+                      ],
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ProfilePreviewEmptyGrid extends StatelessWidget {
+  const _ProfilePreviewEmptyGrid({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 156,
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      decoration: StreamerCardBackStyle.cardDecoration,
+      child: Center(
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: StreamerCardBackStyle.muted,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -126,7 +162,7 @@ class _TabCell extends StatelessWidget {
       child: GestureDetector(
         onTap: () => onTap(index),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: _profilePreviewTabSelectDuration,
           curve: Curves.easeInOut,
           margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
@@ -142,7 +178,7 @@ class _TabCell extends StatelessWidget {
           ),
           child: Center(
             child: AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
+              duration: _profilePreviewTabSelectDuration,
               style: TextStyle(
                 color: isSelected
                     ? StreamerCardBackStyle.lavender

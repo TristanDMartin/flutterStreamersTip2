@@ -35,15 +35,36 @@ List<HomeVideo> rankHomeVideosForFeed(List<HomeVideo> videos) {
   return ordered;
 }
 
+/// Drops cached/painted cards whose owner is no longer renderable.
+List<HomeVideo> keepHomeVideosWithRenderableOwners({
+  required List<HomeVideo> videos,
+  required Set<String> renderableOwnerIds,
+}) {
+  if (videos.isEmpty) {
+    return videos;
+  }
+  return videos
+      .where(
+        (HomeVideo video) => renderableOwnerIds.contains(video.creator.id),
+      )
+      .toList(growable: false);
+}
+
 /// Keeps only items that can play in the home feed.
 List<HomeVideo> filterPlayableHomeVideos(List<HomeVideo> feed) {
   return feed
       .where(isHomeVideoVisibleInFeed)
-      .where(isHomeVideoPlayable)
+      .where(isHomeVideoDisplayPlayable)
       .toList(growable: false);
 }
 
 /// Rank, merge pending uploads, and dedupe for For You display.
+///
+/// Owner pending local items are kept even though they are not
+/// globally feed-visible (`isReadyForFeed` / ready status), but only when the
+/// durable local file still exists — never leave a blank cell at index 0.
+/// Owner uploading/processing stubs from VideoService (cold-start Firestore
+/// merge) are also prepended so kill/reopen does not hide the owner's post.
 List<HomeVideo> prepareForYouFeedDisplayList({
   required List<HomeVideo> sourceVideos,
   required String? currentUserId,
@@ -51,15 +72,42 @@ List<HomeVideo> prepareForYouFeedDisplayList({
   String? currentUserDisplayName,
   String? currentUserPhotoUrl,
 }) {
-  return dedupeHomeVideosById(
+  final List<HomeVideo> canonical = sourceVideos
+      .where((HomeVideo video) => !isHomeVideoOwnerPendingLocal(video))
+      .where((HomeVideo video) => !isHomeVideoProcessing(video))
+      .where(isHomeVideoVisibleInFeed)
+      .where(isHomeVideoDisplayPlayable)
+      .toList(growable: false);
+  final List<HomeVideo> ownerProcessing = sourceVideos
+      .where((HomeVideo video) {
+        if (currentUserId == null || currentUserId.isEmpty) {
+          return false;
+        }
+        if (video.creator.id != currentUserId) {
+          return false;
+        }
+        return isHomeVideoProcessing(video) ||
+            isHomeVideoOwnerPendingLocal(video);
+      })
+      .toList(growable: false);
+  final List<HomeVideo> merged = dedupeHomeVideosById(
     mergePendingUploadsIntoFeed(
-      readyVideos: rankHomeVideosForFeed(sourceVideos),
+      readyVideos: rankHomeVideosForFeed(<HomeVideo>[
+        ...ownerProcessing,
+        ...canonical,
+      ]),
       currentUserId: currentUserId,
       optimisticVideoService: optimisticVideoService,
       currentUserDisplayName: currentUserDisplayName,
       currentUserPhotoUrl: currentUserPhotoUrl,
     ),
-  ).where(isHomeVideoVisibleInFeed).toList(growable: false);
+  );
+  return merged
+      .where(
+        (HomeVideo video) =>
+            isHomeVideoDisplayPlayable(video) || isHomeVideoProcessing(video),
+      )
+      .toList(growable: false);
 }
 
 /// Keep a painted warm feed when network returns empty (avoid blanking Home).

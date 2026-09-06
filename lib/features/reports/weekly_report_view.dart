@@ -8,6 +8,7 @@ import '../../core/theme/support_shell_style.dart';
 import '../../routing/app_navigator.dart';
 import '../../routing/app_routes.dart';
 import '../../services/retention_tracking_service.dart';
+import '../../services/product_event_tracking_service.dart';
 import 'models/weekly_report_models.dart';
 import 'weekly_report_service.dart';
 
@@ -77,6 +78,9 @@ class _WeeklyReportViewState extends ConsumerState<WeeklyReportView> {
         uid: uid,
         level: level,
       ),
+    );
+    unawaited(
+      ProductEventTrackingService.instance.weeklyReportOpened(level: level),
     );
   }
 

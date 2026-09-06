@@ -4,6 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 
+import '../core/app_check_http_headers.dart';
+import '../core/firebase_app_check_startup.dart';
+import '../debug/agent_debug_log.dart';
+import '../utils/video_ready_contract.dart';
+import 'publish_transaction_trace.dart';
+
 /// Cloudflare Worker base URL for Mux upload + webhooks (no Cloud Functions).
 const String muxWorkerBaseUrl =
     'https://streamerstip-mux-api.streamerstip.workers.dev';
@@ -43,23 +49,65 @@ class MuxUploadService {
     required String userId,
     required String idToken,
     String? caption,
+    String? title,
+    String? description,
     List<String>? hashtags,
     String? privacy,
     bool? allowComments,
     String? category,
+    String? thumbnailUrl,
     bool isDraft = false,
   }) async {
     final String endpoint = '$muxWorkerBaseUrl/mux/direct-upload';
+    final PublishTransactionTrace? trace = PublishTransactionTrace.active;
     try {
+      final Map<String, String> headers = await buildAuthenticatedHttpHeaders(
+        idToken: idToken,
+        extra: const <String, String>{
+          'Content-Type': 'application/json',
+        },
+      );
+      final bool hasAppCheck =
+          headers.containsKey('X-Firebase-AppCheck');
+      if (!isAppCheckEnabledForBuild()) {
+        trace?.event('APP_CHECK_TOKEN_READY', detail: 'disabled for build');
+      } else if (hasAppCheck) {
+        trace?.ok('app-check-http', detail: 'header attached');
+        trace?.event('APP_CHECK_TOKEN_READY');
+      } else {
+        trace?.fail(
+          'app-check-http',
+          detail: 'missing X-Firebase-AppCheck header',
+        );
+        trace?.event('APP_CHECK_FAILED', detail: 'no token for HTTP');
+      }
+      trace?.event('DIRECT_UPLOAD_REQUEST', detail: endpoint);
       debugPrint('MuxUploadService: POST $endpoint');
+      debugPrint(
+        'CANONICAL_CREATE_REQUEST endpoint=$endpoint '
+        'userId=$userId videoIdHint=${videoId ?? '-'}',
+      );
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'D',
+        location: 'mux_upload_service.dart:createDirectUpload',
+        message: 'direct_upload_request',
+        data: <String, Object?>{
+          'hasAppCheckHeader': hasAppCheck,
+          'hasUserId': userId.isNotEmpty,
+          'hasVideoIdHint': videoId != null && videoId.trim().isNotEmpty,
+        },
+      );
+      // #endregion
+      final Stopwatch httpSw = Stopwatch()..start();
       final Response<Map<String, dynamic>> res =
           await _dio.post<Map<String, dynamic>>(
         endpoint,
         options: Options(
-          headers: <String, String>{
-            'Authorization': 'Bearer ${idToken.trim()}',
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
+          // Canonical create must stay interactive — not Mux READY.
+          sendTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 15),
         ),
         data: <String, dynamic>{
           if (videoId != null && videoId.trim().isNotEmpty)
@@ -67,6 +115,9 @@ class MuxUploadService {
           'userId': userId,
           'isDraft': isDraft,
           if (caption != null) 'caption': caption.trim(),
+          if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+          if (description != null && description.trim().isNotEmpty)
+            'description': description.trim(),
           if (hashtags != null) 'hashtags': hashtags,
           if (privacy != null && privacy.trim().isNotEmpty)
             'privacy': privacy.trim(),
@@ -75,30 +126,103 @@ class MuxUploadService {
           if (allowComments != null) 'allowComments': allowComments,
           if (category != null && category.trim().isNotEmpty)
             'category': category.trim(),
+          if (thumbnailUrl != null && thumbnailUrl.trim().isNotEmpty)
+            'thumbnailUrl': thumbnailUrl.trim(),
         },
       );
+      httpSw.stop();
+      trace?.event(
+        'CANONICAL_HTTP_RESPONSE',
+        detail:
+            'statusCode=${res.statusCode} elapsedMs=${httpSw.elapsedMilliseconds}',
+      );
+      trace?.event(
+        'DIRECT_UPLOAD_RESPONSE',
+        detail: 'statusCode=${res.statusCode}',
+      );
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'D',
+        location: 'mux_upload_service.dart:createDirectUpload',
+        message: 'direct_upload_response',
+        data: <String, Object?>{
+          'statusCode': res.statusCode,
+          'hasUploadUrl': (res.data?['uploadUrl'] as String?)?.isNotEmpty == true,
+          'hasVideoId': (res.data?['videoId'] as String?)?.isNotEmpty == true,
+        },
+      );
+      // #endregion
       final Map<String, dynamic>? data = res.data;
       if (data == null || data.isEmpty) {
+        trace?.fail(
+          'direct-upload',
+          statusCode: res.statusCode,
+          detail: 'empty body',
+        );
         throw const WorkerMuxUploadException(
           message: 'Worker returned an empty response.',
           endpoint: muxWorkerBaseUrl,
         );
       }
       final String? uploadUrl = data['uploadUrl'] as String?;
-      final String? uploadId = data['uploadId'] as String?;
-      final String vid = data['videoId'] as String? ?? videoId ?? '';
+      final String? uploadId =
+          (data['uploadId'] as String?) ?? (data['muxUploadId'] as String?);
+      final String vid = data['videoId'] as String? ??
+          data['canonicalVideoId'] as String? ??
+          videoId ??
+          '';
+      final String? ownerId =
+          data['ownerId'] as String? ?? data['userId'] as String?;
+      final String status =
+          (data['status'] as String?)?.trim().isNotEmpty == true
+              ? (data['status'] as String).trim()
+              : 'uploading';
       if (uploadUrl == null || uploadUrl.isEmpty) {
+        final String message = _readWorkerErrorMessage(data) ??
+            'Worker did not return an upload URL.';
+        trace?.publishFailed(
+          stageName: 'CANONICAL_HTTP_REQUEST',
+          videoId: vid.isEmpty ? videoId : vid,
+          httpStatus: res.statusCode,
+          error: message,
+        );
         throw WorkerMuxUploadException(
-          message: _readWorkerErrorMessage(data) ??
-              'Worker did not return an upload URL.',
+          message: message,
           statusCode: res.statusCode,
           endpoint: endpoint,
         );
       }
+      final int? code = res.statusCode;
+      final bool httpOk = code != null && code >= 200 && code < 300;
+      if (!httpOk) {
+        trace?.publishFailed(
+          stageName: 'CANONICAL_HTTP_REQUEST',
+          videoId: vid,
+          httpStatus: code,
+          error: 'unexpected status',
+        );
+        throw WorkerMuxUploadException(
+          message: 'Unexpected status $code from upload service',
+          statusCode: code,
+          endpoint: endpoint,
+        );
+      }
+      trace?.ok(
+        'direct-upload',
+        detail: 'statusCode=${res.statusCode} videoId=$vid',
+      );
+      debugPrint(
+        'DIRECT_UPLOAD_CREATED videoId=$vid uploadId=${uploadId ?? '-'} '
+        'statusCode=${res.statusCode} ownerId=${ownerId ?? '-'}',
+      );
       return MuxDirectUploadResult(
         uploadUrl: uploadUrl,
         uploadId: uploadId ?? '',
         videoId: vid,
+        ownerId: ownerId ?? userId,
+        status: status,
+        ok: true,
+        httpStatusCode: res.statusCode,
       );
     } on WorkerMuxUploadException {
       rethrow;
@@ -114,12 +238,18 @@ class MuxUploadService {
     final int? statusCode = error.response?.statusCode;
     final Object? body = error.response?.data;
     String message = 'Could not reach the Mux upload service.';
+    String? bodySnippet;
     if (body is Map) {
-      final String? fromBody = _readWorkerErrorMessage(
-        Map<String, dynamic>.from(body),
-      );
+      final Map<String, dynamic> map = Map<String, dynamic>.from(body);
+      final String? fromBody = _readWorkerErrorMessage(map);
       if (fromBody != null && fromBody.isNotEmpty) {
         message = fromBody;
+      }
+      bodySnippet = map.toString();
+    } else if (body != null) {
+      bodySnippet = body.toString();
+      if (bodySnippet.length > 240) {
+        bodySnippet = '${bodySnippet.substring(0, 240)}…';
       }
     } else if (error.message != null && error.message!.isNotEmpty) {
       message = error.message!;
@@ -137,6 +267,27 @@ class MuxUploadService {
           'Mux upload endpoint not found (404). Deploy the Cloudflare Worker '
           'or check muxWorkerBaseUrl.';
     }
+    PublishTransactionTrace.active?.fail(
+      'direct-upload',
+      statusCode: statusCode,
+      detail: bodySnippet ?? message,
+    );
+    PublishTransactionTrace.active?.event(
+      'DIRECT_UPLOAD_RESPONSE',
+      detail: 'statusCode=${statusCode ?? 'none'} body=${bodySnippet ?? '-'}',
+    );
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'D',
+      location: 'mux_upload_service.dart:_mapDioToWorkerException',
+      message: 'direct_upload_http_error',
+      data: <String, Object?>{
+        'statusCode': statusCode,
+        'message': message,
+        'bodySnippet': bodySnippet,
+      },
+    );
+    // #endregion
     debugPrint(
       '❌ MuxUploadService: Worker direct-upload failed '
       '(${statusCode ?? 'no status'}): $message',
@@ -166,9 +317,12 @@ class MuxUploadService {
     required String uploadUrl,
     void Function(double)? onProgress,
   }) async {
+    final PublishTransactionTrace? trace = PublishTransactionTrace.active;
+    trace?.event('UPLOAD_STARTED');
     debugPrint('MuxUploadService: PUT to Mux (${uploadUrl.length} chars)');
     final int fileLength = await videoFile.length();
     try {
+      debugPrint('MUX_UPLOAD_STARTED sizeBytes=$fileLength');
       await _dio.put(
         uploadUrl,
         data: videoFile.openRead(),
@@ -180,13 +334,38 @@ class MuxUploadService {
           contentType: 'video/mp4',
         ),
         onSendProgress: (int sent, int total) {
-          if (total > 0 && onProgress != null) {
-            onProgress(sent / total);
+          if (total > 0) {
+            final double progress = sent / total;
+            trace?.progress(progress);
+            onProgress?.call(progress);
           }
         },
       );
+      debugPrint('MUX_UPLOAD_COMPLETE sizeBytes=$fileLength');
+      trace?.ok('put');
+      trace?.event('UPLOAD_COMPLETED');
     } on DioException catch (e) {
       final int? code = e.response?.statusCode;
+      final String body = e.response?.data?.toString() ?? e.message ?? '';
+      trace?.fail(
+        'put',
+        statusCode: code,
+        detail: body.isEmpty ? null : body,
+      );
+      trace?.event(
+        'UPLOAD_FAILED',
+        detail: 'statusCode=${code ?? 'none'}',
+      );
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'E',
+        location: 'mux_upload_service.dart:uploadToMux',
+        message: 'mux_put_failed',
+        data: <String, Object?>{
+          'statusCode': code,
+        },
+      );
+      // #endregion
       throw WorkerMuxUploadException(
         message: code != null
             ? 'Mux rejected the video file (HTTP $code).'
@@ -196,7 +375,7 @@ class MuxUploadService {
     }
   }
 
-  /// Wait for Firestore video doc status `active` / `ready`.
+  /// Wait until Worker/webhook marks Mux playback ready (canonical contract).
   Future<MuxReadyResult> waitForReady({
     required String videoId,
     Duration timeout = const Duration(minutes: 5),
@@ -219,37 +398,47 @@ class MuxUploadService {
       if (completer.isCompleted) return;
       final Map<String, dynamic>? data = snap.data();
       if (data == null) return;
-      final String? status = data['status'] as String?;
-      if (status == 'failed' || (data['transcodingError'] as String?) != null) {
+      if (videoStatusIsFailed(data)) {
         sub.cancel();
         timer.cancel();
         completer.completeError(
           Exception(
-            data['transcodingError'] as String? ?? 'Transcoding failed',
+            data['transcodingError'] as String? ??
+                data['uploadError'] as String? ??
+                'Transcoding failed',
           ),
         );
         return;
       }
-      if (status == 'ready' || status == 'active') {
-        sub.cancel();
-        timer.cancel();
-        final String? playbackId = data['muxPlaybackId'] as String?;
-        final String? hlsUrl = data['hlsUrl'] as String? ??
-            data['hls_url'] as String? ??
-            (playbackId != null
-                ? 'https://stream.mux.com/$playbackId.m3u8'
-                : null);
-        final String? thumbnailUrl = data['thumbnailUrl'] as String? ??
-            data['thumbnailURL'] as String? ??
-            (playbackId != null
-                ? 'https://image.mux.com/$playbackId/thumbnail.jpg?width=720&time=0'
-                : null);
-        completer.complete(MuxReadyResult(
-          hlsUrl: hlsUrl ?? '',
-          thumbnailUrl: thumbnailUrl ?? '',
-          muxPlaybackId: playbackId ?? '',
-        ));
+      // Require playable Mux media + ready status. Do not treat status=ready
+      // alone as done (legacy docs can be ready with null playback).
+      if (!isCanonicalPlaybackReady(data)) {
+        return;
       }
+      sub.cancel();
+      timer.cancel();
+      final String? playbackId = data['muxPlaybackId'] as String?;
+      final String hlsUrl = data['hlsUrl'] as String? ??
+          data['hls_url'] as String? ??
+          data['canonicalPlaybackUrl'] as String? ??
+          (playbackId != null && playbackId.isNotEmpty
+              ? 'https://stream.mux.com/$playbackId.m3u8'
+              : '');
+      final String thumbnailUrl = data['thumbnailUrl'] as String? ??
+          data['thumbnailURL'] as String? ??
+          (playbackId != null && playbackId.isNotEmpty
+              ? 'https://image.mux.com/$playbackId/thumbnail.jpg?width=720&time=0'
+              : '');
+      debugPrint(
+        'CANONICAL_READY videoId=$videoId '
+        'feedReady=${isCanonicalFeedReady(data)} '
+        'muxPlaybackId=$playbackId',
+      );
+      completer.complete(MuxReadyResult(
+        hlsUrl: hlsUrl,
+        thumbnailUrl: thumbnailUrl,
+        muxPlaybackId: playbackId ?? '',
+      ));
     }, onError: (Object e) {
       if (!completer.isCompleted) {
         timer.cancel();
@@ -265,11 +454,19 @@ class MuxDirectUploadResult {
     required this.uploadUrl,
     required this.uploadId,
     required this.videoId,
+    this.ownerId,
+    this.status,
+    this.ok = true,
+    this.httpStatusCode,
   });
 
   final String uploadUrl;
   final String uploadId;
   final String videoId;
+  final String? ownerId;
+  final String? status;
+  final bool ok;
+  final int? httpStatusCode;
 }
 
 class MuxReadyResult {

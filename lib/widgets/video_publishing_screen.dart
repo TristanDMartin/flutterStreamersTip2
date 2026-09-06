@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../services/video_upload_service.dart';
 import '../services/local_draft_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -14,7 +16,10 @@ import '../services/video_moderation_service.dart';
 import '../services/enhanced_error_handling_service.dart';
 import '../services/video_watermark_service.dart';
 import '../services/optimistic_video_service.dart';
+import '../models/optimistic_video.dart';
+import '../utils/home_video_playback.dart';
 import '../utils/upload_error_classifier.dart';
+import '../utils/publish_artifact_audit.dart';
 import '../utils/user_facing_error.dart';
 import '../services/hashtag_lock_service.dart';
 import '../widgets/schedule_post_widget.dart';
@@ -24,6 +29,8 @@ import '../services/firebase_ios_service.dart';
 import '../services/network_connectivity_service.dart';
 import '../services/video_processing_service.dart';
 import '../services/upload_status_manager.dart';
+import '../services/managed_publish_service.dart';
+import '../services/publish_transaction_trace.dart';
 import '../services/video_publish_finalize_service.dart';
 import '../services/cross_post_service.dart';
 import '../providers/publish_provider.dart';
@@ -45,6 +52,10 @@ import '../features/publish/preview_video_frame.dart';
 import '../features/publish/publish_flow_tokens.dart';
 import '../features/publish/publish_validation_limits.dart';
 import '../features/publish/publish_firestore_fields.dart';
+import '../features/publish/video_draft.dart';
+import '../services/video_draft_store.dart';
+import '../services/video_render_warmup.dart';
+import '../debug/agent_debug_log.dart';
 import '../features/billing/iap_billing_coordinator.dart';
 import '../features/billing/models/subscription_snapshot.dart';
 import '../features/billing/subscription_provider.dart';
@@ -65,6 +76,7 @@ class VideoPublishingScreen extends ConsumerStatefulWidget {
   final String? draftId;
   final Map<String, dynamic>? draftData;
   final PendingPost? pendingPost;
+  final VideoDraft? videoDraft;
 
   const VideoPublishingScreen({
     super.key,
@@ -76,6 +88,7 @@ class VideoPublishingScreen extends ConsumerStatefulWidget {
     this.draftId,
     this.draftData,
     this.pendingPost,
+    this.videoDraft,
   });
 
   @override
@@ -112,6 +125,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   final ScrollController _scrollController = ScrollController();
   PendingPost? _pendingPost;
   PreviewTrimPlayback? _trimPlayback;
+  bool _sharePlayerReleased = false;
 
   // Available categories
   static const List<VideoCategory> _categories = [
@@ -215,6 +229,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   String _selectedCategory = kDefaultCategoryId;
   bool _allowComments = true;
   bool _isUploading = false;
+  bool _publishHandedOff = false;
+  VideoDraft? _videoDraft;
   double _uploadProgress = 0.0;
   String? _retryVideoId;
   File? _retryVideoFile;
@@ -263,6 +279,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   @override
   void initState() {
     super.initState();
+    _videoDraft = widget.videoDraft;
+    // Soft-trim Share preview only. Bake runs on publish after we release
+    // this ExoPlayer so FFmpeg gets exclusive decoder access.
     _caption = widget.caption;
     final String previewCaption =
         widget.pendingPost?.manualCaptionText.trim() ?? '';
@@ -621,6 +640,40 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     return score;
   }
 
+  Future<void> _releaseSharePlayerForRender() async {
+    if (_sharePlayerReleased) {
+      return;
+    }
+    _trimPlayback?.dispose();
+    _trimPlayback = null;
+    try {
+      if (_isInitialized && _controller.value.isInitialized) {
+        await _controller.pause();
+        await _controller.dispose();
+      }
+    } catch (e) {
+      secureLog(
+        'Error releasing share player for render: $e',
+        name: 'VideoPublishingScreen',
+      );
+    }
+    _sharePlayerReleased = true;
+    if (mounted) {
+      setState(() {
+        _isInitialized = false;
+        _isPlaying = false;
+      });
+    }
+  }
+
+  Future<void> _restoreSharePlayerAfterRenderFailure() async {
+    if (!_sharePlayerReleased || !mounted) {
+      return;
+    }
+    _sharePlayerReleased = false;
+    await _initializeVideo();
+  }
+
   Future<void> _initializeVideo() async {
     try {
       if (!await widget.videoFile.exists()) {
@@ -683,6 +736,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       await _trimPlayback!.seekToTrimStart();
       final durationSeconds =
           _pendingPost!.effectiveDuration.inSeconds.toDouble();
+      if (_pendingPost!.hasCoverSelection) {
+        _thumbnailTimeSeconds =
+            _pendingPost!.coverFrame.inMilliseconds / 1000.0;
+      }
       if (durationSeconds < PublishValidationLimits.minVideoDurationSeconds ||
           durationSeconds > PublishValidationLimits.maxVideoDurationSeconds) {
         await _controller.dispose();
@@ -754,7 +811,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
     // Safely dispose video controller
     try {
-      if (_isInitialized && _controller.value.isInitialized) {
+      if (!_sharePlayerReleased &&
+          _isInitialized &&
+          _controller.value.isInitialized) {
         _controller.pause();
         _controller.dispose();
       }
@@ -912,9 +971,64 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         });
       }
     } catch (_) {
-      // Silently fail — the Mux default thumbnail is still used
+      // Silently fail — Instant Publish will regenerate cover on Share.
     } finally {
       if (mounted) setState(() => _isGeneratingThumb = false);
+    }
+  }
+
+  /// Instant Publish cover: creator pick → in-memory frame → extract from video.
+  Future<String?> _ensureInstantPublishCoverPath({
+    required String videoId,
+    required File videoFile,
+  }) async {
+    try {
+      if (_customThumbnailFile != null &&
+          await _customThumbnailFile!.exists()) {
+        return _customThumbnailFile!.path;
+      }
+      Uint8List? bytes = _frameThumbBytes;
+      if (bytes == null || bytes.isEmpty) {
+        final int coverMs = _pendingPost != null &&
+                _pendingPost!.hasCoverSelection
+            ? _pendingPost!.coverFrame.inMilliseconds
+            : (_thumbnailTimeSeconds * 1000).round();
+        bytes = await VideoThumbnail.thumbnailData(
+          video: videoFile.path,
+          imageFormat: ImageFormat.JPEG,
+          timeMs: coverMs < 0 ? 0 : coverMs,
+          quality: 80,
+        );
+      }
+      if (bytes == null || bytes.isEmpty) {
+        return null;
+      }
+      final Directory docs = await getApplicationDocumentsDirectory();
+      final Directory coverDir =
+          Directory(p.join(docs.path, 'InstantPublishCovers'));
+      if (!await coverDir.exists()) {
+        await coverDir.create(recursive: true);
+      }
+      final File out = File(p.join(coverDir.path, '$videoId.jpg'));
+      await out.writeAsBytes(bytes, flush: true);
+      if (mounted) {
+        setState(() {
+          _customThumbnailFile = out;
+          _isCustomThumbnail = true;
+          _frameThumbBytes = bytes;
+        });
+      } else {
+        _customThumbnailFile = out;
+        _isCustomThumbnail = true;
+        _frameThumbBytes = bytes;
+      }
+      return out.path;
+    } catch (e) {
+      secureLog(
+        '⚠️ Instant Publish cover failed: $e',
+        name: 'VideoPublishingScreen',
+      );
+      return _customThumbnailFile?.path;
     }
   }
 
@@ -961,7 +1075,29 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
-    return Scaffold(
+    return PopScope(
+      canPop: !_isModerating && !_isUploading,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) {
+          return;
+        }
+        if (_isModerating) {
+          return;
+        }
+        if (_isUploading && _publishHandedOff) {
+          // Upload is owned by ManagedPublishService — safe to leave Share.
+          widget.onCancel();
+          return;
+        }
+        if (_isUploading) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload in progress. Please wait a moment.'),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
       backgroundColor: shell.scaffold,
       resizeToAvoidBottomInset: true,
       body: Column(
@@ -1063,13 +1199,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                           : _selectedPlatformCount > 0
                               ? '$_selectedPlatformCount platform${_selectedPlatformCount == 1 ? '' : 's'} selected'
                               : 'Optional: also share to linked platforms',
-                      isExpanded: _showCrossPostOptions,
-                      onToggle: () => setState(
-                        () => _showCrossPostOptions = !_showCrossPostOptions,
-                      ),
-                      child: _connectedPlatforms.isNotEmpty
-                          ? _buildPlatformSelectorSection()
-                          : _buildConnectPlatformsHint(),
+                    isExpanded: _showCrossPostOptions,
+                    onToggle: () => setState(
+                      () => _showCrossPostOptions = !_showCrossPostOptions,
+                    ),
+                    child: _connectedPlatforms.isNotEmpty
+                        ? _buildPlatformSelectorSection()
+                        : _buildConnectPlatformsHint(),
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -1080,6 +1216,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           ),
           _buildBottomActions(),
         ],
+      ),
       ),
     );
   }
@@ -1359,19 +1496,34 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       ),
       child: Row(
         children: [
-          // Back
           IconButton(
             onPressed: () {
+              if (_isModerating) {
+                return;
+              }
+              if (_isUploading && !_publishHandedOff) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Upload in progress. Please wait a moment.'),
+                  ),
+                );
+                return;
+              }
               HapticFeedback.lightImpact();
               widget.onCancel();
             },
-            icon: Icon(Icons.close, color: shell.onChrome, size: 22),
+            icon: Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: shell.onChrome,
+              size: 20,
+            ),
+            tooltip: 'Back',
           ),
           const Expanded(
             child: SizedBox.shrink(),
           ),
           Text(
-            _isEditingDraft ? 'Finish Draft' : 'New Post',
+            _isEditingDraft ? 'Finish Draft' : 'Share',
             textAlign: TextAlign.center,
             style: TextStyle(
                 color: shell.onChrome,
@@ -1619,6 +1771,69 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                             Icons.play_arrow,
                             color: Colors.white,
                             size: 40,
+                          ),
+                        ),
+
+                      if (_isInitialized &&
+                          !_hasError &&
+                          _pendingPost?.hasTextLayers == true)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: LayoutBuilder(
+                              builder: (
+                                BuildContext context,
+                                BoxConstraints constraints,
+                              ) {
+                                final List<PendingTextLayer> layers =
+                                    _pendingPost!.textLayers
+                                        .where(
+                                          (PendingTextLayer layer) =>
+                                              layer.text.trim().isNotEmpty,
+                                        )
+                                        .toList();
+                                return Stack(
+                                  children: <Widget>[
+                                    for (final PendingTextLayer layer
+                                        in layers)
+                                      Positioned(
+                                        left: layer.normX *
+                                                constraints.maxWidth -
+                                            70,
+                                        top: layer.normY *
+                                                constraints.maxHeight -
+                                            18,
+                                        width: 140,
+                                        child: Transform.rotate(
+                                          angle: layer.rotation,
+                                          child: Transform.scale(
+                                            scale: layer.scale,
+                                            child: Text(
+                                              layer.text,
+                                              textAlign: layer.alignment,
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Color(layer.colorValue),
+                                                fontSize:
+                                                    (layer.fontSize * 0.55)
+                                                        .clamp(10, 22),
+                                                fontWeight:
+                                                    FontWeight.w700,
+                                                shadows: const <Shadow>[
+                                                  Shadow(
+                                                    blurRadius: 4,
+                                                    color: Color(0x99000000),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
                           ),
                         ),
 
@@ -2492,7 +2707,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             ? 'Publishing your post…'
             : _schedule != null
                 ? 'Schedule Post'
-                : 'Publish Now';
+                : 'Share';
 
     return SafeArea(
       child: Container(
@@ -2721,18 +2936,79 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   //   );
   // }
 
+  void _logPublishBlocked(String reason, {String? detail}) {
+    final String suffix =
+        detail == null || detail.isEmpty ? '' : ' detail=$detail';
+    debugPrint('PUBLISH_BLOCKED reason=$reason$suffix');
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'A',
+      location: 'video_publishing_screen.dart:_logPublishBlocked',
+      message: 'publish_blocked',
+      data: <String, Object?>{
+        'reason': reason,
+        'detail': detail,
+      },
+    );
+    // #endregion
+  }
+
   Future<void> _publishVideo() async {
+    debugPrint('SHARE_TAPPED');
+    debugPrint(
+      'PUBLISH_TAP captionLen=${_caption.trim().length} '
+      'category=$_selectedCategory schedule=${_schedule != null} '
+      'uploading=$_isUploading moderating=$_isModerating '
+      'handedOff=$_publishHandedOff',
+    );
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'A',
+      location: 'video_publishing_screen.dart:_publishVideo',
+      message: 'publish_tap',
+      data: <String, Object?>{
+        'captionLen': _caption.trim().length,
+        'category': _selectedCategory,
+        'hasSchedule': _schedule != null,
+        'hasBakedEdits': (_videoDraft ?? widget.videoDraft)?.hasBakedEdits,
+        'requiresRender': (_videoDraft ?? widget.videoDraft)?.requiresRender,
+        'uploading': _isUploading,
+        'moderating': _isModerating,
+        'handedOff': _publishHandedOff,
+      },
+    );
+    // #endregion
+    if (_isUploading || _isModerating || _publishHandedOff) {
+      _logPublishBlocked(
+        'busy',
+        detail:
+            'uploading=$_isUploading moderating=$_isModerating handedOff=$_publishHandedOff',
+      );
+      return;
+    }
     // Check if Firebase is initialized
     if (!FirebaseIOSService.isInitialized) {
+      _logPublishBlocked('firebase_not_initialized');
       _showUploadErrorDialog(
           'Firebase is not initialized. Please restart the app and try again.');
       return;
     }
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'A',
+      location: 'video_publishing_screen.dart:_publishVideo',
+      message: 'firebase_gate_passed',
+      data: <String, Object?>{
+        'iosServiceFlag': FirebaseIOSService.isInitialized,
+      },
+    );
+    // #endregion
 
     // Check if user is authenticated
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       debugPrint('❌ VideoPublishingScreen: User not authenticated');
+      _logPublishBlocked('not_authenticated');
       _showUploadErrorDialog('Please log in to publish videos');
       return;
     }
@@ -2746,6 +3022,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       await currentUser.getIdToken(true);
     } catch (e) {
       debugPrint('❌ VideoPublishingScreen: Failed to get auth token: $e');
+      _logPublishBlocked('auth_token_refresh_failed', detail: '$e');
       _showUploadErrorDialog(
           'Authentication error. Please log out and log back in.');
       return;
@@ -2753,10 +3030,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
     // Validate caption
     if (_caption.trim().isEmpty) {
+      _logPublishBlocked('caption_empty');
       _showUploadErrorDialog(PublishValidationLimits.errorCaption);
       return;
     }
     if (_caption.length > PublishValidationLimits.maxCaptionLength) {
+      _logPublishBlocked('caption_too_long');
       _showUploadErrorDialog(
           'Caption is too long (maximum ${PublishValidationLimits.maxCaptionLength} characters).');
       return;
@@ -2770,6 +3049,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     final networkService = NetworkConnectivityService();
     final isConnected = await networkService.checkConnectivity();
     if (!isConnected) {
+      _logPublishBlocked('no_network');
       _showUploadErrorDialog(
           'No internet connection. Please check your network and try again.');
       return;
@@ -2807,18 +3087,31 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           _isModerating = false;
         });
 
+        _logPublishBlocked(
+          'moderation_rejected',
+          detail: moderationResult.reason,
+        );
         // Show moderation error dialog
         _showModerationErrorDialog(moderationResult);
         return;
       }
 
+      // Lock Share for the rest of the pipeline (optimistic + handoff).
+      // Clearing only _isModerating allowed parallel publish_tap spam.
       setState(() {
         _isModerating = false;
+        _isUploading = true;
+        _uploadProgress = 0.0;
+        _actionError = null;
       });
 
       // 2. Generate video ID (reuse on retry) and create optimistic video
       final String videoId = _retryVideoId ?? _generateVideoId();
       _retryVideoId = videoId;
+      final String publishRequestId =
+          widget.draftId?.trim().isNotEmpty == true
+              ? 'pub_${widget.draftId}_$videoId'
+              : 'pub_$videoId';
       _syncSelectedPlatforms();
       final selectedPlatforms = FeatureFlags.crossPostingEnabled
           ? _effectiveSelectedPlatforms
@@ -2826,17 +3119,98 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       debugPrint(
           '🎬 VideoPublishingScreen: Creating optimistic video: $videoId');
 
-      // Apply watermark if cross-platform sharing is selected
-      File videoFileToUpload = _retryVideoFile ?? widget.videoFile;
-      if (_retryVideoFile == null &&
-          _watermarkService.shouldApplyWatermarkForTier(
+      // Resolve upload bytes. Permanent rule:
+      // hasBakedEdits → MUST use rendered file; never silently upload source.
+      File videoFileToUpload;
+      VideoDraft? activeDraft = _videoDraft ?? widget.videoDraft;
+      if (_retryVideoFile != null) {
+        if (activeDraft != null && activeDraft.hasBakedEdits) {
+          final String retryPath = _retryVideoFile!.path;
+          final String? renderedPath = activeDraft.renderedFilePath;
+          final bool retryIsRendered = renderedPath != null &&
+              renderedPath.isNotEmpty &&
+              retryPath == renderedPath;
+          if (!retryIsRendered) {
+            _retryVideoFile = null;
+          }
+        }
+      }
+      if (_retryVideoFile != null) {
+        videoFileToUpload = _retryVideoFile!;
+      } else if (activeDraft != null && activeDraft.hasBakedEdits) {
+        // Release Share ExoPlayer before FFmpeg — same decoder cannot be shared.
+        if (mounted) {
+          setState(() => _isUploading = true);
+        }
+        debugPrint('RENDER_START draftId=${activeDraft.draftId}');
+        // #region agent log
+        agentDebugLog(
+          hypothesisId: 'B',
+          location: 'video_publishing_screen.dart:render',
+          message: 'render_start',
+          data: <String, Object?>{
+            'draftId': activeDraft.draftId,
+            'hasBakedEdits': activeDraft.hasBakedEdits,
+          },
+        );
+        // #endregion
+        await _releaseSharePlayerForRender();
+        activeDraft = await VideoRenderWarmup.instance.ensureRendered(activeDraft);
+        _videoDraft = activeDraft;
+        if (activeDraft.renderStatus != VideoDraftRenderStatus.ready ||
+            !activeDraft.hasRenderableOutput) {
+          debugPrint(
+            'RENDER_FAILED draftId=${activeDraft.draftId} '
+            'error=${activeDraft.renderError ?? 'unknown'}',
+          );
+          // #region agent log
+          agentDebugLog(
+            hypothesisId: 'B',
+            location: 'video_publishing_screen.dart:render',
+            message: 'render_failed',
+            data: <String, Object?>{
+              'draftId': activeDraft.draftId,
+              'status': activeDraft.renderStatus.name,
+              'error': activeDraft.renderError,
+            },
+          );
+          // #endregion
+          _logPublishBlocked(
+            'render_failed',
+            detail: activeDraft.renderError ?? 'unknown',
+          );
+          if (mounted) {
+            setState(() => _isUploading = false);
+            await _restoreSharePlayerAfterRenderFailure();
+            _showRenderFailureDialog(
+              activeDraft.renderError ??
+                  'Could not render your edits. Please try again.',
+            );
+          }
+          return;
+        }
+        debugPrint(
+          'RENDER_SUCCESS draftId=${activeDraft.draftId} '
+          'path=${activeDraft.renderedFilePath}',
+        );
+        videoFileToUpload = activeDraft.publishFile;
+        secureLog(
+          '✅ VideoPublishingScreen: Using warmed rendered video for upload',
+          name: 'VideoPublishingScreen',
+        );
+      } else if (activeDraft != null) {
+        videoFileToUpload = activeDraft.sourceFile;
+      } else {
+        videoFileToUpload = widget.videoFile;
+      }
+      if (_watermarkService.shouldApplyWatermarkForTier(
             _subscriptionTier,
             selectedPlatforms,
           )) {
         debugPrint(
             '🎬 VideoPublishingScreen: Applying watermark for cross-platform sharing...');
         final watermarkedFile = await _watermarkService.addWatermarkToVideo(
-          videoFile: widget.videoFile,
+          videoFile: videoFileToUpload,
           selectedPlatforms: selectedPlatforms,
           logoPath: VideoWatermarkService.defaultWatermarkAsset,
         );
@@ -2847,15 +3221,82 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       }
       _retryVideoFile = videoFileToUpload;
 
-      // 3. Create optimistic video placeholder
+      final VideoDraft? draftForAudit = _videoDraft ?? widget.videoDraft;
+      final PublishArtifactAudit artifact = await PublishArtifactAudit.inspect(
+        file: videoFileToUpload,
+        stage: 'publish_input',
+        durationMsHint: draftForAudit?.effectiveDuration.inMilliseconds ??
+            _pendingPost?.effectiveDuration.inMilliseconds ??
+            0,
+        widthHint: draftForAudit?.width ?? 0,
+        heightHint: draftForAudit?.height ?? 0,
+        probeDecode: true,
+      );
+      debugPrint(
+        'DRAFT_ARTIFACT_AUDIT ok=${artifact.isAcceptable} '
+        'path=${artifact.path} sizeBytes=${artifact.byteLength} '
+        'durationMs=${artifact.durationMs} '
+        'wh=${artifact.width}x${artifact.height} ftyp=${artifact.hasFtyp} '
+        'canDecode=${artifact.canDecode}',
+      );
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'G',
+        location: 'video_publishing_screen.dart:artifact',
+        message: 'draft_artifact_audit',
+        data: <String, Object?>{
+          'bytes': artifact.byteLength,
+          'durationMs': artifact.durationMs,
+          'width': artifact.width,
+          'height': artifact.height,
+          'hasFtyp': artifact.hasFtyp,
+          'canDecode': artifact.canDecode,
+          'ok': artifact.isAcceptable,
+          'reason': artifact.rejectReason,
+        },
+        runId: 'post-fix',
+      );
+      // #endregion
+      if (!artifact.isAcceptable) {
+        _logPublishBlocked(
+          'artifact_invalid',
+          detail: artifact.rejectReason,
+        );
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+            _isModerating = false;
+          });
+          _showUploadErrorDialog(
+            artifact.rejectReason ?? 'Video file is incomplete',
+          );
+        }
+        return;
+      }
+      debugPrint(
+        'ARTIFACT_VALIDATED path=${artifact.path} '
+        'sizeBytes=${artifact.byteLength} durationMs=${artifact.durationMs} '
+        'wh=${artifact.width}x${artifact.height}',
+      );
+      debugPrint(
+        'PUBLISH_ARTIFACT_SELECTED path=${artifact.path} '
+        'sizeBytes=${artifact.byteLength} durationMs=${artifact.durationMs} '
+        'wh=${artifact.width}x${artifact.height}',
+      );
+
+      // 3. Instant Publish card (local video + local cover, same videoId)
       debugPrint(
           '🎬 VideoPublishingScreen: Creating optimistic video placeholder...');
       try {
+        final String? coverPath = await _ensureInstantPublishCoverPath(
+          videoId: videoId,
+          videoFile: videoFileToUpload,
+        );
         await _optimisticVideoService.createOptimisticVideo(
           videoId: videoId,
           caption: _caption,
           categories: [_selectedCategory],
-          localThumbnailPath: _customThumbnailFile?.path,
+          localThumbnailPath: coverPath,
           localVideoPath: videoFileToUpload.path,
           persistToFirestore: false,
           metadata: {
@@ -2871,9 +3312,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             'moderation_checked_at': DateTime.now().toIso8601String(),
             'duration': _pendingPost?.effectiveDuration.inSeconds ?? 0,
             'fileSize': await videoFileToUpload.length(),
+            'publishRequestId': publishRequestId,
+            if (coverPath != null) 'localCoverPath': coverPath,
             ..._previewEditMetadata,
           },
         );
+        debugPrint('LOCAL_PENDING_CREATED videoId=$videoId');
         debugPrint(
           '✅ VideoPublishingScreen: Optimistic video created successfully',
         );
@@ -2905,45 +3349,28 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         return; // Exit early, scheduling is handled
       }
 
-      // IMMEDIATE PUBLISH: Upload video directly to all required feeds
-      setState(() {
-        _isUploading = true;
-        _uploadProgress = 0.0;
-        _actionError = null;
-      });
-
+      // IMMEDIATE PUBLISH: hand off to ManagedPublishService (survives navigation).
       try {
-        secureLog('🚀 Starting video upload (immediate publish)...',
+        secureLog('🚀 Handing off immediate publish to ManagedPublishService...',
             name: 'VideoPublishingScreen');
-        secureLog('📁 Video file: ${videoFileToUpload.path}',
-            name: 'VideoPublishingScreen');
-        secureLog('📝 Caption: $_caption', name: 'VideoPublishingScreen');
-        secureLog('🏷️ Hashtags: $_hashtags', name: 'VideoPublishingScreen');
-        secureLog('🔒 Privacy: $_selectedPrivacy',
-            name: 'VideoPublishingScreen');
-        secureLog('📂 Category: $_selectedCategory',
-            name: 'VideoPublishingScreen');
-        secureLog('👤 User ID: ${currentUser.uid}',
-            name: 'VideoPublishingScreen');
-
+        // #region agent log
+        agentDebugLog(
+          hypothesisId: 'A',
+          location: 'video_publishing_screen.dart:handOff',
+          message: 'handoff_start',
+          data: <String, Object?>{
+            'publishRequestId': publishRequestId,
+            'videoId': videoId,
+            'fileExists': await videoFileToUpload.exists(),
+            'fileBytes': await videoFileToUpload.length(),
+            'hasBakedEdits':
+                (_videoDraft ?? widget.videoDraft)?.hasBakedEdits ?? false,
+          },
+        );
+        // #endregion
         final fileSize = await videoFileToUpload.length();
         final canonicalCategory =
             resolveCategoryIdForPublish(_selectedCategory);
-        final UploadStatusManager uploadStatus = UploadStatusManager();
-        await uploadStatus.beginInScreenUpload(
-          fileUri: videoFileToUpload.path,
-          thumbUri: _customThumbnailFile?.path,
-          title: _caption,
-          categories: <String>[canonicalCategory, ..._hashtags],
-          videoId: videoId,
-          metadata: <String, dynamic>{
-            'privacy': _selectedPrivacy,
-            'allowComments': _allowComments,
-            'category': canonicalCategory,
-          },
-        );
-
-        // Build cross-post requests for selected platforms.
         final crossPostRequests = _connectedPlatforms
             .where((_) => FeatureFlags.crossPostingEnabled)
             .where((p) => _platformEnabled[p.name] == true)
@@ -2952,83 +3379,282 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   scheduleAt: _schedule?.scheduledAtUtc,
                 ))
             .toList();
-
         final publishController = ref.read(publishControllerProvider);
-        final execution = await publishController.publishNow(
-          PublishNowRequest(
+        final VideoDraft? draftForTrace = _videoDraft ?? widget.videoDraft;
+        final PublishNowRequest publishRequest = PublishNowRequest(
+          videoId: videoId,
+          publishRequestId: publishRequestId,
+          videoFile: videoFileToUpload,
+          caption: _caption,
+          hashtags: _hashtags,
+          privacy: _selectedPrivacy,
+          allowComments: _allowComments,
+          crossPostRequests: crossPostRequests,
+          additionalMetadata: {
+            'category': canonicalCategory,
+            'title': _caption.trim().isNotEmpty ? _caption.trim() : 'Untitled Video',
+            'description':
+                _caption.trim().isNotEmpty ? _caption.trim() : 'Untitled Video',
+            'cross_platform_sharing':
+                crossPostRequests.map((r) => r.platformName).toList(),
+            'watermark_applied':
+                _watermarkService.shouldApplyWatermarkForTier(
+              _subscriptionTier,
+              selectedPlatforms,
+            ),
+            PublishFirestoreFields.crossPostSubscriptionTier: _subscriptionTier,
+            'moderation_confidence': moderationResult.confidence,
+            'moderation_checked_at': DateTime.now().toIso8601String(),
+            'duration': _pendingPost?.effectiveDuration.inSeconds ?? 0,
+            'fileSize': fileSize,
+            'thumbnailTimeSeconds': _thumbnailTimeSeconds,
+            'isCustomThumbnail': _isCustomThumbnail,
+            'publishRequestId': publishRequestId,
+            'draftId': draftForTrace?.draftId,
+            'hasBakedEdits': draftForTrace?.hasBakedEdits ?? false,
+            'sourcePath': draftForTrace?.sourceFilePath,
+            'renderedPath': draftForTrace?.renderedFilePath ??
+                videoFileToUpload.path,
+            ..._previewEditMetadata,
+          },
+          onProgress: (progress) {
+            if (mounted) {
+              setState(() => _uploadProgress = progress);
+            }
+          },
+        );
+        final String? draftIdToDelete =
+            _videoDraft?.draftId ?? widget.videoDraft?.draftId;
+        final String uploadPathAtHandoff = videoFileToUpload.path;
+        // #region agent log
+        agentDebugLog(
+          hypothesisId: 'F',
+          location: 'video_publishing_screen.dart:handOff',
+          message: 'handoff_before_nav',
+          data: <String, Object?>{
+            'draftId': draftIdToDelete,
+            'uploadPath': uploadPathAtHandoff,
+            'fileExists': await videoFileToUpload.exists(),
+          },
+          runId: 'post-fix',
+        );
+        // #endregion
+        // Canonical create is a separate, short future — never await Mux READY.
+        PublishTransactionTrace.begin(
+          publishRequestId: publishRequestId,
+          draftId: draftForTrace?.draftId,
+          videoId: videoId,
+          hasBakedEdits: draftForTrace?.hasBakedEdits ?? false,
+          sourcePath: draftForTrace?.sourceFilePath,
+          renderedPath: draftForTrace?.renderedFilePath ??
+              videoFileToUpload.path,
+        );
+        late final CanonicalPublishAck canonicalAck;
+        try {
+          canonicalAck = await VideoUploadService()
+              .createCanonicalPublish(
             videoId: videoId,
-            videoFile: videoFileToUpload,
             caption: _caption,
             hashtags: _hashtags,
             privacy: _selectedPrivacy,
             allowComments: _allowComments,
-            crossPostRequests: crossPostRequests,
-            additionalMetadata: {
-              'category': canonicalCategory,
-              'cross_platform_sharing':
-                  crossPostRequests.map((r) => r.platformName).toList(),
-              'watermark_applied':
-                  _watermarkService.shouldApplyWatermarkForTier(
-                _subscriptionTier,
-                selectedPlatforms,
-              ),
-              PublishFirestoreFields.crossPostSubscriptionTier:
-                  _subscriptionTier,
-              'moderation_confidence': moderationResult.confidence,
-              'moderation_checked_at': DateTime.now().toIso8601String(),
-              'duration': _pendingPost?.effectiveDuration.inSeconds ?? 0,
-              'fileSize': fileSize,
-              'thumbnailTimeSeconds': _thumbnailTimeSeconds,
-              'isCustomThumbnail': _isCustomThumbnail,
-              ..._previewEditMetadata,
-            },
-            onProgress: (progress) {
-              unawaited(uploadStatus.reportUploadProgress(progress));
-              if (mounted) setState(() => _uploadProgress = progress);
-            },
-          ),
-        );
-        final result = execution.publishResult!;
-
-        secureLog(
-            '📤 ST result: ${result.streamerstipSuccess}, '
-            'crossPost ok: ${result.successfulPlatforms.length}, '
-            'failed: ${result.failedPlatforms.length}',
-            name: 'VideoPublishingScreen');
-
-        if (!mounted) return;
-        setState(() => _isUploading = false);
-
-        if (result.streamerstipSuccess) {
-          final uploadedVideoId = execution.uploadedVideoId ?? videoId;
-          if (uploadedVideoId != videoId) {
-            _optimisticVideoService.bindServerVideoId(
-              clientVideoId: videoId,
-              serverVideoId: uploadedVideoId,
-            );
-          }
-          _retryVideoId = null;
-          _retryVideoFile = null;
-          uploadStatus.enterProcessing(uploadedVideoId);
-          await _returnToHomeAfterPublish(
-            uploadedVideoId: uploadedVideoId,
-            privacy: _selectedPrivacy,
-            category: canonicalCategory,
-            crossPostResult: result,
+            additionalMetadata: publishRequest.additionalMetadata,
+          )
+              .timeout(const Duration(seconds: 25));
+          debugPrint(
+            'CANONICAL_CREATE_SUCCESS videoId=${canonicalAck.videoId} '
+            'ownerId=${canonicalAck.ownerId} status=${canonicalAck.status} '
+            'AUTH_UID=${canonicalAck.authUid}',
           );
-        } else {
-          final String raw = result.streamerstipResult.error ??
-              publishController.errorDetails['streamerstip'] ??
-              'Failed to publish video';
-          final String friendly = _friendlyUploadError(raw);
-          await uploadStatus.markFailed(friendly);
-          _showUploadErrorDialog(friendly);
+          debugPrint('NAVIGATE_HOME videoId=${canonicalAck.videoId}');
+        } catch (e) {
+          secureLog(
+            '❌ VideoPublishingScreen: canonical create failed: $e',
+            name: 'VideoPublishingScreen',
+          );
+          final String errText = e.toString();
+          final bool isAppCheckFailure =
+              errText.contains('App Check') || errText.contains('APP_CHECK');
+          // App Check failures are FAILED_RETRYABLE — user taps Retry once.
+          // Do not auto-fire another identical canonical attempt.
+          if (!isAppCheckFailure) {
+            try {
+              canonicalAck = await VideoUploadService()
+                  .createCanonicalPublish(
+                videoId: videoId,
+                caption: _caption,
+                hashtags: _hashtags,
+                privacy: _selectedPrivacy,
+                allowComments: _allowComments,
+                additionalMetadata: publishRequest.additionalMetadata,
+              )
+                  .timeout(const Duration(seconds: 15));
+              debugPrint(
+                'CANONICAL_CREATE_SUCCESS videoId=${canonicalAck.videoId} '
+                'ownerId=${canonicalAck.ownerId} status=${canonicalAck.status} '
+                'AUTH_UID=${canonicalAck.authUid} via=reconcile_retry',
+              );
+              debugPrint('NAVIGATE_HOME videoId=${canonicalAck.videoId}');
+            } catch (e2) {
+              debugPrint(
+                'PUBLISH_FAILED stage=CANONICAL_HTTP_REQUEST '
+                'videoId=$videoId error=$e2',
+              );
+              PublishTransactionTrace.active?.publishFailed(
+                stageName: 'CANONICAL_HTTP_REQUEST',
+                videoId: videoId,
+                error: e2,
+              );
+              PublishTransactionTrace.active?.end(success: false);
+              _optimisticVideoService.removeOptimisticVideo(videoId);
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _isUploading = false;
+                _publishHandedOff = false;
+              });
+              _showUploadErrorDialog(
+                'Couldn\'t start your upload. Please retry.',
+              );
+              return;
+            }
+          } else {
+            debugPrint(
+              'PUBLISH_FAILED stage=APP_CHECK videoId=$videoId error=$e',
+            );
+            PublishTransactionTrace.active?.publishFailed(
+              stageName: 'APP_CHECK',
+              videoId: videoId,
+              error: e,
+            );
+            PublishTransactionTrace.active?.end(success: false);
+            _optimisticVideoService.removeOptimisticVideo(videoId);
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _isUploading = false;
+              _publishHandedOff = false;
+            });
+            _showUploadErrorDialog(
+              'Couldn\'t verify this device for upload. '
+              'Force-stop the app, reopen, then tap Share again.',
+            );
+            return;
+          }
         }
+        final String navigateVideoId = canonicalAck.videoId;
+        unawaited(
+          ManagedPublishService.instance.handOffPublish(
+            publishRequestId: publishRequestId,
+            videoId: navigateVideoId,
+            fileUri: videoFileToUpload.path,
+            thumbUri: _customThumbnailFile?.path,
+            title: _caption,
+            categories: <String>[canonicalCategory, ..._hashtags],
+            jobMetadata: <String, dynamic>{
+              'privacy': _selectedPrivacy,
+              'allowComments': _allowComments,
+              'category': canonicalCategory,
+              'publishRequestId': publishRequestId,
+            },
+            publishController: publishController,
+            request: PublishNowRequest(
+              videoId: navigateVideoId,
+              publishRequestId: publishRequestId,
+              videoFile: videoFileToUpload,
+              caption: _caption,
+              hashtags: _hashtags,
+              privacy: _selectedPrivacy,
+              allowComments: _allowComments,
+              crossPostRequests: crossPostRequests,
+              additionalMetadata: publishRequest.additionalMetadata,
+              onProgress: publishRequest.onProgress,
+              preCreatedAck: canonicalAck,
+              skipModeration: true,
+            ),
+            preCreatedAck: canonicalAck,
+          ).then((PublishExecutionResult execution) {
+            final CrossPublishResult? result = execution.publishResult;
+            final bool success = result?.streamerstipSuccess == true;
+            // #region agent log
+            agentDebugLog(
+              hypothesisId: 'F',
+              location: 'video_publishing_screen.dart:handOff',
+              message: 'handoff_complete',
+              data: <String, Object?>{
+                'success': success,
+                'draftId': draftIdToDelete,
+                'uploadPathExists': File(uploadPathAtHandoff).existsSync(),
+              },
+              runId: 'post-fix',
+            );
+            // #endregion
+            if (success &&
+                draftIdToDelete != null &&
+                draftIdToDelete.isNotEmpty) {
+              // Keep the draft MP4 until Mux remote is on the optimistic row.
+              // Deleting earlier caused ExoPlayer ENOENT → "Unable to play".
+              unawaited(_deleteDraftWhenRemoteReady(
+                videoId: navigateVideoId,
+                draftId: draftIdToDelete,
+              ));
+            }
+            if (result == null) {
+              return;
+            }
+            if (!result.streamerstipSuccess && mounted) {
+              final String raw = result.streamerstipResult.error ??
+                  publishController.errorDetails['streamerstip'] ??
+                  'Failed to publish video';
+              _showUploadErrorDialog(_friendlyUploadError(raw));
+            }
+          }).catchError((Object e) {
+            // #region agent log
+            agentDebugLog(
+              hypothesisId: 'F',
+              location: 'video_publishing_screen.dart:handOff',
+              message: 'handoff_error',
+              data: <String, Object?>{
+                'error': e.toString(),
+                'uploadPathExists': File(uploadPathAtHandoff).existsSync(),
+              },
+              runId: 'post-fix',
+            );
+            // #endregion
+            if (mounted) {
+              setState(() {
+                _publishHandedOff = false;
+                _isUploading = false;
+              });
+              _showUploadErrorDialog(_friendlyUploadError(e.toString()));
+            }
+          }),
+        );
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _publishHandedOff = true;
+          _isUploading = false;
+        });
+        _retryVideoId = null;
+        _retryVideoFile = null;
+        await _returnToHomeAfterPublish(
+          uploadedVideoId: navigateVideoId,
+          privacy: _selectedPrivacy,
+          category: canonicalCategory,
+          crossPostResult: null,
+        );
       } catch (e) {
-        secureLog('❌ VideoPublishingScreen: upload error: $e',
+        secureLog('❌ VideoPublishingScreen: upload handoff error: $e',
             name: 'VideoPublishingScreen');
         if (!mounted) return;
-        setState(() => _isUploading = false);
+        setState(() {
+          _isUploading = false;
+          _publishHandedOff = false;
+        });
         final String friendly = _friendlyUploadError(e.toString());
         await UploadStatusManager().markFailed(friendly);
         _showUploadErrorDialog(friendly);
@@ -3067,16 +3693,43 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     );
   }
 
+  Future<void> _deleteDraftWhenRemoteReady({
+    required String videoId,
+    required String draftId,
+  }) async {
+    const Duration pollInterval = Duration(milliseconds: 400);
+    const Duration maxWait = Duration(seconds: 90);
+    final DateTime deadline = DateTime.now().add(maxWait);
+    while (DateTime.now().isBefore(deadline)) {
+      final OptimisticVideo? optimistic =
+          OptimisticVideoService().getOptimisticVideo(videoId);
+      if (optimistic == null) {
+        break;
+      }
+      final String remote =
+          (optimistic.hlsUrl ?? optimistic.videoUrl ?? '').trim();
+      if (optimistic.status.isReady &&
+          remote.isNotEmpty &&
+          !isHomeVideoLocalFileUrl(remote)) {
+        break;
+      }
+      await Future<void>.delayed(pollInterval);
+    }
+    await VideoDraftStore.instance.delete(draftId);
+  }
+
   Future<void> _returnToHomeAfterPublish({
     required String uploadedVideoId,
     required String privacy,
     required String category,
     CrossPublishResult? crossPostResult,
   }) async {
-    ref.read(postPublishFeedPrepProvider.notifier).complete();
-    ref.read(activeFeedProvider.notifier).setActiveFeed(FeedTab.forYou);
-    ref.read(mainTabIndexRequestProvider.notifier).state = 0;
-    ref
+    // Capture before pop — WidgetRef dies with this screen.
+    final ProviderContainer container = ProviderScope.containerOf(context);
+    container.read(postPublishFeedPrepProvider.notifier).complete();
+    container.read(activeFeedProvider.notifier).setActiveFeed(FeedTab.forYou);
+    container.read(mainTabIndexRequestProvider.notifier).state = 0;
+    container
         .read(homeFeedScrollRequestProvider.notifier)
         .requestScrollToVideo(uploadedVideoId);
     OptimisticVideoService().requestHomeScrollToVideo(uploadedVideoId);
@@ -3095,12 +3748,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       return;
     }
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
-    ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
+    container.read(homeViewReactivateProvider.notifier).triggerReactivation();
 
     unawaited(_finishPostPublishFeedPrep(
       videoId: uploadedVideoId,
       privacy: privacy,
       category: category,
+      container: container,
     ));
   }
 
@@ -3108,6 +3762,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     required String videoId,
     required String privacy,
     required String category,
+    required ProviderContainer container,
   }) async {
     try {
       final String? uid = FirebaseAuth.instance.currentUser?.uid;
@@ -3117,11 +3772,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           userId: uid,
           privacy: privacy,
           category: category,
-          ref: ref,
+          container: container,
           timeout: const Duration(minutes: 2),
         );
       } else {
-        await ref.read(hp.homeProvider.notifier).refreshFeedByTab(
+        await container.read(hp.homeProvider.notifier).refreshFeedByTab(
               FeedTab.forYou,
             );
       }
@@ -3131,12 +3786,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         name: 'VideoPublishingScreen',
       );
       try {
-        await ref.read(hp.homeProvider.notifier).refreshFeedByTab(
+        await container.read(hp.homeProvider.notifier).refreshFeedByTab(
               FeedTab.forYou,
             );
       } catch (_) {}
     } finally {
-      ref.read(postPublishFeedPrepProvider.notifier).complete();
+      container.read(postPublishFeedPrepProvider.notifier).complete();
     }
   }
 
@@ -3169,16 +3824,20 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           );
         },
         onDone: () async {
+          final ProviderContainer container =
+              ProviderScope.containerOf(context);
           final currentUserId = FirebaseAuth.instance.currentUser?.uid;
           if (currentUserId != null) {
             await VideoPublishFinalizeService.instance.finalizeDiscoverability(
               videoId: uploadedVideoId,
               userId: currentUserId,
-              ref: ref,
+              container: container,
               waitForMux: false,
             );
           }
-          ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
+          container
+              .read(homeViewReactivateProvider.notifier)
+              .triggerReactivation();
           if (!ctx.mounted || !mounted) {
             return;
           }
@@ -3190,17 +3849,29 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   void _showModerationErrorDialog(VideoModerationResult result) {
+    final bool isFileLimit =
+        result.violations.contains('file_too_large') ||
+            result.violations.contains('duration_too_long');
+    final String title =
+        isFileLimit ? 'Cannot Publish' : 'Content Rejected';
+    final String footer = isFileLimit
+        ? 'Compress or shorten the video, then try again.'
+        : 'Please review your content and try again with appropriate material.';
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.block, color: Colors.red, size: 24),
-            SizedBox(width: 8),
+            Icon(
+              isFileLimit ? Icons.sd_card_alert_outlined : Icons.block,
+              color: Colors.red,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
             Text(
-              'Content Rejected',
-              style: TextStyle(color: Colors.white, fontSize: 18),
+              title,
+              style: const TextStyle(color: Colors.white, fontSize: 18),
             ),
           ],
         ),
@@ -3208,9 +3879,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Your video cannot be published due to:',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+            Text(
+              isFileLimit
+                  ? 'Your video cannot be published:'
+                  : 'Your video cannot be published due to:',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
             const SizedBox(height: 12),
             Container(
@@ -3221,12 +3894,15 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                 border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
               ),
               child: Text(
-                result.reason ?? 'Inappropriate content detected',
+                result.reason ??
+                    (isFileLimit
+                        ? PublishValidationLimits.errorFileSize
+                        : 'Inappropriate content detected'),
                 style: const TextStyle(color: Colors.red, fontSize: 14),
               ),
             ),
-            const SizedBox(height: 12),
-            if (result.violations.isNotEmpty) ...[
+            if (!isFileLimit && result.violations.isNotEmpty) ...[
+              const SizedBox(height: 12),
               const Text(
                 'Violations detected:',
                 style: TextStyle(color: Colors.white70, fontSize: 12),
@@ -3241,29 +3917,79 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   )),
             ],
             const SizedBox(height: 16),
-            const Text(
-              'Please review your content and try again with appropriate material.',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
+            Text(
+              footer,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Edit Content',
-              style: TextStyle(color: Color(0xFF9248D2)),
+            child: Text(
+              isFileLimit ? 'OK' : 'Edit Content',
+              style: const TextStyle(color: Color(0xFF9248D2)),
             ),
           ),
+          if (!isFileLimit)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _saveAsDraft();
+              },
+              child: const Text(
+                'Save as Draft',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showRenderFailureDialog(String error) {
+    final String safeMessage = UserFacingError.message(error);
+    if (mounted) {
+      setState(() {
+        _actionError = safeMessage;
+        _retryVideoFile = null;
+      });
+    }
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Row(
+          children: <Widget>[
+            Icon(Icons.movie_filter_outlined, color: Colors.orange, size: 24),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Couldn’t apply edits',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '$safeMessage\n\nYour original recording was not uploaded. '
+          'Retry rendering, or go back and remove the edit that’s failing.',
+          style: const TextStyle(color: Colors.white70, height: 1.35),
+        ),
+        actions: <Widget>[
           TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _saveAsDraft();
-            },
+            onPressed: () => Navigator.of(context).pop(),
             child: const Text(
-              'Save as Draft',
+              'Edit again',
               style: TextStyle(color: Colors.white70),
             ),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              unawaited(_publishVideo());
+            },
+            child: const Text('Retry render'),
           ),
         ],
       ),

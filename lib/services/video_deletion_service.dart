@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/home_video.dart';
@@ -29,10 +30,12 @@ class VideoDeletionService {
     String videoId, {
     String source = 'app',
   }) async {
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
     final HttpsCallable callable = _functions.httpsCallable('deleteVideo');
     await callable.call(<String, dynamic>{
       'videoId': videoId,
       'source': source,
+      if (uid != null && uid.isNotEmpty) 'userId': uid,
     });
   }
 
@@ -43,10 +46,12 @@ class VideoDeletionService {
     if (videoIds.isEmpty) {
       return;
     }
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
     final HttpsCallable callable = _functions.httpsCallable('deleteVideos');
     await callable.call(<String, dynamic>{
       'videoIds': videoIds,
       'source': source,
+      if (uid != null && uid.isNotEmpty) 'userId': uid,
     });
   }
 
@@ -61,7 +66,11 @@ class VideoDeletionService {
     final VideoService videoService =
         ref.read(videoServiceStateProvider.notifier);
     for (final String id in videoIds) {
-      videoService.removeVideo(id);
+      videoService.removeVideo(
+        id,
+        source: 'video_deletion_service',
+        reason: 'user_deleted',
+      );
     }
     ref.invalidate(hp.homeProvider);
     ref.invalidate(discoverProvider);

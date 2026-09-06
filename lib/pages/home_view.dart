@@ -93,9 +93,14 @@ class _HomeViewState extends ConsumerState<HomeView>
     _homeReactivateNotifier = ref.read(homeViewReactivateProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref
-          .read(homeViewControllerProvider.notifier)
-          .resetFeedPositionForColdOpen();
+      Future<void>.delayed(Duration.zero, () {
+        if (!mounted) {
+          return;
+        }
+        ref
+            .read(homeViewControllerProvider.notifier)
+            .resetFeedPositionForColdOpen();
+      });
       HomeFirstFrameGate.instance.runAfterFirstFrame(() {
         if (!mounted) return;
         LikeInteractionBoundary.runAfterFirstInteraction(
@@ -582,7 +587,31 @@ class _HomeViewState extends ConsumerState<HomeView>
     final int index =
         videos.indexWhere((HomeVideo video) => video.id == videoId);
     if (index < 0) {
-      secureLog('⏳ HomeView: Waiting for uploaded video in feed: $videoId');
+      // Owner pending should already be merged at index 0; retry once next frame.
+      secureLog(
+        '🏠 HomeView: Pending video not in display yet, retrying: $videoId',
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        final List<HomeVideo> retryVideos =
+            ref.read(hp.homeProvider).forYouVideos;
+        final int retryIndex = retryVideos
+            .indexWhere((HomeVideo video) => video.id == videoId);
+        if (retryIndex < 0) {
+          return;
+        }
+        ref.read(homeFeedScrollRequestProvider.notifier).clear();
+        OptimisticVideoService().consumePendingHomeScrollVideoId();
+        _controller.setCurrentIndexForFeed(FeedTab.forYou, retryIndex);
+        _feedPageControls?.jumpToIndex(retryIndex);
+        unawaited(_onPageChanged(retryIndex));
+        secureLog(
+          '✅ HomeView: Showing pending/local video at index $retryIndex '
+          '($videoId)',
+        );
+      });
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {

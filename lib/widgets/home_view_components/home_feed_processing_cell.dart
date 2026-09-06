@@ -51,13 +51,20 @@ class HomeFeedProcessingCell extends StatelessWidget {
     return const ColoredBox(color: Color(0xFF0E0E0E));
   }
 
+  /// Instant Publish never uses this placeholder for in-progress uploads.
+  /// Home only shows it for hard failures; otherwise Instant Play or skip.
   @override
   Widget build(BuildContext context) {
     final String headline =
-        _hasFailed ? 'Upload failed' : 'Processing your video...';
+        _hasFailed ? 'Upload failed' : 'Posting…';
     final String subtitle = _hasFailed
         ? (optimistic?.errorMessage ?? 'Tap publish again to retry this clip.')
-        : 'Your clip will appear here when ready.';
+        : 'Your video is uploading in the background.';
+
+    // In-progress uploads must not render this full-screen placeholder.
+    if (!_hasFailed) {
+      return const SizedBox.shrink();
+    }
 
     return ColoredBox(
       color: Colors.black,

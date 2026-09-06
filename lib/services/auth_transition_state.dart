@@ -78,3 +78,9 @@ bool resolveStartupShowsAuthLoading({
   }
   return false;
 }
+
+/// Client Firestore cannot create `users/{uid}` until the password email is
+/// verified (`hasVerifiedEmail`). Identity fields are also blocked on create.
+bool emailSignupMayWriteUserDocument({required bool emailVerified}) {
+  return emailVerified;
+}

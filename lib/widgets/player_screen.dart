@@ -124,7 +124,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       debugPrint(
           '🎬 PlayerScreen: Loaded ${_videos.length} videos from favorites');
     } else {
-      _videos = widget.videos ?? [];
+      // Feed lists are often growable:false — copy before local mutations.
+      _videos = List<HomeVideo>.from(widget.videos ?? const <HomeVideo>[]);
       debugPrint(
           '🎬 PlayerScreen: Using provided videos: ${_videos.length} videos');
 

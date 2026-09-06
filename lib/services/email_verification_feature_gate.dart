@@ -70,6 +70,7 @@ abstract final class EmailVerificationFeatureGate {
     }
     try {
       await user.reload();
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
     } catch (_) {}
     return !firebaseUserNeedsEmailVerification(
       FirebaseAuth.instance.currentUser,

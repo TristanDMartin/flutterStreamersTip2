@@ -7,6 +7,17 @@ import 'package:streamers_tip/components/onboarding/onboarding_v1_constants.dart
 
 void main() {
   group('OnboardingService V1', () {
+    test('ensureMigrated does not create a user doc when missing', () async {
+      final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
+      final OnboardingService service = OnboardingService(firestore: firestore);
+      final OnboardingState state = await service.ensureMigrated('missing-user');
+      expect(state.completed, isFalse);
+      expect(
+        (await firestore.collection('users').doc('missing-user').get()).exists,
+        isFalse,
+      );
+    });
+
     test('new user has initial onboarding state', () async {
       final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
       final OnboardingService service = OnboardingService(firestore: firestore);
@@ -106,8 +117,8 @@ void main() {
       expect(state.completed, isFalse);
       final Map<String, dynamic>? doc =
           (await firestore.collection('users').doc('partial').get()).data();
-      expect(doc?['hasCompletedOnboarding'], isFalse);
-      expect((doc?['onboarding'] as Map?)?['completed'], isFalse);
+      expect(doc?['hasCompletedOnboarding'], isNot(true));
+      expect((doc?['onboarding'] as Map?)?['completed'], isNot(true));
     });
 
     test('ensureMigrated does not auto-complete fresh signup profiles', () async {
@@ -127,9 +138,9 @@ void main() {
       expect(state.status, OnboardingStatus.notStarted);
       final Map<String, dynamic>? doc =
           (await firestore.collection('users').doc('fresh-signup').get()).data();
-      expect(doc?['hasCompletedOnboarding'], isFalse);
-      expect(doc?['onboardingCompleted'], isFalse);
-      expect((doc?['onboarding'] as Map?)?['completed'], isFalse);
+      expect(doc?['hasCompletedOnboarding'], isNot(true));
+      expect(doc?['onboardingCompleted'], isNot(true));
+      expect((doc?['onboarding'] as Map?)?['completed'], isNot(true));
     });
 
     test('ensureMigrated marks legacy users completed', () async {
@@ -151,6 +162,13 @@ void main() {
 
     test('saveCreatorGoals stores goals and advances step', () async {
       final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
+      await firestore.collection('users').doc('user-1').set(
+        <String, dynamic>{
+          'displayName': 'Creator',
+          'username': 'creator',
+          'createdAt': Timestamp.now(),
+        },
+      );
       final OnboardingService service = OnboardingService(firestore: firestore);
       await service.ensureMigrated('user-1');
       await service.saveCreatorGoals(
@@ -197,6 +215,13 @@ void main() {
 
     test('saveCreatorCard sets creatorCardCompleted flag', () async {
       final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
+      await firestore.collection('users').doc('user-1').set(
+        <String, dynamic>{
+          'displayName': 'Creator',
+          'username': 'creator',
+          'createdAt': Timestamp.now(),
+        },
+      );
       final OnboardingService service = OnboardingService(firestore: firestore);
       await service.ensureMigrated('user-1');
       await service.saveCreatorCard(
@@ -216,6 +241,13 @@ void main() {
 
     test('completeOnboarding marks user completed in Firestore', () async {
       final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
+      await firestore.collection('users').doc('user-1').set(
+        <String, dynamic>{
+          'displayName': 'Creator',
+          'username': 'creator',
+          'createdAt': Timestamp.now(),
+        },
+      );
       final OnboardingService service = OnboardingService(firestore: firestore);
       await service.ensureMigrated('user-1');
       await service.completeOnboarding('user-1');
@@ -230,6 +262,33 @@ void main() {
         (doc?['onboarding'] as Map?)?['completed'],
         isTrue,
       );
+    });
+
+    test('completeTippyLanding writes firstMissionChoice', () async {
+      final FakeFirebaseFirestore firestore = FakeFirebaseFirestore();
+      await firestore.collection('users').doc('user-1').set(
+        <String, dynamic>{
+          'displayName': 'Creator',
+          'username': 'creator',
+          'createdAt': Timestamp.now(),
+        },
+      );
+      final OnboardingService service = OnboardingService(firestore: firestore);
+      await service.completeTippyLanding(
+        userId: 'user-1',
+        landingChoice: 'recommended',
+        firstMissionChoice: 'accept',
+      );
+      final Map<String, dynamic>? doc =
+          (await firestore.collection('users').doc('user-1').get()).data();
+      final Map<String, dynamic> onboarding =
+          (doc?['onboarding'] as Map?)?.cast<String, dynamic>() ??
+              <String, dynamic>{};
+      expect(onboarding['tippyFunnelCompleted'], isTrue);
+      expect(onboarding['lifecycle'], 'COMPLETE');
+      expect(onboarding['landingChoice'], 'recommended');
+      expect(onboarding['firstMissionChoice'], 'accept');
+      expect(doc?['hasCompletedOnboarding'], isTrue);
     });
   });
 }

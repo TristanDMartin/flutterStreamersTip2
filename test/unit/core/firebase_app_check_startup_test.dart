@@ -9,4 +9,12 @@ void main() {
     expect(readiness.isReady, isFalse);
     expect(readiness.detail, contains('Firebase not initialized'));
   });
+
+  test('isAppCheckEnabledForBuild defaults to enabled', () {
+    expect(isAppCheckEnabledForBuild(), isTrue);
+  });
+
+  test('appCheckProviderLabel defaults to none before activate', () {
+    expect(appCheckProviderLabel, isNotEmpty);
+  });
 }

@@ -3,10 +3,15 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/upload_job.dart';
+import '../utils/video_ready_contract.dart';
 import 'upload_job_storage_service.dart';
 import 'background_upload_service.dart';
 import 'video_publish_finalize_service.dart';
+import 'publish_transaction_trace.dart';
+import 'optimistic_video_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/optimistic_video.dart';
+import 'dart:io';
 
 class UploadStatusManager extends ChangeNotifier {
   static final UploadStatusManager _instance = UploadStatusManager._internal();
@@ -46,19 +51,22 @@ class UploadStatusManager extends ChangeNotifier {
   String get currentStatusMessage {
     switch (_currentState) {
       case UploadJobState.validating:
-        return 'Checking your video...';
+        return 'Preparing…';
       case UploadJobState.uploading:
       case UploadJobState.queued:
+        if (_currentProgress <= 0.005) {
+          return 'Preparing…';
+        }
         final pct = (_currentProgress * 100).toStringAsFixed(0);
         final eta = _estimatedTimeRemaining();
         return eta != null
             ? 'Uploading $pct% • $eta left'
             : 'Uploading $pct%...';
       case UploadJobState.processing:
-        return 'Processing your video...';
+        return 'Processing…';
       case UploadJobState.ready:
       case UploadJobState.done:
-        return 'Your video is live 🎉';
+        return 'Ready';
       case UploadJobState.failed:
         return _errorMessage ?? 'Upload failed';
       case UploadJobState.idle:
@@ -153,7 +161,7 @@ class UploadStatusManager extends ChangeNotifier {
       title: title,
       categories: categories,
       createdAt: DateTime.now(),
-      state: UploadJobState.uploading,
+      state: UploadJobState.validating,
       videoId: videoId,
       progress: 0.0,
       metadata: jobMetadata,
@@ -162,7 +170,7 @@ class UploadStatusManager extends ChangeNotifier {
     _activeUploads[localId] = job;
     _currentJobId = localId;
     _currentVideoId = videoId;
-    _currentState = UploadJobState.uploading;
+    _currentState = UploadJobState.validating;
     _currentProgress = 0.0;
     _errorMessage = null;
     _showStatusBar = true;
@@ -193,8 +201,31 @@ class UploadStatusManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> markFailed(String message) async {
-    await _enterFailed(_currentJobId, message);
+  Future<void> markFailed(String message, {String stage = 'UPLOAD_JOB'}) async {
+    // Never demote a job whose canonical video is already processing/ready.
+    final String? videoId = _currentVideoId;
+    if (videoId != null && videoId.isNotEmpty) {
+      final _CanonicalUploadPhase? phase =
+          await _readCanonicalUploadPhase(videoId);
+      if (phase == _CanonicalUploadPhase.ready) {
+        debugPrint(
+          'JOB_STATE IGNORE_FAIL stage=$stage reason=canonical_ready '
+          'videoId=$videoId',
+        );
+        await _completeFromCanonical(videoId);
+        return;
+      }
+      if (phase == _CanonicalUploadPhase.processing) {
+        debugPrint(
+          'JOB_STATE IGNORE_FAIL stage=$stage reason=canonical_processing '
+          'videoId=$videoId',
+        );
+        enterProcessing(videoId);
+        return;
+      }
+    }
+    debugPrint('JOB_STATE FAILED stage=$stage reason=$message');
+    await _enterFailed(_currentJobId, message, stage: stage);
   }
 
   /// Called after bytes are fully uploaded — waits for Mux webhook via Firestore.
@@ -203,6 +234,11 @@ class UploadStatusManager extends ChangeNotifier {
     _currentState = UploadJobState.processing;
     _currentProgress = 0.0;
     _showStatusBar = true;
+    debugPrint('PROCESSING videoId=$videoId');
+    PublishTransactionTrace.active?.event(
+      'MUX_PROCESSING',
+      detail: 'videoId=$videoId',
+    );
     _pollingTimer?.cancel();
     final String? localId = _currentJobId;
     if (localId != null) {
@@ -254,7 +290,7 @@ class UploadStatusManager extends ChangeNotifier {
   }
 
   void _pollForReady(String videoId) {
-    // Poll Firestore every 3 seconds until the video is feed-ready or timeout (5min).
+    // Poll Firestore until Worker/webhook marks playback ready (or timeout).
     const pollInterval = Duration(seconds: 3);
     const timeout = Duration(minutes: 5);
     final deadline = DateTime.now().add(timeout);
@@ -266,6 +302,7 @@ class UploadStatusManager extends ChangeNotifier {
           _enterFailed(
             null,
             'Processing timed out. Your video may still appear soon.',
+            stage: 'MUX_READY',
           ),
         );
         return;
@@ -274,26 +311,47 @@ class UploadStatusManager extends ChangeNotifier {
         final doc = await _firestore.collection('videos').doc(videoId).get();
         if (!doc.exists) return;
         final data = doc.data()!;
-        final isReady = data['isReadyForFeed'] as bool? ?? false;
-        final playbackReady = data['playbackReady'] as bool?;
-        final status = data['status'] as String? ?? '';
-        final hasPlayableSource =
-            (data['muxPlaybackId'] as String?)?.isNotEmpty == true ||
-                (data['canonicalPlaybackUrl'] as String?)?.isNotEmpty == true ||
-                (data['hlsUrl'] as String?)?.isNotEmpty == true ||
-                (data['hls_url'] as String?)?.isNotEmpty == true;
+        if (videoStatusIsFailed(data)) {
+          timer.cancel();
+          debugPrint('JOB_STATE FAILED reason=mux_processing_failed');
+          unawaited(
+            _enterFailed(
+              null,
+              (data['transcodingError'] as String?) ??
+                  (data['uploadError'] as String?) ??
+                  'Video processing failed. Please try again.',
+            ),
+          );
+          return;
+        }
+        // Single contract: playable Mux URL + ready status.
+        // isReadyForFeed is required for global feeds; private videos still
+        // exit Processing when playbackReady + muxPlaybackId land.
+        final bool playbackReady = isCanonicalPlaybackReady(data);
+        final bool feedReady = isCanonicalFeedReady(data);
+        if (!playbackReady) {
+          return;
+        }
         final thumbUrl =
             data['thumbnailUrl'] as String? ?? data['thumbnail_url'] as String?;
-        final isCanonicalReady = isReady &&
-            (playbackReady != false) &&
-            (status == 'active' || status == 'ready');
-        final isLegacyReady = hasPlayableSource &&
-            (playbackReady != false) &&
-            (status == 'active' || status == 'ready');
-        if (isCanonicalReady || isLegacyReady) {
-          timer.cancel();
-          _enterReady(thumbUrl);
-        }
+        timer.cancel();
+        final PublishTransactionTrace? trace = PublishTransactionTrace.active;
+        trace?.ok('mux-ready', detail: 'videoId=$videoId');
+        trace?.event('MUX_READY', detail: 'videoId=$videoId');
+        trace?.event(
+          'FEED_READY',
+          detail: 'isReadyForFeed=$feedReady',
+        );
+        trace?.ok(
+          'feed-ready',
+          detail: 'isReadyForFeed=$feedReady',
+        );
+        trace?.end(success: true);
+        debugPrint(
+          'MUX_WEBHOOK_READY videoId=$videoId '
+          'PLAYBACK_READY=true IS_READY_FOR_FEED=$feedReady',
+        );
+        _enterReady(thumbUrl);
       } catch (_) {
         // Network error — keep polling
       }
@@ -305,6 +363,7 @@ class UploadStatusManager extends ChangeNotifier {
     _currentProgress = 1.0;
     _thumbnailUrl = thumbUrl;
     _showStatusBar = true;
+    debugPrint('LIVE_TOAST_SHOWN');
     notifyListeners();
     final String? localId = _currentJobId;
     if (localId != null) {
@@ -314,6 +373,12 @@ class UploadStatusManager extends ChangeNotifier {
     }
     final String? videoId = _currentVideoId;
     final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    // Keep optimistic local playback until the Home/Profile surfaces pick up
+    // the canonical remote-ready row. Removing here caused Instant Play to
+    // collapse into the "Posting…" processing cell.
+    if (videoId != null && videoId.isNotEmpty) {
+      OptimisticVideoService().requestFeedRefresh();
+    }
     if (videoId != null && videoId.isNotEmpty && uid != null) {
       unawaited(
         VideoPublishFinalizeService.instance.finalizeDiscoverability(
@@ -325,11 +390,25 @@ class UploadStatusManager extends ChangeNotifier {
     }
   }
 
-  Future<void> _enterFailed(String? localId, String message) async {
+  Future<void> _enterFailed(
+    String? localId,
+    String message, {
+    String stage = 'UPLOAD_JOB',
+  }) async {
     _pollingTimer?.cancel();
     _currentState = UploadJobState.failed;
     _errorMessage = message;
     _showStatusBar = true;
+    final PublishTransactionTrace? trace = PublishTransactionTrace.active;
+    if (trace != null) {
+      trace.publishFailed(
+        stageName: stage,
+        videoId: _currentVideoId,
+        detail: message,
+      );
+      trace.fail(stage.toLowerCase(), detail: message);
+      trace.end(success: false);
+    }
     if (localId != null) {
       final UploadJob? existing = _activeUploads[localId];
       if (existing != null) {
@@ -347,10 +426,48 @@ class UploadStatusManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Retry after failure — re-upload the current job via BackgroundUploadService.
+  /// Retry after failure — reconcile canonical state before any re-upload.
   Future<void> retryUpload() async {
     final String? localId = _currentJobId;
-    if (localId == null) return;
+    if (localId == null) {
+      return;
+    }
+    final String? videoId =
+        _currentVideoId ?? _activeUploads[localId]?.videoId;
+    if (videoId != null && videoId.isNotEmpty) {
+      final _CanonicalUploadPhase? phase =
+          await _readCanonicalUploadPhase(videoId);
+      if (phase == _CanonicalUploadPhase.ready) {
+        debugPrint(
+          'UPLOAD_RETRY_SKIPPED videoId=$videoId reason=canonical_ready',
+        );
+        await _completeFromCanonical(videoId, localId: localId);
+        return;
+      }
+      if (phase == _CanonicalUploadPhase.processing) {
+        debugPrint(
+          'UPLOAD_RETRY_SKIPPED videoId=$videoId reason=canonical_processing',
+        );
+        _errorMessage = null;
+        enterProcessing(videoId);
+        return;
+      }
+      if (phase == _CanonicalUploadPhase.serverFailed) {
+        debugPrint(
+          'UPLOAD_RETRY_BLOCKED videoId=$videoId reason=server_failed',
+        );
+        await _enterFailed(
+          localId,
+          'Video processing failed on the server. Start a new post.',
+          stage: 'CANONICAL_FAILED',
+        );
+        return;
+      }
+      // notFound / needsPut / null → fall through to resume PUT / restart.
+      debugPrint(
+        'UPLOAD_RETRY_CONTINUE videoId=$videoId phase=${phase?.name ?? "unknown"}',
+      );
+    }
     _pollingTimer?.cancel();
     _pollingTimer = null;
     _currentState = UploadJobState.uploading;
@@ -368,6 +485,25 @@ class UploadStatusManager extends ChangeNotifier {
     await _uploadService.cancelUpload(localId);
     _cleanupJob(localId);
     _reset();
+  }
+
+  /// Drop every local upload job / status bar (stuck Instant Publish cleanup).
+  Future<void> discardAllUploads() async {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+    final List<String> localIds = _activeUploads.keys.toList();
+    for (final String localId in localIds) {
+      try {
+        await _uploadService.cancelUpload(localId);
+      } catch (_) {
+        // Best-effort cancel.
+      }
+      _cleanupJob(localId);
+    }
+    await _jobStorage.clearAllJobs();
+    _reset();
+    notifyListeners();
+    debugPrint('UPLOAD_STATUS discardAllUploads count=${localIds.length}');
   }
 
   void dismissStatusBar() {
@@ -405,10 +541,49 @@ class UploadStatusManager extends ChangeNotifier {
   Future<void> _resumeActiveUploads() async {
     final List<UploadJob> resumableJobs =
         await _jobStorage.loadResumableJobs();
+    final OptimisticVideoService optimistic = OptimisticVideoService();
+    // Only resume jobs that still exist on disk — do not rehydrate every
+    // Instant Publish JSON (that revived ghost "still posting" cards).
     for (final UploadJob job in resumableJobs) {
       _activeUploads[job.localId] = job;
+      await _restoreOptimisticFromJob(job);
       final String? source = job.metadata?['source'] as String?;
       final bool isInScreen = source == 'publish_screen';
+      final String? videoId = job.videoId?.trim();
+      if (videoId != null && videoId.isNotEmpty) {
+        final _CanonicalUploadPhase? phase =
+            await _readCanonicalUploadPhase(videoId);
+        if (phase == _CanonicalUploadPhase.ready) {
+          debugPrint(
+            'UPLOAD_RESUME_RECONCILE videoId=$videoId phase=ready '
+            'localState=${job.state.name}',
+          );
+          await _completeFromCanonical(videoId, localId: job.localId);
+          continue;
+        }
+        if (phase == _CanonicalUploadPhase.processing) {
+          debugPrint(
+            'UPLOAD_RESUME_RECONCILE videoId=$videoId phase=processing '
+            'localState=${job.state.name}',
+          );
+          _currentJobId = job.localId;
+          _currentVideoId = videoId;
+          _errorMessage = null;
+          enterProcessing(videoId);
+          continue;
+        }
+        if (phase == _CanonicalUploadPhase.serverFailed) {
+          _currentJobId = job.localId;
+          _currentVideoId = videoId;
+          await _enterFailed(
+            job.localId,
+            job.errorMessage ??
+                'Video processing failed. Please try again.',
+            stage: 'CANONICAL_FAILED',
+          );
+          continue;
+        }
+      }
       if (job.state == UploadJobState.failed) {
         _currentJobId = job.localId;
         _currentVideoId = job.videoId;
@@ -426,17 +601,20 @@ class UploadStatusManager extends ChangeNotifier {
         continue;
       }
       if (job.state == UploadJobState.uploading ||
-          job.state == UploadJobState.queued) {
+          job.state == UploadJobState.queued ||
+          job.state == UploadJobState.validating) {
         _currentJobId = job.localId;
         _currentVideoId = job.videoId;
         _currentState = UploadJobState.uploading;
         _currentProgress = job.progress ?? 0.0;
         _showStatusBar = true;
-        // In-screen jobs need the publish UI; surface as failed so Retry works.
+        // In-screen publish owns the PUT. Canonical ready/processing was
+        // already handled above — remaining means bytes may still be needed.
         if (isInScreen) {
           await _enterFailed(
             job.localId,
             'Upload interrupted. Tap Retry to finish publishing.',
+            stage: 'UPLOAD_PUT',
           );
           continue;
         }
@@ -453,6 +631,147 @@ class UploadStatusManager extends ChangeNotifier {
       _showStatusBar = true;
     }
     notifyListeners();
+    if (resumableJobs.isNotEmpty) {
+      optimistic.requestFeedRefresh();
+    }
+    debugPrint('UPLOAD_RESUME resumable=${resumableJobs.length}');
+  }
+
+  Future<_CanonicalUploadPhase?> _readCanonicalUploadPhase(
+    String videoId,
+  ) async {
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc =
+          await _firestore.collection('videos').doc(videoId).get(
+                const GetOptions(source: Source.server),
+              );
+      if (!doc.exists || doc.data() == null) {
+        return _CanonicalUploadPhase.notFound;
+      }
+      final Map<String, dynamic> data = doc.data()!;
+      if (videoStatusIsFailed(data)) {
+        return _CanonicalUploadPhase.serverFailed;
+      }
+      final bool feedReady = isCanonicalFeedReady(data);
+      final bool playbackReady = isCanonicalPlaybackReady(data);
+      final String? muxPlaybackId =
+          (data['muxPlaybackId'] as String?)?.trim() ??
+              (data['mux_playback_id'] as String?)?.trim();
+      if (feedReady ||
+          (playbackReady &&
+              muxPlaybackId != null &&
+              muxPlaybackId.isNotEmpty)) {
+        debugPrint(
+          'CANONICAL_READY videoId=$videoId feedReady=$feedReady '
+          'muxPlaybackId=${muxPlaybackId ?? "-"}',
+        );
+        return _CanonicalUploadPhase.ready;
+      }
+      final String status =
+          (data['status'] as String? ?? '').trim().toLowerCase();
+      if (status == 'processing' ||
+          status == 'uploading' ||
+          status == 'pending' ||
+          (data['muxStatus'] as String?)?.toLowerCase() == 'processing' ||
+          (data['muxStatus'] as String?)?.toLowerCase() == 'waiting') {
+        return _CanonicalUploadPhase.processing;
+      }
+      final String? muxUploadId =
+          (data['muxUploadId'] as String?)?.trim() ??
+              (data['uploadId'] as String?)?.trim();
+      if (muxUploadId != null && muxUploadId.isNotEmpty) {
+        // Doc exists with Mux upload id but not processing/ready yet —
+        // PUT may still be needed.
+        return _CanonicalUploadPhase.needsPut;
+      }
+      return _CanonicalUploadPhase.needsPut;
+    } catch (e) {
+      debugPrint('UPLOAD_CANONICAL_LOOKUP_FAILED videoId=$videoId error=$e');
+      return null;
+    }
+  }
+
+  Future<void> _completeFromCanonical(
+    String videoId, {
+    String? localId,
+  }) async {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+    String? thumbUrl;
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc =
+          await _firestore.collection('videos').doc(videoId).get();
+      final Map<String, dynamic>? data = doc.data();
+      thumbUrl = data?['thumbnailUrl'] as String? ??
+          data?['thumbnail_url'] as String?;
+    } catch (_) {
+      // Best-effort thumbnail.
+    }
+    final String? jobId = localId ?? _currentJobId;
+    _currentJobId = jobId;
+    _currentVideoId = videoId;
+    _errorMessage = null;
+    // Drop durable Instant Publish pending once canonical is READY.
+    OptimisticVideoService().removeOptimisticVideo(videoId);
+    OptimisticVideoService().requestFeedRefresh();
+    _enterReady(thumbUrl);
+    debugPrint(
+      'UPLOAD_JOB_COMPLETED_FROM_CANONICAL videoId=$videoId localId=${jobId ?? "-"}',
+    );
+  }
+
+  Future<void> _restoreOptimisticFromJob(UploadJob job) async {
+    final String? videoId = job.videoId;
+    if (videoId == null || videoId.isEmpty) {
+      return;
+    }
+    final OptimisticVideoService optimistic = OptimisticVideoService();
+    if (optimistic.isOptimisticVideo(videoId)) {
+      optimistic.attachServerListener(videoId);
+      return;
+    }
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+    final String fileUri = job.fileUri.trim();
+    final String? thumbUri = job.thumbUri?.trim();
+    String? localVideoPath;
+    if (fileUri.isNotEmpty) {
+      final String path = fileUri.startsWith('file://')
+          ? Uri.parse(fileUri).toFilePath()
+          : fileUri;
+      if (File(path).existsSync()) {
+        localVideoPath = path;
+      }
+    }
+    String? localThumbPath;
+    if (thumbUri != null && thumbUri.isNotEmpty) {
+      final String path = thumbUri.startsWith('file://')
+          ? Uri.parse(thumbUri).toFilePath()
+          : thumbUri;
+      if (File(path).existsSync()) {
+        localThumbPath = path;
+      }
+    }
+    final OptimisticVideo restored = OptimisticVideoFactory.createPlaceholder(
+      videoId: videoId,
+      ownerId: user.uid,
+      caption: job.title,
+      categories: job.categories,
+      localThumbnailPath: localThumbPath,
+      localVideoPath: localVideoPath,
+      metadata: job.metadata,
+    ).copyWith(
+      status: job.state == UploadJobState.failed
+          ? VideoStatus.uploadFailed
+          : VideoStatus.processing,
+      errorMessage: job.errorMessage,
+      uploadProgress: job.progress,
+      createdAt: job.createdAt,
+    );
+    await optimistic.restoreOptimisticVideo(restored);
+    debugPrint('OPTIMISTIC_RESUME_FROM_JOB videoId=$videoId');
   }
 
   UploadJob? getUploadStatus(String localId) => _activeUploads[localId];
@@ -486,4 +805,13 @@ class UploadStatusManager extends ChangeNotifier {
     }
     super.dispose();
   }
+}
+
+/// Server-authoritative phase for a local upload job.
+enum _CanonicalUploadPhase {
+  ready,
+  processing,
+  needsPut,
+  notFound,
+  serverFailed,
 }

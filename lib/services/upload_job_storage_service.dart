@@ -105,6 +105,16 @@ class UploadJobStorageService {
     }
   }
 
+  Future<void> clearAllJobs() async {
+    await initialize();
+    final List<FileSystemEntity> files = _jobsDir.listSync();
+    for (final FileSystemEntity file in files) {
+      if (file is File && file.path.endsWith('.json')) {
+        await file.delete();
+      }
+    }
+  }
+
   /// Clean up old completed jobs (older than 7 days)
   Future<void> cleanupOldJobs() async {
     final allJobs = await loadAllJobs();

@@ -127,6 +127,12 @@ class _CodeDrawnTippyState extends State<CodeDrawnTippy>
               scale = 1 + (0.08 * math.sin(_action.value * math.pi * 2));
               dy = -10 * math.sin(_action.value * math.pi) + _idleBob.value;
               break;
+            case TippyMascotState.thinking:
+              scale = 1 +
+                  (0.035 *
+                      math.sin((_idleBob.value + 3) / 6 * math.pi));
+              dy = _idleBob.value * 0.4;
+              break;
             default:
               break;
           }

@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/firebase_bootstrap.dart';
 import '../qa/qa_keys.dart';
@@ -33,10 +35,22 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   bool _showAlert = false;
   String _alertMessage = '';
   bool _isContentVisible = false;
+  bool _appleAvailable = false;
 
   @override
   void initState() {
     super.initState();
+    if (!kIsWeb) {
+      unawaited(
+        SignInWithApple.isAvailable().then((bool available) {
+          if (mounted) {
+            setState(() {
+              _appleAvailable = available;
+            });
+          }
+        }),
+      );
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {
@@ -245,10 +259,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     );
   }
 
-  bool get _shouldShowAppleSignIn =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.macOS);
+  bool get _shouldShowAppleSignIn => _appleAvailable;
 
   Widget _buildAppleSignInButton(RobustAuthenticationService authService) {
     return _buildAuthButton(

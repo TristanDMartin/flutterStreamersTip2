@@ -337,6 +337,9 @@ service cloud.firestore {
         'tippyDnaSessions',
         'tippyNotificationHistory',
         'tippyMorningBriefings',
+        'creatorReferrals',
+        'growthReports',
+        'growthShareArtifacts',
       ];
     }
 
@@ -493,6 +496,37 @@ service cloud.firestore {
       // Creator Score — worker-written; public read for streamer/profile badges
       match /creatorScore/{docId} {
         allow read: if true;
+        allow write: if false;
+      }
+
+      match /creatorScoreHistory/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /gamificationMissions/{missionId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /gamificationAchievements/{achievementKey} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /creatorReferrals/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /growthReports/{reportId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /growthShareArtifacts/{artifactId} {
+        allow read: if isOwner(userId) ||
+          resource.data.get('visibility', 'private') == 'public';
         allow write: if false;
       }
 
@@ -1167,8 +1201,14 @@ service cloud.firestore {
     // Videos collection (top-level)
     // Worker creates doc at initiate; webhook sets isReadyForFeed (client never writes it)
     // Read policy: public | connections (followers) | private (owner/admin only)
+    // Owner may always read their own UPLOADING/PROCESSING docs (isVideoDataOwner).
+    // Authenticated get on a missing doc is allowed so clients can attach listeners
+    // before the Worker write lands (exists=false snapshots).
     match /videos/{videoId} {
-      allow read: if canReadVideo();
+      allow get: if resource == null
+                   ? isAuthenticated()
+                   : canReadVideo();
+      allow list: if canReadVideo();
       allow create: if hasVerifiedEmail() &&
                        videoCreateOwnedByAuth() &&
                        videoCreateOwnerFieldsConsistent() &&
@@ -1547,6 +1587,17 @@ service cloud.firestore {
     match /pendingAccounts/{uid} {
       allow read: if isOwner(uid);
       allow create, update, delete: if false;
+    }
+
+    // Signup abuse — Admin SDK only (hashed signals / velocity / restrictions)
+    match /signup_abuse_signals/{docId} {
+      allow read, write: if false;
+    }
+    match /signup_velocity/{docId} {
+      allow read, write: if false;
+    }
+    match /signup_restrictions/{docId} {
+      allow read, write: if false;
     }
 
     // Self-delete audit trail — Admin SDK only (/api/account/delete)
@@ -2300,6 +2351,29 @@ service cloud.firestore {
 
     match /tippy_usage_events/{eventId} {
       allow read, write: if false;
+    }
+
+    match /productEvents/{eventId} {
+      allow read: if isAuthenticated() &&
+        resource.data.get('userId', resource.data.get('uid', '')) == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /retentionEvents/{eventId} {
+      allow read: if isAuthenticated() &&
+        resource.data.get('uid', resource.data.get('userId', '')) == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /userRetentionProfiles/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /user_daily_challenges/{challengeId} {
+      allow read: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+      allow write: if false;
     }
 
     match /videoDeletionLogs/{logId} {

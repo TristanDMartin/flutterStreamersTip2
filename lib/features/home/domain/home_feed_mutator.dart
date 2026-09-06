@@ -1,11 +1,28 @@
 import '../../../models/feed_tab.dart';
 import '../../../models/home_video.dart';
+import '../../../utils/home_video_playback.dart';
 import 'home_feed_pagination.dart';
 import 'home_feed_processing.dart';
 import '../models/home_feed_state.dart';
 
+/// Result of turning a For You snapshot into Home videos.
+class HomeRealtimeFeedBuildResult {
+  const HomeRealtimeFeedBuildResult({
+    required this.videos,
+    this.removedVideoIds = const <String>{},
+  });
+
+  final List<HomeVideo> videos;
+
+  /// Snapshot docs that must leave painted Home, including deleted owners.
+  final Set<String> removedVideoIds;
+}
+
 /// Merges [incoming] into [existing] without dropping items or reordering
 /// the current feed. New ids from [incoming] are prepended.
+///
+/// Never downgrade an owner local-pending (instant publish) card to an empty
+/// processing stub from a partial realtime snapshot.
 List<HomeVideo> mergeHomeFeedPreserveOrder({
   required List<HomeVideo> existing,
   required List<HomeVideo> incoming,
@@ -26,15 +43,66 @@ List<HomeVideo> mergeHomeFeedPreserveOrder({
   final List<HomeVideo> newLeading = safeIncoming
       .where((HomeVideo video) => !existingIds.contains(video.id))
       .toList(growable: false);
-  final List<HomeVideo> updatedExisting = safeExisting
-      .map(
-        (HomeVideo video) => incomingById[video.id] ?? video,
-      )
-      .toList(growable: false);
+  final List<HomeVideo> updatedExisting = safeExisting.map((HomeVideo video) {
+    final HomeVideo? incomingVideo = incomingById[video.id];
+    if (incomingVideo == null) {
+      return video;
+    }
+    if (_shouldKeepExistingHomeVideo(video, incomingVideo)) {
+      return video;
+    }
+    return incomingVideo;
+  }).toList(growable: false);
   return dedupeHomeVideosById(<HomeVideo>[
     ...newLeading,
     ...updatedExisting,
   ]);
+}
+
+bool _shouldKeepExistingHomeVideo(HomeVideo existing, HomeVideo incoming) {
+  if (isHomeVideoOwnerPendingLocal(existing) &&
+      !isHomeVideoOwnerPendingLocal(incoming)) {
+    return true;
+  }
+  if (isHomeVideoPlayable(existing) && !isHomeVideoPlayable(incoming)) {
+    return true;
+  }
+  return false;
+}
+
+/// Drops remote cards whose Firestore docs are deleted / ineligible.
+/// Keeps Instant Publish owner-local pending rows.
+List<HomeVideo> dropHomeFeedVideosById({
+  required List<HomeVideo> existing,
+  required Set<String> removedIds,
+}) {
+  if (removedIds.isEmpty) {
+    return existing;
+  }
+  return existing
+      .where(
+        (HomeVideo video) =>
+            !removedIds.contains(video.id) ||
+            isHomeVideoOwnerPendingLocal(video),
+      )
+      .toList(growable: false);
+}
+
+/// Live For You reconcile: update/prepend from [incoming], then drop
+/// [removedIds] (deleted / feed-ineligible docs still present in the query).
+List<HomeVideo> reconcileLiveHomeFeedSnapshot({
+  required List<HomeVideo> existing,
+  required List<HomeVideo> incoming,
+  required Set<String> removedIds,
+}) {
+  final List<HomeVideo> withoutRemoved = dropHomeFeedVideosById(
+    existing: existing,
+    removedIds: removedIds,
+  );
+  return mergeHomeFeedPreserveOrder(
+    existing: withoutRemoved,
+    incoming: incoming,
+  );
 }
 
 /// True when replacing the feed with [incoming] would likely be a bad partial

@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../services/product_event_tracking_service.dart';
 
 /// Compact upgrade prompt: Starter → Pro trial + Studio discovery.
 ///
@@ -11,6 +15,11 @@ Future<void> showSubscriptionUpgradeSheet(
   required VoidCallback onStartProTrial,
   required VoidCallback onViewStudio,
 }) {
+  unawaited(
+    ProductEventTrackingService.instance.paywallViewed(
+      upgradeTo: recommendedPlanLabel,
+    ),
+  );
   final ColorScheme scheme = Theme.of(context).colorScheme;
   return showModalBottomSheet<void>(
     context: context,
@@ -77,6 +86,11 @@ Future<void> showSubscriptionUpgradeSheet(
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.of(ctx).pop();
+                  unawaited(
+                    ProductEventTrackingService.instance.upgradeStarted(
+                      upgradeTo: 'pro',
+                    ),
+                  );
                   onStartProTrial();
                 },
                 child: const Text('Start 7-Day Free Trial'),

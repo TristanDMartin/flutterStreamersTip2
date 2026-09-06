@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../features/onboarding_tippy/tippy_onboarding_debug_log.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -12,10 +13,15 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
 import '../utils/apple_sign_in_nonce.dart';
+import '../utils/apple_identity.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/user_profile_firestore.dart';
 import '../utils/password_validation.dart';
 import '../components/onboarding/onboarding_service.dart';
+import '../components/onboarding/account_status_client.dart';
+import '../components/onboarding/email_verification_sender.dart';
+import '../features/onboarding_tippy/tippy_onboarding_session.dart';
+import '../features/onboarding_tippy/tippy_profile_draft.dart';
 import 'auth_rate_limiting_service.dart';
 import 'auth_session_teardown.dart';
 import 'auth_session_hint_storage.dart';
@@ -176,6 +182,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   bool get isOauthInProgress => _oauthInProgress;
   bool get isAwaiting2FA => _awaiting2FA;
   bool get isAuthSubmitting => _oauthInProgress || shouldShowLoading;
+  String? _pendingSignupUsername;
 
   bool _shouldIgnoreAuthUserEvent(firebase_auth.User user) {
     if (_authTransitionState == AuthTransitionState.signingIn ||
@@ -538,7 +545,8 @@ class RobustAuthenticationService extends ChangeNotifier {
           return 'Incorrect password.';
         case 'account-exists-with-different-credential':
           return 'An account already exists with this email. Sign in with '
-              'your original method, then link Apple in settings.';
+              'your original method, then link Apple or Google in settings. '
+              'Hide My Email addresses will not match a Google inbox.';
         case 'app-check-token-invalid':
         case 'app-check-failed':
           return 'App security check failed. Register the App Check debug '
@@ -1037,9 +1045,11 @@ class RobustAuthenticationService extends ChangeNotifier {
         firebaseUser.displayName!.trim().isNotEmpty) {
       return;
     }
-    final String givenName = appleCredential.givenName?.trim() ?? '';
-    final String familyName = appleCredential.familyName?.trim() ?? '';
-    final String displayName = '$givenName $familyName'.trim();
+    final String displayName = appleDisplayNameFromParts(
+          givenName: appleCredential.givenName,
+          familyName: appleCredential.familyName,
+        ) ??
+        '';
     if (displayName.isEmpty) {
       return;
     }
@@ -1138,6 +1148,12 @@ class RobustAuthenticationService extends ChangeNotifier {
     required firebase_auth.User firebaseUser,
     required String authProvider,
   }) async {
+    if (_isUnverifiedPasswordUser(firebaseUser)) {
+      debugPrint(
+        'AUTH_TRANSITION $authProvider minimal_profile_skipped_until_verified',
+      );
+      return;
+    }
     try {
       final DocumentSnapshot<Map<String, dynamic>> existingSnapshot =
           await _firestoreInstance
@@ -1145,6 +1161,9 @@ class RobustAuthenticationService extends ChangeNotifier {
               .doc(firebaseUser.uid)
               .get();
       final Map<String, dynamic>? existingData = existingSnapshot.data();
+      final String existingName =
+          (existingData?['displayName'] as String?)?.trim() ?? '';
+      final String authName = firebaseUser.displayName?.trim() ?? '';
       final Map<String, String> avatarFields = buildProviderAvatarMergeFields(
         providerPhotoUrl: firebaseUser.photoURL,
         existingData: existingData,
@@ -1152,12 +1171,14 @@ class RobustAuthenticationService extends ChangeNotifier {
       final Map<String, dynamic> payload = <String, dynamic>{
         'uid': firebaseUser.uid,
         'id': firebaseUser.uid,
-        'displayName': firebaseUser.displayName,
         'authProvider': authProvider,
         'updatedAt': FieldValue.serverTimestamp(),
         'isDeleted': false,
         ...avatarFields,
       };
+      if (existingName.isEmpty && authName.isNotEmpty) {
+        payload['displayName'] = authName;
+      }
       if (!existingSnapshot.exists) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload.addAll(OnboardingService.newAccountDocumentFields());
@@ -1177,15 +1198,25 @@ class RobustAuthenticationService extends ChangeNotifier {
     }
   }
 
-  User _mapFirebaseUserToFallback(firebase_auth.User firebaseUser) {
+  bool _isUnverifiedPasswordUser(firebase_auth.User user) {
+    return !user.emailVerified &&
+        user.providerData.any(
+          (firebase_auth.UserInfo info) => info.providerId == 'password',
+        );
+  }
+
+  User _mapFirebaseUserToFallback(
+    firebase_auth.User firebaseUser, {
+    String? username,
+  }) {
+    final String handle = (username ?? '').trim();
+    final String authName = firebaseUser.displayName?.trim() ?? '';
     return User(
       id: firebaseUser.uid,
-      username: firebaseUser.displayName?.toLowerCase().replaceAll(' ', '') ??
-          firebaseUser.email?.split('@').first ??
-          'user',
-      displayName: firebaseUser.displayName ??
-          firebaseUser.email?.split('@').first ??
-          'User',
+      username: handle,
+      displayName: authName.isNotEmpty
+          ? authName
+          : (handle.isNotEmpty ? handle : 'Creator'),
       bio: '',
       avatarURL: firebaseUser.photoURL,
       onlineStatus: 'online',
@@ -1194,6 +1225,27 @@ class RobustAuthenticationService extends ChangeNotifier {
       followerCount: 0,
       followingCount: 0,
     );
+  }
+
+  Future<String> _resolveHydratedUsername({
+    required firebase_auth.User firebaseUser,
+    String? firestoreUsername,
+  }) async {
+    final String fromDoc =
+        tippyIdentityFromUsername(firestoreUsername ?? '').username;
+    final String emailLocal = emailLocalPartUsername(firebaseUser.email);
+    if (fromDoc.isNotEmpty && fromDoc != emailLocal) {
+      return fromDoc;
+    }
+    final String reserved = tippyIdentityFromUsername(
+      _pendingSignupUsername ??
+          (await TippyOnboardingSessionStore().peekSignupUsername()) ??
+          '',
+    ).username;
+    if (reserved.isNotEmpty) {
+      return reserved;
+    }
+    return fromDoc;
   }
 
   /// Public debounced methods
@@ -1363,21 +1415,19 @@ class RobustAuthenticationService extends ChangeNotifier {
     final AppCheckReadiness appCheck =
         await ensureAppCheckReadyForFirestore();
     if (!appCheck.isReady) {
-      throw Exception(
-        'Upload blocked by security check. Restart the app and try again.',
+      debugPrint(
+        'AUTH_TRANSITION avatar_app_check_not_ready: ${appCheck.detail}',
       );
     }
     final String downloadUrl =
         await R2MediaService.instance.uploadAvatar(imageFile);
-    final FieldValue nowTs = FieldValue.serverTimestamp();
-    await _firestoreInstance.collection('users').doc(user.uid).update({
-      'avatarURL': downloadUrl,
-      'avatarUrl': downloadUrl,
-      'photoURL': downloadUrl,
-      'avatarUpdatedAt': nowTs,
-      'updatedAt': nowTs,
-    });
-    await _syncPublicUserAvatar(user.uid, downloadUrl);
+    try {
+      await saveOwnerAvatarUrl(uid: user.uid, avatarUrl: downloadUrl);
+    } catch (error) {
+      logTippyActivationProof(
+        '[ACTIVATION_PROOF] event=avatar_persist_failed t=${DateTime.now().toUtc().toIso8601String()} error=$error',
+      );
+    }
     try {
       await user.updatePhotoURL(downloadUrl);
       await user.reload();
@@ -1513,11 +1563,13 @@ class RobustAuthenticationService extends ChangeNotifier {
       if (pwReject != null) {
         throw Exception(pwReject);
       }
-
-      final UsernameValidationResult usernameValidation =
-          await _usernameLockService.validateUsername(normalizedUsername);
-      if (!usernameValidation.isValid) {
-        throw Exception(usernameValidation.errorMessage ?? 'Invalid username');
+      if (normalizedUsername.isNotEmpty) {
+        final UsernameValidationResult usernameValidation =
+            await _usernameLockService.validateUsername(normalizedUsername);
+        if (!usernameValidation.isValid) {
+          throw Exception(usernameValidation.errorMessage ?? 'Invalid username');
+        }
+        _pendingSignupUsername = normalizedUsername;
       }
 
       await _handleExistingUserCheck(trimmedEmail);
@@ -1534,39 +1586,111 @@ class RobustAuthenticationService extends ChangeNotifier {
         final firebase_auth.User firebaseUser = userCredential.user!;
         final String profileDisplayName = displayName.trim().isNotEmpty
             ? displayName.trim()
-            : normalizedUsername;
-        try {
-          await firebaseUser.updateDisplayName(profileDisplayName);
-
-          await _createUserDocument(
+            : (normalizedUsername.isNotEmpty ? normalizedUsername : 'Creator');
+        final TippyOnboardingSessionStore tippyStore =
+            TippyOnboardingSessionStore();
+        await tippyStore.lockSignupAtVerifyEmail(
+          uid: firebaseUser.uid,
+          username: normalizedUsername,
+        );
+        final String? onboardingSessionId =
+            (await tippyStore.load())?.sessionId;
+        seedAccountStatusClientCache(
+          AccountStatusSnapshot(
+            activationState: 'EMAIL_VERIFICATION_REQUIRED',
+            tippyStageHint: 'verify_email',
+            allowApp: false,
+            lifecycle: 'PENDING_VERIFICATION',
+            preferredUsername: normalizedUsername.isEmpty
+                ? null
+                : normalizedUsername,
+            provisioned: false,
+          ),
+        );
+        if (normalizedUsername.isNotEmpty) {
+          _currentUser = _mapFirebaseUserToFallback(
             firebaseUser,
-            displayName: profileDisplayName,
             username: normalizedUsername,
           );
-          await _usernameLockService.reserveUsername(
-            username: normalizedUsername,
-            userId: firebaseUser.uid,
-          );
-          await _savePrivateContactEmail(
-            firebaseUser.uid,
-            trimmedEmail,
-          );
-
-          final AuthRequestResult completion = await _completeSuccessfulAuth(
-            requestId: requestId ?? _generateRequestId(),
-            firebaseUser: firebaseUser,
-            provider: 'email_signup',
-            isNewUser: true,
-          );
-          if (!completion.success) {
-            throw Exception(completion.error ?? 'Authentication failed');
-          }
-
-          debugPrint("✅ Sign up completed successfully");
-        } catch (e) {
-          await _cleanupOrphanedSignupUser(firebaseUser);
-          rethrow;
+          notifyListeners();
         }
+        try {
+          if (profileDisplayName.isNotEmpty) {
+            await firebaseUser.updateDisplayName(profileDisplayName);
+          }
+        } catch (e) {
+          debugPrint(
+            'AUTH_TRANSITION email_signup display_name_deferred: $e',
+          );
+        }
+        try {
+          await createPendingAccount(
+            preferredUsername: normalizedUsername.isEmpty
+                ? null
+                : normalizedUsername,
+            displayName: profileDisplayName,
+            onboardingSessionId: onboardingSessionId,
+          );
+        } on SignupRestrictionException {
+          rethrow;
+        } catch (e) {
+          debugPrint(
+            'AUTH_TRANSITION email_signup pending_deferred: $e',
+          );
+        }
+        try {
+          await sendBoundEmailVerification(
+            user: firebaseUser,
+            onboardingSessionId: onboardingSessionId,
+            resumePath: '/onboarding',
+          );
+        } catch (e) {
+          debugPrint(
+            'AUTH_TRANSITION email_signup verification_send_deferred: $e',
+          );
+        }
+        // Unverified password users cannot client-create users/{uid}.
+        if (emailSignupMayWriteUserDocument(
+          emailVerified: firebaseUser.emailVerified,
+        )) {
+          try {
+            await _createUserDocument(
+              firebaseUser,
+              displayName: profileDisplayName,
+              username: normalizedUsername,
+            );
+            if (normalizedUsername.isNotEmpty) {
+              await _usernameLockService.reserveUsername(
+                username: normalizedUsername,
+                userId: firebaseUser.uid,
+              );
+            }
+            await _savePrivateContactEmail(
+              firebaseUser.uid,
+              trimmedEmail,
+            );
+          } catch (e) {
+            debugPrint(
+              'AUTH_TRANSITION email_signup profile_deferred: $e',
+            );
+          }
+        } else {
+          debugPrint(
+            'AUTH_TRANSITION email_signup profile_deferred_until_verified',
+          );
+        }
+
+        final AuthRequestResult completion = await _completeSuccessfulAuth(
+          requestId: requestId ?? _generateRequestId(),
+          firebaseUser: firebaseUser,
+          provider: 'email_signup',
+          isNewUser: true,
+        );
+        if (!completion.success) {
+          throw Exception(completion.error ?? 'Authentication failed');
+        }
+
+        debugPrint("✅ Sign up completed successfully");
       } else {
         throw Exception('No user returned from Firebase');
       }
@@ -1578,42 +1702,6 @@ class RobustAuthenticationService extends ChangeNotifier {
       debugPrint("❌ Error type: ${e.runtimeType}");
       rethrow;
     }
-  }
-
-  /// Removes partial Firestore profile and Firebase Auth user after failed signup.
-  Future<void> _cleanupOrphanedSignupUser(firebase_auth.User firebaseUser) async {
-    debugPrint(
-      'AUTH_TRANSITION email_signup_cleanup uid=${firebaseUser.uid}',
-    );
-    try {
-      final DocumentSnapshot<Map<String, dynamic>> userSnap =
-          await _firestoreInstance.collection('users').doc(firebaseUser.uid).get();
-      final String? username =
-          (userSnap.data()?['username'] as String?)?.trim().toLowerCase();
-      if (username != null && username.isNotEmpty) {
-        await _firestoreInstance.collection('usernames').doc(username).delete();
-      }
-      if (userSnap.exists) {
-        await _firestoreInstance.collection('users').doc(firebaseUser.uid).delete();
-      }
-    } catch (e) {
-      debugPrint('AUTH_TRANSITION email_signup_cleanup_firestore_failed: $e');
-    }
-    try {
-      await firebaseUser.delete();
-    } catch (e) {
-      debugPrint('AUTH_TRANSITION email_signup_cleanup_auth_failed: $e');
-    }
-    try {
-      await _authInstance.signOut();
-    } catch (e) {
-      debugPrint('AUTH_TRANSITION email_signup_cleanup_signout_failed: $e');
-    }
-    _currentUser = null;
-    _isLoggedIn = false;
-    _awaiting2FA = false;
-    _authTransitionState = AuthTransitionState.unauthenticated;
-    notifyListeners();
   }
 
   /// Handle existing user check for account deletion scenarios
@@ -1659,8 +1747,10 @@ class RobustAuthenticationService extends ChangeNotifier {
           'uid': firebaseUser.uid,
           'id': firebaseUser.uid,
           'displayName': displayName,
-          'username': username,
-          'usernameLowercase': username.toLowerCase(),
+          if (username.trim().isNotEmpty) ...<String, dynamic>{
+            'username': username,
+            'usernameLowercase': username.toLowerCase(),
+          },
           'avatarURL': null,
           'bio': '',
           'hashtags': [],
@@ -1735,10 +1825,16 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         final List<CalendarEvent> calendarEvents =
             UserProfileFirestore.parseCalendarEventsFromUserData(data);
+        final String hydratedUsername = await _resolveHydratedUsername(
+          firebaseUser: firebaseUser,
+          firestoreUsername: data['username'] as String?,
+        );
 
         final user = User(
           id: firebaseUser.uid,
-          username: data['username'] ?? 'user',
+          username: hydratedUsername.isNotEmpty
+              ? hydratedUsername
+              : (data['username'] ?? 'user'),
           displayName: data['displayName'] ?? 'User',
           bio: data['bio'],
           avatarURL: resolveAvatarUrl(data),
@@ -1776,37 +1872,38 @@ class RobustAuthenticationService extends ChangeNotifier {
           unawaited(_registerFCMToken(firebaseUser.uid));
         });
       } else {
+        final bool passwordNeedsVerify = !firebaseUser.emailVerified &&
+            firebaseUser.providerData.any(
+              (firebase_auth.UserInfo info) => info.providerId == 'password',
+            );
+        if (passwordNeedsVerify) {
+          debugPrint(
+            'AUTH_TRANSITION profile_deferred_until_verified',
+          );
+          final String? signupUsername = _pendingSignupUsername ??
+              await TippyOnboardingSessionStore().peekSignupUsername();
+          _currentUser = _mapFirebaseUserToFallback(
+            firebaseUser,
+            username: signupUsername,
+          );
+          _isLoggedIn = true;
+          _isCheckingAuth = false;
+          _authTransitionState = AuthTransitionState.authenticated;
+          notifyListeners();
+          return;
+        }
         debugPrint(
-            "🔐 User document NOT found in Firestore - creating new user");
-
-        // For existing users who don't have a Firestore document, create one
-        final baseUsername = firebaseUser.email?.split('@')[0] ?? 'user';
-        final username = await _generateUniqueUsername(baseUsername);
-
-        final user = User(
-          id: firebaseUser.uid,
-          username: username,
-          displayName: firebaseUser.displayName ??
-              firebaseUser.email?.split('@')[0] ??
-              'User',
-          bio: '',
-          avatarURL: firebaseUser.photoURL,
-          onlineStatus: 'online',
-          hashtags: [],
-          postCount: 0,
-          followerCount: 0,
-          followingCount: 0,
+            "🔐 User document NOT found in Firestore - creating minimal profile");
+        await _ensureMinimalUserDocument(
+          firebaseUser: firebaseUser,
+          authProvider: 'email',
         );
-
-        // Save the new user to Firestore
-        await _saveUserToFirestore(user, email: firebaseUser.email);
-        await _usernameLockService.reserveUsername(
-          username: user.username,
-          userId: user.id,
+        _currentUser = _mapFirebaseUserToFallback(
+          firebaseUser,
+          username: await _resolveHydratedUsername(
+            firebaseUser: firebaseUser,
+          ),
         );
-        await _savePrivateContactEmail(user.id, firebaseUser.email);
-
-        _currentUser = user;
         _isLoggedIn = true;
         _isCheckingAuth = false;
         _authTransitionState = AuthTransitionState.authenticated;
@@ -1896,7 +1993,11 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         // Check for other user data changes
         final newDisplayName = data['displayName'] as String? ?? '';
-        final newUsername = data['username'] as String? ?? '';
+        String newUsername = data['username'] as String? ?? '';
+        if (newUsername.trim().isEmpty &&
+            _currentUser!.username.trim().isNotEmpty) {
+          newUsername = _currentUser!.username;
+        }
         final newBio = data['bio'] as String?;
 
         // Handle hashtags update
@@ -1961,11 +2062,14 @@ class RobustAuthenticationService extends ChangeNotifier {
       final String? avatarUrl = normalizeAvatarPhotoUrl(user.avatarURL);
       final DocumentSnapshot<Map<String, dynamic>> existingSnapshot =
           await _firestoreInstance.collection('users').doc(user.id).get();
+      final String normalizedUsername = user.username.trim().toLowerCase();
       final userData = <String, dynamic>{
         'uid': user.id,
         'id': user.id,
-        'username': user.username.toLowerCase(),
-        'usernameLowercase': user.username.toLowerCase(),
+        if (normalizedUsername.isNotEmpty) ...<String, dynamic>{
+          'username': normalizedUsername,
+          'usernameLowercase': normalizedUsername,
+        },
         'displayName': user.displayName,
         'bio': user.bio,
         'avatarURL': avatarUrl,
@@ -1999,6 +2103,12 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<void> _ensureUserDocumentExists() async {
     final firebase_auth.User? firebaseUser = _authInstance.currentUser;
     if (firebaseUser == null) {
+      return;
+    }
+    if (_isUnverifiedPasswordUser(firebaseUser)) {
+      debugPrint(
+        'AUTH_TRANSITION password user_doc_write_skipped_until_verified',
+      );
       return;
     }
     final String? providerId = firebaseUser.providerData.isNotEmpty

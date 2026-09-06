@@ -23,6 +23,8 @@ class ProfileViewFrontShell extends StatelessWidget {
     required this.onFlip,
     required this.onStreamerCard,
     required this.showStreamerCardButton,
+    this.useInitialDataOnly = false,
+    this.showMenuButton = true,
   });
 
   final Map<String, dynamic> userData;
@@ -36,6 +38,8 @@ class ProfileViewFrontShell extends StatelessWidget {
   final VoidCallback onFlip;
   final VoidCallback onStreamerCard;
   final bool showStreamerCardButton;
+  final bool useInitialDataOnly;
+  final bool showMenuButton;
 
   @override
   Widget build(BuildContext context) {
@@ -72,22 +76,23 @@ class ProfileViewFrontShell extends StatelessWidget {
                   ),
                   onPressed: onStreamerCard,
                 ),
-              IconButton(
-                icon: const Icon(
-                  Icons.more_horiz,
-                  color: StreamerCardBackStyle.muted,
-                  size: 22,
+              if (showMenuButton)
+                IconButton(
+                  icon: const Icon(
+                    Icons.more_horiz,
+                    color: StreamerCardBackStyle.muted,
+                    size: 22,
+                  ),
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        settings: const RouteSettings(name: AppRoutes.menu),
+                        builder: (BuildContext context) => const MenuView(),
+                      ),
+                    );
+                  },
                 ),
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      settings: const RouteSettings(name: AppRoutes.menu),
-                      builder: (BuildContext context) => const MenuView(),
-                    ),
-                  );
-                },
-              ),
             ],
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
@@ -96,6 +101,7 @@ class ProfileViewFrontShell extends StatelessWidget {
               userData: userData,
               profileUserId: profileUserId,
               isCurrentUser: isCurrentUser,
+              useInitialDataOnly: useInitialDataOnly,
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
@@ -106,6 +112,7 @@ class ProfileViewFrontShell extends StatelessWidget {
               contentFade: contentFade,
               contentSlide: contentSlide,
               profileUserId: profileUserId,
+              useInitialDataOnly: useInitialDataOnly,
             ),
           ),
           SliverToBoxAdapter(child: SizedBox(height: 24 + bottomInset)),

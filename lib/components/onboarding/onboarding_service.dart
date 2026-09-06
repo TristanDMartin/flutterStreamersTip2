@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../features/gamification/create_gamification_event.dart';
@@ -10,6 +11,14 @@ import '../../services/app_session_cache.dart';
 import 'onboarding_models.dart';
 import 'onboarding_v1_constants.dart';
 import 'resolve_onboarding_destination.dart';
+
+User? _readAuthUser() {
+  try {
+    return FirebaseAuth.instance.currentUser;
+  } catch (_) {
+    return null;
+  }
+}
 
 class OnboardingService {
   OnboardingService({FirebaseFirestore? firestore})
@@ -27,9 +36,12 @@ class OnboardingService {
   ) async {
     try {
       await _userRef(userId).set(data, SetOptions(merge: true));
-    } on FirebaseException catch (e) {
-      if (e.code == 'permission-denied') {
-        return;
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') {
+        debugPrint(
+          'OnboardingService: permission-denied writing users/$userId',
+        );
+        throw StateError('ONBOARDING_PERSISTENCE_DENIED');
       }
       rethrow;
     }
@@ -64,18 +76,26 @@ class OnboardingService {
   }
 
   /// Existing users bypass onboarding on first V1 migration.
+  /// Does not create users/{uid}. Missing docs wait for provision.
   Future<OnboardingState> ensureMigrated(String userId) async {
     final DocumentSnapshot<Map<String, dynamic>> snapshot =
         await _userRef(userId).get();
     final Map<String, dynamic>? data = snapshot.data();
     if (data == null) {
-      await _safeUserSet(userId, _newUserOnboardingPayload(step: 0));
       return OnboardingState.initial();
     }
+    final User? authUser = _readAuthUser();
+    final bool emailVerified =
+        authUser?.uid == userId && authUser?.emailVerified == true;
+    final bool isPasswordProvider = authUser?.uid == userId &&
+        (authUser?.providerData.any(
+              (UserInfo info) => info.providerId == 'password',
+            ) ??
+            false);
     final OnboardingDestination destination = resolveOnboardingDestination(
       userData: data,
-      emailVerified: true,
-      isPasswordProvider: false,
+      emailVerified: emailVerified,
+      isPasswordProvider: isPasswordProvider,
     );
     if (destination.lifecycle == 'COMPLETE') {
       if (((data['onboarding'] as Map?)?['lifecycle'] as String?)
@@ -117,12 +137,14 @@ class OnboardingService {
         ...buildLifecycleCompletePayload(isLegacy: true),
       });
     }
-    await _safeUserSet(
-        userId, _newUserOnboardingPayload(step: current.currentStep));
-    return fetchOnboarding(userId);
+    return current;
   }
 
   bool _isExistingUser(Map<String, dynamic> data) {
+    // Deleted → recreated Auth accounts are never treated as legacy complete.
+    if (data['identityRecycled'] == true) {
+      return false;
+    }
     if (data['hasCompletedOnboarding'] == true ||
         data['onboardingCompleted'] == true) {
       return true;
@@ -155,10 +177,18 @@ class OnboardingService {
   ) async {
     // NEVER clear completion flags for established / legacy accounts.
     // Missing photo/bio must not reopen onboarding.
+    final User? authUser = _readAuthUser();
+    final bool emailVerified =
+        authUser?.uid == userId && authUser?.emailVerified == true;
+    final bool isPasswordProvider = authUser?.uid == userId &&
+        (authUser?.providerData.any(
+              (UserInfo info) => info.providerId == 'password',
+            ) ??
+            false);
     final OnboardingDestination destination = resolveOnboardingDestination(
       userData: data,
-      emailVerified: true,
-      isPasswordProvider: false,
+      emailVerified: emailVerified,
+      isPasswordProvider: isPasswordProvider,
     );
     if (destination.lifecycle == 'COMPLETE') {
       if ((onboarding['lifecycle'] as String?)?.toUpperCase() != 'COMPLETE') {
@@ -177,14 +207,19 @@ class OnboardingService {
     final bool staleComplete = data['hasCompletedOnboarding'] == true ||
         data['onboardingCompleted'] == true ||
         onboarding['hasCompletedOnboarding'] == true;
-    // Only clear stale complete flags for brand-new Tippy accounts with no
-    // username — never for returning users.
-    final String username = ((data['username'] as String?) ?? '').trim();
-    if (!staleComplete || !midTippy || username.isNotEmpty) {
+    if (!staleComplete) {
       return;
     }
     if (onboarding['tippyFunnelCompleted'] == true ||
         onboarding['essentialProfileComplete'] == true) {
+      return;
+    }
+    // Clear stale top-level complete flags for incomplete V1 / Tippy accounts.
+    final Object? version = onboarding['version'];
+    final bool isV1Incomplete =
+        (version == 1 || version == '1') && onboarding['completed'] != true;
+    final String username = ((data['username'] as String?) ?? '').trim();
+    if (username.isNotEmpty && !midTippy && !isV1Incomplete) {
       return;
     }
     await _safeUserSet(
@@ -192,6 +227,7 @@ class OnboardingService {
       <String, dynamic>{
         'hasCompletedOnboarding': false,
         'onboardingCompleted': false,
+        'onboardingComplete': false,
         'onboarding': <String, dynamic>{
           'hasCompletedOnboarding': false,
           'completed': false,
@@ -206,13 +242,23 @@ class OnboardingService {
     return <String, dynamic>{
       'hasCompletedOnboarding': false,
       'onboardingCompleted': false,
+      'onboardingComplete': false,
       'onboarding': <String, dynamic>{
         'version': OnboardingV1Constants.version,
+        'lifecycle': 'NOT_STARTED',
         'status': step > 0
             ? OnboardingStatus.inProgress
             : OnboardingStatus.notStarted,
         'completed': false,
         'currentStep': step,
+        'completedSteps': <String>[],
+        'tippyFunnelCompleted': false,
+        'slim7Completed': false,
+        'essentialProfileComplete': false,
+        'tippyOnboardingV1Attached': false,
+        'migratedLegacyUser': false,
+        'legacyMigrated': false,
+        'twitchConnectionStatus': null,
         'hasSeenIntro': false,
         'completedAt': null,
         'creatorGoals': <String>[],
@@ -393,6 +439,7 @@ class OnboardingService {
     required List<String> categoryIds,
     String? avatarUrl,
     List<Map<String, dynamic>>? platforms,
+    List<String>? selectedPlatforms,
   }) async {
     // Identity fields intentionally omitted — reserved for claim/change +
     // /api/profile/display-name. Writing them client-side is permission-denied.
@@ -433,6 +480,11 @@ class OnboardingService {
           'slim7Completed': true,
           'tippyOnboardingV1Attached': true,
           if (platformTypes.isNotEmpty) 'platforms': platformTypes,
+          if (selectedPlatforms != null && selectedPlatforms.isNotEmpty)
+            'selectedPlatforms': selectedPlatforms
+                .map((String p) => p.trim().toLowerCase())
+                .where((String p) => p.isNotEmpty)
+                .toList(),
           'guidedProfileCompletedAt': FieldValue.serverTimestamp(),
           'lastSeenAt': FieldValue.serverTimestamp(),
           // Stash chosen identity for post-verify Admin claim/sync.
@@ -716,12 +768,21 @@ class OnboardingService {
   }
 
   /// Final Tippy landing choice — marks funnel complete for OnboardingGate.
-  /// Always updates [AppSessionCache] so the overlay can dismiss even when
-  /// Firestore client writes are soft-skipped (permission-denied).
+  /// Cache updates only after the write succeeds. permission-denied is not
+  /// treated as local completion.
   Future<void> completeTippyLanding({
     required String userId,
     required String landingChoice,
+    String? firstMissionChoice,
   }) async {
+    final String resolvedMissionChoice =
+        firstMissionChoice == 'accept' || firstMissionChoice == 'skip'
+            ? firstMissionChoice!
+            : landingChoice == 'recommended'
+                ? 'accept'
+                : landingChoice == 'explore'
+                    ? 'skip'
+                    : '';
     await completeClassicOnboardingReplacedByTippy(userId);
     await _safeUserSet(
       userId,
@@ -739,6 +800,8 @@ class OnboardingService {
           'essentialProfileComplete': true,
           'tippyFunnelCompleted': true,
           'landingChoice': landingChoice,
+          if (resolvedMissionChoice.isNotEmpty)
+            'firstMissionChoice': resolvedMissionChoice,
           'classicReplacedByTippy': true,
           'completedAt': FieldValue.serverTimestamp(),
           'lastSeenAt': FieldValue.serverTimestamp(),

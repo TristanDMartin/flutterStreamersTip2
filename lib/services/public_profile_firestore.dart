@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../utils/video_document_rules.dart';
+
 /// Display-safe profile reads after `users/{uid}` became owner-private.
 ///
 /// Prefer [publicUsers]. Fall back to [users] only when the id is the signed-in
@@ -30,13 +32,24 @@ class PublicProfileFirestore {
       final DocumentSnapshot<Map<String, dynamic>> publicDoc =
           await _publicUsers.doc(id).get();
       if (publicDoc.exists) {
-        return _withIds(id, publicDoc.data());
+        final Map<String, dynamic>? mapped = _withIds(
+          id,
+          publicDoc.data(),
+          requireRenderable: _currentUid != id,
+        );
+        if (mapped != null) {
+          return mapped;
+        }
       }
       if (_currentUid == id) {
         final DocumentSnapshot<Map<String, dynamic>> ownDoc =
             await _users.doc(id).get();
         if (ownDoc.exists) {
-          return _withIds(id, ownDoc.data());
+          return _withIds(
+            id,
+            ownDoc.data(),
+            requireRenderable: false,
+          );
         }
       }
       return null;
@@ -71,7 +84,14 @@ class PublicProfileFirestore {
             .get();
         for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
             in snap.docs) {
-          result[doc.id] = _withIds(doc.id, doc.data())!;
+          final Map<String, dynamic>? mapped = _withIds(
+            doc.id,
+            doc.data(),
+            requireRenderable: true,
+          );
+          if (mapped != null) {
+            result[doc.id] = mapped;
+          }
         }
       } catch (_) {
         // Best-effort batch; missing ids stay absent.
@@ -108,8 +128,15 @@ class PublicProfileFirestore {
     return maps.keys.toSet();
   }
 
-  Map<String, dynamic>? _withIds(String id, Map<String, dynamic>? data) {
+  Map<String, dynamic>? _withIds(
+    String id,
+    Map<String, dynamic>? data, {
+    bool requireRenderable = true,
+  }) {
     if (data == null) {
+      return null;
+    }
+    if (requireRenderable && !isOwnerAccountRenderable(data)) {
       return null;
     }
     return <String, dynamic>{

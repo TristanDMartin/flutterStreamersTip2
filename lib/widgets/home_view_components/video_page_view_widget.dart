@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/home_video.dart';
+import '../../models/optimistic_video.dart';
 import '../../qa/qa_keys.dart';
 import '../../services/optimistic_video_service.dart';
 import '../../utils/home_video_playback.dart';
-import 'home_feed_processing_cell.dart';
+import '../../features/home/domain/home_feed_pending_upload_merge.dart';
 import '../video_player_view_optimized.dart';
 import '../../providers/home_provider.dart';
 import '../../constants/playback_owners.dart';
@@ -15,6 +16,7 @@ import '../../services/feed_telemetry_service.dart';
 import '../../services/global_playback_manager.dart';
 import '../android_media3_home_player.dart';
 import '../../features/home/domain/home_feed_processing.dart';
+import 'home_feed_processing_cell.dart';
 import 'package:streamers_tip/utils/home_feed_interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/like_interaction_boundary.dart';
@@ -776,31 +778,64 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
                         '⚠️ VideoPageView: Invalid video at index $index');
                     return const SizedBox.shrink();
                   }
-                  final bool isPlayable = isHomeVideoPlayable(video);
+                  final bool isPlayable = isHomeVideoDisplayPlayable(video);
+                  final OptimisticVideo? optimisticForCell =
+                      OptimisticVideoService().getOptimisticVideo(video.id);
+                  final bool hasOptimisticLocal =
+                      optimisticForCell != null &&
+                          optimisticLocalFileExists(optimisticForCell);
+                  final bool isProcessingCell = isHomeVideoProcessing(video);
                   final isCurrentVideo = index == _clampedCurrentIndex;
-                  if (!isPlayable) {
+                  if (!isPlayable && !hasOptimisticLocal) {
+                    if (isProcessingCell) {
+                      return KeyedSubtree(
+                        key: QaKeys.homeFeedVideoPage(
+                          tabId: widget.tabId,
+                          videoId: video.id,
+                          index: index,
+                        ),
+                        child: HomeFeedProcessingCell(
+                          video: video,
+                          optimistic: optimisticForCell,
+                        ),
+                      );
+                    }
+                    // Never paint a blank PageView page — advance past junk.
+                    if (isCurrentVideo) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) {
+                          return;
+                        }
+                        final int next = index + 1;
+                        if (next < widget.videos.length) {
+                          _pageController?.jumpToPage(next);
+                          widget.onPageChanged(next);
+                        }
+                      });
+                    }
                     return KeyedSubtree(
                       key: QaKeys.homeFeedVideoPage(
                         tabId: widget.tabId,
                         videoId: video.id,
                         index: index,
                       ),
-                      child: HomeFeedProcessingCell(
-                        video: video,
-                        optimistic: OptimisticVideoService()
-                            .getOptimisticVideo(video.id),
-                      ),
+                      child: const ColoredBox(color: Colors.black),
                     );
                   }
+                  final HomeVideo playbackVideo = isPlayable
+                      ? video
+                      : homeVideoFromOptimisticVideo(
+                          optimistic: optimisticForCell!,
+                        );
                   final bool shouldDeferControllerInit = !isCurrentVideo;
                   return KeyedSubtree(
                     key: QaKeys.homeFeedVideoPage(
                       tabId: widget.tabId,
-                      videoId: video.id,
+                      videoId: playbackVideo.id,
                       index: index,
                     ),
                     child: VideoPlayerViewOptimized(
-                      video: video,
+                      video: playbackVideo,
                       isCurrentVideo: isCurrentVideo,
                       isFirstVideo: index == 0,
                       deferOffscreenControllerInit: shouldDeferControllerInit,

@@ -220,35 +220,45 @@ Firebase console (both clients): enable Apple provider on the StreamersTip Fireb
 
 ## 6. Public Tippy Creator Checkup (acquisition, pre-onboarding)
 
-Website surface for guests. Not a second onboarding, lifecycle, username, verify, or activation system. Flutter may share the contract later; Phase 2 UI is website-only.
+Website surface for guests. **Checkup is Tippy profile investigation**, not onboarding, not a second lifecycle, username, verify, activation, or `probation` system. Do not mix Checkup with `accountStatus`. Flutter has **no Checkup UI**; Path A still uses the shared onboarding machine. Machine copy lives on the website (`contracts/tippy-creator-checkup.v1.json`); keep this section identical in both repos.
 
 **Machine copy:** `contracts/tippy-creator-checkup.v1.json`  
 **Web SoT:** `lib/checkup/creatorCheckupContract.ts`
 
 Two independent paths:
 
-- **Path A — Get Started** opens canonical Tippy onboarding. It does not route to `/checkup`.
-- **Path B — Creator Checkup** is optional acquisition at `/checkup`, then **Build My Growth Plan** hands off into the same onboarding machine.
+- **Path A — Get Started** opens canonical Tippy onboarding. It does not route to `/checkup`. Frozen.
+- **Path B — Creator Checkup** is a public-profile investigation at `/checkup`. **CONTINUE WITH TIPPY** (BUILD MY GROWTH PLAN is an allowed alias) hands off into the same canonical onboarding machine.
 
-Presentation: conversational acknowledgments after each answer; same 4 DNA fields. Optional public-profile look is Checkup-only and is **not** part of canonical onboarding.
+Checkup does **not** collect Creator DNA interview chips (goal, bottleneck, cadence, experience, schedule). It does **not** open with “Hey I’m Tippy” or “tell Tippy about yourself.” It does **not** auto-fallback to a questionnaire when analysis fails.
 
-Conversation order: goal → bottleneck → platforms → **optional public profiles** → cadence → optional **one** dynamic follow-up → score preview → 3 findings → plan preview. After platforms, Tippy asks conversationally: “Want me to actually take a look? You've given me enough for an initial read. If you want, share public profiles and I'll see whether what I find matches what you're telling me.” Only selected platforms are shown, each optional. Skip or analyze, then cadence immediately (“Got them. Keep going. I'll look while we talk.”). Analysis runs in the background.
+Conversation order:
+
+1. **Open** — “You already have a story online. Let me see what it says.” Supporting: drop profiles; learn before they tell you anything. No account. No questionnaire. CTA **LET TIPPY TAKE A LOOK**.
+2. **Profiles** — “Alright. Where should I look?” YouTube / Twitch / TikTok / Instagram / Kick (+ existing safe extras). URL or handle. Add / remove / edit. Dedupe. **ANALYZE MY CREATOR PRESENCE**. “You only need one.” Privacy: public profiles only; private analytics later.
+3. **Validate then analyze.** Per-platform status explicit. Never fake `analyzed`. One failure must not kill others. Parallelize. Cache unchanged profiles in the guest session. Real progress only (Finding profiles / Understanding content / patterns / dots) — no fake theater.
+4. **Learn** structured `creatorPresenceAnalysis`. Inferred fields are **not** confirmed DNA. Observed vs inferred vs confirmed stay distinct.
+5. **Reveal** conversational (“Okay… I learned a few things”) only as strong as evidence.
+6. **Confirm** — “Here’s what I learned” + “Does this sound like you?” **YES, THAT’S ME** / **LET ME CORRECT SOMETHING**. Corrections are lightweight (type / niche / themes / ownership / format) in `creatorCorrections`. Confirmed = inference + correction.
+7. **Result** — Opening read (“Okay. I think I understand what you're building.”) → Creator Score Preview (labeled preview, not live score) → one biggest opportunity → ~3 meaningful notices → creator system only if ≥2 `analyzed` → what I would do first. Learn More = deep audit with observed vs inferred. Score stays preview. Intelligence quality: §9.
+8. **Convert** — “I’ve got a good starting picture… You won’t have to start over.” **CONTINUE WITH TIPPY** + **MAYBE LATER** / X = not now (preserve guest checkup, no account, no lifecycle).
+9. **Zero analyses** — honest “couldn’t get enough public information”; edit profiles or continue to Get Started. No fake score.
+10. **Partial** — transparent which platforms worked.
 
 Presentation/reasoning state lives on the guest Checkup session only. It is **not** lifecycle authority and is **not** added to canonical onboarding:
 
-`initialHypothesis`, `currentHypothesis`, `supportingSignals[]`, `contradictingSignals[]`, `openQuestions[]`, `selfReportedSignals[]`, `platformObservations[]`, `analysisStatuses`, `confidence`, `primaryOpportunity`, `recommendedFocus`, `dynamicFollowUpUsed`.
-
-Optional `bottleneckNote` (free text, chip-first) and at most one `followUp` are Checkup presentation only. Persist on close. Do not re-ask transferred DNA.
+`initialHypothesis`, `currentHypothesis`, `supportingSignals[]`, `contradictingSignals[]`, `openQuestions[]`, `selfReportedSignals[]`, `platformObservations[]`, `analysisStatuses`, `confidence`, `primaryOpportunity`, `recommendedFocus`.
 
 ### Inputs (guest answers)
 
 | Field | Kind | DNA handoff |
 |---|---|---|
-| `platforms` | multi-select | `answers.platforms` |
-| `cadence` | single-select (`daily` / `few_week` / `weekly` / `few_month` / `whenever` / `not_started`) | `answers.schedule` |
-| `goal` | single-select (same ids as onboarding goals) | `answers.goals = [goal]` |
-| `bottleneck` | single-select (`consistency` / `discoverability` / `platforms` / `content` / `time` / `growth` / `starting`) | `answers.bottleneck` (extra; not re-asked) |
-| `profiles` (optional) | per selected platform: `platform`, `handleOrUrl` / `profileUrl` | never — Checkup public assessment only |
+| `platforms` | multi-select from submitted profiles | skip DNA platforms question when confirmed / submitted |
+| `profiles` | per selected platform: `platform`, `handleOrUrl` / `profileUrl` | context (`checkupProfiles`) + prefill identity `platform_handles` (show, do not skip) |
+| `creatorPresenceAnalysis` | inferred from public look | **not DNA** until confirmed |
+| `creatorCorrections` | lightweight type / niche / themes / ownership / format | applied into confirmed |
+| `confirmedDna` | inference + correction | prefill onboarding answers |
+| `intention` | legacy optional; not asked | context only if present — never fake `answers.goals` |
 
 Per-platform analysis (Checkup only):
 
@@ -264,35 +274,62 @@ Guest session `analysisStatus`: `not_provided` \| `pending` \| `analyzed` \| `li
 
 `handleOrUrl` remains an alias of `profileUrl`. `publicSignals` remains an alias of `observedSignals`.
 
+Optional `observedSignals` when the official API returned them: `gameName`, `tags[]`, `followerCount`, `viewCount`, `isLive`, `currentTitle`, `videoTypes[]`, `topicCategories[]`. Missing optional fields stay omitted — never invent them.
+
+Score basis: “based on public profiles Tippy could analyze.” Do **not** say “what you told Tippy” unless the guest confirmed/corrected facts or left a legacy intention. Instagram / TikTok / Kick stay `unavailable` (no scrape). YouTube uses Data API (`forHandle`, custom URL, search fallback, snippet / statistics / topics / uploads). Twitch uses Helix (user, channel, videos, stream, followers) when app credentials exist; otherwise `limited`.
+
 Map API → guest: `failed` → `limited`; `source` is stored on the guest profile. `analyzed` / `limited` / `unavailable` keep the same `analysisStatus`. Only `analyzed` may carry strengths / weaknesses / opportunities / evidence-based conclusions. `limited` / `failed` never become fake analysis.
 
-Also persist selected platforms, URLs, `analysisStatus`, observations, and the current Checkup step. Reopen must not re-ask provided URLs; welcome-back may mention saved profiles.
+Also persist selected platforms, URLs, `analysisStatus`, observations, inferred / corrections / confirmed, and the current Checkup step. Reopen must not re-ask provided URLs; welcome-back may mention saved profiles (“Welcome back…” / “I finished looking…”).
 
-Tippy must distinguish “I analyzed this” vs “You told me this.” Never say “I analyzed your YouTube/Twitch/TikTok” unless `analysisStatus === analyzed`. Pending / limited / unavailable / failed stay **Quick Checkup** — “Initial assessment based on: what you told Tippy.” YouTube/Twitch stronger findings only when the function really returned `analyzed`. Connecting YouTube/Twitch later = authorized data. Not duplicates. Do **not** add this URL step to onboarding.
+Tippy must distinguish observed vs inferred vs confirmed. Never say “I analyzed your YouTube/Twitch/TikTok” unless `analysisStatus === analyzed`. Connecting YouTube/Twitch later = authorized data. Not duplicates. Do **not** add this URL step to onboarding.
 
-If a platform cannot be fetched with an official API already in this repo (no scrape, no fake data), status is `limited` or `unavailable` — not fake analysis. Analysis runs in parallel and must not block the conversation. If analysis is still pending at results, show Quick Checkup and upgrade in place when at least one profile becomes `analyzed`.
+If a platform cannot be fetched with an official API already in this repo (no scrape, no fake data), status is `limited` or `unavailable` — not fake analysis. Analysis runs in parallel. One failure must not kill others.
 
 ### Outputs
 
-- `checkupScore` / `scorePreview` + `scoreVersion` (`checkup_score.v1`) — overall + categories `consistency`, `discoverability`, `platformPresence`, `contentReadiness`, `growthOpportunity`, plus a `why`. Source is `checkup_answers_only` (Quick Checkup — “Initial assessment based on: what you told Tippy”) or `checkup_answers_and_public_signals` when at least one profile is `analyzed` (Profile Checkup — “Initial assessment based on: what you told Tippy + N public profiles analyzed”). Never Mux, private analytics, or post metrics. UI name: **Creator Score Preview** (Tippy’s initial assessment). Not the live Creator Score.
-- Exactly **3** findings, each `observation → implication → opportunity`. Self-reported findings when no public look; evidence-based when public signals are ready.
-- Profile Checkup ( ≥1 `analyzed` ): concise initial results (short conclusion, then score, biggest opportunity, 3 things Tippy noticed, first growth focus) plus progressive **Learn more about my checkup** (overall read, what you told me, what I could see, platform breakdown for submitted platforms, how platforms work together only if 2+ analyzed, why this score, if I were working with you this week, first growth plan). Quick Checkup if nothing analyzed.
-- `growthPlanPreview` — title, focus, why, first steps. Preview only. Do not create canonical plan docs from checkup. Build My Growth Plan still transfers platforms, goal, cadence only. Bottleneck + public observations may be Tippy context, not new lifecycle fields.
+- `checkupScore` / `scorePreview` + `scoreVersion` (`checkup_score.v1`) — overall + categories `consistency`, `discoverability`, `platformPresence`, `contentReadiness`, `growthOpportunity`, plus a `why`. **Only when ≥1 profile is `analyzed`.** Zero analyses: no score. Source `checkup_answers_and_public_signals` when analyzed. Never Mux, private analytics, or post metrics. UI name: **Creator Score Preview** (labeled preview, not live Creator Score). Missing cadence is unknown — do not invent “You haven't started publishing consistently yet.”
+- Exactly **3** findings when there is enough public evidence, each `observation → implication → opportunity`.
+- Profile Checkup (≥1 `analyzed`): concise initial results (opening read, then score preview, biggest opportunity, what I noticed, creator system if 2+ analyzed, what I would do first) plus progressive **Learn more about my checkup**. How platforms work together only if 2+ analyzed.
+- `growthPlanPreview` — preview only. Do not create canonical plan docs from checkup.
 
 ### Persistence / guest isolation
 
-Ephemeral guest session: `sessionStorage` key `tippy_creator_checkup_v1`, `localStorage` fallback, bound to anonymous `guestKey` (`tippy_checkup_guest_key_v1`, tab-scoped). TTL 24h (`expiresAt`). No new account type. Do not write a guest user doc or lifecycle for guests. Clear on logout, auth UID change, expiration, guest-key mismatch, and account deletion. An unbound guest session must not attach to a signed-in user who did not convert it.
+Ephemeral `guestCheckup` session: `sessionStorage` key `tippy_creator_checkup_v1`, `localStorage` fallback, bound to anonymous `guestKey` (`tippy_checkup_guest_key_v1`, tab-scoped). TTL 24h (`expiresAt`). Stores profiles, analysis, inferred DNA, corrections, confirmed DNA, score, opportunity, recs. No new account type. Do not write a guest user doc or lifecycle for guests. Clear on logout, auth UID change, expiration, guest-key mismatch, and account deletion.
+
+**Guest attach** is **server-authorized current guest session → new UID only**. Not email match. Not cookie match. Not old UID match. A deleted UID never inherits old checkup/onboarding. An unbound guest session must not attach to a signed-in user who did not convert it.
 
 ### Handoff boundary
 
-CTA **Build My Growth Plan** is where canonical onboarding takes over:
+CTA **CONTINUE WITH TIPPY** (BUILD MY GROWTH PLAN OK as alias) is where canonical onboarding takes over:
 
-1. Map checkup answers into `tippy_onboarding_v3`.
-2. Set `startedFromCheckup` + `hasSeenTippyIntro`.
-3. Resume existing Tippy stages (`questions` at first unanswered DNA, or `dna_reveal` if all 7 are present).
-4. Skip already-answered DNA questions (`platforms`, `schedule`, `goals`). Remaining DNA (`creator_type`, `niche`, `experience`, `content_formats`) is still asked.
-5. Guest answers cannot override newer canonical / already-answered DNA. Conversion is idempotent.
-6. After signup, attach that session to **that** UID. Account creation, verify, identity, Growth Plan, First Mission, and `ACTIVATED` stay on the existing machine (`completeVerifiedActivation`, `users/{uid}.onboarding`).
+1. Map **confirmed** facts into `tippy_onboarding_v3`. Unconfirmed inferred stay **suggested**, not answers. DNA `platforms` (“Where are you creating right now?”) skips when submitted/confirmed. Submitted Checkup profiles **prefill** guided identity `platform_handles` (“Want people to find you elsewhere?”) with platform + handle — **do not skip** that screen. User can add another, Continue, or Skip for now. Confirmed DNA treats those socials as confirmed; otherwise they are suggested defaults the creator can edit. Get Started without CONTINUE leaves socials empty.
+2. Set `startedFromCheckup` + `hasSeenTippyIntro`. Compact confirm: “Perfect. I brought over what I learned. I already have a picture of what you're creating. Now I want to understand where you want to take it.” **LOOKS RIGHT** / **EDIT**. No second “Hey I’m Tippy.”
+3. Resume existing Tippy stages (`questions` at first unanswered unknown DNA). Do not skip the whole onboarding because they did Checkup.
+4. Still ask intent/goals, experience, schedule, and unknown formats. Skip duplicate confirmed DNA platforms (and confirmed type / niche / formats). Still **show** identity socials prefilling those profiles — never skip `platform_handles` because Checkup already had them.
+5. Copy: “I can see what you're making. What I can't see is where you want to go.”
+6. Guest answers cannot override newer canonical / already-answered DNA. Conversion is idempotent.
+7. After signup, attach that **same** `tippy_onboarding_v3` `sessionId` (with checkup context) to **that** new UID (`accountCreated` + `claimedUid`). Do not reconstruct a second guest state. Account creation, verify, identity, Growth Plan, First Mission, and `ACTIVATED` stay on the existing machine (`completeVerifiedActivation`, `users/{uid}.onboarding`).
+8. MAYBE LATER / X = not now. Preserve guest checkup. No account. No lifecycle write.
+
+### Tippy conversation machine (Path A + Path B)
+
+UI may differ. Meanings must not. Flutter has no Checkup UI; Path A still uses this machine, honesty, durable preview, guest claim, and format-aware plan. When Flutter receives transferred checkup context, it consumes confirmed + suggested the same way (compact confirm, skip intro, skip confirmed DNA platforms, **prefill** identity `platform_handles` from `checkupProfiles`).
+
+```
+INTRODUCED → DISCOVERY → ASSESSMENT → PREVIEW → ACCOUNT_GATE
+  → ACCOUNT_CLAIMED → PROFILE_BUILD → PLAN_BUILD → COMPLETE
+```
+
+Persist on the existing `tippy_onboarding_v3` store (not a second session):
+
+`sessionId`, `conversationAct`, `conversationTurn`, `completedSteps`, `conversationTimeline[]` (`stepId`, `turn`, `message`, `secondaryDelivered`), `answers`, `generatedPreview` / `creatorScorePreview` / `growthOpportunity` / `growthFocus` / `initialGrowthPlan`, `lastTippyMessage`, `secondarySpeechDelivered`, `accountCreated`, `claimedUid`, `emailVerified`, `profileSetupProgress`, `checkupIntention`, `checkupProfiles`, `checkupSuggestedAnswers`, `checkupConfirmedAnswers`, `checkupHandoffConfirmResolved`, `checkupPresenceSummary`.
+
+- Already `INTRODUCED` (or later) never intros again. Checkup handoff never shows “Hey I’m Tippy.”
+- Back restores the exact committed turn. Forward after Back does not replay delivered speech.
+- Survives refresh, close, verify, Google, Apple, and guest→auth.
+
+Web SoT: `lib/onboarding/tippyConversationContinuity.ts`. Flutter: `lib/features/onboarding_tippy/tippy_conversation_continuity.dart`.
 
 ### Analytics
 
@@ -319,17 +356,17 @@ Existing activation / `onboarding_completed` events add `source=checkup` when th
 
 Persist to the existing guest checkup session (`tippy_creator_checkup_v1`). Guest isolation and 24h expiration stay.
 
-- If the guest answered some questions and closed before finishing: reopen restores those answers (including entered profile URLs/handles, bottleneck note, follow-up, and hypothesis state) and resumes at the next unanswered step (conversation order: goal → bottleneck → platforms → optional URLs → cadence → optional follow-up). Do not re-ask profiles already provided.
-- If they already reached results: reopen results. Do not restart questions.
+- If the guest answered some questions and closed before finishing: reopen restores those answers (including entered profile URLs/handles, analysis, corrections, and hypothesis state) and resumes at the next unanswered step (conversation order: profiles → analyze → confirm → results). Do not re-ask profiles already provided.
+- If they already reached results: reopen results. Do not restart questions. Welcome-back: `Welcome back. I finished looking.`
 - Welcome-back (not first-meet) when progress exists: `Welcome back. I saved where we left off.` If profile URLs/handles were entered: `Welcome back. I still have your YouTube, Twitch, and TikTok profiles. Ready to keep going?`
-- Do not say first-meet copy (`Hey! I'm Tippy…` / let's get started) when progress exists.
+- Do not say first-meet copy when progress exists.
 
 ### Onboarding resume
 
 Close preserves the guest/onboarding session, completed DNA, Checkup-transferred DNA, and saved avatar/username/bio.
 
 - Resume from canonical server state + `tippyStageHint`, never from “closed = done.”
-- If checkup transferred goal/platforms/cadence (`goals` / `platforms` / `schedule`): those stay skipped after close/reopen. Bottleneck stays context and is not re-asked.
+- If checkup transferred DNA platforms: that DNA question stays skipped after close/reopen. Identity socials stay prefilling `checkupProfiles` (not skipped). Confirmed DNA stays prefilled. Unconfirmed inferred stays suggested. Goals / experience / schedule are still asked.
 - Direct Get Started uses the same save → close → resume rules.
 - Welcome-back when they have progress: `Welcome back. Ready to keep going?`
 
@@ -411,3 +448,145 @@ Title **Account deactivated**. Account is deactivated. Actions: **Reactivate**, 
 - Mux readiness controls **video processing state** (`status`, `muxPlaybackId`, `canonicalPlaybackUrl`, `isReadyForFeed`).
 - Account deletion controls **ownership visibility** (`accountStatus`, `ownerActive`, `feedEligible`).
 - Clients do not invent their own eligibility rules.
+
+---
+
+## 9. Tippy Creator Intelligence (Phase 2 quality bar — Phase 3 not started)
+
+This section is the intelligence contract for Creator Checkup. It is **not** permission to start Phase 3. Phase 2 is **not frozen**. Do not implement trend monitoring, experiments, weekly reports, canonical Creator Score, missions-from-hypothesis, recurring coaching, or strategic-memory loops.
+
+North star for Phase 2: Checkup proves Tippy can understand a creator business from public evidence — not that it “analyzed accounts.”
+
+### Opinions, not facts-only
+
+Every important Checkup claim moves **fact → meaning → decision**. Unacceptable as the primary result: “Your content looks good / try posting consistently / use hashtags / engage with your audience.” Acceptable: “You’re already streaming enough; I wouldn’t increase frequency first.”
+
+### Evidence hierarchy
+
+Every important claim belongs to exactly one kind:
+
+| Kind | Meaning | Checkup rule |
+|---|---|---|
+| `creator_confirmed` | Explicitly supplied or confirmed by the creator | Highest authority for identity/intent |
+| `publicly_observed` | Retrieved from a public profile Tippy actually analyzed | Never invent it |
+| `inferred` | Interpretation of observed evidence | Never present as observation |
+| `platform_general` | How platforms/formats work | Never as if observed about this creator |
+| `private` | Authorized analytics (retention, impressions, CTR, revenue, …) | **Never in Checkup unless we actually have it** |
+
+Never fake `analyzed`. Never invent views / retention / CTR / watch time / impressions / demographics / revenue / posting frequency / sentiment.
+
+### Confidence language
+
+Internal confidence is `high` | `medium` | `low`. Language must match. Low = “I don’t have enough evidence yet…” Do not fake certainty.
+
+### Per-platform, then system
+
+Understand each `analyzed` platform first. A cross-platform **creator system** (engine vs discovery vs shelf) is allowed only when **≥2** profiles are `analyzed` and evidence supports the roles. `limited` / `unavailable` never produce fake personalized findings.
+
+### May disagree
+
+Tippy may disagree with implied “stream more / post more” when evidence says distribution is the lever. Disagreement must be respectful, specific, and evidence-backed.
+
+### One primary opportunity
+
+One biggest opportunity + first action. Not ten equal problems. Generic “post more / use hashtags” must not be the primary opportunity when public 24/7 restream evidence exists.
+
+### Result + Learn More
+
+Concise result: opening read → Score Preview → biggest opportunity → ~3 notices → creator system if multi-analyzed → what I would do first → “Does this sound like you?”
+
+Learn More (progressive disclosure): overall read; what I could actually see; what I’m inferring; per-platform breakdown; how platforms work together; what you’re underusing; **what I would not do**; if I were working with you this week (3 concrete actions); why. Observed vs inferred stay separate.
+
+### Level 4 (scoped)
+
+After results, the creator may ask Why / what first / which platform. Answers use **this Checkup context**. Do not build a full Ask Tippy product here.
+
+### Phase 2 memory / onboarding
+
+Guest Checkup context → CONTINUE WITH TIPPY → canonical auth → attach current guest session to UID. Copy: “Perfect. I brought over what I learned. I already have a picture of what you're creating. Now I want to understand where you want to take it.” / “I can see what you're making. What I can't see is where you want to go.” No second intro. Checkup answers *what they appear to be today*; onboarding answers *where they want to go*.
+
+### Phase 3 (document only — do not build)
+
+Architecture may later add: trend relevance, experiments, weekly report, canonical Creator Score (not this preview), missions-from-hypothesis, recurring coaching, strategic memory. Phase 2 keeps **Creator Score Preview** only.
+
+### Phase 2 acceptance (not a freeze)
+
+FAIL if the result could have been produced without the supplied profiles; if the recommendation applies unchanged to almost any creator; if Tippy claims data it does not have; if the analysis has no strategic opinion; if Checkup still feels like onboarding. Phase 2 stays unfrozen until those proofs pass in production.
+
+---
+
+## 10. Tippy Brain (one creator, one canonical server-owned Brain)
+
+**All Tippy intelligence must converge into one canonical server-owned Tippy Brain per authenticated UID.** Website and Flutter consume and update the same context. **No** separate web brain, app brain, onboarding brain, Checkup brain, or Phase 3 brain as an independent source of truth.
+
+Guest Checkup context exists only before authentication and is explicitly merged during authorized handoff (current guest session → new UID only). Deleted UID never inherits. Clients never become authority for Tippy memory.
+
+**One creator. One canonical Tippy Brain. Many surfaces.**
+
+Checkup, onboarding, dashboard, and Ask Tippy are **presentation surfaces**. They read and update this Brain. They do not keep a long-term Tippy memory of their own after claim.
+
+This section is **not** permission to start Phase 3. Phase 2 is **not frozen**. Phase 3 may later write experiments, weekly reports, trend loops, and a live Creator Score **into this same Brain**. Do not invent a second store for those.
+
+### Canonical path
+
+`users/{uid}/creatorMemory/main`
+
+This existing per-UID doc **is** the Tippy Brain. Do **not** create `users/{uid}/tippyBrain`, a top-level `tippyBrain/{uid}`, or a Flutter-only memory collection as a second source of truth.
+
+`users/{uid}/tippyMemory/{id}` is a legacy chat-summary subcollection. It is **not** the Brain. New Tippy intelligence writes go to `creatorMemory/main`.
+
+Global `tippyBrainKnowledge` / `tippyBrainSources` / `tippyBrainChunks` are shared platform knowledge cards (algorithms, games). They are **not** a per-creator Brain.
+
+| Field on Brain | Meaning |
+|---|---|
+| `creatorDNA` | Confirmed Creator DNA the creator told or confirmed (existing MemoryItem section) |
+| `confirmedFacts` | Typed insights with `type=confirmed` |
+| `observations` | Retrieved public/connected facts (`type=observation`) |
+| `inferences` | Interpretation + evidence + confidence (`type=inference`) — never stored as confirmed |
+| `platformIntelligence` | Submitted/analyzed platforms and profile handles |
+| `goals` | Existing MemoryItem goals (current state, not a parallel store) |
+| `strategicMemory` | Recommended / tried / outcome / Tippy changed its mind — **schema now, Phase 3 writes later** |
+| `currentStrategy` | Goal, recommended focus, weekly focus (weekly focus reserved) |
+| `growthPlan` | Pointer to existing `users/{uid}/contentPlans/{planId}` |
+| `missions` | Pointer to existing gamification missions |
+| `creatorScore` | Pointer to existing `users/{uid}/creatorScore/current` — **not** a second score; Checkup preview is not live score |
+| `experiments` | Schema now; Phase 3 writes later |
+| `outcomes` | Schema now; Phase 3 writes later |
+| `recommendations` | Typed insights with `type=recommendation` |
+| `updatedAt` | Last Brain write |
+| `brainVersion` | Brain layer version (currently `1`) |
+
+Every meaningful insight:
+
+```
+statement, type (observation|inference|recommendation|confirmed), source, evidenceIds, confidence, createdAt, lastValidatedAt
+```
+
+Truth levels:
+
+| Level | Meaning |
+|---|---|
+| Confirmed Creator DNA | Creator told or confirmed |
+| Observed Intelligence | Retrieved public or connected |
+| Inferred Intelligence | Interpretation + evidence + confidence |
+| Strategic Memory | Recommended / tried / outcome / Tippy changed its mind (Phase 3 writes later) |
+| Current State | Goal, plan, missions, score, weekly focus — existing product fields live here |
+| Connected Data | Authorized analytics when we actually have them |
+
+Inference is never confirmed. Confirmed never silently becomes inferred. Clients may **read** legacy MemoryItem fields (`identity`, `platforms.primary`, `goals.goalIds`, user-doc `selectedPlatforms`) and project them into Brain layers. New writes use the Brain layers + existing MemoryItem updaters via allowlisted APIs (`GET/POST /api/tippy/creator-memory`). Clients never write Firestore Brain docs directly.
+
+### Guest merge
+
+CONTINUE WITH TIPPY attach copies the **current** guest Checkup session onto the **new** UID and **merges into Brain layers**:
+
+- Observed from public analysis (`analysisStatus === analyzed` only)
+- Inferred with confidence (presence analysis — not DNA)
+- Confirmed from YES / corrections
+
+Not email match. Not cookie match. Not old UID match. A deleted / deleting / banned / deactivated UID never inherits. After claim, checkup-only `localStorage` / `sessionStorage` is resume UX, not long-term Tippy memory.
+
+### Surfaces after auth
+
+If Brain has confirmed platforms, Tippy must not re-ask “which platforms are you on?” Website and Flutter both skip that DNA question and may say they already know the setup (Twitch-first, etc.). Goals / experience / schedule remain asked until confirmed.
+
+**Checkup persists in Brain and is visible on Mission Control.** After claim, Checkup is an in-account Brain record — not only a pre-signup screen. Website Mission Control (`/dashboard/mission-control`) and Flutter’s Tippy home / Command Center read the same Brain (`GET /api/tippy/creator-memory`) and project `Your Creator Read` from checkup-derived layers (`observations`, `inferences`, `confirmedFacts`, `currentStrategy`, `platformIntelligence`). Continuity copy: “I brought over what I learned from your Checkup. Here’s what I want us to focus on first.” Learn More opens Brain-backed detail, not a dead guest session. If Brain has no Checkup-derived layer, do not invent one. An activated user may be redirected from `/checkup` to Mission Control only when Brain already has that attached Checkup. Phase 2 is not frozen. Phase 3 is not started.

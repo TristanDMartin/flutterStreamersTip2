@@ -87,4 +87,20 @@ void main() {
       );
     });
   });
+
+  group('emailSignupMayWriteUserDocument', () {
+    test('blocks client user-doc writes until email is verified', () {
+      expect(
+        emailSignupMayWriteUserDocument(emailVerified: false),
+        isFalse,
+      );
+    });
+
+    test('allows client user-doc writes after email is verified', () {
+      expect(
+        emailSignupMayWriteUserDocument(emailVerified: true),
+        isTrue,
+      );
+    });
+  });
 }

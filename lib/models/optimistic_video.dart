@@ -200,7 +200,9 @@ class OptimisticVideoFactory {
     );
   }
 
-  /// Convert optimistic video to regular video (when upload completes)
+  /// Convert optimistic video to regular video (when upload completes).
+  /// Clears [localVideoPath] once a remote URL exists so deleted drafts cannot
+  /// keep driving Instant Play into ENOENT.
   static OptimisticVideo markAsReady({
     required OptimisticVideo optimisticVideo,
     required String videoUrl,
@@ -209,15 +211,28 @@ class OptimisticVideoFactory {
     int? duration,
     int? fileSize,
   }) {
-    return optimisticVideo.copyWith(
+    final String remote =
+        (hlsUrl ?? videoUrl).trim();
+    final bool hasRemote =
+        remote.isNotEmpty && !remote.toLowerCase().startsWith('file://');
+    return OptimisticVideo(
+      videoId: optimisticVideo.videoId,
+      ownerId: optimisticVideo.ownerId,
+      caption: optimisticVideo.caption,
+      categories: optimisticVideo.categories,
+      createdAt: optimisticVideo.createdAt,
       status: VideoStatus.uploadSucceeded,
       videoUrl: videoUrl,
       thumbnailUrl: thumbnailUrl,
       hlsUrl: hlsUrl,
       duration: duration,
       fileSize: fileSize,
+      metadata: optimisticVideo.metadata,
       isOptimistic: false,
+      localThumbnailPath: optimisticVideo.localThumbnailPath,
+      localVideoPath: hasRemote ? null : optimisticVideo.localVideoPath,
       uploadProgress: 1.0,
+      errorMessage: optimisticVideo.errorMessage,
     );
   }
 

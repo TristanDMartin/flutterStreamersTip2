@@ -1,8 +1,23 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
+
+import '../utils/camera_file_audit.dart';
+import '../utils/publish_artifact_audit.dart';
+
+/// Result of ensuring camera + microphone access before preview.
+enum TikTokCameraPermissionResult {
+  granted,
+  cameraDenied,
+  microphoneDenied,
+  permanentlyDenied,
+}
 
 /// TikTok-quality camera service
 ///
@@ -17,11 +32,14 @@ class TikTokCameraService {
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
   bool _isRecording = false;
+  /// Bumped on every [dispose] / new [initialize] so in-flight setup aborts.
+  int _sessionId = 0;
   String? _currentCameraId;
   CameraLensDirection _currentLensDirection = CameraLensDirection.back;
+  FlashMode _flashMode = FlashMode.off;
 
   // Quality settings (TikTok spec: 1080×1920, 30fps, 10–12 Mbps)
-  ResolutionPreset _resolutionPreset = ResolutionPreset.high;
+  ResolutionPreset _resolutionPreset = ResolutionPreset.veryHigh;
   int _targetFps = 30;
   double _targetBitrate = 12.0; // Mbps (TikTok optimal)
 
@@ -38,56 +56,108 @@ class TikTokCameraService {
   List<CameraDescription>? get cameras => _cameras;
   String? get currentCameraId => _currentCameraId;
   CameraLensDirection get currentLensDirection => _currentLensDirection;
+  FlashMode get flashMode => _flashMode;
+  bool get isFlashOn =>
+      _flashMode == FlashMode.torch || _flashMode == FlashMode.always;
   bool get supports60fps => _supports60fps;
   bool get supports4K => _supports4K;
 
+  /// Requests camera + microphone access. Does not open Settings itself.
+  Future<TikTokCameraPermissionResult> ensurePermissions() async {
+    PermissionStatus cameraStatus = await Permission.camera.status;
+    if (cameraStatus.isDenied) {
+      cameraStatus = await Permission.camera.request();
+    }
+    if (cameraStatus.isPermanentlyDenied || cameraStatus.isRestricted) {
+      return TikTokCameraPermissionResult.permanentlyDenied;
+    }
+    if (!cameraStatus.isGranted) {
+      return TikTokCameraPermissionResult.cameraDenied;
+    }
+    PermissionStatus micStatus = await Permission.microphone.status;
+    if (micStatus.isDenied) {
+      micStatus = await Permission.microphone.request();
+    }
+    if (micStatus.isPermanentlyDenied || micStatus.isRestricted) {
+      return TikTokCameraPermissionResult.permanentlyDenied;
+    }
+    if (!micStatus.isGranted) {
+      return TikTokCameraPermissionResult.microphoneDenied;
+    }
+    return TikTokCameraPermissionResult.granted;
+  }
+
+  Future<bool> openSystemSettings() => openAppSettings();
+
   /// Initialize camera with TikTok-quality settings
   Future<void> initialize() async {
+    final int sessionId = ++_sessionId;
     try {
       secureLog(
           '🎥 TikTokCameraService: Initializing with professional settings');
+      final TikTokCameraPermissionResult permission =
+          await ensurePermissions();
+      if (!_isSessionActive(sessionId)) {
+        return;
+      }
+      if (permission != TikTokCameraPermissionResult.granted) {
+        throw Exception('Camera permission not granted: $permission');
+      }
 
       _cameras = await availableCameras();
+      if (!_isSessionActive(sessionId)) {
+        return;
+      }
       if (_cameras == null || _cameras!.isEmpty) {
         throw Exception('No cameras available');
       }
 
       // Detect device capabilities
       await _detectDeviceCapabilities();
+      if (!_isSessionActive(sessionId)) {
+        return;
+      }
 
       // Select optimal camera
       final selectedCamera = _selectOptimalCamera();
 
       // Initialize with optimal settings
       await _initializeCamera(selectedCamera);
+      if (!_isSessionActive(sessionId) || _controller == null) {
+        return;
+      }
 
       // Apply TikTok-quality settings
-      await _applyTikTokSettings();
+      await _applyTikTokSettings(sessionId);
+      if (!_isSessionActive(sessionId) || _controller == null) {
+        return;
+      }
 
       _isInitialized = true;
       secureLog('✅ TikTokCameraService: Initialized successfully');
     } catch (e) {
+      if (!_isSessionActive(sessionId)) {
+        return;
+      }
       secureLog('❌ TikTokCameraService: Initialization failed: $e');
       rethrow;
     }
   }
 
-  /// Detect device capabilities for optimal settings
+  bool _isSessionActive(int sessionId) => sessionId == _sessionId;
+
+  /// Detect device capabilities for optimal settings.
+  ///
+  /// Fast path: no temporary CameraController probes (those added ~1–2s of
+  /// latency before the preview could appear). Use sensible defaults and
+  /// platform heuristics instead.
   Future<void> _detectDeviceCapabilities() async {
     try {
-      // Check for 60fps support
-      _supports60fps = await _check60fpsSupport();
-
-      // Check for 4K support
-      _supports4K = await _check4KSupport();
-
-      // Check for stabilization support
-      _supportsOIS = await _checkOISSupport();
-      _supportsEIS = await _checkEISSupport();
-
-      // Pixel 6 specific optimizations
+      _supports60fps = false;
+      _supports4K = true;
+      _supportsOIS = Platform.isAndroid || Platform.isIOS;
+      _supportsEIS = Platform.isAndroid || Platform.isIOS;
       await _applyPixel6Optimizations();
-
       secureLog(
           '🔍 Device capabilities: 60fps=$_supports60fps, 4K=$_supports4K, OIS=$_supportsOIS, EIS=$_supportsEIS');
     } catch (e) {
@@ -113,66 +183,6 @@ class TikTokCameraService {
     }
   }
 
-  /// Check if device supports 60fps recording
-  Future<bool> _check60fpsSupport() async {
-    try {
-      // Test with a temporary controller
-      final testController = CameraController(
-        _cameras!.first,
-        ResolutionPreset.high,
-        enableAudio: false,
-      );
-
-      await testController.initialize();
-      final capabilities = testController.value;
-
-      // Check if device can handle 60fps (simplified check)
-      final has60fps = (capabilities.previewSize?.height ?? 0) >=
-          1080; // Assume 60fps if 1080p+
-
-      await testController.dispose();
-      return has60fps;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// Check if device supports 4K recording
-  Future<bool> _check4KSupport() async {
-    try {
-      final testController = CameraController(
-        _cameras!.first,
-        ResolutionPreset.veryHigh,
-        enableAudio: false,
-      );
-
-      await testController.initialize();
-      final capabilities = testController.value;
-
-      // Check if device supports 4K resolution
-      final has4K = (capabilities.previewSize?.height ?? 0) >= 2160;
-
-      await testController.dispose();
-      return has4K;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// Check for Optical Image Stabilization support
-  Future<bool> _checkOISSupport() async {
-    // This would require platform-specific implementation
-    // For now, assume support on modern devices
-    return Platform.isAndroid || Platform.isIOS;
-  }
-
-  /// Check for Electronic Image Stabilization support
-  Future<bool> _checkEISSupport() async {
-    // This would require platform-specific implementation
-    // For now, assume support on modern devices
-    return Platform.isAndroid || Platform.isIOS;
-  }
-
   /// Select optimal camera based on capabilities
   CameraDescription _selectOptimalCamera() {
     // Prefer back camera for better quality
@@ -193,70 +203,84 @@ class TikTokCameraService {
     return frontCamera;
   }
 
-  /// Initialize camera with optimal settings
+  /// Initialize camera with optimal settings.
+  ///
+  /// Tries 1080p (`veryHigh`) first, then falls back so devices that cannot
+  /// open that profile still get a working camera.
   Future<void> _initializeCamera(CameraDescription camera) async {
     try {
-      // Determine optimal resolution
-      _resolutionPreset = _getOptimalResolution();
-
-      // Determine optimal frame rate
       _targetFps = _getOptimalFps();
-
-      // Determine optimal bitrate
       _targetBitrate = _getOptimalBitrate();
-
-      secureLog(
-          '🎥 Initializing camera: ${camera.name}, Resolution: $_resolutionPreset, FPS: $_targetFps, Bitrate: ${_targetBitrate}Mbps');
-
-      _controller = CameraController(
-        camera,
-        _resolutionPreset,
-        enableAudio: true,
-        imageFormatGroup: Platform.isIOS
-            ? ImageFormatGroup.bgra8888
-            : ImageFormatGroup.yuv420,
-      );
-
-      await _controller!.initialize();
-      _currentCameraId = camera.name;
-
-      // Log actual preview size to diagnose field of view issues
-      final previewSize = _controller!.value.previewSize;
-      if (previewSize != null) {
-        final aspectRatio = previewSize.width / previewSize.height;
-        secureLog(
-            '📐 Camera preview size: ${previewSize.width}x${previewSize.height} (aspect ratio: ${aspectRatio.toStringAsFixed(3)})');
-        secureLog(
-            '📐 Camera sensor orientation: ${previewSize.width > previewSize.height ? "landscape" : "portrait"}');
+      final List<ResolutionPreset> presets = <ResolutionPreset>[
+        ResolutionPreset.veryHigh, // ~1080p
+        ResolutionPreset.high, // ~720p fallback
+        ResolutionPreset.medium,
+      ];
+      Object? lastError;
+      for (final ResolutionPreset preset in presets) {
+        try {
+          final CameraController? previous = _controller;
+          _controller = null;
+          if (previous != null) {
+            try {
+              await previous.dispose();
+            } catch (_) {}
+          }
+          _resolutionPreset = preset;
+          secureLog(
+            '🎥 Initializing camera: ${camera.name}, '
+            'Resolution: $_resolutionPreset, FPS: $_targetFps, '
+            'Bitrate: ${_targetBitrate}Mbps',
+          );
+          _controller = CameraController(
+            camera,
+            _resolutionPreset,
+            enableAudio: true,
+            imageFormatGroup: Platform.isIOS
+                ? ImageFormatGroup.bgra8888
+                : ImageFormatGroup.yuv420,
+          );
+          await _controller!.initialize();
+          lastError = null;
+          break;
+        } catch (e) {
+          lastError = e;
+          secureLog(
+            '⚠️ Camera init failed for $preset, trying lower preset: $e',
+          );
+        }
       }
-
-      // 🔍 FIXED: Set zoom to 1.0 (minimum/normal zoom level)
-      // This ensures we get the full sensor field of view without any zoom
+      if (_controller == null ||
+          !_controller!.value.isInitialized ||
+          lastError != null) {
+        throw lastError ?? Exception('Camera initialization failed');
+      }
+      _currentCameraId = camera.name;
+      final Size? previewSize = _controller!.value.previewSize;
+      if (previewSize != null) {
+        final double aspectRatio = previewSize.width / previewSize.height;
+        secureLog(
+          '📐 Camera preview size: '
+          '${previewSize.width}x${previewSize.height} '
+          '(aspect ratio: ${aspectRatio.toStringAsFixed(3)})',
+        );
+        secureLog(
+          '📐 Camera sensor orientation: '
+          '${previewSize.width > previewSize.height ? "landscape" : "portrait"}',
+        );
+      }
       try {
-        await _controller!.setZoomLevel(1.0);
-        secureLog('🔍 Zoom set to 1.0 (full field of view)');
+        final double minZoom = await _controller!.getMinZoomLevel();
+        await _controller!.setZoomLevel(minZoom);
+        secureLog('🔍 Zoom set to min ($minZoom) for full field of view');
       } catch (e) {
         secureLog('⚠️ Could not set zoom: $e');
       }
-
       secureLog('✅ Camera initialized successfully');
     } catch (e) {
       secureLog('❌ Camera initialization failed: $e');
       rethrow;
     }
-  }
-
-  /// Get optimal resolution based on device capabilities
-  ///
-  /// FIXED: Try to find a resolution preset that gives 16:9 natively
-  /// Native camera apps use sensor modes that output 16:9 directly (not cropped)
-  /// We'll test different presets and prefer one that gives 16:9 at high quality
-  ResolutionPreset _getOptimalResolution() {
-    // Prefer high/veryHigh presets which often support 16:9 on modern devices
-    // These give best quality while potentially offering 16:9 sensor mode
-    // Fallback to max if needed
-    return ResolutionPreset
-        .high; // Often gives 16:9 at high quality (1080p/1440p)
   }
 
   /// Get optimal frame rate (TikTok standard: 30fps)
@@ -266,8 +290,14 @@ class TikTokCameraService {
   double _getOptimalBitrate() => 12.0;
 
   /// Apply TikTok-quality camera settings
-  Future<void> _applyTikTokSettings() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+  Future<void> _applyTikTokSettings([int? sessionId]) async {
+    final CameraController? controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    if (sessionId != null && !_isSessionActive(sessionId)) {
+      return;
+    }
 
     try {
       secureLog('🎥 Applying TikTok-quality settings...');
@@ -275,27 +305,50 @@ class TikTokCameraService {
       // 🔍 FIXED: Don't lock capture orientation - let camera use full sensor
       // Locking orientation can cause cropping and reduce field of view
       // We'll handle orientation in the UI instead
-      // await _controller!.lockCaptureOrientation(DeviceOrientation.portraitUp); // REMOVED
+      // await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
 
-      // Set focus mode for video recording
-      await _controller!.setFocusMode(FocusMode.auto);
+      await controller.setFocusMode(FocusMode.auto);
+      if (!_isControllerCurrent(controller, sessionId)) {
+        return;
+      }
 
-      // Set exposure mode for stable lighting
-      await _controller!.setExposureMode(ExposureMode.auto);
+      await controller.setExposureMode(ExposureMode.auto);
+      if (!_isControllerCurrent(controller, sessionId)) {
+        return;
+      }
 
-      // Set white balance for natural colors (simplified)
-      // Note: WhiteBalanceMode not available in current camera package
-
-      // Set flash off by default
-      await _controller!.setFlashMode(FlashMode.off);
-
-      // Zoom is already set to 1.0 in _initializeCamera
-      // No need to set it again here
+      await controller.setFlashMode(_flashMode);
+      if (!_isControllerCurrent(controller, sessionId)) {
+        return;
+      }
 
       secureLog('✅ TikTok-quality settings applied');
     } catch (e) {
+      if (_isDisposedControllerError(e) ||
+          (sessionId != null && !_isSessionActive(sessionId))) {
+        secureLog(
+          '⚠️ TikTok settings skipped (camera already released)',
+        );
+        return;
+      }
       secureLog('❌ Error applying TikTok settings: $e');
     }
+  }
+
+  bool _isControllerCurrent(
+    CameraController controller,
+    int? sessionId,
+  ) {
+    if (sessionId != null && !_isSessionActive(sessionId)) {
+      return false;
+    }
+    return identical(_controller, controller);
+  }
+
+  bool _isDisposedControllerError(Object error) {
+    final String message = error.toString().toLowerCase();
+    return message.contains('used after being disposed') ||
+        message.contains('cameraController was used after being disposed');
   }
 
   /// Switch between front and back cameras
@@ -304,9 +357,14 @@ class TikTokCameraService {
 
     try {
       secureLog('🔄 Switching camera...');
-
-      // Dispose current controller
-      await _controller?.dispose();
+      final CameraController? oldController = _controller;
+      _controller = null;
+      _isInitialized = false;
+      if (oldController != null) {
+        try {
+          await oldController.dispose();
+        } catch (_) {}
+      }
 
       // Select opposite camera
       final newCamera = _cameras!.firstWhere(
@@ -321,7 +379,11 @@ class TikTokCameraService {
 
       // Reinitialize with new camera
       await _initializeCamera(newCamera);
-      await _applyTikTokSettings();
+      await _applyTikTokSettings(_sessionId);
+      if (_controller == null) {
+        return;
+      }
+      _isInitialized = true;
 
       secureLog(
           '✅ Camera switched to: ${newCamera.lensDirection} with TikTok-quality settings');
@@ -339,15 +401,25 @@ class TikTokCameraService {
     }
 
     try {
+      debugPrint('RECORD_START_REQUEST');
       secureLog('🎬 Starting TikTok-quality video recording...');
 
       // Apply recording-specific settings
       await _applyRecordingSettings();
 
+      // iOS requires prepare; safe no-op on Android.
+      try {
+        await _controller!.prepareForVideoRecording();
+        debugPrint('RECORD_START_PREPARED');
+      } catch (e) {
+        secureLog('⚠️ prepareForVideoRecording skipped: $e');
+      }
+
       // Start recording
       await _controller!.startVideoRecording();
 
       _isRecording = true;
+      debugPrint('RECORD_START_CONFIRMED');
       secureLog('✅ Video recording started');
     } catch (e) {
       secureLog('❌ Error starting recording: $e');
@@ -355,23 +427,21 @@ class TikTokCameraService {
     }
   }
 
-  /// Apply recording-specific settings for optimal quality
+  /// Apply recording-specific settings for optimal quality.
+  /// Keep continuous AF/AE so lighting and focus can track while recording.
   Future<void> _applyRecordingSettings() async {
     try {
-      // Lock focus and exposure for stable recording
-      await _controller!.setFocusMode(FocusMode.locked);
-      await _controller!.setExposureMode(ExposureMode.locked);
-
-      // Set optimal white balance (simplified)
-      // Note: WhiteBalanceMode not available in current camera package
-
+      await _controller!.setFocusMode(FocusMode.auto);
+      await _controller!.setExposureMode(ExposureMode.auto);
       secureLog('✅ Recording settings applied');
     } catch (e) {
       secureLog('⚠️ Error applying recording settings: $e');
     }
   }
 
-  /// Stop video recording
+  /// Stop video recording and wait until the output file size stabilizes.
+  /// Immediately copies off the camera temp path into app documents so a
+  /// later dispose/cache cleanup cannot truncate the artifact.
   Future<XFile> stopRecording() async {
     if (_controller == null || !_isRecording) {
       throw Exception('No active recording to stop');
@@ -379,15 +449,71 @@ class TikTokCameraService {
 
     try {
       secureLog('🛑 Stopping video recording...');
-
-      final videoFile = await _controller!.stopVideoRecording();
+      debugPrint('RECORD_STOP_REQUEST');
+      final XFile videoFile = await _controller!.stopVideoRecording();
       _isRecording = false;
-
-      // Restore preview settings
+      final File recorded = File(videoFile.path);
+      final bool existsImmediately = await recorded.exists();
+      final int bytesImmediately =
+          existsImmediately ? await recorded.length() : 0;
+      debugPrint(
+        'CAMERA_RECORD_STOP originalPath=${videoFile.path} '
+        'exists=$existsImmediately bytes=$bytesImmediately',
+      );
+      final int stableBytes = await waitForStableFileBytes(recorded);
+      debugPrint(
+        'RECORD_STOP_COMPLETE path=${videoFile.path} '
+        'recordedBytes=$stableBytes',
+      );
+      final PublishArtifactAudit originalAudit =
+          await PublishArtifactAudit.inspect(
+        file: recorded,
+        stage: 'camera_original',
+        probeDecode: true,
+      );
+      if (!originalAudit.isAcceptable) {
+        await _restorePreviewSettings();
+        throw StateError(
+          originalAudit.rejectReason ??
+              'Recording incomplete ($stableBytes bytes). '
+              'Hold to record for at least 1 second.',
+        );
+      }
+      final Directory docs = await getApplicationDocumentsDirectory();
+      final Directory captureDir =
+          Directory('${docs.path}/CameraCaptures');
+      if (!await captureDir.exists()) {
+        await captureDir.create(recursive: true);
+      }
+      final String durablePath =
+          '${captureDir.path}/cap_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final File durable = await recorded.copy(durablePath);
+      final PublishArtifactAudit durableAudit =
+          await PublishArtifactAudit.inspect(
+        file: durable,
+        stage: 'camera_durable_copy',
+        durationMsHint: originalAudit.durationMs,
+        widthHint: originalAudit.width,
+        heightHint: originalAudit.height,
+        probeDecode: true,
+      );
+      if (!durableAudit.isAcceptable) {
+        try {
+          await durable.delete();
+        } catch (_) {}
+        await _restorePreviewSettings();
+        throw StateError(
+          durableAudit.rejectReason ??
+              'Durable capture failed artifact audit',
+        );
+      }
       await _restorePreviewSettings();
-
-      secureLog('✅ Video recording stopped: ${videoFile.path}');
-      return videoFile;
+      secureLog(
+        '✅ Video recording stopped: $durablePath '
+        '(${durableAudit.byteLength} bytes, '
+        '${durableAudit.durationMs}ms)',
+      );
+      return XFile(durablePath);
     } catch (e) {
       secureLog('❌ Error stopping recording: $e');
       rethrow;
@@ -421,16 +547,41 @@ class TikTokCameraService {
     }
   }
 
-  /// Set zoom level
+  /// Set zoom level within the device's supported range.
   Future<void> setZoomLevel(double zoom) async {
     if (_controller == null || !_controller!.value.isInitialized) return;
-
     try {
-      final clampedZoom = zoom.clamp(1.0, 4.0);
+      final double minZoom = await _controller!.getMinZoomLevel();
+      final double maxZoom = await _controller!.getMaxZoomLevel();
+      final double clampedZoom = zoom.clamp(minZoom, math.min(maxZoom, 8.0));
       await _controller!.setZoomLevel(clampedZoom);
       secureLog('🔍 Zoom set to: $clampedZoom');
     } catch (e) {
       secureLog('❌ Error setting zoom: $e');
+    }
+  }
+
+  /// Toggle torch flash for video preview / recording.
+  Future<void> toggleFlash() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_currentLensDirection == CameraLensDirection.front) {
+      secureLog('⚠️ Flash unavailable on front camera');
+      return;
+    }
+    final FlashMode nextMode =
+        isFlashOn ? FlashMode.off : FlashMode.torch;
+    await setFlashMode(nextMode);
+  }
+
+  /// Set flash mode on the active camera controller.
+  Future<void> setFlashMode(FlashMode mode) async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    try {
+      await _controller!.setFlashMode(mode);
+      _flashMode = mode;
+      secureLog('🔦 Flash mode set to: $mode');
+    } catch (e) {
+      secureLog('❌ Error setting flash mode: $e');
     }
   }
 
@@ -474,17 +625,25 @@ class TikTokCameraService {
     return 9.0 / 16.0; // 0.5625
   }
 
-  /// Dispose camera resources
+  /// Dispose camera resources.
+  /// Clears the controller reference first so UI cannot call buildPreview()
+  /// on a disposed instance while dispose awaits.
   Future<void> dispose() async {
+    _sessionId++;
+    final CameraController? controller = _controller;
+    _controller = null;
+    _isInitialized = false;
+    _isRecording = false;
+    if (controller == null) {
+      return;
+    }
     try {
-      if (_isRecording) {
-        await stopRecording();
+      if (controller.value.isRecordingVideo) {
+        try {
+          await controller.stopVideoRecording();
+        } catch (_) {}
       }
-
-      await _controller?.dispose();
-      _controller = null;
-      _isInitialized = false;
-
+      await controller.dispose();
       secureLog('✅ TikTokCameraService disposed');
     } catch (e) {
       secureLog('❌ Error disposing camera service: $e');

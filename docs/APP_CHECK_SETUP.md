@@ -1,67 +1,48 @@
-# App Check Setup (Optional for Production)
+# App Check Setup
 
 ## Current State
 
-Dart startup calls `activateAppCheckIfEnabled()` in `lib/core/firebase_app_check_startup.dart`
-after Firebase init.
+Dart startup **awaits** `activateAppCheckIfEnabled()` in
+`lib/core/firebase_app_check_startup.dart` immediately after Firebase init
+(`lib/main.dart`).
 
-- **Debug builds** always activate the App Check **debug provider** and log the debug
-  token to the console (register it in Firebase Console → App Check → Manage debug tokens).
-- **Release builds** use Play Integrity / DeviceCheck when built with
-  `--dart-define=ST_ENABLE_APP_CHECK=true`.
+| Build | Provider | Enabled? |
+|-------|----------|----------|
+| Debug / Profile | `AndroidDebugProvider` / `AppleDebugProvider` | Yes (default) |
+| Release | Play Integrity / DeviceCheck | Yes (default) |
 
-Upload and optimistic placeholder writes call `ensureAppCheckReadyForFirestore()` first.
-If attestation fails (`App attestation failed`, placeholder token), Firestore writes
-will show `PERMISSION_DENIED` even when UID ownership is correct.
+Opt out only with:
 
-If you see placeholder-token errors while testing, either register the debug token or set
-Firestore/Storage App Check enforcement to **Unenforced** in Firebase Console.
+```bash
+--dart-define=ST_DISABLE_APP_CHECK=true
+```
 
-## When to Configure
+Upload and optimistic placeholder writes call `ensureAppCheckReadyForFirestore()`
+first. That waits for activation, then fetches a real token.
 
-- You want to enforce App Check in Firestore/Storage rules
-- You are preparing for production
-- You need protection against abuse from unofficial clients
+If you see `No AppCheckProvider installed` or placeholder-token errors:
 
-## Setup Steps
+1. Confirm cold start logs `✅ Firebase App Check activated (debug provider)`
+2. Register the printed **DEBUG TOKEN** in Firebase Console → App Check
+3. Or set Firestore/Storage App Check APIs to **Unenforced** while testing
+   (see `docs/APP_CHECK_DEBUG_RUNBOOK.md`)
 
-### 1. Firebase Console
+## Firebase Console
 
 1. Project → App Check
-2. Register your Android app (Debug and Release SHA-1)
-3. Choose provider: **Play Integrity** (recommended) or **Debug** for development
+2. Register Android app `com.streamerstip.streamersTipApp` (SHA-1 / SHA-256)
+3. Release: **Play Integrity**
+4. Debug: **Manage debug tokens** → paste token from logcat / flutter run
 
-### 2. Flutter (Android)
+## HTTP backends
 
-Add to `android/app/build.gradle`:
+Authenticated HTTP calls attach `X-Firebase-AppCheck` via
+`buildAuthenticatedHttpHeaders` (Mux direct-upload, Tippy, billing, etc.).
 
-```gradle
-dependencies {
-    implementation 'com.google.firebase:firebase-appcheck-playintegrity:17.0.1'
-}
+## Publish telemetry
+
+Filter one publish attempt:
+
+```bash
+adb logcat | grep -E 'PUBLISH|RENDER_|APP_CHECK|DIRECT_UPLOAD|UPLOAD_|MUX_|FEED_READY'
 ```
-
-### 3. Initialize in Dart
-
-```dart
-import 'package:firebase_app_check/firebase_app_check.dart';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.playIntegrity,
-  );
-  
-  runApp(MyApp());
-}
-```
-
-### 4. Update Rules (when enforced)
-
-In Firestore and Storage rules, add `request.auth != null` (and optionally App Check). App Check tokens are validated automatically when configured.
-
-## Debug Provider (Development)
-
-For local development, use the Debug provider and add your debug token in the Firebase Console.

@@ -46,9 +46,9 @@ class UploadFailureClassification {
         kind: UploadFailureKind.firestoreRules,
         logLabel: 'Firestore rules',
         userMessage:
-            'Firestore rejected this save (permission denied). Your account '
-            'may be restricted, or the video document is missing owner fields. '
-            'Try again after a full app restart.',
+            'Could not save this video to Firestore (permission denied). '
+            'Retry after restarting the app. If it keeps failing, the post '
+            'was blocked by security rules — not an account ban.',
       );
     }
     if (lower.contains('unauthenticated') ||

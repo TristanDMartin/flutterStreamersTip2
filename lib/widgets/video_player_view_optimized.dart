@@ -26,7 +26,6 @@ import '../features/video_player/widgets/video_player_bookmark_listener.dart';
 import '../features/video_player/widgets/video_player_creator_avatar.dart';
 import '../features/video_player/widgets/video_player_feed_caption_overlay.dart';
 import '../features/video_player/widgets/video_player_black_screen_recovery.dart';
-import '../features/video_player/widgets/video_player_publish_state_overlay.dart';
 import '../features/video_player/widgets/video_player_thumbnail_poster.dart';
 import '../features/video_player/application/video_cell_bootstrap.dart';
 import '../features/video_player/application/video_cell_init_attach_coordinator.dart';
@@ -34,6 +33,7 @@ import '../features/video_player/application/video_cell_init_error_coordinator.d
 import '../features/video_player/application/video_cell_init_error_classifier.dart';
 import '../features/video_player/application/video_cell_watchdog_tokens.dart';
 import '../features/video_player/application/video_cell_activation_coordinator.dart';
+import '../utils/home_video_playback.dart';
 import '../features/video_player/widgets/video_player_premium_feed_scrim.dart';
 import '../features/video_player/widgets/video_player_contained_stage.dart';
 import '../features/video_player/widgets/video_player_media3_home_surface.dart';
@@ -985,6 +985,13 @@ class _VideoPlayerViewOptimizedState
     _commentCount = widget.video.comments;
     _shareCount = 0;
     _favoriteCount = 0;
+
+    // Instant Publish local cards may not exist in Firestore yet — listening
+    // would spam PERMISSION_DENIED until the Worker creates videos/{id}.
+    if (isHomeVideoOwnerPendingLocal(widget.video) ||
+        isHomeVideoLocalFileUrl(widget.video.videoURL)) {
+      return;
+    }
 
     final DocumentReference<Map<String, dynamic>> videoRef =
         FirebaseFirestore.instance.collection('videos').doc(widget.video.id);
@@ -3990,7 +3997,14 @@ class _VideoPlayerViewOptimizedState
     // ✅ FIX: Bookmark initialization moved to initState() to prevent duplicate subscriptions
     final String? readyUrl = _readyPlaybackUrlFromVideo();
     if (readyUrl == null) {
-      return VideoPlayerPublishStateOverlay(status: widget.video.status);
+      // Never leave a permanent blank cell on screen — skip to next feed item.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        widget.onVideoUnplayable?.call();
+      });
+      return const ColoredBox(color: Colors.black);
     }
 
     return Consumer(

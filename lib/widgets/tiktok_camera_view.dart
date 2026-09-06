@@ -6,25 +6,20 @@ import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/publish/publish_validation_limits.dart';
+import '../features/publish/video_draft.dart';
+import '../utils/publish_artifact_audit.dart';
+import '../utils/camera_file_audit.dart';
 import '../services/tiktok_camera_service.dart';
+import '../services/video_draft_store.dart';
 import '../services/global_playback_manager.dart';
 import '../providers/home_provider.dart';
-import '../features/publish/pending_post.dart';
-import '../features/publish/publish_flow_tokens.dart';
 import 'video_recording_preview.dart';
-import 'video_publishing_screen.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-enum _CameraCaptureMode { video, clip, photo }
-
-/// TikTok-quality camera view with professional video recording
-///
-/// Implements the complete TikTok camera spec:
-/// - Zero stretch/squash distortion
-/// - True 9:16 vertical video
-/// - Stable autofocus/exposure/white-balance
-/// - Smooth 60fps with stabilization
-/// - High quality encoding
+/// Camera capture screen styled like a clean ChatGPT-style viewfinder:
+/// rounded preview, back + shutter + overflow menu (flip / flash / gallery).
 class TikTokCameraView extends ConsumerStatefulWidget {
   const TikTokCameraView({super.key});
 
@@ -34,79 +29,144 @@ class TikTokCameraView extends ConsumerStatefulWidget {
 
 class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     with WidgetsBindingObserver {
+  static const Color _ringGold = Color(0xFFC9B896);
+  static const Color _controlFill = Color(0x99000000);
+  static const double _previewRadius = 36;
+  static final int _maxRecordingSeconds =
+      PublishValidationLimits.maxVideoDurationSeconds.toInt();
+
   final TikTokCameraService _cameraService = TikTokCameraService();
   final ImagePicker _imagePicker = ImagePicker();
+  final GlobalKey _previewKey = GlobalKey();
 
   bool _isInitialized = false;
   bool _isRecording = false;
   bool _isFocusing = false;
-  bool _showGrid = false;
-  bool _showQualityInfo = false;
+  bool _isMenuOpen = false;
+  bool _isFlashOn = false;
+  bool _isReleasingCamera = false;
+  bool _isOpeningSettings = false;
+  bool _startInFlight = false;
+  bool _stopInFlight = false;
+  bool _stopRequested = false;
+  DateTime? _pressDownAt;
+  DateTime? _recordStartedAt;
+  TikTokCameraPermissionResult? _permissionBlocker;
   Offset? _focusPoint;
-  double _currentZoom = 1.0; // Will be updated to minZoom after initialization
+  double _currentZoom = 1.0;
   Timer? _recordingTimer;
   int _recordingDuration = 0;
-  _CameraCaptureMode _captureMode = _CameraCaptureMode.video;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    // 🔊 AUDIO FIX: Immediately pause all videos to prevent audio bleeding
-    // Block playback first to prevent any new videos from starting
     GlobalPlaybackManager.instance.block(reason: 'cameraViewOpened');
-    // Also explicitly pause all videos for immediate effect
     GlobalPlaybackManager.instance.pauseAll();
-
-    // 🔧 FIXED: Delay provider modification until after widget tree is built
-    // Cannot modify providers during initState - use post-frame callback
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
-        final homeNotifier = ref.read(homeProvider.notifier);
-        homeNotifier.pauseAllVideos();
-        secureLog(
-            '🔇 TikTokCameraView: Paused all HomeView videos via provider');
+        ref.read(homeProvider.notifier).pauseAllVideos();
       } catch (e) {
         secureLog('⚠️ TikTokCameraView: Could not pause via home provider: $e');
       }
     });
-
-    // 🔒 FIXED: Lock screen orientation to portrait for camera
-    // This prevents preview from rotating and ensures consistent 9:16 video
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
-
     _initializeCamera();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_maybeOfferResumeDraft());
+    });
+  }
+
+  Future<void> _maybeOfferResumeDraft() async {
+    if (!mounted) {
+      return;
+    }
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    final VideoDraft? draft =
+        await VideoDraftStore.instance.latestResumable(ownerUid: uid);
+    if (draft == null || !mounted || !draft.hasMeaningfulEdits) {
+      return;
+    }
+    final bool? resume = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Resume draft?'),
+          content: const Text(
+            'You have an unfinished video edit. Continue where you left off?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Discard'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Resume'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted) {
+      return;
+    }
+    if (resume == true) {
+      await _openDraftEditor(draft);
+      return;
+    }
+    await VideoDraftStore.instance.delete(draft.draftId);
+  }
+
+  Future<void> _openDraftEditor(VideoDraft draft) async {
+    if (mounted) {
+      setState(() {
+        _isInitialized = false;
+        _isReleasingCamera = true;
+        _isRecording = false;
+        _isMenuOpen = false;
+      });
+    }
+    await _cameraService.dispose();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isReleasingCamera = false);
+    await Navigator.of(context).push<Object?>(
+      MaterialPageRoute<Object?>(
+        settings: const RouteSettings(name: '/camera/preview'),
+        builder: (BuildContext context) => VideoRecordingPreview(draft: draft),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    await _initializeCamera();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _recordingTimer?.cancel();
-    _cameraService.dispose();
-
-    // 🔊 AUDIO FIX: Unblock playback when leaving camera
+    _isInitialized = false;
+    _isReleasingCamera = true;
+    unawaited(_cameraService.dispose());
     GlobalPlaybackManager.instance.unblock();
-
-    // 🔒 FIXED: Unlock screen orientation when leaving camera
-    // Allow all orientations to be used in other parts of the app
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
     if (state == AppLifecycleState.paused) {
       _pauseCamera();
     } else if (state == AppLifecycleState.resumed) {
@@ -114,282 +174,307 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     }
   }
 
-  /// Initialize camera with TikTok-quality settings
   Future<void> _initializeCamera() async {
     try {
-      secureLog('🎥 TikTokCameraView: Initializing camera...');
-
+      final TikTokCameraPermissionResult permission =
+          await _cameraService.ensurePermissions();
+      if (permission != TikTokCameraPermissionResult.granted) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = false;
+            _permissionBlocker = permission;
+          });
+        }
+        return;
+      }
+      if (mounted) {
+        setState(() => _permissionBlocker = null);
+      }
       await _cameraService.initialize();
-
-      // 🔍 FIXED: Set zoom to minimum level for widest field of view
-      // This prevents camera from starting zoomed in and ensures full sensor coverage
       if (_cameraService.controller != null &&
           _cameraService.controller!.value.isInitialized) {
         try {
-          // Try setting to 0.1 first - camera will clamp to actual minimum automatically
-          await _cameraService.controller!.setZoomLevel(0.1);
-          _currentZoom = 0.1; // Camera will clamp this to the actual minimum
-          secureLog(
-              '🔍 TikTokCameraView: Zoom set to minimum (attempted 0.1, camera will clamp)');
+          final double minZoom =
+              await _cameraService.controller!.getMinZoomLevel();
+          await _cameraService.controller!.setZoomLevel(minZoom);
+          _currentZoom = minZoom;
         } catch (e) {
-          // Fallback to 1.0
-          try {
-            await _cameraService.controller!.setZoomLevel(1.0);
-            _currentZoom = 1.0;
-            secureLog('🔍 TikTokCameraView: Zoom set to 1.0 (fallback)');
-          } catch (e2) {
-            secureLog('⚠️ TikTokCameraView: Could not set zoom: $e2');
-          }
+          secureLog('⚠️ TikTokCameraView: Could not set min zoom: $e');
         }
       }
-
       if (mounted) {
         setState(() {
           _isInitialized = true;
+          _isFlashOn = _cameraService.isFlashOn;
+          _permissionBlocker = null;
         });
-        secureLog('✅ TikTokCameraView: Camera initialized successfully');
       }
     } catch (e) {
       secureLog('❌ TikTokCameraView: Camera initialization failed: $e');
+      final String message = e.toString();
+      if (message.contains('Camera permission') ||
+          message.contains('permission')) {
+        if (mounted) {
+          setState(() {
+            _permissionBlocker =
+                TikTokCameraPermissionResult.permanentlyDenied;
+          });
+        }
+        return;
+      }
       _showErrorDialog('Camera initialization failed: ${e.toString()}');
     }
   }
 
-  /// Pause camera when app goes to background
   Future<void> _pauseCamera() async {
     if (_isRecording) {
       await _stopRecording();
     }
-    // Camera will be automatically paused by the system
   }
 
-  /// Resume camera when app comes to foreground
   Future<void> _resumeCamera() async {
-    // Camera will be automatically resumed by the system
+    if (_isOpeningSettings || _permissionBlocker != null || !_isInitialized) {
+      await _initializeCamera();
+    }
   }
 
-  /// Handle tap-to-focus with TikTok-style feedback
+  Future<void> _openAppSettingsForCamera() async {
+    setState(() => _isOpeningSettings = true);
+    await _cameraService.openSystemSettings();
+    if (mounted) {
+      setState(() => _isOpeningSettings = false);
+    }
+  }
+
   void _onTapToFocus(TapDownDetails details) async {
     if (!_isInitialized || _isRecording) return;
-
     try {
-      final RenderBox renderBox = context.findRenderObject() as RenderBox;
-      final Offset localPoint = renderBox.globalToLocal(details.globalPosition);
-
-      // Calculate normalized coordinates (0.0 to 1.0)
-      final double x = localPoint.dx / renderBox.size.width;
-      final double y = localPoint.dy / renderBox.size.height;
-
-      // Clamp to valid range
-      final double clampedX = x.clamp(0.0, 1.0);
-      final double clampedY = y.clamp(0.0, 1.0);
-
+      final RenderObject? renderObject =
+          _previewKey.currentContext?.findRenderObject();
+      if (renderObject is! RenderBox) return;
+      final Offset localPoint =
+          renderObject.globalToLocal(details.globalPosition);
+      final double clampedX =
+          (localPoint.dx / renderObject.size.width).clamp(0.0, 1.0);
+      final double clampedY =
+          (localPoint.dy / renderObject.size.height).clamp(0.0, 1.0);
       setState(() {
         _focusPoint = localPoint;
         _isFocusing = true;
+        _isMenuOpen = false;
       });
-
-      // Set focus and exposure points
       await _cameraService.setFocusPoint(Offset(clampedX, clampedY));
-
-      // Hide focus indicator after animation
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
-          setState(() {
-            _isFocusing = false;
-          });
+          setState(() => _isFocusing = false);
         }
       });
-
-      // Haptic feedback
       HapticFeedback.lightImpact();
-      secureLog('🎯 Focus point set: ($clampedX, $clampedY)');
     } catch (e) {
       secureLog('❌ Error setting focus: $e');
     }
   }
 
-  /// Handle zoom gestures
   void _onScaleUpdate(ScaleUpdateDetails details) async {
     if (!_isInitialized || _isRecording) return;
-
     try {
       final double newZoom = (_currentZoom * details.scale).clamp(1.0, 4.0);
-
-      setState(() {
-        _currentZoom = newZoom;
-      });
-
+      setState(() => _currentZoom = newZoom);
       await _cameraService.setZoomLevel(newZoom);
-      secureLog('🔍 Zoom set to: $newZoom');
     } catch (e) {
       secureLog('❌ Error setting zoom: $e');
     }
   }
 
-  /// Start video recording with TikTok-quality settings
+  Future<void> _onRecordPressDown() async {
+    debugPrint(
+      'RECORD_PRESS_DOWN timestamp=${DateTime.now().millisecondsSinceEpoch}',
+    );
+    _pressDownAt = DateTime.now();
+    _stopRequested = false;
+    await _startRecording();
+  }
+
+  Future<void> _onRecordPressUp() async {
+    debugPrint(
+      'RECORD_PRESS_UP timestamp=${DateTime.now().millisecondsSinceEpoch}',
+    );
+    _stopRequested = true;
+    // Wait for in-flight start so we never drop the stop.
+    while (_startInFlight) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    await _stopRecording();
+  }
+
   Future<void> _startRecording() async {
-    if (!_isInitialized || _isRecording) return;
-
+    if (!_isInitialized || _isRecording || _startInFlight || _stopInFlight) {
+      return;
+    }
+    _startInFlight = true;
     try {
-      secureLog('🎬 Starting TikTok-quality video recording...');
-
+      setState(() => _isMenuOpen = false);
       await _cameraService.startRecording();
-
+      if (!mounted) {
+        return;
+      }
+      _recordStartedAt = DateTime.now();
       setState(() {
         _isRecording = true;
         _recordingDuration = 0;
       });
-
-      // Start recording timer
+      _recordingTimer?.cancel();
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (mounted) {
-          setState(() {
-            _recordingDuration++;
-          });
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() => _recordingDuration++);
+        if (_recordingDuration >= _maxRecordingSeconds) {
+          timer.cancel();
+          unawaited(_stopRecording());
         }
       });
-
-      // Haptic feedback
       HapticFeedback.mediumImpact();
-      secureLog('✅ Video recording started');
+      // If finger already released during start, stop immediately after min hold.
+      if (_stopRequested) {
+        await _stopRecording();
+      }
     } catch (e) {
       secureLog('❌ Error starting recording: $e');
       _showErrorDialog('Failed to start recording: ${e.toString()}');
+    } finally {
+      _startInFlight = false;
     }
   }
 
-  /// Stop video recording
   Future<void> _stopRecording() async {
-    if (!_isRecording) return;
-
+    if (_stopInFlight) {
+      return;
+    }
+    if (!_isRecording && !_cameraService.isRecording) {
+      return;
+    }
+    _stopInFlight = true;
     try {
-      secureLog('🛑 Stopping video recording...');
-
-      final videoFile = await _cameraService.stopRecording();
-
-      setState(() {
-        _isRecording = false;
-      });
-
+      // Enforce a short minimum record window so MediaRecorder can flush.
+      final DateTime? started = _recordStartedAt;
+      if (started != null) {
+        final int elapsedMs =
+            DateTime.now().difference(started).inMilliseconds;
+        if (elapsedMs < 1000) {
+          await Future<void>.delayed(
+            Duration(milliseconds: 1000 - elapsedMs),
+          );
+        }
+      }
+      final XFile videoFile = await _cameraService.stopRecording();
       _recordingTimer?.cancel();
       _recordingTimer = null;
-
-      // Haptic feedback
-      HapticFeedback.lightImpact();
-
+      _recordStartedAt = null;
       if (mounted) {
-        await _openPreviewAndMaybePublish(File(videoFile.path));
+        setState(() => _isRecording = false);
       }
-
-      secureLog('✅ Video recording stopped: ${videoFile.path}');
+      HapticFeedback.lightImpact();
+      final File recorded = File(videoFile.path);
+      final int recordedBytes = await waitForStableFileBytes(recorded);
+      final int holdMs = _pressDownAt == null
+          ? 0
+          : DateTime.now().difference(_pressDownAt!).inMilliseconds;
+      debugPrint(
+        'CAMERA_RECORD_STOP originalPath=${recorded.path} '
+        'exists=${await recorded.exists()} bytes=$recordedBytes '
+        'durationMs=$holdMs width=0 height=0',
+      );
+      logCameraFileAudit(
+        stage: 'camera_original',
+        path: recorded.path,
+        bytes: recordedBytes,
+      );
+      if (recordedBytes < PublishArtifactAudit.minBytes) {
+        _showErrorDialog(
+          'Recording is incomplete (${(recordedBytes / 1024).toStringAsFixed(1)} KB). '
+          'Hold to record for at least 1 second.',
+        );
+        return;
+      }
+      if (mounted) {
+        await _openPreviewAndMaybePublish(
+          recorded,
+          sourceType: VideoDraftSourceType.camera,
+        );
+      }
     } catch (e) {
       secureLog('❌ Error stopping recording: $e');
+      if (mounted) {
+        setState(() => _isRecording = false);
+      }
       _showErrorDialog('Failed to stop recording: ${e.toString()}');
+    } finally {
+      _stopInFlight = false;
+      _stopRequested = false;
     }
   }
 
-  /// Switch between front and back cameras
   Future<void> _switchCamera() async {
-    if (!_isInitialized || _isRecording) return;
-
+    if (!_isInitialized || _isRecording || _isReleasingCamera) return;
     try {
-      secureLog('🔄 Switching camera...');
-
-      // Temporarily set initialized to false to show loading
       setState(() {
         _isInitialized = false;
+        _isMenuOpen = false;
       });
-
       await _cameraService.switchCamera();
-
-      // Small delay to ensure camera is fully initialized
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Debug camera state
-      secureLog('🔍 Camera state after switch:');
-      secureLog('  - Controller: ${_cameraService.controller != null}');
-      secureLog('  - IsInitialized: ${_cameraService.isInitialized}');
-      secureLog(
-          '  - CurrentLensDirection: ${_cameraService.currentLensDirection}');
-      if (_cameraService.controller != null) {
-        secureLog(
-            '  - ControllerValue.isInitialized: ${_cameraService.controller!.value.isInitialized}');
-        secureLog(
-            '  - PreviewSize: ${_cameraService.controller!.value.previewSize}');
+      if (_cameraService.currentLensDirection == CameraLensDirection.front &&
+          _cameraService.isFlashOn) {
+        await _cameraService.setFlashMode(FlashMode.off);
       }
-
-      // Update state to show the new camera
       if (mounted) {
         setState(() {
           _isInitialized = true;
-        });
-
-        // Force a rebuild to ensure the preview updates
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {});
-          }
+          _isFlashOn = _cameraService.isFlashOn;
         });
       }
-
-      // Haptic feedback
       HapticFeedback.lightImpact();
-
-      secureLog('✅ Camera switched successfully');
     } catch (e) {
       secureLog('❌ Error switching camera: $e');
-
-      // Reset to initialized state even if there was an error
       if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
+        setState(() => _isInitialized = _cameraService.isInitialized);
       }
-
       _showErrorDialog('Failed to switch camera: ${e.toString()}');
     }
   }
 
-  /// Toggle grid lines
-  void _toggleGrid() {
-    setState(() {
-      _showGrid = !_showGrid;
-    });
-    HapticFeedback.lightImpact();
-  }
-
-  /// Toggle quality info display
-  void _toggleQualityInfo() {
-    setState(() {
-      _showQualityInfo = !_showQualityInfo;
-    });
-    HapticFeedback.lightImpact();
-
-    // Log Pixel 6 quality status for debugging
-    if (_showQualityInfo) {
-      final qualityStatus = _cameraService.getPixel6QualityStatus();
-      final qualityInfo = _cameraService.getQualityInfo();
-      secureLog('📱 Pixel 6 Quality Status: $qualityStatus');
-      secureLog(
-          '📱 Current Camera: ${qualityInfo['cameraType']} - ${qualityInfo['qualityLevel']}');
+  Future<void> _toggleFlash() async {
+    if (!_isInitialized || _isRecording) return;
+    if (_cameraService.currentLensDirection == CameraLensDirection.front) {
+      _showErrorDialog('Flash is unavailable on the front camera.');
+      return;
+    }
+    try {
+      await _cameraService.toggleFlash();
+      if (mounted) {
+        setState(() => _isFlashOn = _cameraService.isFlashOn);
+      }
+      HapticFeedback.lightImpact();
+    } catch (e) {
+      secureLog('❌ Error toggling flash: $e');
+      _showErrorDialog('Failed to toggle flash: ${e.toString()}');
     }
   }
 
-  /// Pick video from gallery (TikTok style)
   Future<void> _pickFromGallery() async {
     try {
-      secureLog('📱 Opening gallery picker...');
-
+      setState(() => _isMenuOpen = false);
       final XFile? video = await _imagePicker.pickVideo(
         source: ImageSource.gallery,
-        maxDuration: const Duration(minutes: 5), // 5 minute limit
+        maxDuration: const Duration(minutes: 5),
       );
-
       if (video != null && mounted) {
-        secureLog('📱 Video selected from gallery: ${video.path}');
         HapticFeedback.lightImpact();
-        await _openPreviewAndMaybePublish(File(video.path));
+        await _openPreviewAndMaybePublish(
+          File(video.path),
+          sourceType: VideoDraftSourceType.gallery,
+        );
       }
     } catch (e) {
       secureLog('❌ Error picking video from gallery: $e');
@@ -397,47 +482,93 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     }
   }
 
-  Future<void> _openPreviewAndMaybePublish(File videoFile) async {
-    final Object? previewResult = await Navigator.of(context).push<Object?>(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: '/camera/preview'),
-        builder: (context) => VideoRecordingPreview(
-          videoFile: videoFile,
-        ),
-      ),
+  Future<void> _openPreviewAndMaybePublish(
+    File videoFile, {
+    required VideoDraftSourceType sourceType,
+  }) async {
+    // Fast gate only — full decode probe belongs at publish, not selection.
+    // VideoPlayer.initialize on large gallery clips was blocking the editor
+    // for many seconds after pick.
+    if (mounted) {
+      setState(() {
+        _isReleasingCamera = true;
+        _isMenuOpen = false;
+      });
+    }
+    final PublishArtifactAudit previewAudit = await PublishArtifactAudit.inspect(
+      file: videoFile,
+      stage: 'preview_input',
+      probeDecode: false,
     );
-
-    if (!mounted || previewResult is! PendingPost) {
+    if (!previewAudit.isAcceptable) {
+      if (mounted) {
+        setState(() => _isReleasingCamera = false);
+      }
+      _showErrorDialog(
+        previewAudit.rejectReason ??
+            'Recording is incomplete. Please record again.',
+      );
       return;
     }
-    final PendingPost pendingPost = previewResult;
-
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: '/camera/publish'),
-        builder: (context) => VideoPublishingScreen(
-          videoFile: File(pendingPost.videoPath),
-          pendingPost: pendingPost,
-          caption: '',
-          hashtags: const [],
-          onPublish: () {
-            Navigator.of(context).pop();
-          },
-          onCancel: () {
-            Navigator.of(context).pop();
-          },
-        ),
+    late final VideoDraft draft;
+    try {
+      draft = await VideoDraftStore.instance.createFromSource(
+        sourceFile: videoFile,
+        duration: Duration.zero,
+        sourceType: sourceType,
+      );
+    } catch (e) {
+      secureLog('❌ Draft create failed: $e');
+      if (mounted) {
+        setState(() => _isReleasingCamera = false);
+        _showErrorDialog('Could not save recording. Please try again.');
+      }
+      return;
+    }
+    final int draftBytes = await fileByteLengthOrZero(draft.sourceFile);
+    logCameraFileAudit(
+      stage: 'publish_input',
+      path: draft.sourceFilePath,
+      bytes: draftBytes,
+    );
+    if (draftBytes < PublishArtifactAudit.minBytes) {
+      await VideoDraftStore.instance.delete(draft.draftId);
+      if (mounted) {
+        setState(() => _isReleasingCamera = false);
+        _showErrorDialog(
+          'Recording copy is incomplete. Please record again.',
+        );
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _isInitialized = false;
+        _isRecording = false;
+        _isReleasingCamera = false;
+      });
+    }
+    // Push editor first so selection feels instant; release camera underneath.
+    final Future<Object?> opened = Navigator.of(context).push<Object?>(
+      MaterialPageRoute<Object?>(
+        settings: const RouteSettings(name: '/camera/preview'),
+        builder: (BuildContext context) => VideoRecordingPreview(draft: draft),
       ),
     );
-
-    if (!mounted) return;
-    secureLog('🎬 TikTokCameraView: Returned from publishing flow');
+    unawaited(_cameraService.dispose());
+    await opened;
+    if (!mounted) {
+      return;
+    }
+    secureLog('🎬 TikTokCameraView: Returned from edit/share flow');
+    await _initializeCamera();
   }
 
-  /// Show error dialog
   void _showErrorDialog(String message) {
     if (!mounted) return;
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -453,78 +584,176 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     );
   }
 
-  /// Format recording duration
   String _formatDuration(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(1, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+    final int minutes = seconds ~/ 60;
+    final int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(1, '0')}:'
+        '${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  void _toggleMenu() {
+    if (_isRecording || !_isInitialized) return;
+    HapticFeedback.selectionClick();
+    setState(() => _isMenuOpen = !_isMenuOpen);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Initializing Camera...',
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
+    final EdgeInsets padding = MediaQuery.of(context).padding;
+    final Size screen = MediaQuery.of(context).size;
+    // Match ChatGPT: large black top field, viewfinder in lower ~70%.
+    final double topFieldHeight = math.max(120.0, screen.height * 0.26);
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Camera preview with proper aspect ratio - fills entire screen
-          _buildCameraPreview(),
-
-          // Grid overlay
-          if (_showGrid) _buildGridOverlay(),
-
-          // Focus indicator
-          if (_isFocusing) _buildFocusIndicator(),
-
-          // Quality info overlay
-          if (_showQualityInfo) _buildQualityInfo(),
-
-          // Top controls
-          _buildTopControls(),
-
-          // Bottom controls
-          _buildBottomControls(),
+          SizedBox(
+            height: topFieldHeight,
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: padding.top + 12,
+                left: 20,
+                right: 20,
+              ),
+              child: const Align(
+                alignment: Alignment.bottomLeft,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 14),
+                  child: Text(
+                    'Create',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                12,
+                0,
+                12,
+                padding.bottom + 10,
+              ),
+              child: _buildViewfinder(),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  /// Build camera preview with native camera field of view (no cropping)
-  ///
-  /// FIXED:
-  /// - Uses camera's native aspect ratio (no forced cropping)
-  /// - Uses BoxFit.contain to show full FOV without zoom effect
-  /// - Front camera is mirrored horizontally for natural selfie experience
-  /// - Never crops the preview (shows full sensor width)
-  Widget _buildCameraPreview() {
-    final isFrontCamera =
-        _cameraService.currentLensDirection == CameraLensDirection.front;
+  Widget _buildViewfinder() {
+    if (_permissionBlocker != null) {
+      return _buildPermissionGate(_permissionBlocker!);
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(_previewRadius),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildCameraPreview(),
+          if (_isFocusing) _buildFocusIndicator(),
+          if (_isRecording) _buildRecordingBadge(),
+          _buildBottomControls(),
+          if (_isMenuOpen) _buildMenuScrim(),
+          if (_isMenuOpen) _buildOverflowMenu(),
+        ],
+      ),
+    );
+  }
 
-    final controller = _cameraService.controller;
-    if (controller == null ||
-        !controller.value.isInitialized ||
-        controller.value.previewSize == null) {
-      return const Positioned.fill(
+  Widget _buildPermissionGate(TikTokCameraPermissionResult blocker) {
+    final bool needsMic =
+        blocker == TikTokCameraPermissionResult.microphoneDenied;
+    final String title = needsMic
+        ? 'Microphone access needed'
+        : 'Camera access needed';
+    final String body = needsMic
+        ? 'StreamersTip needs microphone access to record videos with sound.'
+        : 'StreamersTip needs camera access to record videos.';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(_previewRadius),
+      child: ColoredBox(
+        color: Colors.black,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.videocam_off_outlined,
+                color: Colors.white70,
+                size: 48,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                body,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: _isOpeningSettings
+                    ? null
+                    : () {
+                        HapticFeedback.lightImpact();
+                        unawaited(_openAppSettingsForCamera());
+                      },
+                style: FilledButton.styleFrom(
+                  backgroundColor: _ringGold,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 14,
+                  ),
+                ),
+                child: Text(
+                  _isOpeningSettings ? 'Opening…' : 'Open Settings',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  unawaited(_initializeCamera());
+                },
+                child: const Text(
+                  'Try again',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraPreview() {
+    if (_isReleasingCamera || !_isInitialized) {
+      return const ColoredBox(
+        color: Colors.black,
         child: Center(
           child: CircularProgressIndicator(
             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -532,111 +761,89 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
         ),
       );
     }
-
-    // The plugin reports previewSize in LANDSCAPE orientation (width > height)
-    // For a portrait UI, we need to swap them to get the correct portrait aspect ratio
-    final Size ps = controller.value.previewSize!;
-    final double cameraAspectPortrait =
-        ps.height / ps.width; // e.g., 16/9 ≈ 1.778 or 4/3 ≈ 1.333
-
-    secureLog('📐 Camera preview size (landscape): ${ps.width}x${ps.height}');
-    secureLog(
-        '📐 Camera aspect ratio (portrait): ${cameraAspectPortrait.toStringAsFixed(3)}');
-
-    // Calculate what aspect ratio this is (16:9 = 1.778, 4:3 = 1.333, etc.)
-    String aspectRatioName = 'Unknown';
-    bool is16by9 = false;
-    if ((cameraAspectPortrait - 1.778).abs() < 0.02) {
-      aspectRatioName = '16:9';
-      is16by9 = true;
-    } else if ((cameraAspectPortrait - 1.333).abs() < 0.02) {
-      aspectRatioName = '4:3';
-    } else if ((cameraAspectPortrait - 1.5).abs() < 0.02) {
-      aspectRatioName = '3:2';
-    } else if ((cameraAspectPortrait - 2.0).abs() < 0.02) {
-      aspectRatioName = '2:1';
+    final bool isFrontCamera =
+        _cameraService.currentLensDirection == CameraLensDirection.front;
+    final CameraController? controller = _cameraService.controller;
+    if (controller == null) {
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        ),
+      );
     }
-    secureLog(
-        '📐 Aspect ratio type: $aspectRatioName (${cameraAspectPortrait.toStringAsFixed(3)})');
-
-    // Target 16:9 aspect ratio for portrait (9:16 = 0.5625, but in portrait it's height/width)
-    // 16:9 in landscape becomes 9:16 in portrait = height/width = 9/16 = 0.5625
-    // But we're calculating portrait aspect as height/width, so 16:9 = 16/9 ≈ 1.778
-    const double target16by9Portrait = 16.0 / 9.0; // ≈ 1.778
-
-    // If we have 16:9 natively, use it and fill screen with BoxFit.cover
-    // If we don't have 16:9, crop to 16:9 with BoxFit.cover (native camera behavior)
+    final Size? previewSize;
+    try {
+      if (!controller.value.isInitialized) {
+        return const ColoredBox(
+          color: Colors.black,
+          child: Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+        );
+      }
+      previewSize = controller.value.previewSize;
+    } catch (_) {
+      return const ColoredBox(color: Colors.black);
+    }
+    if (previewSize == null) {
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        ),
+      );
+    }
+    final Size ps = previewSize;
+    final double cameraAspectPortrait = ps.height / ps.width;
+    final bool is16by9 = (cameraAspectPortrait - 1.778).abs() < 0.02;
+    const double target16by9Portrait = 16.0 / 9.0;
     final double displayAspectRatio =
         is16by9 ? cameraAspectPortrait : target16by9Portrait;
-
-    secureLog(
-        '📐 Display aspect ratio: ${displayAspectRatio.toStringAsFixed(3)} (${is16by9 ? "native 16:9" : "cropped to 16:9"})');
-
-    // Build camera preview
-    // If native 16:9, use camera's aspect ratio
-    // If not 16:9, crop to 16:9 to match native camera behavior
-    final cameraPreview = AspectRatio(
+    final Widget cameraPreview = AspectRatio(
       aspectRatio: displayAspectRatio,
       child: Transform(
         alignment: Alignment.center,
-        // Mirror front camera horizontally for natural selfie experience
         transform:
             isFrontCamera ? Matrix4.rotationY(math.pi) : Matrix4.identity(),
         child: ClipRect(
-          // Clip to 16:9 if camera doesn't provide it natively
           child: CameraPreview(
             controller,
-            key: ValueKey(_cameraService.currentLensDirection.toString()),
-          ),
-        ),
-      ),
-    );
-
-    // Use BoxFit.cover to fill screen (native camera behavior)
-    // This will crop to 16:9 if needed, matching how native camera apps work
-    // If camera is already 16:9, no cropping happens - perfect match
-    return Positioned.fill(
-      child: GestureDetector(
-        onTapDown: _onTapToFocus,
-        onScaleUpdate: _onScaleUpdate,
-        child: ColoredBox(
-          // Clean black background (shouldn't show if 16:9 matches screen)
-          color: Colors.black,
-          child: FittedBox(
-            fit: BoxFit
-                .cover, // Fill screen - crop to 16:9 if needed (native camera behavior)
-            alignment: Alignment.center,
-            child: SizedBox(
-              // Use 16:9 aspect ratio for display (portrait orientation)
-              // Portrait 16:9: height/width = 16/9, so width = height * 9/16
-              // In portrait: height = ps.width (landscape width), width = ps.height (landscape height)
-              // If native 16:9: width = ps.height (already correct)
-              // If not 16:9: crop to width = ps.width * 9/16 (crop width, keep full height)
-              width: is16by9
-                  ? ps.height // Native 16:9 - already correct width
-                  : ps.width * (9.0 / 16.0), // Crop to 16:9 width
-              height: ps
-                  .width, // Use full height from camera (portrait orientation)
-              child: cameraPreview,
+            key: ValueKey<String>(
+              '${_cameraService.currentLensDirection}_'
+              '${identityHashCode(controller)}',
             ),
           ),
         ),
       ),
     );
-  }
-
-  /// Build grid overlay for composition
-  Widget _buildGridOverlay() {
-    return CustomPaint(
-      painter: GridPainter(),
-      size: Size.infinite,
+    return GestureDetector(
+      key: _previewKey,
+      onTapDown: _onTapToFocus,
+      onScaleUpdate: _onScaleUpdate,
+      child: ColoredBox(
+        color: Colors.black,
+        child: FittedBox(
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: is16by9 ? ps.height : ps.width * (9.0 / 16.0),
+            height: ps.width,
+            child: cameraPreview,
+          ),
+        ),
+      ),
     );
   }
 
-  /// Build focus indicator
   Widget _buildFocusIndicator() {
     if (_focusPoint == null) return const SizedBox.shrink();
-
     return Positioned(
       left: _focusPoint!.dx - 30,
       top: _focusPoint!.dy - 30,
@@ -647,417 +854,229 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
           border: Border.all(color: Colors.white, width: 2),
           borderRadius: BorderRadius.circular(30),
         ),
-        child: const Center(
-          child: Icon(
-            Icons.center_focus_strong,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
       ),
     );
   }
 
-  /// Build quality info overlay
-  Widget _buildQualityInfo() {
-    final qualityInfo = _cameraService.getQualityInfo();
-    final pixel6Status = _cameraService.getPixel6QualityStatus();
-
+  Widget _buildRecordingBadge() {
     return Positioned(
-      top: MediaQuery.of(context).padding.top + 60,
-      right: 16,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '📱 Pixel 6 Quality Status',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ...pixel6Status.entries.take(6).map((entry) => Text(
-                  '${entry.key}: ${entry.value}',
-                  style: TextStyle(
-                    color: entry.value.toString().contains('YES')
-                        ? Colors.green
-                        : Colors.orange,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
-                )),
-            const SizedBox(height: 8),
-            Text(
-              'Resolution: ${qualityInfo['resolution']}',
-              style: const TextStyle(color: Colors.white70, fontSize: 10),
-            ),
-            Text(
-              'FPS: ${qualityInfo['fps']} | Bitrate: ${qualityInfo['bitrate']}',
-              style: const TextStyle(color: Colors.white70, fontSize: 10),
-            ),
-            Text(
-              'Camera: ${qualityInfo['cameraType']} - ${qualityInfo['qualityLevel']}',
-              style: TextStyle(
-                color: qualityInfo['cameraType'] == 'Back Camera'
-                    ? Colors.blue
-                    : Colors.pink,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Build top controls
-  Widget _buildTopControls() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 12,
-      left: 16,
-      right: 16,
-      child: Row(
-        children: <Widget>[
-          _buildGlassIconButton(
-            icon: Icons.close_rounded,
-            onTap: () => Navigator.of(context).pop(),
+      top: 20,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xE6FF3B30),
+            borderRadius: BorderRadius.circular(999),
           ),
-          if (!_isRecording) ...<Widget>[
-            const SizedBox(width: 8),
-            _buildStatusChip(
-              'Ready',
-              color: const Color(0xFF1FBF75),
-            ),
-          ],
-          const Expanded(
-            child: Column(
-              children: [
-                Text(
-                  'Create',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Capture something worth posting',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              _buildGlassIconButton(
-                icon:
-                    _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
-                onTap: _toggleGrid,
-                size: 40,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 8),
-              _buildGlassIconButton(
-                icon: Icons.info_outline_rounded,
-                onTap: _toggleQualityInfo,
-                size: 40,
+              Text(
+                _formatDuration(_recordingDuration),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  /// Build bottom controls
   Widget _buildBottomControls() {
-    final double bottom = MediaQuery.of(context).padding.bottom;
     return Positioned(
-      bottom: bottom + 12,
-      left: 16,
-      right: 16,
+      left: 20,
+      right: 20,
+      bottom: 22,
+      child: Opacity(
+        opacity: _isInitialized ? 1 : 0.55,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildCircleButton(
+              icon: Icons.chevron_left_rounded,
+              onTap: () => Navigator.of(context).pop(),
+              semanticLabel: 'Close camera',
+            ),
+            _buildShutterButton(),
+            _buildCircleButton(
+              icon: Icons.more_horiz_rounded,
+              onTap: _toggleMenu,
+              semanticLabel: 'Camera options',
+              isActive: _isMenuOpen,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenuScrim() {
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: () => setState(() => _isMenuOpen = false),
+        behavior: HitTestBehavior.opaque,
+        child: const ColoredBox(color: Color(0x33000000)),
+      ),
+    );
+  }
+
+  Widget _buildOverflowMenu() {
+    final bool isFront =
+        _cameraService.currentLensDirection == CameraLensDirection.front;
+    return Positioned(
+      right: 20,
+      bottom: 92,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _buildCaptureModeSwitch(),
-          const SizedBox(height: 10),
-          if (_isRecording)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _buildRecordingTimerChip(),
-            ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: PublishFlowTokens.glassPanel(radius: 24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: <Widget>[
-                _buildGlassIconButton(
-                  icon: Icons.photo_library_rounded,
-                  onTap: _pickFromGallery,
-                  size: 48,
-                ),
-                GestureDetector(
-                  onTapDown: (_) => _onRecordTapDown(),
-                  onTapUp: (_) => _stopRecording(),
-                  onTapCancel: () => _stopRecording(),
-                  child: Container(
-                    width: 76,
-                    height: 76,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _isRecording
-                            ? const Color(0xFFFF5F57)
-                            : Colors.white,
-                        width: 3,
-                      ),
-                    ),
-                    child: Center(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 160),
-                        width: _isRecording ? 28 : 58,
-                        height: _isRecording ? 28 : 58,
-                        decoration: BoxDecoration(
-                          color: _isRecording
-                              ? const Color(0xFFFF5F57)
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(
-                            _isRecording ? 8 : 29,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                _buildGlassIconButton(
-                  icon: Icons.flip_camera_ios_rounded,
-                  onTap: _switchCamera,
-                  size: 48,
-                ),
-              ],
-            ),
+        children: [
+          _buildMenuAction(
+            icon: Icons.photo_library_outlined,
+            label: 'Gallery',
+            onTap: _pickFromGallery,
+          ),
+          const SizedBox(height: 12),
+          _buildMenuAction(
+            icon: _isFlashOn
+                ? Icons.flash_on_rounded
+                : Icons.flash_off_rounded,
+            label: _isFlashOn ? 'Flash on' : 'Flash off',
+            onTap: _toggleFlash,
+            isActive: _isFlashOn,
+            isDisabled: isFront,
+          ),
+          const SizedBox(height: 12),
+          _buildMenuAction(
+            icon: Icons.cameraswitch_rounded,
+            label: isFront ? 'Front camera' : 'Rear camera',
+            onTap: _switchCamera,
           ),
         ],
       ),
     );
   }
 
-  void _onRecordTapDown() {
-    if (_captureMode == _CameraCaptureMode.photo) {
-      _pickFromGallery();
-      return;
-    }
-    _startRecording();
-  }
-
-  Widget _buildCaptureModeSwitch() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        _buildModeTab('Video', _CameraCaptureMode.video),
-        const SizedBox(width: 8),
-        _buildModeTab('Clip', _CameraCaptureMode.clip),
-        const SizedBox(width: 8),
-        _buildModeTab('Photo', _CameraCaptureMode.photo),
-      ],
-    );
-  }
-
-  Widget _buildModeTab(String label, _CameraCaptureMode mode) {
-    final bool selected = _captureMode == mode;
-    return GestureDetector(
-      onTap: () => setState(() => _captureMode = mode),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected
-              ? PublishFlowTokens.primaryStart.withValues(alpha: 0.28)
-              : Colors.black.withValues(alpha: 0.24),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected
-                ? PublishFlowTokens.primaryStart.withValues(alpha: 0.55)
-                : PublishFlowTokens.border,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.white70,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRecordingTimerChip() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFF5F57).withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: const Color(0xFFFF5F57).withValues(alpha: 0.45),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Container(
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFF5F57),
+  Widget _buildMenuAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isActive = false,
+    bool isDisabled = false,
+  }) {
+    return Semantics(
+      button: true,
+      label: label,
+      enabled: !isDisabled,
+      child: GestureDetector(
+        onTap: isDisabled ? null : onTap,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: isDisabled ? 0.4 : 1,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: isActive ? _ringGold.withValues(alpha: 0.28) : _controlFill,
               shape: BoxShape.circle,
+              border: Border.all(
+                color: isActive ? _ringGold : _ringGold.withValues(alpha: 0.55),
+                width: 1.2,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            _formatDuration(_recordingDuration),
-            style: const TextStyle(
+            child: Icon(
+              icon,
               color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
+              size: 22,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildGlassIconButton({
+  Widget _buildCircleButton({
     required IconData icon,
     required VoidCallback onTap,
-    double size = 44,
+    required String semanticLabel,
+    bool isActive = false,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: PublishFlowTokens.glassCircle(),
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: size * 0.48,
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: isActive ? _ringGold.withValues(alpha: 0.22) : _controlFill,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _ringGold.withValues(alpha: 0.7),
+              width: 1.2,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: Colors.white,
+            size: 26,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildStatusChip(String label, {required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: color.withValues(alpha: 0.35),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color == const Color(0xFF1FBF75)
-              ? const Color(0xFF7FF0B7)
-              : const Color(0xFFFFB2AD),
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+  Widget _buildShutterButton() {
+    return Semantics(
+      button: true,
+      label: _isRecording ? 'Stop recording' : 'Start recording',
+      child: GestureDetector(
+        onTapDown: (_) {
+          unawaited(_onRecordPressDown());
+        },
+        onTapUp: (_) {
+          unawaited(_onRecordPressUp());
+        },
+        onTapCancel: () {
+          unawaited(_onRecordPressUp());
+        },
+        child: Container(
+          width: 78,
+          height: 78,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _isRecording ? const Color(0xFFFF5F57) : _ringGold,
+              width: 3,
+            ),
+          ),
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: _isRecording ? 30 : 62,
+              height: _isRecording ? 30 : 62,
+              decoration: BoxDecoration(
+                color: _isRecording ? const Color(0xFFFF5F57) : Colors.white,
+                borderRadius: BorderRadius.circular(_isRecording ? 8 : 31),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
-
-  /// Pause all HomeView videos to prevent audio bleeding
-  // ignore: unused_element
-  void _pauseAllHomeViewVideos() {
-    try {
-      secureLog(
-          '🔇 TikTokCameraView: Pausing all HomeView videos to prevent audio bleeding');
-
-      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to block playback
-      GlobalPlaybackManager.instance.block(reason: 'camera_view');
-
-      // Also pause through home provider for compatibility
-      final homeNotifier = ref.read(homeProvider.notifier);
-      homeNotifier.pauseAllVideos();
-
-      secureLog('✅ TikTokCameraView: All HomeView videos paused successfully');
-    } catch (e) {
-      secureLog('❌ TikTokCameraView: Error pausing HomeView videos: $e');
-    }
-  }
-
-  /// Reactivate HomeView when returning from camera
-  // ignore: unused_element
-  void _reactivateHomeView() {
-    try {
-      secureLog(
-          '🔄 TikTokCameraView: Reactivating HomeView for seamless return');
-
-      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to unblock playback
-      GlobalPlaybackManager.instance.unblock();
-
-      // Also resume through home provider for compatibility
-      final homeNotifier = ref.read(homeProvider.notifier);
-      homeNotifier.resumeCurrentVideo();
-
-      secureLog('✅ TikTokCameraView: HomeView reactivated successfully');
-    } catch (e) {
-      secureLog('❌ TikTokCameraView: Error reactivating HomeView: $e');
-    }
-  }
-}
-
-/// Custom painter for grid overlay
-class GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.3)
-      ..strokeWidth = 1.0;
-
-    // Draw vertical lines
-    for (int i = 1; i < 3; i++) {
-      final x = size.width * i / 3;
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        paint,
-      );
-    }
-
-    // Draw horizontal lines
-    for (int i = 1; i < 3; i++) {
-      final y = size.height * i / 3;
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -11,6 +11,7 @@ import '../providers/creator_command_provider.dart';
 import '../qa/qa_keys.dart';
 import '../routing/app_navigator.dart';
 import '../routing/app_routes.dart';
+import '../features/tippy/widgets/creator_read_card.dart';
 
 const Color _commandInk = Color(0xFF0F172A);
 const Color _commandPanel = Color(0xFF1E293B);
@@ -1067,6 +1068,7 @@ class _ExpandedCommandCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _CommandScoreHero(snapshot: snapshot),
+            const CreatorReadCard(compact: true),
             const SizedBox(height: 10),
             _PrimaryActionCard(
               snapshot: snapshot,

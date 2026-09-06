@@ -45,6 +45,70 @@ void main() {
       );
       expect(actual.length, 2);
     });
+
+    test('does not replace owner local-pending with empty processing stub', () {
+      final HomeVideo pendingLocal = HomeVideo(
+        id: 'pending-1',
+        creator: const User(
+          id: 'owner',
+          username: 'owner',
+          displayName: 'Owner',
+        ),
+        videoURL: 'file:///tmp/cap.mp4',
+        status: 'uploading',
+      );
+      final HomeVideo processingStub = HomeVideo(
+        id: 'pending-1',
+        creator: const User(
+          id: 'owner',
+          username: 'owner',
+          displayName: 'Owner',
+        ),
+        videoURL: '',
+        status: 'processing',
+      );
+      final List<HomeVideo> actual = mergeHomeFeedPreserveOrder(
+        existing: <HomeVideo>[pendingLocal, _video('ready-1')],
+        incoming: <HomeVideo>[processingStub],
+      );
+      expect(actual.first.id, 'pending-1');
+      expect(actual.first.videoURL, 'file:///tmp/cap.mp4');
+      expect(actual.first.status, 'uploading');
+    });
+  });
+
+  group('reconcileLiveHomeFeedSnapshot', () {
+    test('drops deleted remote ids while keeping other cards', () {
+      final List<HomeVideo> actual = reconcileLiveHomeFeedSnapshot(
+        existing: <HomeVideo>[_video('keep'), _video('gone'), _video('also')],
+        incoming: <HomeVideo>[_video('keep'), _video('also')],
+        removedIds: <String>{'gone'},
+      );
+      expect(actual.map((HomeVideo v) => v.id).toList(), <String>[
+        'keep',
+        'also',
+      ]);
+    });
+
+    test('keeps owner local-pending even when listed as removed', () {
+      final HomeVideo pendingLocal = HomeVideo(
+        id: 'pending-1',
+        creator: const User(
+          id: 'owner',
+          username: 'owner',
+          displayName: 'Owner',
+        ),
+        videoURL: 'file:///tmp/cap.mp4',
+        status: 'uploading',
+      );
+      final List<HomeVideo> actual = reconcileLiveHomeFeedSnapshot(
+        existing: <HomeVideo>[pendingLocal, _video('ready-1')],
+        incoming: <HomeVideo>[_video('ready-1')],
+        removedIds: <String>{'pending-1'},
+      );
+      expect(actual.first.id, 'pending-1');
+      expect(actual.length, 2);
+    });
   });
 
   group('shouldRejectShrinkingFeedReplacement', () {

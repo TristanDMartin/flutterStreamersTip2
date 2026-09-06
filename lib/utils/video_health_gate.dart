@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../services/analytics_service.dart';
 import '../services/device_capability_service.dart';
+import 'home_video_playback.dart';
 import 'video_url_resolver.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
@@ -79,6 +81,35 @@ class VideoHealthGate {
     String? fallbackUrl,
   }) async {
     try {
+      final String? localFallback = fallbackUrl?.trim();
+      // Owner instant-publish: durable local MP4 before Mux READY.
+      // Never return a deleted draft path (ENOENT → "Unable to play").
+      if (localFallback != null &&
+          localFallback.isNotEmpty &&
+          isHomeVideoLocalFileUrl(localFallback)) {
+        final String normalized = localFallback.startsWith('file://')
+            ? localFallback
+            : 'file://$localFallback';
+        final String filesystemPath = () {
+          try {
+            return Uri.parse(normalized).toFilePath();
+          } catch (_) {
+            return normalized.replaceFirst('file://', '');
+          }
+        }();
+        if (File(filesystemPath).existsSync()) {
+          return Playable(
+            url: normalized,
+            quality: 'local',
+            sourceType: 'owner_local_pending',
+          );
+        }
+        secureLog(
+          '🎥 VideoHealthGate: local fallback missing on disk for $videoId — '
+          'falling through to remote',
+        );
+      }
+
       // 🔥 FIX: If fallback URL is provided, use it immediately (non-blocking)
       // Only fetch Firestore if no fallback URL is available
       Map<String, dynamic>? data = cachedData;
@@ -210,7 +241,7 @@ class VideoHealthGate {
           },
         );
       }
-      final bool isReadyForFeed = data['isReadyForFeed'] == true;
+      final bool? isReadyForFeed = data['isReadyForFeed'] as bool?;
       if (!isReadyPlaybackStatus(status, isReadyForFeed: isReadyForFeed)) {
         return Unplayable(
           reason: status == 'processing' || status == 'uploading'

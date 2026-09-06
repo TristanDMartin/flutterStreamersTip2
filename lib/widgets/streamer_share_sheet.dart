@@ -8,6 +8,7 @@ import 'instant_response_button.dart';
 import '../providers/service_providers.dart';
 import '../services/logging_service.dart';
 import '../services/analytics_service.dart';
+import '../services/product_event_tracking_service.dart';
 import '../services/error_handler_service.dart';
 import '../services/profile_link_service.dart';
 import '../services/user_blocking_service.dart';
@@ -631,6 +632,11 @@ class StreamerShareSheet extends ConsumerWidget {
       } catch (e) {
         debugPrint('📊 Analytics not ready: $e');
       }
+      unawaited(
+        ProductEventTrackingService.instance.profileShared(
+          surface: 'share_sheet',
+        ),
+      );
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

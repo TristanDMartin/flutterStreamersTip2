@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/video_caption_resolver.dart';
 import '../utils/video_document_rules.dart';
+import '../utils/video_ready_contract.dart';
 import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
@@ -254,13 +255,16 @@ class FollowingFeedService {
     List<String> authorIds,
   ) {
     if (isVideoDeletedFromFirestore(data)) return false;
-    if (data['isReadyForFeed'] != true) return false;
+    if (data['isReadyForFeed'] == false) return false;
+    if (data['visible'] == false) return false;
+    if (videoStatusIsFailed(data)) return false;
 
     final String status =
         (data['status'] ?? '').toString().trim().toLowerCase();
     final bool isActiveStatus =
         status == 'active' || status == 'published' || status == 'ready';
     if (!isActiveStatus) return false;
+    if (!videoHasPlayableSource(data)) return false;
 
     final String? ownerId = _getOwnerId(data);
     if (ownerId == null || !authorIds.contains(ownerId)) return false;
@@ -366,17 +370,7 @@ class FollowingFeedService {
         hashtags: hydratedCreator.hashtags,
       );
     } else {
-      creator = User(
-        id: userId,
-        username: embeddedUsername.isNotEmpty
-            ? embeddedUsername
-            : 'user_${userId.length > 10 ? userId.substring(0, 10) : userId}',
-        displayName:
-            embeddedDisplayName.isNotEmpty ? embeddedDisplayName : 'User',
-        bio: data['creatorBio'] ?? data['bio'],
-        avatarURL: embeddedAvatarUrl,
-        hashtags: const [],
-      );
+      return null;
     }
 
     // 🔍 DEBUG: Log video URL resolution

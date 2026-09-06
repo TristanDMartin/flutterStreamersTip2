@@ -12,6 +12,7 @@ import '../services/creator_cache_service.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/player_screen.dart';
 import '../utils/home_video_from_firestore.dart';
+import '../utils/home_video_playback.dart';
 import 'app_routes.dart';
 import '../providers/unread_messages_provider.dart';
 import '../features/content_planning/content_planner_view.dart';
@@ -39,7 +40,18 @@ class AppNavigator {
     }
     final int safeIndex = initialIndex.clamp(0, videoIds.length - 1);
     final String targetVideoId = videoIds[safeIndex];
-    final HomeVideo? resolvedVideo =
+    HomeVideo? providedPlayable;
+    if (videos != null) {
+      for (final HomeVideo video in videos) {
+        if (video.id == targetVideoId && isHomeVideoPlayable(video)) {
+          providedPlayable = video;
+          break;
+        }
+      }
+    }
+    // Instant open: use the card the grid already has. Only hit Firestore when
+    // no playable video was provided (deep links / cold open).
+    final HomeVideo? resolvedVideo = providedPlayable ??
         await loadHomeVideoForPlayback(targetVideoId);
     if (!context.mounted) {
       return null;
@@ -54,6 +66,12 @@ class AppNavigator {
         ? <HomeVideo>[resolvedVideo]
         : videos
             .where((HomeVideo video) => video.id.isNotEmpty)
+            .map((HomeVideo video) {
+              if (video.id == resolvedVideo.id) {
+                return resolvedVideo;
+              }
+              return video;
+            })
             .toList(growable: false);
     final List<String> resolvedIds = resolvedVideos
         .map((HomeVideo video) => video.id)

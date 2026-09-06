@@ -6,6 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../routing/app_navigator.dart';
 import '../services/robust_auth_service.dart';
 import '../services/pending_auth_redirect_service.dart';
+import '../components/onboarding/email_verification.dart';
+import '../components/onboarding/email_verification_sender.dart';
+import '../components/onboarding/complete_verified_activation.dart';
 
 enum EmailVerificationDisplayMode { gate, banner }
 
@@ -38,13 +41,16 @@ class EmailVerificationView extends ConsumerStatefulWidget {
       _EmailVerificationViewState();
 }
 
-class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
+class _EmailVerificationViewState extends ConsumerState<EmailVerificationView>
+    with WidgetsBindingObserver {
   bool _isCheckingVerification = false;
   bool _isResendingEmail = false;
   String _statusMessage = "";
   Timer? _verificationCheckTimer;
   int _resendCooldown = 0;
   Timer? _cooldownTimer;
+  late final String _intendedUid;
+  late final String _intendedEmail;
 
   @override
   void initState() {
@@ -52,8 +58,18 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
     if (widget.manageSystemUi) {
       _setSystemUIOverlayStyle();
     }
+    _intendedUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    _intendedEmail = widget.email;
+    WidgetsBinding.instance.addObserver(this);
     _sendVerificationEmail();
     _startAutoVerificationCheck();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_checkEmailVerification(silent: true));
+    }
   }
 
   void _setSystemUIOverlayStyle() {
@@ -71,6 +87,7 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
   void dispose() {
     _verificationCheckTimer?.cancel();
     _cooldownTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     if (widget.manageSystemUi) {
       _resetSystemUIOverlayStyle();
     }
@@ -90,7 +107,7 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
 
   void _startAutoVerificationCheck() {
     _verificationCheckTimer =
-        Timer.periodic(const Duration(seconds: 3), (timer) {
+        Timer.periodic(const Duration(seconds: 1), (timer) {
       _checkEmailVerification(silent: true);
     });
   }
@@ -98,8 +115,11 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
   Future<void> _sendVerificationEmail() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user != null && !user.emailVerified) {
-        await user.sendEmailVerification();
+      if (user != null &&
+          !user.emailVerified &&
+          _intendedUid.isNotEmpty &&
+          user.uid == _intendedUid) {
+        await sendBoundEmailVerification(user: user);
         debugPrint("✉️ Verification email sent to ${widget.email}");
         setState(() {
           _statusMessage = "Verification email sent!";
@@ -128,8 +148,11 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user != null && !user.emailVerified) {
-        await user.sendEmailVerification();
+      if (user != null &&
+          !user.emailVerified &&
+          _intendedUid.isNotEmpty &&
+          user.uid == _intendedUid) {
+        await sendBoundEmailVerification(user: user);
         setState(() {
           _statusMessage = "Verification email sent!";
           _resendCooldown = 60;
@@ -168,40 +191,67 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
     if (_isCheckingVerification) return;
     setState(() {
       _isCheckingVerification = true;
-      if (!silent) {
-        _statusMessage = "Checking verification status...";
-      }
     });
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await user.reload();
-        final refreshedUser = FirebaseAuth.instance.currentUser;
-        if (refreshedUser != null && refreshedUser.emailVerified) {
-          debugPrint("✅ Email verified!");
-          _verificationCheckTimer?.cancel();
+      final VerificationIdentityResult result =
+          await confirmBoundEmailVerification(
+        intendedUid: _intendedUid,
+        intendedEmail: _intendedEmail,
+      );
+      if (result.status == VerificationIdentityStatus.mismatch) {
+        if (!silent && mounted) {
           setState(() {
-            _statusMessage = "Email verified! Redirecting...";
-          });
-          await Future.delayed(const Duration(seconds: 1));
-          if (mounted) {
-            widget.onVerified?.call();
-            if (widget.navigateToHomeOnVerify) {
-              PendingAuthRedirectService.instance.consumeOrGoHome(context);
-            }
-          }
-        } else if (!silent) {
-          setState(() {
-            _statusMessage = "Email not verified yet. Please check your inbox.";
+            _statusMessage =
+                'This app is signed in as a different account. Sign in as $_intendedEmail to continue.';
           });
         }
+        return;
+      }
+      if (result.status == VerificationIdentityStatus.ready) {
+        _verificationCheckTimer?.cancel();
+        if (mounted) {
+          setState(() {
+            _statusMessage = 'Email verified\nContinuing…';
+          });
+        }
+        try {
+          await completeVerifiedActivation(
+            intendedUid: _intendedUid.isEmpty ? null : _intendedUid,
+          );
+        } on VerifiedActivationException catch (error) {
+          if (error.code == 'EMAIL_VERIFICATION_REQUIRED') {
+            if (!silent && mounted) {
+              setState(() {
+                _statusMessage =
+                    'Email not verified yet. Please check your inbox.';
+              });
+            }
+            return;
+          }
+          if (mounted) {
+            setState(() {
+              _statusMessage = kVerifiedActivationPersistentError;
+            });
+          }
+          return;
+        }
+        if (mounted) {
+          widget.onVerified?.call();
+          if (widget.navigateToHomeOnVerify) {
+            PendingAuthRedirectService.instance.consumeOrGoHome(context);
+          }
+        }
+      } else if (!silent) {
+        setState(() {
+          _statusMessage = "Email not verified yet. Please check your inbox.";
+        });
       }
     } catch (e) {
       debugPrint("❌ Error checking verification: $e");
       if (!silent && mounted) {
         setState(() {
-          _statusMessage = "Error checking verification. Please try again.";
+          _statusMessage = kVerifiedActivationPersistentError;
         });
       }
     } finally {

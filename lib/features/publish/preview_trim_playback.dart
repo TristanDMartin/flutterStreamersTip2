@@ -17,6 +17,12 @@ class PreviewTrimPlayback {
   PendingPost pending;
   final VoidCallback onTick;
 
+  /// When false, seeks past trim ends are allowed (e.g. while Trim sheet is open).
+  bool isEnabled = true;
+
+  /// Prevents seek→listener→seek loops when clamping.
+  bool _isSeeking = false;
+
   void dispose() {
     controller.removeListener(_onPositionChanged);
   }
@@ -30,23 +36,46 @@ class PreviewTrimPlayback {
     if (!controller.value.isInitialized) {
       return;
     }
-    await controller.seekTo(pending.trimStart);
+    _isSeeking = true;
+    try {
+      await controller.seekTo(pending.trimStart);
+    } finally {
+      _isSeeking = false;
+    }
+  }
+
+  Future<void> _loopToStart({required bool resume}) async {
+    _isSeeking = true;
+    try {
+      await controller.seekTo(pending.trimStart);
+      if (resume && !controller.value.isPlaying) {
+        await controller.play();
+      }
+    } finally {
+      _isSeeking = false;
+      onTick();
+    }
   }
 
   void _onPositionChanged() {
-    if (!controller.value.isInitialized) {
+    if (!controller.value.isInitialized || _isSeeking) {
+      return;
+    }
+    if (!isEnabled) {
+      onTick();
       return;
     }
     final Duration position = controller.value.position;
     if (position >= pending.trimEnd) {
-      controller.seekTo(pending.trimStart);
-      if (!controller.value.isPlaying) {
-        onTick();
-      }
+      final bool resume = controller.value.isPlaying;
+      // ignore: unawaited_futures
+      _loopToStart(resume: resume);
       return;
     }
     if (position < pending.trimStart) {
-      controller.seekTo(pending.trimStart);
+      // ignore: unawaited_futures
+      _loopToStart(resume: controller.value.isPlaying);
+      return;
     }
     onTick();
   }

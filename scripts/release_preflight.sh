@@ -76,6 +76,18 @@ else
 fi
 
 echo
+echo "-- Obfuscation / symbols pipeline --"
+[[ -x scripts/build_store_release.sh ]] || chmod +x scripts/build_store_release.sh scripts/release_version.sh scripts/upload_crashlytics_symbols.sh 2>/dev/null || true
+[[ -f scripts/build_store_release.sh ]] && ok "build_store_release.sh present" || fail "missing build_store_release.sh"
+if grep -q -- '--obfuscate' scripts/build_store_release.sh && grep -q -- '--split-debug-info' scripts/build_store_release.sh; then
+  ok "store release enforces --obfuscate + --split-debug-info"
+else
+  fail "build_store_release.sh missing obfuscation flags"
+fi
+[[ -f symbols/README.md ]] && ok "symbols/README.md present" || warn "missing symbols/README.md"
+[[ -f scripts/upload_crashlytics_symbols.sh ]] && ok "Crashlytics symbol upload script present" || warn "missing upload_crashlytics_symbols.sh"
+
+echo
 echo "-- Summary --"
 echo "  pass=$PASS warn=$WARN fail=$FAIL"
 if [[ "$FAIL" -gt 0 ]]; then

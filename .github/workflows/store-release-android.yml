@@ -1,0 +1,106 @@
+name: Store release (Android)
+
+# Reproducible obfuscated AAB + versioned Dart symbols.
+# Artifacts are uploaded to the workflow run — not auto-published to Play.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Build target"
+        required: true
+        default: android
+        type: choice
+        options:
+          - android
+          - android-apk
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Release preflight
+        run: bash scripts/release_preflight.sh
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Unit tests (release gate)
+        run: flutter test test/unit
+
+      - name: Decode Android keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Write release dart-defines
+        env:
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          MOBILE_BILLING_VERIFY_URL: ${{ secrets.MOBILE_BILLING_VERIFY_URL }}
+          TIPPY_API_BASE: ${{ secrets.TIPPY_API_BASE }}
+        run: |
+          test -n "$GIPHY_API_KEY"
+          test -n "$MOBILE_BILLING_VERIFY_URL"
+          cat > .env.release <<EOF
+          GIPHY_API_KEY=$GIPHY_API_KEY
+          MOBILE_BILLING_VERIFY_URL=$MOBILE_BILLING_VERIFY_URL
+          TIPPY_API_BASE=${TIPPY_API_BASE:-}
+          EOF
+
+      - name: Build obfuscated store artifact
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: bash scripts/build_store_release.sh ${{ inputs.target }}
+
+      - name: Resolve version
+        id: version
+        run: echo "version=$(bash scripts/release_version.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload AAB/APK
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-android-${{ steps.version.outputs.version }}
+          path: |
+            build/app/outputs/bundle/release/*.aab
+            build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: warn
+
+      - name: Upload Dart symbols
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dart-symbols-${{ steps.version.outputs.version }}
+          path: symbols/${{ steps.version.outputs.version }}/
+          if-no-files-found: error
+
+      - name: Upload Crashlytics Dart symbols
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.FIREBASE_ANDROID_APP_ID != '' && secrets.FIREBASE_TOKEN != '' }}
+        env:
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          npm install -g firebase-tools
+          bash scripts/upload_crashlytics_symbols.sh "${{ steps.version.outputs.version }}"
+
+      - name: Skip note when signing secrets missing
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' }}
+        run: |
+          echo "ANDROID_KEYSTORE_BASE64 not configured — preflight/tests ran; store build skipped."
+          echo "Add keystore + dart-define secrets to enable full store artifact production."

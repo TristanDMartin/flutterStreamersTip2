@@ -5,7 +5,6 @@ import '../models/user.dart';
 import '../models/user_count_fields.dart';
 import '../services/public_profile_firestore.dart';
 import 'category_schema.dart';
-import 'avatar_url_resolver.dart';
 import 'firestore_map_readers.dart';
 import 'swallow_non_fatal.dart';
 import 'video_caption_resolver.dart';
@@ -25,15 +24,23 @@ Future<HomeVideo?> loadHomeVideoForPlayback(String videoId) async {
   final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data()!);
   data['id'] = videoId;
   data['videoId'] = videoId;
-  if (!isVideoVisibleInFeed(data)) {
+  if (!isVideoVisibleInFeed(data) || !isVideoEligibleForPublicFeed(data)) {
     return null;
   }
-  return _buildHomeVideoFromDoc(data, videoId);
+  final String? ownerId = await _resolvePlaybackOwnerId(data, videoId);
+  if (ownerId == null || ownerId.isEmpty) {
+    return null;
+  }
+  final User? profile = await _loadUserProfile(ownerId);
+  if (profile == null) {
+    return null;
+  }
+  return _buildHomeVideoFromDoc(
+    data,
+    videoId,
+    creator: profile,
+  );
 }
-
-// Keep private alias for in-file use.
-User _creatorFromVideoDoc(Map<String, dynamic> data, String? ownerId) =>
-    creatorFromVideoDoc(data, ownerId);
 
 Map<String, dynamic>? _nestedCreator(Map<String, dynamic> data) {
   final Object? raw = data['creator'];
@@ -147,41 +154,9 @@ Future<String?> _resolvePlaybackOwnerId(
 
 Future<HomeVideo> _buildHomeVideoFromDoc(
   Map<String, dynamic> data,
-  String videoId,
-) async {
-  final String? ownerId = await _resolvePlaybackOwnerId(data, videoId);
-  User creator = _creatorFromVideoDoc(data, ownerId);
-  if (ownerId != null && ownerId.isNotEmpty) {
-    final User? profile = await _loadUserProfile(ownerId);
-    if (profile != null) {
-      final bool profileHasName = profile.displayName.trim().isNotEmpty ||
-          profile.username.trim().isNotEmpty;
-      if (profileHasName) {
-        final String? profileAvatar = resolveAvatarUrl(profile.toMap());
-        creator = User(
-          id: ownerId,
-          username: profile.username.trim().isNotEmpty
-              ? profile.username
-              : creator.username,
-          displayName: profile.displayName.trim().isNotEmpty
-              ? profile.displayName
-              : creator.displayName,
-          bio: profile.bio ?? creator.bio,
-          avatarURL: profileAvatar ?? creator.avatarURL,
-          onlineStatus: profile.onlineStatus,
-          hashtags:
-              profile.hashtags.isNotEmpty ? profile.hashtags : creator.hashtags,
-          followerCount: profile.followerCount,
-          followingCount: profile.followingCount,
-          postCount: profile.postCount,
-          calendarEvents: profile.calendarEvents,
-          privacy: profile.privacy,
-          pinnedVideoIds: profile.pinnedVideoIds,
-          role: profile.role,
-        );
-      }
-    }
-  }
+  String videoId, {
+  required User creator,
+}) async {
   final String? readyPlaybackUrl = resolveReadyPlaybackUrl(data);
   return HomeVideo(
     id: videoId,

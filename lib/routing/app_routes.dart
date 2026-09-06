@@ -98,10 +98,35 @@ class AppRoutes {
           builder: (_) => const AppStartupWrapper(initialTabIndex: 0),
         );
       case camera:
-        return _buildRoute(
+        return PageRouteBuilder<dynamic>(
           settings: routeSettings,
-          builder: (_) => const TikTokCameraView(),
           fullscreenDialog: true,
+          transitionDuration: const Duration(milliseconds: 220),
+          reverseTransitionDuration: const Duration(milliseconds: 180),
+          pageBuilder: (
+            BuildContext context,
+            Animation<double> animation,
+            Animation<double> secondaryAnimation,
+          ) {
+            return const TikTokCameraView();
+          },
+          transitionsBuilder: (
+            BuildContext context,
+            Animation<double> animation,
+            Animation<double> secondaryAnimation,
+            Widget child,
+          ) {
+            final Animation<Offset> slide = Tween<Offset>(
+              begin: const Offset(0, 1),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ),
+            );
+            return SlideTransition(position: slide, child: child);
+          },
         );
       case inbox:
         return _buildRoute(

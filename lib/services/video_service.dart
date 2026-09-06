@@ -8,6 +8,8 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart' as app_user;
+import '../features/home/domain/home_feed_pending_upload_merge.dart';
+import '../features/home/domain/owner_video_resolver.dart';
 import '../utils/profile_grid_video_order.dart';
 import '../utils/category_schema.dart';
 import '../utils/video_document_rules.dart';
@@ -16,11 +18,12 @@ import '../utils/video_caption_resolver.dart';
 import '../utils/video_health_gate.dart';
 import '../features/home/domain/feed_stats.dart';
 import '../features/home/domain/home_feed_mutator.dart';
-import '../utils/home_video_from_firestore.dart';
+import '../utils/home_video_playback.dart';
 import '../utils/firestore_map_readers.dart';
 import '../utils/like_interaction_boundary.dart';
 import '../utils/video_feed_diagnostics.dart';
 import '../utils/video_metadata_backfill.dart';
+import 'public_profile_firestore.dart';
 import 'real_user_data_service.dart';
 import 'user_blocking_service.dart';
 
@@ -164,27 +167,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             .orderBy('createdAt', descending: true)
             .limit(preferredLimit)
             .get(),
-        'status whereIn fallback',
+        'status whereIn createdAt fallback',
       );
     }
 
-    if (docMap.length < preferredLimit) {
-      await mergeQuery(
-        () => _firestore
-            .collection('videos')
-            .where('status', whereIn: ['published', 'ready', 'active'])
-            .limit(unorderedLimit)
-            .get(),
-        'status whereIn unordered fallback',
-      );
-    }
-
-    if (docMap.isEmpty) {
-      await mergeQuery(
-        () => _firestore.collection('videos').limit(unorderedLimit).get(),
-        'unordered collection fallback',
-      );
-    }
+    // Do not fall back to unordered collection scans. Those surface
+    // unplayable processing docs. In-memory filters still drop
+    // isReadyForFeed=false and non-playable rows.
 
     return docMap.values.toList();
   }
@@ -392,6 +381,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   Future<HomeVideo?> homeVideoFromRealtimeFeedDoc(
     QueryDocumentSnapshot<Map<String, dynamic>> doc, {
     required List<String> blockedUserIds,
+    Map<String, Map<String, dynamic>>? ownerProfiles,
   }) async {
     final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data());
     data['id'] = doc.id;
@@ -421,11 +411,15 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
     final String status =
         ((data['status'] as String?) ?? 'processing').toLowerCase();
+    // Public Home realtime must never inject processing stubs — they replace
+    // owner local-pending cards via mergePreserveOrder and kill Instant Play.
+    // Profile owner listener uses _homeVideoFromDocForProfileList instead.
     if (status == 'uploading' ||
         status == 'processing' ||
         status == 'failed' ||
-        status == 'upload_failed') {
-      return _processingHomeVideoFromDoc(data, doc.id, userId);
+        status == 'upload_failed' ||
+        status == 'pending') {
+      return null;
     }
 
     if (!isVideoVisibleInFeed(data) || !isVideoEligibleForPublicFeed(data)) {
@@ -457,31 +451,62 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       doc.id,
       userId,
       playableUrl: playableResult.url,
+      ownerProfile: ownerProfiles?[userId],
     );
   }
 
-  Future<List<HomeVideo>> buildRealtimePublicFeedVideos(
+  Future<HomeRealtimeFeedBuildResult> buildRealtimePublicFeedVideos(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) async {
     final blockedUserIds = await UserBlockingService().getBlockedUsers();
+    final Set<String> ownerIds = <String>{};
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in docs) {
+      final String? ownerId = getOwnerId(doc.data());
+      if (ownerId != null && ownerId.isNotEmpty) {
+        ownerIds.add(ownerId);
+      }
+    }
+    final Map<String, Map<String, dynamic>> ownerProfiles =
+        await PublicProfileFirestore.instance.getProfileMaps(ownerIds);
     final Map<String, HomeVideo> unique = <String, HomeVideo>{};
-
-    for (final doc in docs) {
+    final Set<String> removedIds = collectInvisiblePublicFeedDocIds(docs);
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in docs) {
+      final Map<String, dynamic> data = doc.data();
+      final String? ownerId = getOwnerId(data);
+      if (ownerId != null &&
+          ownerId.isNotEmpty &&
+          !isFeedCreatorEligible(
+            ownerId: ownerId,
+            publicUser: ownerProfiles[ownerId],
+          )) {
+        removedIds.add(doc.id);
+        continue;
+      }
       final HomeVideo? video = await homeVideoFromRealtimeFeedDoc(
         doc,
         blockedUserIds: blockedUserIds,
+        ownerProfiles: ownerProfiles,
       );
       if (video != null && video.id.isNotEmpty) {
         unique.putIfAbsent(video.id, () => video);
+      } else {
+        removedIds.add(doc.id);
       }
     }
-
     final List<HomeVideo> built = unique.values.toList(growable: false);
-    state = mergeHomeFeedPreserveOrder(
+    final List<HomeVideo> withoutRemoved = dropHomeFeedVideosById(
       existing: state,
-      incoming: built,
+      removedIds: removedIds,
     );
-    return built;
+    state = reconcileLiveHomeFeedSnapshot(
+      existing: withoutRemoved,
+      incoming: built,
+      removedIds: removedIds,
+    );
+    return HomeRealtimeFeedBuildResult(
+      videos: built,
+      removedVideoIds: removedIds,
+    );
   }
 
   Future<HomeVideo> _processingHomeVideoFromDoc(
@@ -500,7 +525,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
               hashtags: const <String>[],
             );
     final app_user.User creator = _withCanonicalUserId(loadedCreator, userId);
-    return HomeVideo(
+    final HomeVideo processing = HomeVideo(
       id: videoId,
       creator: creator,
       videoURL: '',
@@ -520,6 +545,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       isDeleted: data['isDeleted'] == true || data['deleted'] == true,
       deletedAt: data['deletedAt'] as Timestamp?,
     );
+    return enrichOwnerPendingLocalHomeVideo(processing);
   }
 
   Future<HomeVideo?> _homeVideoFromDocForProfileList(
@@ -655,11 +681,19 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     String videoId,
     String userId, {
     required String playableUrl,
+    Map<String, dynamic>? ownerProfile,
   }) async {
-    final app_user.User? loadedCreator =
-        await _userDataService.getUserById(userId);
+    app_user.User? loadedCreator;
+    if (ownerProfile != null) {
+      loadedCreator = app_user.User.fromMap(ownerProfile);
+    } else {
+      loadedCreator = await _userDataService.getUserById(userId);
+    }
+    if (loadedCreator == null) {
+      return null;
+    }
     final app_user.User creator = _withCanonicalUserId(
-      loadedCreator ?? _appUserFromVideoDocCreator(data, userId),
+      loadedCreator,
       userId,
     );
     final String? thumbnailUrl =
@@ -695,25 +729,6 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       visibility: (data['visibility'] as String?) ?? 'public',
       isDeleted: data['isDeleted'] == true || data['deleted'] == true,
       deletedAt: data['deletedAt'] as Timestamp?,
-    );
-  }
-
-  app_user.User _appUserFromVideoDocCreator(
-    Map<String, dynamic> data,
-    String userId,
-  ) {
-    final embedded = creatorFromVideoDoc(data, userId);
-    return app_user.User(
-      id: embedded.id,
-      username: embedded.username,
-      displayName: embedded.displayName,
-      avatarURL: embedded.avatarURL,
-      bio: embedded.bio,
-      hashtags: embedded.hashtags,
-      followerCount: embedded.followerCount,
-      followingCount: embedded.followingCount,
-      postCount: embedded.postCount,
-      onlineStatus: embedded.onlineStatus,
     );
   }
 
@@ -925,14 +940,22 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
         final app_user.User? loadedCreator =
             await _userDataService.getUserById(userId);
+        if (loadedCreator == null) {
+          _recordSkip(
+            skippedVideoDetails,
+            skipReasons,
+            doc.id,
+            'missing_or_deleted_owner',
+          );
+          skippedCount++;
+          continue;
+        }
         final app_user.User creator = _withCanonicalUserId(
-          loadedCreator ?? _appUserFromVideoDocCreator(data, userId),
+          loadedCreator,
           userId,
         );
-        if (loadedCreator != null) {
-          debugPrint(
-              '🎬 VideoService: ✅ Creator found for ${doc.id} - ${creator.displayName} (@${creator.username})');
-        }
+        debugPrint(
+            '🎬 VideoService: ✅ Creator found for ${doc.id} - ${creator.displayName} (@${creator.username})');
 
         debugPrint(
             '🎬 VideoService: Video ${doc.id} - thumbnailUrl: "$thumbnailUrl", playableUrl: "$playableUrl"');
@@ -1205,39 +1228,11 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     List<HomeVideo> incomingFeedVideos,
   ) {
     final String viewerId = _auth.currentUser?.uid ?? '';
-    final List<HomeVideo> next = List<HomeVideo>.of(incomingFeedVideos);
-    final Set<String> incomingIds =
-        next.map((HomeVideo video) => video.id).toSet();
-    int preservedCount = 0;
-
-    for (final HomeVideo existing in state) {
-      if (incomingIds.contains(existing.id)) {
-        continue;
-      }
-      final String ownerId = existing.creator.id;
-      if (ownerId.isEmpty) {
-        continue;
-      }
-      if (!canShowHomeVideo(
-        video: existing,
-        viewerId: viewerId,
-        ownerId: ownerId,
-      )) {
-        continue;
-      }
-      next.add(existing);
-      incomingIds.add(existing.id);
-      preservedCount++;
-    }
-
-    if (kDebugMode && preservedCount > 0) {
-      debugPrint(
-        '🎬 VideoService: preserved $preservedCount profile-visible videos '
-        'outside refreshed home feed slice',
-      );
-    }
-
-    return next;
+    return preserveOwnerVideosAcrossPublicFeedRefresh(
+      incomingPublicFeed: incomingFeedVideos,
+      existingState: state,
+      viewerId: viewerId,
+    );
   }
 
   /// Fetches all of [profileUserId]'s public feed-eligible videos and merges them
@@ -1498,7 +1493,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     final Set<String> seen = <String>{};
     bool hasProfileGridChange = false;
     for (final HomeVideo v in state) {
-      final HomeVideo u = profileById[v.id] ?? v;
+      final HomeVideo? incoming = profileById[v.id];
+      final HomeVideo u = incoming == null
+          ? v
+          : (_shouldKeepExistingProfileVideo(v, incoming) ? v : incoming);
       final bool shouldReplace =
           !identical(u, v) && !_sameProfileGridVideo(v, u);
       if (shouldReplace) {
@@ -1524,6 +1522,25 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     }
     state = next;
     return true;
+  }
+
+  /// Keep Instant Play / playable owner cards instead of empty processing stubs.
+  bool _shouldKeepExistingProfileVideo(HomeVideo existing, HomeVideo incoming) {
+    if (isHomeVideoOwnerPendingLocal(existing) &&
+        !isHomeVideoOwnerPendingLocal(incoming) &&
+        !isHomeVideoPlayable(incoming)) {
+      return true;
+    }
+    if (isHomeVideoPlayable(existing) && !isHomeVideoPlayable(incoming)) {
+      return true;
+    }
+    if (isHomeVideoOwnerPendingLocal(existing) &&
+        isHomeVideoPlayable(incoming) &&
+        !isHomeVideoLocalFileUrl(incoming.videoURL)) {
+      // Upgrade local Instant Play → remote ready.
+      return false;
+    }
+    return false;
   }
 
   bool _sameProfileGridVideo(HomeVideo a, HomeVideo b) {
@@ -1765,43 +1782,79 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   }
 
   /// Add a new video to the service (called after upload)
-  void addVideo(HomeVideo video) {
+  void addVideo(HomeVideo video, {String source = 'addVideo'}) {
     final currentVideos = List<HomeVideo>.from(state);
-
-    // Check if video already exists to prevent duplicates
     final existingIndex = currentVideos.indexWhere((v) => v.id == video.id);
     if (existingIndex != -1) {
-      // Replace existing video instead of adding duplicate
+      final HomeVideo previous = currentVideos[existingIndex];
       currentVideos[existingIndex] = video;
+      logOwnerVideoMutation(
+        videoId: video.id,
+        action: 'UPDATE',
+        source: source,
+        previousState: previous.status,
+        nextState: video.status,
+        reason: 'upsert_existing',
+      );
       debugPrint('🔄 VideoService: Updated existing video: ${video.caption}');
     } else {
-      // Add new video to beginning (newest first)
       currentVideos.insert(0, video);
+      logOwnerVideoMutation(
+        videoId: video.id,
+        action: 'ADD',
+        source: source,
+        nextState: video.status,
+        reason: 'insert_new',
+      );
       debugPrint('✅ VideoService: Added new video: ${video.caption}');
     }
-
-    // Re-sort to maintain newest-first order
     currentVideos.sort((a, b) {
       final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
       final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
-      return bTime.compareTo(aTime); // Reverse order for newest first
+      return bTime.compareTo(aTime);
     });
-
     state = currentVideos;
   }
 
   /// Remove a video from the service (called after deletion)
-  void removeVideo(String videoId) {
-    final currentVideos = List<HomeVideo>.from(state);
-    final removedCount = currentVideos.length;
-
-    // Remove video from state
+  void removeVideo(
+    String videoId, {
+    String source = 'removeVideo',
+    String reason = 'unknown',
+  }) {
+    final List<HomeVideo> currentVideos = List<HomeVideo>.from(state);
+    final int existingIndex =
+        currentVideos.indexWhere((HomeVideo v) => v.id == videoId);
+    if (existingIndex == -1) {
+      return;
+    }
+    final HomeVideo existing = currentVideos[existingIndex];
+    final bool tombstone = reason == 'tombstone' ||
+        reason == 'deleted' ||
+        reason == 'user_deleted' ||
+        reason == 'user_dismissed';
+    if (isOwnerProtectedPendingVideo(existing) && !tombstone) {
+      logOwnerVideoMutation(
+        videoId: videoId,
+        action: 'REMOVE_BLOCKED',
+        source: source,
+        previousState: existing.status,
+        reason: reason,
+      );
+      return;
+    }
+    final int removedCount = currentVideos.length;
     currentVideos.removeWhere((v) => v.id == videoId);
-
-    final newCount = currentVideos.length;
+    final int newCount = currentVideos.length;
     state = currentVideos;
-
     if (removedCount != newCount) {
+      logOwnerVideoMutation(
+        videoId: videoId,
+        action: 'REMOVE',
+        source: source,
+        previousState: existing.status,
+        reason: reason,
+      );
       debugPrint(
           '✅ VideoService: Removed video $videoId from state ($removedCount -> $newCount)');
     } else {
@@ -2243,6 +2296,11 @@ final userVideosProvider =
           viewerId: viewerId,
           ownerId: userId,
         );
+  }).map((HomeVideo video) {
+    if (viewerId.isNotEmpty && viewerId == userId) {
+      return enrichOwnerPendingLocalHomeVideo(video);
+    }
+    return video;
   }).toList();
 
   return orderProfileGridVideos(userVideos);

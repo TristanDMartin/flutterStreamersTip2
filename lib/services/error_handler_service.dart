@@ -18,6 +18,16 @@ class ErrorHandlerService {
         error.code == 'permission-denied';
   }
 
+  static bool _isIgnorableFrameworkLifecycleError(Object error) {
+    final String text = error.toString();
+    return text.contains('Multiple widgets used the same GlobalKey') ||
+        text.contains('Duplicate GlobalKey') ||
+        text.contains('deactivated widget') ||
+        text.contains(
+          'Tried to modify a provider while the widget tree was building',
+        );
+  }
+
   // Initialize error handling (chains with Crashlytics handlers from main).
   void initialize() {
     final FlutterExceptionHandler? priorFlutter = FlutterError.onError;
@@ -44,6 +54,13 @@ class ErrorHandlerService {
     if (_isIgnorableFirestorePermissionDenied(details.exception)) {
       debugPrint(
         'ℹ️ Firestore permission-denied (no global snackbar): '
+        '${details.exception}',
+      );
+      return;
+    }
+    if (_isIgnorableFrameworkLifecycleError(details.exception)) {
+      debugPrint(
+        'ℹ️ Framework lifecycle error (no global snackbar): '
         '${details.exception}',
       );
       return;
@@ -76,6 +93,10 @@ class ErrorHandlerService {
     debugPrint('📍 Stack trace: $stack');
     if (_isIgnorableFirestorePermissionDenied(error)) {
       debugPrint('ℹ️ Firestore permission-denied (no global snackbar): $error');
+      return;
+    }
+    if (_isIgnorableFrameworkLifecycleError(error)) {
+      debugPrint('ℹ️ Framework lifecycle error (no global snackbar): $error');
       return;
     }
 

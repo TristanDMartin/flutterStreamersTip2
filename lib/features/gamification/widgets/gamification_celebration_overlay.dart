@@ -8,6 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../components/onboarding/onboarding_style.dart';
 import '../../../services/progression_service.dart';
+import '../achievements/achievement_catalog.dart';
+import '../achievements/achievement_definition.dart';
+import '../achievements/achievement_hex_badge.dart';
 import '../gamification_providers.dart';
 import '../models/daily_mission_model.dart';
 import '../models/gamification_celebration_state.dart';
@@ -31,8 +34,11 @@ class _GamificationCelebrationOverlayState
 
   GamificationCelebrationState? _levelUpCelebration;
   DailyMissionModel? _missionCelebration;
+  AchievementDefinition? _achievementCelebration;
+  final Set<String> _locallyAcknowledged = <String>{};
   Map<String, String> _previousMissionStatus = <String, String>{};
   bool _levelUpDismissInFlight = false;
+  bool _achievementAckInFlight = false;
   bool _initializedBundle = false;
 
   @override
@@ -47,6 +53,11 @@ class _GamificationCelebrationOverlayState
     if (bundle != null) {
       unawaited(_onBundleUpdated(bundle));
     }
+    final AchievementSnapshot? achievements =
+        ref.read(achievementSnapshotProvider).valueOrNull;
+    if (achievements != null) {
+      _onAchievementsUpdated(achievements);
+    }
   }
 
   @override
@@ -57,16 +68,27 @@ class _GamificationCelebrationOverlayState
         next.whenData(_onBundleUpdated);
       },
     );
+    ref.listen<AsyncValue<AchievementSnapshot>>(
+      achievementSnapshotProvider,
+      (AsyncValue<AchievementSnapshot>? _, AsyncValue<AchievementSnapshot> next) {
+        next.whenData(_onAchievementsUpdated);
+      },
+    );
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
         widget.child,
-        if (_levelUpCelebration != null)
+        if (_achievementCelebration != null)
+          _AchievementCelebrationModal(
+            definition: _achievementCelebration!,
+            onContinue: _acknowledgeCurrentAchievement,
+          )
+        else if (_levelUpCelebration != null)
           _LevelUpCelebrationModal(
             celebration: _levelUpCelebration!,
             onClose: _dismissLevelUp,
-          ),
-        if (_levelUpCelebration == null && _missionCelebration != null)
+          )
+        else if (_missionCelebration != null)
           _MissionCelebrationModal(
             mission: _missionCelebration!,
             onClose: () => setState(() => _missionCelebration = null),
@@ -80,16 +102,66 @@ class _GamificationCelebrationOverlayState
       return;
     }
     final GamificationCelebrationState celebration = bundle.celebration;
-    if (celebration.showLevelUpModal && _levelUpCelebration == null) {
+    if (celebration.showLevelUpModal &&
+        _levelUpCelebration == null &&
+        _achievementCelebration == null) {
       setState(() => _levelUpCelebration = celebration);
       unawaited(HapticFeedback.mediumImpact());
     }
     await _detectMissionCompletion(bundle.missions);
   }
 
+  void _onAchievementsUpdated(AchievementSnapshot snapshot) {
+    if (!mounted) {
+      return;
+    }
+    _locallyAcknowledged.removeWhere(
+      (String key) => !snapshot.pendingKeys.contains(key),
+    );
+    final List<String> pending = snapshot.pendingKeys
+        .where((String key) => !_locallyAcknowledged.contains(key))
+        .toList();
+    if (pending.isEmpty) {
+      if (_achievementCelebration != null) {
+        setState(() => _achievementCelebration = null);
+      }
+      return;
+    }
+    final AchievementDefinition? next =
+        AchievementCatalog.definitionFor(pending.first);
+    if (next == null || next.key == _achievementCelebration?.key) {
+      return;
+    }
+    setState(() => _achievementCelebration = next);
+    unawaited(
+      next.rarity == AchievementRarity.common
+          ? HapticFeedback.lightImpact()
+          : HapticFeedback.mediumImpact(),
+    );
+  }
+
+  Future<void> _acknowledgeCurrentAchievement() async {
+    final AchievementDefinition? current = _achievementCelebration;
+    if (current == null || _achievementAckInFlight) {
+      return;
+    }
+    _achievementAckInFlight = true;
+    _locallyAcknowledged.add(current.key);
+    setState(() => _achievementCelebration = null);
+    await ref.read(achievementRepositoryProvider).acknowledge(current.key);
+    _achievementAckInFlight = false;
+    final AchievementSnapshot? snapshot =
+        ref.read(achievementSnapshotProvider).valueOrNull;
+    if (snapshot != null) {
+      _onAchievementsUpdated(snapshot);
+    }
+  }
+
   Future<void> _detectMissionCompletion(
       List<DailyMissionModel> missions) async {
-    if (_levelUpCelebration != null || _missionCelebration != null) {
+    if (_achievementCelebration != null ||
+        _levelUpCelebration != null ||
+        _missionCelebration != null) {
       _syncMissionStatuses(missions);
       return;
     }
@@ -150,6 +222,80 @@ class _GamificationCelebrationOverlayState
       setState(() => _levelUpCelebration = null);
     }
     _levelUpDismissInFlight = false;
+  }
+}
+
+class _AchievementCelebrationModal extends StatelessWidget {
+  const _AchievementCelebrationModal({
+    required this.definition,
+    required this.onContinue,
+  });
+
+  final AchievementDefinition definition;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: ValueKey<String>('gamification-achievement-${definition.key}'),
+      color: Colors.black.withValues(alpha: 0.54),
+      child: Center(
+        child: Container(
+          width: MediaQuery.sizeOf(context).width.clamp(0, 380).toDouble(),
+          margin: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(22),
+          decoration: OnboardingStyle.cardDecoration(context: context),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                'Achievement Unlocked',
+                style: OnboardingStyle.tipLabelFor(context),
+              ),
+              const SizedBox(height: 16),
+              AchievementHexBadge(
+                definition: definition,
+                unlocked: true,
+                size: 112,
+                animated: true,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                definition.title,
+                textAlign: TextAlign.center,
+                style: OnboardingStyle.titleFor(context, fontSize: 24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                definition.description,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: OnboardingStyle.textSecondaryFor(context),
+                  height: 1.35,
+                ),
+              ),
+              if (definition.xpReward > 0) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  '+${definition.xpReward} XP',
+                  style: TextStyle(
+                    color: OnboardingStyle.textPrimaryFor(context),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              GradientPillButton(
+                label: 'Continue',
+                icon: Icons.check_rounded,
+                onPressed: onContinue,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

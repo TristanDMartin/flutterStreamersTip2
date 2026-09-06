@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:video_player/video_player.dart';
 
@@ -94,28 +95,44 @@ class PlaybackControllerFactory {
     if (url.isEmpty) {
       return null;
     }
-    Uri uri;
-    try {
-      uri = Uri.parse(url);
-      if (!uri.hasScheme || !uri.hasAuthority) {
+    final bool isLocalFile = url.startsWith('file://') ||
+        (url.startsWith('/') && url.toLowerCase().endsWith('.mp4'));
+    Uri? uri;
+    if (!isLocalFile) {
+      try {
+        uri = Uri.parse(url);
+        if (!uri.hasScheme || !uri.hasAuthority) {
+          return null;
+        }
+      } catch (e, st) {
+        logPlaybackSwallowed('getOrCreateController.parseUrl', e, st);
         return null;
       }
-    } catch (e, st) {
-      logPlaybackSwallowed('getOrCreateController.parseUrl', e, st);
-      return null;
     }
     ensureRoomFor(videoId, owner: owner);
     pool.markInitializing(videoId);
     warmStartedAt[videoId] = DateTime.now();
     VideoPlayerController? created;
     try {
-      created = VideoPlayerController.networkUrl(
-        uri,
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: false,
-          allowBackgroundPlayback: false,
-        ),
-      );
+      if (isLocalFile) {
+        final String path =
+            url.startsWith('file://') ? Uri.parse(url).toFilePath() : url;
+        created = VideoPlayerController.file(
+          File(path),
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: false,
+            allowBackgroundPlayback: false,
+          ),
+        );
+      } else {
+        created = VideoPlayerController.networkUrl(
+          uri!,
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: false,
+            allowBackgroundPlayback: false,
+          ),
+        );
+      }
       pool.controllers[videoId] = created;
       await created.initialize().timeout(
             const Duration(seconds: 8),

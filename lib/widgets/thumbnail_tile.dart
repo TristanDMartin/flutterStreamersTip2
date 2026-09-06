@@ -163,14 +163,34 @@ class ThumbnailTile extends StatelessWidget {
   }
 
   bool _isLocalFilePath(String path) {
-    // Check if path starts with / (absolute path) or doesn't start with http/https
-    return path.startsWith('/') ||
-        (!path.startsWith('http://') && !path.startsWith('https://'));
+    final String trimmed = path.trim();
+    if (trimmed.isEmpty) {
+      return false;
+    }
+    final String lower = trimmed.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      return false;
+    }
+    return lower.startsWith('file://') ||
+        trimmed.startsWith('/') ||
+        trimmed.contains(Platform.pathSeparator);
+  }
+
+  String _filesystemPathFromThumbnailUrl(String pathOrUrl) {
+    final String trimmed = pathOrUrl.trim();
+    if (trimmed.startsWith('file://')) {
+      try {
+        return Uri.parse(trimmed).toFilePath();
+      } catch (_) {
+        return trimmed.replaceFirst('file://', '');
+      }
+    }
+    return trimmed;
   }
 
   Widget _buildLocalFileImage(String filePath) {
     try {
-      final file = File(filePath);
+      final file = File(_filesystemPathFromThumbnailUrl(filePath));
       if (!file.existsSync()) {
         if (_thumbnailTileDiagnosticsEnabled) {
           debugPrint('🖼️ ThumbnailTile: Local file does not exist: $filePath');

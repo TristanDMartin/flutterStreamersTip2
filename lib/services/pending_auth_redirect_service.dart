@@ -64,7 +64,9 @@ class PendingAuthRedirectService {
     _pendingRedirect = null;
 
     final String? currentRoute = ModalRoute.of(context)?.settings.name;
-    if (_isAppRootShellRoute(currentRoute)) {
+    // Tippy Get Started is an unnamed MaterialPageRoute on top of `/`.
+    // Remounting via pushNamedAndRemoveUntil(/home) disposes Home mid-play.
+    if (_isAppRootShellRoute(currentRoute) || navigator.canPop()) {
       // AppStartupWrapper already swaps auth → home on login. Pushing another
       // /home route duplicates the tree and trips _dependents.isEmpty.
       _closeAuthOverlayRoutes(navigator);

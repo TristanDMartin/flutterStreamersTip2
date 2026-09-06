@@ -44,14 +44,26 @@ async function readGoals(uid) {
 }
 
 async function readMemory(uid) {
-  const doc = await firestore
-    .collection('users')
-    .doc(uid)
-    .collection('tippyMemory')
-    .doc('summary')
-    .get()
-    .catch(() => null);
-  return doc && doc.exists ? doc.data() || {} : {};
+  const userRef = firestore.collection('users').doc(uid);
+  const [brainSnap, legacySnap] = await Promise.all([
+    userRef.collection('creatorMemory').doc('main').get().catch(() => null),
+    userRef.collection('tippyMemory').doc('summary').get().catch(() => null),
+  ]);
+  const brain = brainSnap && brainSnap.exists ? brainSnap.data() || {} : {};
+  const legacy = legacySnap && legacySnap.exists ? legacySnap.data() || {} : {};
+  const platforms =
+    (brain.platformIntelligence && brain.platformIntelligence.platforms) ||
+    (brain.platforms && brain.platforms.primary && brain.platforms.primary.value) ||
+    [];
+  return {
+    ...legacy,
+    ...brain,
+    platforms,
+    memoryReady:
+      Object.keys(brain).length > 0 ||
+      legacy.memoryReady === true ||
+      Object.keys(legacy).length > 0,
+  };
 }
 
 async function loadTippyPromptContext(uid, email = '', options = {}) {

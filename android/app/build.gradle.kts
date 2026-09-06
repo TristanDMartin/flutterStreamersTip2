@@ -7,6 +7,9 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+    // Native Android symbol upload (R8/mapping + NDK). Dart obfuscation symbols
+    // are retained under symbols/<version>/ and uploaded via scripts/upload_crashlytics_symbols.sh.
+    id("com.google.firebase.crashlytics")
 }
 
 val keystoreProperties = Properties()

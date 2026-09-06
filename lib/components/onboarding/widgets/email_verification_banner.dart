@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../onboarding_service.dart';
+import '../email_verification_sender.dart';
 
 class EmailVerificationBanner extends StatefulWidget {
   const EmailVerificationBanner({
@@ -43,8 +44,10 @@ class _EmailVerificationBannerState extends State<EmailVerificationBanner> {
     });
     try {
       final User? user = FirebaseAuth.instance.currentUser;
-      if (user != null && !user.emailVerified) {
-        await user.sendEmailVerification();
+      if (user != null &&
+          !user.emailVerified &&
+          user.uid == widget.userId) {
+        await sendBoundEmailVerification(user: user);
         if (mounted) {
           setState(() {
             _statusMessage = 'Verification email sent!';

@@ -11,12 +11,14 @@ class HomeForYouFeedRepository {
   static const int fallbackFeedLimit = 100;
 
   /// Public videos ordered by publish time (preferred listener).
+  /// Excludes soft-deleted docs (composite index: visibility + isDeleted + createdAt).
   Query<Map<String, dynamic>> canonicalPublicFeedQuery({
     int limit = canonicalFeedLimit,
   }) {
     return _firestore
         .collection('videos')
         .where('visibility', isEqualTo: 'public')
+        .where('isDeleted', isEqualTo: false)
         .orderBy('createdAt', descending: true)
         .limit(limit);
   }

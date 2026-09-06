@@ -88,13 +88,24 @@ void main() {
       );
     });
 
-    test('does not play ready videos without the explicit feed gate', () {
+    test('does not play when isReadyForFeed is explicitly false', () {
+      expect(
+        resolveReadyPlaybackUrl(<String, dynamic>{
+          'status': 'ready',
+          'isReadyForFeed': false,
+          'canonicalPlaybackUrl': 'https://stream.mux.com/abc.m3u8',
+        }),
+        isNull,
+      );
+    });
+
+    test('plays ready legacy videos when feed gate is missing', () {
       expect(
         resolveReadyPlaybackUrl(<String, dynamic>{
           'status': 'ready',
           'canonicalPlaybackUrl': 'https://stream.mux.com/abc.m3u8',
         }),
-        isNull,
+        'https://stream.mux.com/abc.m3u8',
       );
     });
 
@@ -106,6 +117,17 @@ void main() {
           'hlsUrl': 'https://stream.mux.com/abc.m3u8',
         }),
         'https://stream.mux.com/abc.m3u8',
+      );
+    });
+
+    test('plays HLS-only ready videos without muxPlaybackId', () {
+      expect(
+        resolveReadyPlaybackUrl(<String, dynamic>{
+          'status': 'ready',
+          'isReadyForFeed': true,
+          'hlsUrl': 'https://cdn.example.com/legacy.m3u8',
+        }),
+        'https://cdn.example.com/legacy.m3u8',
       );
     });
 

@@ -1,14 +1,21 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
 import '../../utils/platform_rules.dart';
+import '../../utils/user_profile_firestore.dart';
 import '../../widgets/profile_back_view.dart';
 import '../../widgets/profile_view/profile_view_front_shell.dart';
+import '../../widgets/streamer_card_sections.dart';
 import 'tippy_profile_draft.dart';
 
-/// Live Profile front → back flip using the real profile shells.
+const Duration _profilePreviewFlipDuration = Duration(milliseconds: 420);
+const Duration _profilePreviewContentDuration = Duration(milliseconds: 150);
+const Duration _profilePreviewAutoFlipDelay = Duration(milliseconds: 900);
+
+/// Onboarding profile-card preview backed by the real ProfileView front shell
+/// and ProfileBackView, but locked to initial draft data so profile/feed
+/// services stay dark until ACTIVATED / allowApp.
 class TippyProfileReviewPreview extends StatefulWidget {
   const TippyProfileReviewPreview({
     super.key,
@@ -29,22 +36,22 @@ class _TippyProfileReviewPreviewState extends State<TippyProfileReviewPreview>
   late final AnimationController _contentTransitionController;
   late final Animation<double> _contentFadeAnimation;
   late final Animation<Offset> _contentSlideAnimation;
+  int _selectedTabIndex = 0;
   bool _isFront = true;
   bool _didAutoFlip = false;
-  int _selectedTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _flipController = AnimationController(
-      duration: const Duration(milliseconds: 620),
+      duration: _profilePreviewFlipDuration,
       vsync: this,
     );
     _flipAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _flipController, curve: Curves.easeInOutCubic),
     );
     _contentTransitionController = AnimationController(
-      duration: const Duration(milliseconds: 240),
+      duration: _profilePreviewContentDuration,
       vsync: this,
     );
     _contentFadeAnimation = CurvedAnimation(
@@ -66,7 +73,7 @@ class _TippyProfileReviewPreviewState extends State<TippyProfileReviewPreview>
         return;
       }
       _didAutoFlip = true;
-      Future<void>.delayed(const Duration(milliseconds: 1600), () {
+      Future<void>.delayed(_profilePreviewAutoFlipDelay, () {
         if (mounted && _isFront) {
           _flipCard();
         }
@@ -81,40 +88,6 @@ class _TippyProfileReviewPreviewState extends State<TippyProfileReviewPreview>
     super.dispose();
   }
 
-  Map<String, dynamic> _previewUserMap() {
-    final String uid =
-        firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? 'preview';
-    final List<Map<String, dynamic>> platforms = widget.draft.platformIds.map(
-      (String id) {
-        return PlatformRules.buildEditablePlatformEntry(
-          type: id,
-          username: widget.draft.platformHandles[id] ?? '',
-          url: widget.draft.platformUrls[id] ?? '',
-          id: 'tippy_$id',
-          isConnected: false,
-        );
-      },
-    ).toList();
-    return <String, dynamic>{
-      'id': uid,
-      'uid': uid,
-      'displayName': widget.draft.displayName.trim(),
-      'username': widget.draft.username.trim(),
-      'bio': widget.draft.bio.trim(),
-      'avatarURL': widget.draft.avatarUrl,
-      'photoURL': widget.draft.avatarUrl,
-      'platforms': platforms,
-      'categories': widget.draft.categoryIds,
-      'categoryId': widget.draft.categoryIds.isNotEmpty
-          ? widget.draft.categoryIds.first
-          : 'gaming',
-      'postCount': 0,
-      'followerCount': 0,
-      'followingCount': 0,
-      'onlineStatus': 'online',
-    };
-  }
-
   void _flipCard() {
     if (_isFront) {
       _flipController.forward();
@@ -126,14 +99,24 @@ class _TippyProfileReviewPreviewState extends State<TippyProfileReviewPreview>
     });
   }
 
+  void _onTabSelected(int index) {
+    if (_selectedTabIndex == index) {
+      return;
+    }
+    setState(() {
+      _selectedTabIndex = index;
+    });
+    _contentTransitionController.forward(from: 0);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic> userData = _previewUserMap();
-    final String profileUserId = userData['id'] as String? ?? '';
+    final Map<String, dynamic> userData = _userDataFromDraft(widget.draft);
+    final String profileUserId = userData['id'] as String;
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: ColoredBox(
-        color: Theme.of(context).scaffoldBackgroundColor,
+        color: StreamerCardBackStyle.background,
         child: AnimatedBuilder(
           animation: _flipAnimation,
           builder: (BuildContext context, Widget? child) {
@@ -147,20 +130,17 @@ class _TippyProfileReviewPreviewState extends State<TippyProfileReviewPreview>
                   ? ProfileViewFrontShell(
                       userData: userData,
                       profileUserId: profileUserId,
-                      isCurrentUser: true,
+                      isCurrentUser: false,
                       selectedTabIndex: _selectedTabIndex,
-                      onTabSelected: (int index) {
-                        setState(() {
-                          _selectedTabIndex = index;
-                        });
-                        _contentTransitionController.forward(from: 0);
-                      },
+                      onTabSelected: _onTabSelected,
                       contentFade: _contentFadeAnimation,
                       contentSlide: _contentSlideAnimation,
                       onBack: () {},
                       onFlip: _flipCard,
                       onStreamerCard: () {},
                       showStreamerCardButton: false,
+                      showMenuButton: false,
+                      useInitialDataOnly: true,
                     )
                   : Transform(
                       alignment: Alignment.center,
@@ -177,4 +157,55 @@ class _TippyProfileReviewPreviewState extends State<TippyProfileReviewPreview>
       ),
     );
   }
+}
+
+Map<String, dynamic> _userDataFromDraft(TippyProfileDraft draft) {
+  final String username = draft.username.trim();
+  final String displayName =
+      draft.displayName.trim().isNotEmpty ? draft.displayName.trim() : username;
+  final String avatarUrl = draft.avatarUrl?.trim() ?? '';
+  final List<Map<String, dynamic>> platforms = draft.platformIds
+      .map((String id) => _platformDataFromDraft(draft, id))
+      .toList();
+  return <String, dynamic>{
+    'id': 'tippy_onboarding_preview',
+    'uid': 'tippy_onboarding_preview',
+    'displayName': displayName.isEmpty ? 'Creator' : displayName,
+    'name': displayName.isEmpty ? 'Creator' : displayName,
+    'username': username,
+    'handle': username,
+    'bio': draft.bio.trim(),
+    'avatarUrl': avatarUrl,
+    'avatarURL': avatarUrl,
+    UserProfileFirestore.platformsField: platforms,
+    UserProfileFirestore.linkedPlatformsField: platforms,
+    'profileCalendarEvents': <Map<String, dynamic>>[],
+    'calendarEvents': <Map<String, dynamic>>[],
+    'postsCount': 0,
+    'followersCount': 0,
+    'followingCount': 0,
+  };
+}
+
+Map<String, dynamic> _platformDataFromDraft(
+  TippyProfileDraft draft,
+  String id,
+) {
+  final String handle =
+      (draft.platformHandles[id] ?? '').trim().replaceFirst(RegExp(r'^@+'), '');
+  final String explicitUrl = (draft.platformUrls[id] ?? '').trim();
+  final String url = explicitUrl.isNotEmpty
+      ? explicitUrl
+      : PlatformRules.previewPlatformUrl(id, handle) ?? '';
+  return <String, dynamic>{
+    'id': 'onboarding_$id',
+    'type': id,
+    'platformType': id,
+    'displayName': PlatformRules.displayNameForType(id),
+    'username': handle,
+    'url': url,
+    'isConnected': handle.isNotEmpty || url.isNotEmpty,
+    'isVerified': false,
+    'isAdultGated': PlatformRules.isAgeRestrictedType(id),
+  };
 }

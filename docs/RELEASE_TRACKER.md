@@ -28,28 +28,41 @@ Run the release process in this order:
 
 Create `android/key.properties` from `android/key.properties.example`, then fill in the real keystore values.
 
-Recommended build commands:
+**Canonical command (obfuscated + versioned symbols):**
 
 ```bash
 cd /Users/tristanmartin/Projects/flutterST
 set -a && source .env.release && set +a
-flutter clean
-flutter pub get
-flutter build appbundle --release \
-  --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY" \
-  --dart-define=MOBILE_BILLING_VERIFY_URL="$MOBILE_BILLING_VERIFY_URL" \
-  --dart-define=TIPPY_API_BASE="$TIPPY_API_BASE"
+bash scripts/release_preflight.sh
+bash scripts/build_store_release.sh android
 ```
 
-Optional APK build for direct device install:
+This always passes:
+
+- `--release`
+- `--obfuscate`
+- `--split-debug-info=symbols/<versionName+buildNumber>/`
+
+Retain that symbols folder for every store upload. Optional Crashlytics upload:
 
 ```bash
-cd /Users/tristanmartin/Projects/flutterST
-flutter build apk --release \
-  --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY" \
-  --dart-define=MOBILE_BILLING_VERIFY_URL="$MOBILE_BILLING_VERIFY_URL" \
-  --dart-define=TIPPY_API_BASE="$TIPPY_API_BASE"
+export FIREBASE_ANDROID_APP_ID='1:…:android:…'
+bash scripts/upload_crashlytics_symbols.sh
 ```
+
+Optional APK for direct device install:
+
+```bash
+bash scripts/build_store_release.sh android-apk
+```
+
+iOS IPA (macOS + signing):
+
+```bash
+bash scripts/build_store_release.sh ios
+```
+
+Do **not** ship store builds with bare `flutter build … --release` (no obfuscation).
 
 ### Firebase Rules Deploy
 

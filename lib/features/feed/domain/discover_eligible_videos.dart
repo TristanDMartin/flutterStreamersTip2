@@ -116,8 +116,21 @@ String? rejectDiscoverEligibleHomeVideo(HomeVideo video) {
 }
 
 String? rejectCanonicalFeedVideo(HomeVideo video) {
+  // Owner Instant Play overlays are Home-only — never Discover / public grids.
+  if (isHomeVideoOwnerPendingLocal(video) ||
+      isHomeVideoLocalFileUrl(video.videoURL)) {
+    return 'owner_local_pending';
+  }
   if (!isHomeVideoVisibleInFeed(video)) {
     return 'not_visible_in_feed';
+  }
+  final String status = video.status.toLowerCase();
+  if (status == 'failed' ||
+      status == 'upload_failed' ||
+      status == 'processing' ||
+      status == 'uploading' ||
+      status == 'pending') {
+    return 'status:$status';
   }
   final String visibility = video.visibility.toLowerCase();
   if (visibility == 'private' ||
@@ -130,6 +143,10 @@ String? rejectCanonicalFeedVideo(HomeVideo video) {
       return 'no_playable_url';
     }
     return 'status:${video.status}';
+  }
+  final String url = video.videoURL.trim().toLowerCase();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return 'no_remote_playback_url';
   }
   return null;
 }

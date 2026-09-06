@@ -184,6 +184,7 @@ abstract final class UserProfileFirestore {
     final Object? onboardingRaw = userData[onboardingField];
     if (onboardingRaw is Map) {
       final Object? selectedRaw =
+          onboardingRaw['selectedPlatforms'] ??
           onboardingRaw[onboardingPlatformsField];
       if (selectedRaw is List && selectedRaw.isNotEmpty) {
         return platformStubsFromSelection(

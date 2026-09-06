@@ -1,5 +1,6 @@
 import 'package:video_player/video_player.dart';
 
+import '../../../utils/home_video_playback.dart';
 import '../../../utils/video_health_gate.dart';
 import '../../../utils/video_url_resolver.dart';
 
@@ -21,6 +22,11 @@ class VideoCellBootstrap {
     required String status,
     required String videoUrl,
   }) {
+    final String trimmed = videoUrl.trim();
+    // Owner instant-publish: durable local MP4 may play before Mux READY.
+    if (isHomeVideoLocalFileUrl(trimmed)) {
+      return trimmed.startsWith('file://') ? trimmed : 'file://$trimmed';
+    }
     return resolveReadyPlaybackUrl(<String, dynamic>{
       'status': status,
       'isReadyForFeed': true,

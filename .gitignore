@@ -59,6 +59,10 @@ app.*.map.json
 # Release dart-define secrets (never commit)
 .env.release
 
+# Obfuscation / Crashlytics Dart symbols (retain offline; never commit blobs)
+/symbols/*/
+!/symbols/README.md
+
 # Cloud Functions secrets (never commit)
 cloud_functions/.env
 cloud_functions/.env.*

@@ -1216,6 +1216,11 @@ PODS:
     - Flutter
   - connectivity_plus (0.0.1):
     - Flutter
+  - ffmpeg_kit_flutter_new (8.1.2):
+    - ffmpeg_kit_flutter_new/full-gpl (= 8.1.2)
+    - Flutter
+  - ffmpeg_kit_flutter_new/full-gpl (8.1.2):
+    - Flutter
   - Firebase/Auth (12.13.0):
     - Firebase/CoreOnly
     - FirebaseAuth (~> 12.13.0)
@@ -1641,6 +1646,7 @@ DEPENDENCIES:
   - cloud_firestore (from `.symlinks/plugins/cloud_firestore/ios`)
   - cloud_functions (from `.symlinks/plugins/cloud_functions/ios`)
   - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - ffmpeg_kit_flutter_new (from `.symlinks/plugins/ffmpeg_kit_flutter_new/ios`)
   - firebase_analytics (from `.symlinks/plugins/firebase_analytics/ios`)
   - firebase_app_check (from `.symlinks/plugins/firebase_app_check/ios`)
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
@@ -1725,6 +1731,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/cloud_functions/ios"
   connectivity_plus:
     :path: ".symlinks/plugins/connectivity_plus/ios"
+  ffmpeg_kit_flutter_new:
+    :path: ".symlinks/plugins/ffmpeg_kit_flutter_new/ios"
   firebase_analytics:
     :path: ".symlinks/plugins/firebase_analytics/ios"
   firebase_app_check:
@@ -1795,6 +1803,7 @@ SPEC CHECKSUMS:
   cloud_firestore: 95c2f2d0a75b8ca7ca9f629fc903ad4dbd030c2a
   cloud_functions: 9549563dcadc80b69e54eaf88ee64610a401e303
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
+  ffmpeg_kit_flutter_new: 8e5a0264340036d40065839eeba280efae216c47
   Firebase: 7d62445aeabdaea36f7d372f33052fed9a72514f
   firebase_analytics: 51adf1f5ff2bf44ebe0ce62e75054c2d5d65a75b
   firebase_app_check: b562562ecbcc44577f292aa4ef4e9ce807d3497c

@@ -169,10 +169,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
             data,
             connectedOnly: true,
           );
+          final List<Map<String, dynamic>> visiblePlatforms =
+              platforms.isNotEmpty
+                  ? platforms
+                  : UserProfileFirestore.parsePlatformsFromUserData(data);
           UserProfileFirestore.logPlatformRead(
             uid: userId,
             view: 'ProfileBackView',
-            count: platforms.length,
+            count: visiblePlatforms.length,
           );
           final List<CalendarEvent> projected =
               UserProfileFirestore.parseProfileCalendarProjection(data);
@@ -242,11 +246,16 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         _currentUserData,
         connectedOnly: true,
       );
+      final List<Map<String, dynamic>> visiblePlatforms = platforms.isNotEmpty
+          ? platforms
+          : UserProfileFirestore.parsePlatformsFromUserData(
+              _currentUserData,
+            );
       if (uid.isNotEmpty) {
         UserProfileFirestore.logPlatformRead(
           uid: uid,
           view: 'ProfileBackView',
-          count: platforms.length,
+          count: visiblePlatforms.length,
         );
       }
       final List<CalendarEvent> events =
@@ -266,7 +275,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         );
       }
 
-      return _buildContent(events, platforms);
+      return _buildContent(events, visiblePlatforms);
     } catch (e) {
       return _buildErrorState(e);
     }

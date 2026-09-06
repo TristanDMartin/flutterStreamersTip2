@@ -12,14 +12,13 @@ import 'cross_post_service.dart';
 import '../features/gamification/daily_activity_service.dart';
 import '../features/gamification/emit_gamification_event.dart';
 import '../features/gamification/gamification_event_types.dart';
-import '../features/publish/publish_firestore_fields.dart';
 import '../core/firebase_app_check_startup.dart';
-import '../utils/category_schema.dart';
-import '../utils/firestore_strip_nulls.dart';
 import '../utils/upload_error_classifier.dart';
 import '../utils/video_caption_resolver.dart';
-import '../utils/video_caption_firestore.dart';
+import '../debug/agent_debug_log.dart';
+import 'publish_transaction_trace.dart';
 import 'video_publish_finalize_service.dart';
+import 'optimistic_video_service.dart';
 
 class VideoUploadResult {
   final bool success;
@@ -28,14 +27,51 @@ class VideoUploadResult {
   final String? error;
   final Map<String, dynamic>? metadata;
 
+  /// Named publish stage when [success] is false (never blame UPLOAD_PUT
+  /// for post-PUT failures).
+  final String? failureStage;
+
   const VideoUploadResult({
     required this.success,
     this.videoUrl,
     this.thumbnailUrl,
     this.error,
     this.metadata,
+    this.failureStage,
   });
 }
+
+/// Proof that Worker accepted publish and `videos/{videoId}` is uploading.
+class CanonicalPublishAck {
+  const CanonicalPublishAck({
+    required this.videoId,
+    required this.authUid,
+    required this.ownerId,
+    required this.status,
+    required this.uploadUrl,
+    required this.muxUploadId,
+    this.userId,
+    this.creatorId,
+    this.httpStatusCode,
+    this.verifiedFromFirestore = false,
+  });
+
+  final String videoId;
+  final String authUid;
+  final String ownerId;
+  final String status;
+  final String uploadUrl;
+  final String muxUploadId;
+  final String? userId;
+  final String? creatorId;
+  final int? httpStatusCode;
+  final bool verifiedFromFirestore;
+
+  String get canonicalDocPath => 'videos/$videoId';
+}
+
+/// @deprecated Use [CanonicalPublishAck].
+typedef CanonicalCreateProof = CanonicalPublishAck;
 
 class CrossPublishResult {
   final VideoUploadResult streamerstipResult;
@@ -68,6 +104,331 @@ class VideoUploadService {
   static const String _muxPlaceholderThumbnailUrl =
       'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing';
 
+  /// One in-flight canonical create per videoId (Share + reconcile join).
+  final Map<String, Future<CanonicalPublishAck>> _canonicalInFlight =
+      <String, Future<CanonicalPublishAck>>{};
+
+  /// Fast path: Worker create + optional short Firestore verify.
+  ///
+  /// Resolves when (and only when) the upload session is allocated and the
+  /// canonical `videos/{id}` uploading record is acknowledged. Does **not**
+  /// wait for byte PUT or Mux READY.
+  ///
+  /// Concurrent calls for the same [videoId] share one in-flight future.
+  Future<CanonicalPublishAck> createCanonicalPublish({
+    required String videoId,
+    required String caption,
+    required List<String> hashtags,
+    required String privacy,
+    required bool allowComments,
+    Map<String, dynamic>? additionalMetadata,
+    bool isDraft = false,
+    bool verifyFirestore = true,
+  }) {
+    final String key = videoId.trim();
+    final Future<CanonicalPublishAck>? existing = _canonicalInFlight[key];
+    if (existing != null) {
+      debugPrint('CANONICAL_REQUEST_JOIN videoId=$key (in-flight)');
+      return existing;
+    }
+    final Future<CanonicalPublishAck> created = _createCanonicalPublishImpl(
+      videoId: key,
+      caption: caption,
+      hashtags: hashtags,
+      privacy: privacy,
+      allowComments: allowComments,
+      additionalMetadata: additionalMetadata,
+      isDraft: isDraft,
+      verifyFirestore: verifyFirestore,
+    ).whenComplete(() {
+      _canonicalInFlight.remove(key);
+    });
+    _canonicalInFlight[key] = created;
+    return created;
+  }
+
+  Future<CanonicalPublishAck> _createCanonicalPublishImpl({
+    required String videoId,
+    required String caption,
+    required List<String> hashtags,
+    required String privacy,
+    required bool allowComments,
+    Map<String, dynamic>? additionalMetadata,
+    bool isDraft = false,
+    bool verifyFirestore = true,
+  }) async {
+    final PublishTransactionTrace? trace = PublishTransactionTrace.active;
+    final Stopwatch totalSw = Stopwatch()..start();
+    trace?.stage('CANONICAL_REQUEST_START', videoId: videoId);
+    debugPrint('CANONICAL_REQUEST_START videoId=$videoId');
+    final AppCheckReadiness appCheck = await ensureAppCheckReadyForFirestore();
+    if (!appCheck.isReady) {
+      trace?.publishFailed(
+        stageName: 'APP_CHECK',
+        videoId: videoId,
+        detail: appCheck.detail,
+      );
+      debugPrint(
+        'PUBLISH_FAILED stage=APP_CHECK videoId=$videoId '
+        'detail=${appCheck.detail}',
+      );
+      throw StateError('App Check not ready: ${appCheck.detail}');
+    }
+    debugPrint('APP_CHECK_TOKEN_SUCCESS detail=${appCheck.detail}');
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      trace?.publishFailed(
+        stageName: 'CANONICAL_HTTP_REQUEST',
+        videoId: videoId,
+        error: 'not signed in',
+      );
+      throw StateError('User not authenticated');
+    }
+    final String? idToken = await user.getIdToken(true).timeout(
+      const Duration(seconds: 10),
+    );
+    if (idToken == null || idToken.isEmpty) {
+      trace?.publishFailed(
+        stageName: 'CANONICAL_HTTP_REQUEST',
+        videoId: videoId,
+        error: 'empty id token',
+      );
+      throw StateError('Failed to get authentication token');
+    }
+    final String authUid = user.uid;
+    final String resolvedCaption = resolveUploadCaption(
+      caption: caption,
+      additionalMetadata: additionalMetadata,
+    );
+    final String? rawCategory = additionalMetadata?['category'] as String?;
+    final String category = (rawCategory != null && rawCategory.isNotEmpty)
+        ? rawCategory
+        : _detectCategoryFromContent(resolvedCaption, hashtags);
+    final _CanonicalPublishMetadata publishMeta =
+        _resolveCanonicalPublishMetadata(
+      caption: resolvedCaption,
+      additionalMetadata: additionalMetadata,
+    );
+    MuxDirectUploadResult muxResult;
+    try {
+      muxResult = await MuxUploadService.instance.createDirectUpload(
+        videoId: videoId,
+        userId: authUid,
+        idToken: idToken,
+        caption: resolvedCaption,
+        title: publishMeta.title,
+        description: publishMeta.description,
+        hashtags: hashtags,
+        privacy: privacy,
+        allowComments: allowComments,
+        category: category,
+        thumbnailUrl: publishMeta.thumbnailUrl,
+        isDraft: isDraft,
+      );
+    } on TimeoutException catch (e) {
+      final CanonicalPublishAck? recovered =
+          await _reconcileCanonicalAfterTimeout(
+        videoId: videoId,
+        expectedOwnerId: authUid,
+        caption: resolvedCaption,
+        hashtags: hashtags,
+        privacy: privacy,
+        allowComments: allowComments,
+        category: category,
+        isDraft: isDraft,
+        idToken: idToken,
+      );
+      if (recovered != null) {
+        return recovered;
+      }
+      trace?.publishFailed(
+        stageName: 'CANONICAL_HTTP_REQUEST',
+        videoId: videoId,
+        error: e,
+      );
+      rethrow;
+    } on WorkerMuxUploadException catch (e) {
+      if (e.statusCode == null ||
+          e.message.toLowerCase().contains('timeout')) {
+        final CanonicalPublishAck? recovered =
+            await _reconcileCanonicalAfterTimeout(
+          videoId: videoId,
+          expectedOwnerId: authUid,
+          caption: resolvedCaption,
+          hashtags: hashtags,
+          privacy: privacy,
+          allowComments: allowComments,
+          category: category,
+          isDraft: isDraft,
+          idToken: idToken,
+        );
+        if (recovered != null) {
+          return recovered;
+        }
+      }
+      trace?.publishFailed(
+        stageName: 'CANONICAL_HTTP_REQUEST',
+        videoId: videoId,
+        httpStatus: e.statusCode,
+        error: e.message,
+      );
+      rethrow;
+    }
+    final String canonicalVideoId = muxResult.videoId.trim().isNotEmpty
+        ? muxResult.videoId.trim()
+        : videoId;
+    final String ownerId = (muxResult.ownerId ?? authUid).trim();
+    final String status = (muxResult.status ?? 'uploading').trim().isEmpty
+        ? 'uploading'
+        : (muxResult.status ?? 'uploading').trim();
+    if (ownerId != authUid) {
+      trace?.publishFailed(
+        stageName: 'CANONICAL_HTTP_REQUEST',
+        videoId: canonicalVideoId,
+        detail: 'ownerId=$ownerId expected=$authUid',
+      );
+      throw StateError(
+        'Worker ownerId mismatch (got $ownerId, expected $authUid)',
+      );
+    }
+    debugPrint(
+      'CANONICAL_CREATE_SUCCESS videoId=$canonicalVideoId '
+      'ownerId=$ownerId status=$status '
+      'httpStatus=${muxResult.httpStatusCode ?? '-'}',
+    );
+    trace?.stage(
+      'CANONICAL_CREATE_SUCCESS',
+      videoId: canonicalVideoId,
+      authUid: authUid,
+      detail: 'ownerId=$ownerId status=$status',
+    );
+    CanonicalPublishAck ack = CanonicalPublishAck(
+      videoId: canonicalVideoId,
+      authUid: authUid,
+      ownerId: ownerId,
+      status: status,
+      uploadUrl: muxResult.uploadUrl,
+      muxUploadId: muxResult.uploadId,
+      userId: ownerId,
+      creatorId: ownerId,
+      httpStatusCode: muxResult.httpStatusCode,
+    );
+    if (verifyFirestore) {
+      try {
+        final CanonicalPublishAck verified = await _proveCanonicalVideoDoc(
+          videoId: canonicalVideoId,
+          expectedOwnerId: authUid,
+          uploadUrl: muxResult.uploadUrl,
+          muxUploadId: muxResult.uploadId,
+          httpStatusCode: muxResult.httpStatusCode,
+        ).timeout(const Duration(seconds: 5));
+        ack = verified;
+        debugPrint(
+          'CANONICAL_VERIFY_SUCCESS videoId=${ack.videoId} '
+          'elapsedMs=${totalSw.elapsedMilliseconds}',
+        );
+        trace?.stage(
+          'CANONICAL_VERIFY_SUCCESS',
+          videoId: ack.videoId,
+          detail: 'elapsedMs=${totalSw.elapsedMilliseconds}',
+        );
+      } catch (e) {
+        // Worker HTTP ack is authoritative; verify is best-effort.
+        debugPrint(
+          'CANONICAL_VERIFY_SKIPPED videoId=$canonicalVideoId error=$e '
+          '(Worker HTTP ack retained)',
+        );
+      }
+    }
+    if (canonicalVideoId != videoId) {
+      OptimisticVideoService().bindServerVideoId(
+        clientVideoId: videoId,
+        serverVideoId: canonicalVideoId,
+      );
+    } else {
+      OptimisticVideoService().attachServerListener(canonicalVideoId);
+    }
+    return ack;
+  }
+
+  Future<CanonicalPublishAck?> _reconcileCanonicalAfterTimeout({
+    required String videoId,
+    required String expectedOwnerId,
+    required String caption,
+    required List<String> hashtags,
+    required String privacy,
+    required bool allowComments,
+    required String category,
+    required bool isDraft,
+    required String idToken,
+  }) async {
+    final PublishTransactionTrace? trace = PublishTransactionTrace.active;
+    debugPrint(
+      'CANONICAL_RECONCILE_START videoId=$videoId AUTH_UID=$expectedOwnerId',
+    );
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> snap =
+          await _firestore.collection('videos').doc(videoId).get(
+                const GetOptions(source: Source.server),
+              ).timeout(const Duration(seconds: 5));
+      if (!snap.exists || snap.data() == null) {
+        debugPrint('CANONICAL_RECONCILE not_found videoId=$videoId');
+        return null;
+      }
+      final Map<String, dynamic> data = snap.data()!;
+      final String? ownerId = data['ownerId'] as String?;
+      final String? userIdField = data['userId'] as String?;
+      final bool ownerOk =
+          ownerId == expectedOwnerId || userIdField == expectedOwnerId;
+      if (!ownerOk) {
+        debugPrint(
+          'CANONICAL_RECONCILE owner_mismatch videoId=$videoId '
+          'ownerId=$ownerId userId=$userIdField',
+        );
+        return null;
+      }
+      // Doc exists — fetch a fresh Mux URL via idempotent Worker create.
+      final MuxDirectUploadResult muxResult =
+          await MuxUploadService.instance.createDirectUpload(
+        videoId: videoId,
+        userId: expectedOwnerId,
+        idToken: idToken,
+        caption: caption,
+        hashtags: hashtags,
+        privacy: privacy,
+        allowComments: allowComments,
+        category: category,
+        isDraft: isDraft,
+      );
+      final CanonicalPublishAck ack = CanonicalPublishAck(
+        videoId: muxResult.videoId.trim().isNotEmpty
+            ? muxResult.videoId.trim()
+            : videoId,
+        authUid: expectedOwnerId,
+        ownerId: muxResult.ownerId ?? ownerId ?? expectedOwnerId,
+        status: muxResult.status ??
+            (data['status'] as String?) ??
+            'uploading',
+        uploadUrl: muxResult.uploadUrl,
+        muxUploadId: muxResult.uploadId,
+        userId: userIdField,
+        creatorId: data['creatorId'] as String?,
+        httpStatusCode: muxResult.httpStatusCode,
+        verifiedFromFirestore: true,
+      );
+      trace?.stage(
+        'CANONICAL_CREATE_SUCCESS',
+        videoId: ack.videoId,
+        authUid: expectedOwnerId,
+        detail: 'via=reconcile ownerId=${ack.ownerId} status=${ack.status}',
+      );
+      return ack;
+    } catch (e) {
+      debugPrint('CANONICAL_RECONCILE_FAILED videoId=$videoId error=$e');
+      return null;
+    }
+  }
+
   /// Upload video with comprehensive moderation checks
   Future<VideoUploadResult> uploadVideo({
     required File videoFile,
@@ -79,10 +440,26 @@ class VideoUploadService {
     Map<String, dynamic>? additionalMetadata,
     bool isDraft = false,
     void Function(double)? onProgress,
+    void Function(CanonicalPublishAck proof)? onCanonicalCreated,
+    CanonicalPublishAck? preCreatedAck,
+    bool skipModeration = false,
   }) async {
     String? activeVideoId = videoId;
     try {
       debugPrint('🚀 Starting video upload process...');
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'F',
+        location: 'video_upload_service.dart:uploadVideo',
+        message: 'upload_file_check',
+        data: <String, Object?>{
+          'path': videoFile.path,
+          'exists': await videoFile.exists(),
+          'videoId': videoId,
+        },
+        runId: 'post-fix',
+      );
+      // #endregion
 
       // 0. Validate file exists and is readable
       if (!await videoFile.exists()) {
@@ -107,39 +484,57 @@ class VideoUploadService {
         additionalMetadata: additionalMetadata,
       );
 
-      // 1. Pre-upload moderation check
-      debugPrint('🔍 Starting video moderation...');
-      final moderationResult = await _moderationService.moderateVideo(
-        videoFile: videoFile,
-        caption: resolvedCaption,
-        hashtags: hashtags,
-        metadata: additionalMetadata,
-      );
-
-      if (!moderationResult.isApproved) {
-        debugPrint(
-            '❌ Video rejected by moderation: ${moderationResult.reason}');
-        return VideoUploadResult(
-          success: false,
-          error: 'Content rejected: ${moderationResult.reason}',
-          metadata: {
-            'moderation_result': {
-              'approved': false,
-              'violations': moderationResult.violations,
-              'reason': moderationResult.reason,
-              'confidence': moderationResult.confidence,
-            }
-          },
+      // 1. Pre-upload moderation check (skipped when Share already moderated)
+      VideoModerationResult? moderationResult;
+      if (!skipModeration && preCreatedAck == null) {
+        debugPrint('🔍 Starting video moderation...');
+        moderationResult = await _moderationService.moderateVideo(
+          videoFile: videoFile,
+          caption: resolvedCaption,
+          hashtags: hashtags,
+          metadata: additionalMetadata,
         );
+        if (!moderationResult.isApproved) {
+          debugPrint(
+              '❌ Video rejected by moderation: ${moderationResult.reason}');
+          return VideoUploadResult(
+            success: false,
+            error: 'Content rejected: ${moderationResult.reason}',
+            metadata: {
+              'moderation_result': {
+                'approved': false,
+                'violations': moderationResult.violations,
+                'reason': moderationResult.reason,
+                'confidence': moderationResult.confidence,
+              }
+            },
+          );
+        }
+        debugPrint('✅ Video passed moderation checks');
+      } else {
+        debugPrint('✅ VideoUploadService: moderation skipped (pre-canonical)');
       }
 
-      debugPrint('✅ Video passed moderation checks');
-
+      final PublishTransactionTrace? trace = PublishTransactionTrace.active;
       final AppCheckReadiness appCheck =
           await ensureAppCheckReadyForFirestore();
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'C',
+        location: 'video_upload_service.dart:appCheck',
+        message: 'app_check_preflight',
+        data: <String, Object?>{
+          'isReady': appCheck.isReady,
+          'detail': appCheck.detail,
+          'providerInstalled': isAppCheckProviderInstalled,
+        },
+      );
+      // #endregion
       if (!appCheck.isReady) {
         final UploadFailureClassification failure =
             UploadFailureClassification.classify(appCheck.detail);
+        trace?.fail('app-check', detail: appCheck.detail);
+        trace?.event('APP_CHECK_FAILED', detail: appCheck.detail);
         debugPrint(
           '❌ VideoUploadService [App Check] ${failure.userMessage}',
         );
@@ -148,11 +543,14 @@ class VideoUploadService {
           error: failure.userMessage,
         );
       }
+      trace?.ok('app-check', detail: appCheck.detail);
+      trace?.event('APP_CHECK_TOKEN_READY', detail: appCheck.detail);
 
       // 2. Get current user
       final user = _auth.currentUser;
       if (user == null) {
         debugPrint('❌ VideoUploadService: User not authenticated');
+        trace?.fail('auth', detail: 'not signed in');
         return const VideoUploadResult(
           success: false,
           error: 'User not authenticated',
@@ -168,14 +566,17 @@ class VideoUploadService {
         idToken = await user.getIdToken(true);
         debugPrint(
             '✅ VideoUploadService: Auth token refreshed - Length: ${idToken?.length ?? 0}');
+        trace?.ok('auth', detail: 'uid=${user.uid}');
       } catch (e) {
         debugPrint('❌ VideoUploadService: Failed to refresh auth token: $e');
+        trace?.fail('auth', error: e);
         return VideoUploadResult(
           success: false,
           error: 'Authentication token refresh failed: $e',
         );
       }
       if (idToken == null || idToken.isEmpty) {
+        trace?.fail('auth', detail: 'empty id token');
         return const VideoUploadResult(
           success: false,
           error: 'Failed to get authentication token',
@@ -190,50 +591,127 @@ class VideoUploadService {
       final category = (rawCategory != null && rawCategory.isNotEmpty)
           ? rawCategory
           : _detectCategoryFromContent(resolvedCaption, hashtags);
+      final _CanonicalPublishMetadata publishMeta =
+          _resolveCanonicalPublishMetadata(
+        caption: resolvedCaption,
+        additionalMetadata: additionalMetadata,
+      );
 
-      // 3–4. Worker allocates canonical videoId + pending Firestore doc + Mux URL
+      // 3–4. Use pre-created canonical ack OR Worker create, then PUT bytes.
       String? videoUrl;
-      String? thumbnailUrl;
-      String? muxUploadId;
+      String? thumbnailUrl = publishMeta.thumbnailUrl;
       try {
-        final muxResult = await MuxUploadService.instance.createDirectUpload(
-          videoId: clientHintId,
-          userId: userId,
-          idToken: idToken,
-          caption: resolvedCaption,
-          hashtags: hashtags,
-          privacy: privacy,
-          allowComments: allowComments,
-          category: category,
-          isDraft: isDraft,
-        );
+        late final MuxDirectUploadResult muxResult;
+        if (preCreatedAck != null &&
+            preCreatedAck.uploadUrl.trim().isNotEmpty) {
+          muxResult = MuxDirectUploadResult(
+            uploadUrl: preCreatedAck.uploadUrl,
+            uploadId: preCreatedAck.muxUploadId,
+            videoId: preCreatedAck.videoId,
+            ownerId: preCreatedAck.ownerId,
+            status: preCreatedAck.status,
+            httpStatusCode: preCreatedAck.httpStatusCode,
+          );
+          activeVideoId = preCreatedAck.videoId;
+          onCanonicalCreated?.call(preCreatedAck);
+          trace?.stage(
+            'CANONICAL_CREATE_SUCCESS',
+            videoId: preCreatedAck.videoId,
+            authUid: userId,
+            detail: 'via=preCreatedAck status=${preCreatedAck.status}',
+          );
+        } else {
+          trace?.stage(
+            'CANONICAL_CREATE_REQUEST',
+            videoId: clientHintId,
+            authUid: userId,
+          );
+          debugPrint('UPLOAD_URL_REQUEST videoIdHint=$clientHintId');
+          muxResult = await MuxUploadService.instance.createDirectUpload(
+            videoId: clientHintId,
+            userId: userId,
+            idToken: idToken,
+            caption: resolvedCaption,
+            title: publishMeta.title,
+            description: publishMeta.description,
+            hashtags: hashtags,
+            privacy: privacy,
+            allowComments: allowComments,
+            category: category,
+            thumbnailUrl: publishMeta.thumbnailUrl,
+            isDraft: isDraft,
+          );
+          final String canonicalVideoId = muxResult.videoId.trim();
+          if (canonicalVideoId.isEmpty) {
+            trace?.publishFailed(
+              stageName: 'CANONICAL_HTTP_REQUEST',
+              videoId: clientHintId,
+              error: 'empty videoId',
+            );
+            return const VideoUploadResult(
+              success: false,
+              error: 'Upload service did not return a video ID',
+            );
+          }
+          activeVideoId = canonicalVideoId;
+          if (clientHintId != null && clientHintId != canonicalVideoId) {
+            debugPrint(
+              '🎬 VideoUploadService: Worker replaced client id '
+              '$clientHintId → $canonicalVideoId',
+            );
+            OptimisticVideoService().bindServerVideoId(
+              clientVideoId: clientHintId,
+              serverVideoId: canonicalVideoId,
+            );
+          } else if (clientHintId != null) {
+            OptimisticVideoService().attachServerListener(canonicalVideoId);
+          }
+          final CanonicalPublishAck proof = await _proveCanonicalVideoDoc(
+            videoId: canonicalVideoId,
+            expectedOwnerId: userId,
+            uploadUrl: muxResult.uploadUrl,
+            muxUploadId: muxResult.uploadId,
+            httpStatusCode: muxResult.httpStatusCode,
+          );
+          onCanonicalCreated?.call(proof);
+        }
         final String canonicalVideoId = muxResult.videoId.trim();
-        if (canonicalVideoId.isEmpty) {
-          return const VideoUploadResult(
-            success: false,
-            error: 'Upload service did not return a video ID',
-          );
-        }
         activeVideoId = canonicalVideoId;
-        if (clientHintId != null && clientHintId != canonicalVideoId) {
-          debugPrint(
-            '🎬 VideoUploadService: Worker replaced client id '
-            '$clientHintId → $canonicalVideoId',
-          );
-        }
         debugPrint('🎬 Using canonical video ID: $canonicalVideoId');
-        muxUploadId = muxResult.uploadId.isNotEmpty ? muxResult.uploadId : null;
+        debugPrint('UPLOAD_URL_RECEIVED videoId=$canonicalVideoId');
+        trace?.stage(
+          'UPLOAD_PUT_STARTED',
+          videoId: canonicalVideoId,
+          detail: 'bytes=$fileSize',
+        );
+        debugPrint('UPLOAD_PUT_START videoId=$canonicalVideoId bytes=$fileSize');
         debugPrint('📤 Uploading video to Mux...');
         await MuxUploadService.instance.uploadToMux(
           videoFile: videoFile,
           uploadUrl: muxResult.uploadUrl,
-          onProgress: onProgress,
+          onProgress: (double progress) {
+            trace?.progress(progress);
+            debugPrint(
+              'UPLOAD_PROGRESS bytesSent=${(progress * fileSize).round()}'
+              '/totalBytes=$fileSize',
+            );
+            onProgress?.call(progress);
+          },
         );
+        trace?.stage('UPLOAD_PUT_COMPLETE', videoId: canonicalVideoId);
+        debugPrint('UPLOAD_PUT_COMPLETE videoId=$canonicalVideoId');
         videoUrl = null;
-        thumbnailUrl = _muxPlaceholderThumbnailUrl;
+        thumbnailUrl ??= _muxPlaceholderThumbnailUrl;
+        trace?.stage('MUX_PROCESSING', videoId: canonicalVideoId);
         debugPrint('✅ Video uploaded to Mux (webhook will set playback URL)');
       } on WorkerMuxUploadException catch (e) {
         debugPrint('⚠️ Mux Worker upload failed: $e');
+        trace?.publishFailed(
+          stageName: 'CANONICAL_HTTP_REQUEST',
+          videoId: activeVideoId ?? clientHintId,
+          httpStatus: e.statusCode,
+          error: e.message,
+        );
         final UploadFailureClassification failure =
             UploadFailureClassification.classify(e);
         if (activeVideoId != null && activeVideoId.isNotEmpty) {
@@ -246,10 +724,19 @@ class VideoUploadService {
         return VideoUploadResult(
           success: false,
           error: failure.userMessage,
+          failureStage: 'CANONICAL_HTTP_REQUEST',
           metadata: activeVideoId == null ? null : {'videoId': activeVideoId},
         );
       } catch (e) {
         debugPrint('⚠️ Mux upload failed: $e');
+        final String putStage = activeVideoId == null
+            ? 'CANONICAL_HTTP_REQUEST'
+            : 'UPLOAD_PUT';
+        trace?.publishFailed(
+          stageName: putStage,
+          videoId: activeVideoId ?? clientHintId,
+          error: e,
+        );
         final UploadFailureClassification failure =
             UploadFailureClassification.classify(e);
         if (activeVideoId != null && activeVideoId.isNotEmpty) {
@@ -262,136 +749,69 @@ class VideoUploadService {
         return VideoUploadResult(
           success: false,
           error: failure.userMessage,
+          failureStage: putStage,
           metadata: activeVideoId == null ? null : {'videoId': activeVideoId},
         );
       }
 
-      final String resolvedVideoId = activeVideoId;
+      final String resolvedVideoId = activeVideoId.trim();
+      if (resolvedVideoId.isEmpty) {
+        return const VideoUploadResult(
+          success: false,
+          error: 'Missing canonical video id after Mux upload',
+          failureStage: 'UPLOAD_PUT',
+        );
+      }
+      final String canonicalThumbnailUrl =
+          _withSizingParams(thumbnailUrl, width: 720);
 
-      final canonicalThumbnailUrl = _withSizingParams(thumbnailUrl, width: 720);
-      final thumbnails = {
-        'urls': {
-          '360': canonicalThumbnailUrl,
-          '540': canonicalThumbnailUrl,
-          '720': canonicalThumbnailUrl,
-        },
-        'generatedAt': FieldValue.serverTimestamp(),
-      };
-
-      // 6. Create video document in Firestore
-      debugPrint('💾 Saving video metadata to Firestore...');
-
-      debugPrint('🔥 VideoUploadService: Category extracted: $category');
+      // Worker already created videos/{id} at CANONICAL_CREATE. Do not
+      // client-create/update that doc after Mux PUT — rules reject it when
+      // isReadyForFeed is present, and Worker/webhook own the document.
       debugPrint(
-          '🔥 VideoUploadService: Additional metadata: $additionalMetadata');
-      debugPrint('🔥 VideoUploadService: User UID: $userId');
-      debugPrint('🔥 VideoUploadService: Auth UID: ${user.uid}');
-      debugPrint('🔥 VideoUploadService: UIDs match: ${userId == user.uid}');
-
-      final updateData = _buildAllowedVideoMetadataUpdate(
-        caption: resolvedCaption,
-        hashtags: hashtags,
-        privacy: privacy,
-        allowComments: allowComments,
-        category: category,
-        thumbnailUrl: canonicalThumbnailUrl,
-        thumbnails: thumbnails,
-        videoUrl: videoUrl,
-        status: 'processing',
-        moderationConfidence: moderationResult.confidence,
-        fileSize: fileSize,
-        durationSeconds: durationSeconds,
-        additionalMetadata: additionalMetadata,
-        isMux: true,
-        muxStatus: 'processing',
-        muxUploadId: muxUploadId,
+        'SKIP_FIRESTORE_VIDEO_CREATE videoId=$resolvedVideoId '
+        'reason=worker_owns_canonical',
       );
+      PublishTransactionTrace.active?.ok(
+        'canonical-owned',
+        detail: 'videoId=$resolvedVideoId skip=FIRESTORE_VIDEO_CREATE',
+      );
+      PublishTransactionTrace.active?.event('MUX_PROCESSING');
 
-      try {
-        debugPrint(
-            '🔥 VideoUploadService: Attempting to save video document to Firestore...');
-        debugPrint('🔥 VideoUploadService: Video ID: $resolvedVideoId');
-        debugPrint(
-            '🔥 VideoUploadService: Update keys: ${updateData.keys.toList()}');
-
-        await _upsertVideoDocument(
-          videoId: resolvedVideoId,
-          userId: userId,
-          updateData: updateData,
-        );
-        await persistVideoCaptionIfMissing(
-          firestore: _firestore,
-          videoId: resolvedVideoId,
-          userId: userId,
-          caption: resolvedCaption,
-        );
-        scheduleVideoCaptionBackfill(
-          firestore: _firestore,
-          videoId: resolvedVideoId,
-          userId: userId,
-          caption: resolvedCaption,
-        );
-        debugPrint(
-            '✅ VideoUploadService: Video document saved to Firestore successfully');
-        await _syncUserVideoMirror(
+      unawaited(_syncUserVideoMirror(
+        videoId: resolvedVideoId,
+        userId: userId,
+        privacy: privacy,
+        category: category,
+        caption: resolvedCaption,
+      ));
+      scheduleGamificationEvent(
+        GamificationEventTypes.contentVideoUploaded,
+        entityType: 'video',
+        entityId: resolvedVideoId,
+        eventId: 'content.video_uploaded_$resolvedVideoId',
+      );
+      unawaited(
+        VideoPublishFinalizeService.instance.waitUntilDiscoverable(
           videoId: resolvedVideoId,
           userId: userId,
           privacy: privacy,
           category: category,
           caption: resolvedCaption,
-        );
-        scheduleGamificationEvent(
-          GamificationEventTypes.contentVideoUploaded,
-          entityType: 'video',
-          entityId: resolvedVideoId,
-          eventId: 'content.video_uploaded_$resolvedVideoId',
-        );
-        unawaited(
-          VideoPublishFinalizeService.instance.waitUntilDiscoverable(
+        ),
+      );
+      unawaited(() async {
+        try {
+          await _tagMentionService.processVideoTagsAndMentions(
             videoId: resolvedVideoId,
-            userId: userId,
-            privacy: privacy,
-            category: category,
+            videoOwnerId: userId,
             caption: resolvedCaption,
-          ),
-        );
-      } catch (e) {
-        final UploadFailureClassification failure =
-            UploadFailureClassification.classify(e);
-        debugPrint(
-          '❌ VideoUploadService [${failure.logLabel}] ${failure.userMessage}',
-        );
-        debugPrint('❌ VideoUploadService: Raw error: $e');
-        await _markVideoUploadFailed(
-          videoId: resolvedVideoId,
-          userId: userId,
-          errorMessage: 'Failed to save video metadata: ${e.toString()}',
-        );
-        return VideoUploadResult(
-          success: false,
-          error: failure.userMessage,
-          metadata: {'videoId': resolvedVideoId},
-        );
-      }
-
-      // Do not increment counts or insert into public/profile feeds while Mux
-      // is still processing. The backend webhook is the source of truth for
-      // ready/published visibility.
-
-      // 10. Process tags and mentions from caption
-      try {
-        debugPrint('🏷️ Processing tags and mentions from caption...');
-        await _tagMentionService.processVideoTagsAndMentions(
-          videoId: resolvedVideoId,
-          videoOwnerId: userId,
-          caption: resolvedCaption,
-          postThumbnailUrl: canonicalThumbnailUrl,
-        );
-        debugPrint('✅ Tags and mentions processed');
-      } catch (e) {
-        debugPrint('⚠️ Failed to process tags and mentions: $e');
-        // Continue anyway, this is not critical
-      }
+            postThumbnailUrl: canonicalThumbnailUrl,
+          );
+        } catch (e) {
+          debugPrint('⚠️ Failed to process tags and mentions: $e');
+        }
+      }());
 
       debugPrint(
         '🎉 Video bytes uploaded — waiting for Mux/Firestore finalization',
@@ -406,7 +826,7 @@ class VideoUploadService {
           'isVisibleReady': false,
           'moderation_result': {
             'approved': true,
-            'confidence': moderationResult.confidence,
+            'confidence': moderationResult?.confidence ?? 0.0,
             'violations': [],
           },
         },
@@ -454,40 +874,104 @@ class VideoUploadService {
     }
   }
 
+  /// Server-read proof that Worker created `videos/{id}` with correct owner.
+  Future<CanonicalPublishAck> _proveCanonicalVideoDoc({
+    required String videoId,
+    required String expectedOwnerId,
+    required String uploadUrl,
+    required String muxUploadId,
+    int? httpStatusCode,
+  }) async {
+    final PublishTransactionTrace? trace = PublishTransactionTrace.active;
+    final DocumentSnapshot<Map<String, dynamic>> snap =
+        await _firestore.collection('videos').doc(videoId).get(
+              const GetOptions(source: Source.server),
+            );
+    if (!snap.exists || snap.data() == null) {
+      trace?.publishFailed(
+        stageName: 'CANONICAL_VERIFY',
+        videoId: videoId,
+        error: 'videos/$videoId missing after Worker create',
+      );
+      throw StateError(
+        'Canonical videos/$videoId does not exist after direct-upload create',
+      );
+    }
+    final Map<String, dynamic> data = snap.data()!;
+    final String? ownerId = data['ownerId'] as String?;
+    final String? userIdField = data['userId'] as String?;
+    final String? creatorId = data['creatorId'] as String?;
+    final String status =
+        ((data['status'] as String?)?.trim().isNotEmpty == true)
+            ? (data['status'] as String).trim()
+            : 'uploading';
+    debugPrint('AUTH_UID=$expectedOwnerId');
+    debugPrint('VIDEO_ID=$videoId');
+    debugPrint('CANONICAL_DOC_PATH=videos/$videoId');
+    debugPrint(
+      'OWNER_FIELDS: ownerId=$ownerId creatorId=$creatorId '
+      'userId=$userIdField status=$status',
+    );
+    final bool ownerMatches = ownerId == expectedOwnerId;
+    final bool legacyMatches = userIdField == expectedOwnerId ||
+        creatorId == expectedOwnerId;
+    if (!ownerMatches && !legacyMatches) {
+      trace?.publishFailed(
+        stageName: 'CANONICAL_VERIFY',
+        videoId: videoId,
+        detail: 'expected=$expectedOwnerId ownerId=$ownerId '
+            'userId=$userIdField creatorId=$creatorId',
+      );
+      throw StateError(
+        'Canonical videos/$videoId owner mismatch '
+        '(expected $expectedOwnerId, ownerId=$ownerId)',
+      );
+    }
+    if (!ownerMatches) {
+      debugPrint(
+        '⚠️ CANONICAL_OWNER: ownerId missing/mismatched but legacy '
+        'userId/creatorId matched auth uid — new uploads should set ownerId',
+      );
+    }
+    return CanonicalPublishAck(
+      videoId: videoId,
+      authUid: expectedOwnerId,
+      ownerId: ownerId ?? expectedOwnerId,
+      status: status,
+      uploadUrl: uploadUrl,
+      muxUploadId: muxUploadId,
+      userId: userIdField,
+      creatorId: creatorId,
+      httpStatusCode: httpStatusCode,
+      verifiedFromFirestore: true,
+    );
+  }
+
   Future<void> _markVideoUploadFailed({
     required String videoId,
     required String userId,
     required String errorMessage,
   }) async {
+    // Do not write isReadyForFeed / mux / status on videos/{id} — those are
+    // server-owned. Mirror failure on the owner subcollection only.
+    debugPrint(
+      'JOB_STATE FAILED reason=$errorMessage videoId=$videoId',
+    );
     try {
-      final failedData = <String, dynamic>{
-        'userId': userId,
-        'creatorId': userId,
-        'creator_id': userId,
-        'status': 'failed',
-        'visible': false,
-        'isReadyForFeed': false,
-        'uploadError': errorMessage,
-        'errorMessage': errorMessage,
-        'muxStatus': 'failed',
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      await _firestore.collection('videos').doc(videoId).set(
-            stripNullFieldsDeep(failedData),
-            SetOptions(merge: true),
-          );
       await _firestore
           .collection('users')
           .doc(userId)
           .collection('videos')
           .doc(videoId)
-          .set({
+          .set(<String, dynamic>{
+        'videoId': videoId,
+        'userId': userId,
         'status': 'failed',
         'visible': false,
         'uploadError': errorMessage,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      debugPrint('✅ VideoUploadService: Marked failed upload hidden: $videoId');
+      debugPrint('✅ VideoUploadService: Marked failed upload mirror: $videoId');
     } catch (markError) {
       debugPrint(
           '⚠️ VideoUploadService: Failed to mark upload failed for $videoId: $markError');
@@ -526,55 +1010,6 @@ class VideoUploadService {
     }
   }
 
-  Future<void> _upsertVideoDocument({
-    required String videoId,
-    required String userId,
-    required Map<String, dynamic> updateData,
-  }) async {
-    final DocumentReference<Map<String, dynamic>> docRef =
-        _firestore.collection('videos').doc(videoId);
-    final DocumentSnapshot<Map<String, dynamic>> snapshot = await docRef.get(
-      const GetOptions(source: Source.server),
-    );
-    final Map<String, dynamic> sanitized = stripNullFieldsDeep(updateData);
-    final Map<String, dynamic> ownerPayload = <String, dynamic>{
-      'userId': userId,
-      'creatorId': userId,
-      'creator_id': userId,
-      ...sanitized,
-    };
-    if (!snapshot.exists || snapshot.data() == null) {
-      debugPrint(
-        '⚠️ VideoUploadService: No videos/$videoId on server — creating owner doc',
-      );
-      await docRef.set(<String, dynamic>{
-        ...ownerPayload,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      return;
-    }
-    final Map<String, dynamic> existing = snapshot.data()!;
-    final String? storedUserId = existing['userId'] as String?;
-    final String? storedCreatorId = existing['creatorId'] as String?;
-    final String? storedCreatorSnake = existing['creator_id'] as String?;
-    debugPrint(
-      '🔥 VideoUploadService: Server doc owners '
-      'userId=$storedUserId creatorId=$storedCreatorId '
-      'creator_id=$storedCreatorSnake auth=$userId',
-    );
-    if (storedUserId != userId &&
-        storedCreatorId != userId &&
-        storedCreatorSnake != userId) {
-      throw Exception(
-        'Video owner mismatch on videos/$videoId '
-        '(expected $userId)',
-      );
-    }
-    // update() matches firestore.rules isOwnerVideoMetadataUpdateCore tests;
-    // set(merge) can fail if production rules lag behind the repo allowlist.
-    await docRef.update(ownerPayload);
-  }
-
   /// Upload to StreamersTip AND cross-post to external platforms concurrently.
   ///
   /// StreamersTip upload is always primary. Cross-post failures never block it.
@@ -591,6 +1026,9 @@ class VideoUploadService {
     Map<String, dynamic>? additionalMetadata,
     DateTime? scheduleAt,
     void Function(double)? onProgress,
+    void Function(CanonicalPublishAck proof)? onCanonicalCreated,
+    CanonicalPublishAck? preCreatedAck,
+    bool skipModeration = false,
   }) async {
     // Fire both concurrently; eagerError: false keeps both running.
     final futures = await Future.wait(
@@ -604,6 +1042,9 @@ class VideoUploadService {
           videoId: videoId,
           additionalMetadata: additionalMetadata,
           onProgress: onProgress,
+          onCanonicalCreated: onCanonicalCreated,
+          preCreatedAck: preCreatedAck,
+          skipModeration: skipModeration || preCreatedAck != null,
         ),
         if (crossPostRequests.isNotEmpty)
           CrossPostService.instance.publishToAll(
@@ -655,117 +1096,6 @@ class VideoUploadService {
       additionalMetadata: additionalMetadata,
       isDraft: true,
     );
-  }
-
-  /// Builds update map with only Firestore-whitelisted fields.
-  /// Worker creates the doc; Flutter updates only allowed metadata.
-  /// Aligns with website schema: isMux, muxStatus, muxUploadId for cross-platform.
-  Map<String, dynamic> _buildAllowedVideoMetadataUpdate({
-    required String caption,
-    required List<String> hashtags,
-    required String privacy,
-    required bool allowComments,
-    required String category,
-    required String thumbnailUrl,
-    required Map<String, dynamic> thumbnails,
-    String? videoUrl,
-    required String status,
-    required double moderationConfidence,
-    required int fileSize,
-    required double durationSeconds,
-    Map<String, dynamic>? additionalMetadata,
-    bool isMux = true,
-    String muxStatus = 'processing',
-    String? muxUploadId,
-  }) {
-    // Map legacy 'privacy' values to spec 'visibility' enum values.
-    final String visibility = switch (privacy) {
-      'Followers' || 'followers_only' => 'followers_only',
-      'Private' || 'private' => 'private',
-      _ => 'public',
-    };
-    final categoryFields = buildCanonicalCategoryFields(category);
-    final canonicalCategory = categoryFields['category'] as String;
-
-    final data = <String, dynamic>{
-      'caption': caption,
-      if (caption.trim().isNotEmpty) 'description': caption,
-      if (caption.trim().isNotEmpty) 'title': caption,
-      'hashtags': hashtags,
-      'privacy': privacy, // legacy field — keep for backward compat
-      'visibility': visibility, // spec §2 canonical field
-      'allowComments': allowComments,
-      ...categoryFields,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'thumbnailUrl': thumbnailUrl,
-      'thumbnails': thumbnails,
-      'status': status,
-      'visible': false,
-      'isReadyForFeed': false,
-      'isDeleted': false,
-      'sourcePlatform': 'app', // spec §2 — internal tracking
-      'isMux': isMux,
-      'muxStatus': muxStatus,
-      if (videoUrl != null && videoUrl.isNotEmpty) 'videoUrl': videoUrl,
-      if (muxUploadId != null && muxUploadId.isNotEmpty)
-        'muxUploadId': muxUploadId,
-      'views': 0,
-      'likes': 0,
-      'comments': 0,
-      'shares': 0,
-      'moderation': {
-        'approved': true,
-        'checkedAt': FieldValue.serverTimestamp(),
-        'confidence': moderationConfidence,
-        'violations': [],
-      },
-      'metadata': {
-        'fileSize': fileSize,
-        'duration': durationSeconds,
-        'resolution': '1080x1920',
-        'format': 'mp4',
-        'uploadedAt': FieldValue.serverTimestamp(),
-        'categoryOriginal': category,
-        'categoryCanonical': canonicalCategory,
-      },
-    };
-    final allowedExtras = [
-      'cross_platform_sharing',
-      'watermark_applied',
-      'moderation_confidence',
-      'moderation_checked_at',
-      'duration',
-      'fileSize',
-    ];
-    if (additionalMetadata != null) {
-      for (final String key in additionalMetadata.keys) {
-        if (allowedExtras.contains(key)) {
-          data[key] = additionalMetadata[key];
-        }
-      }
-      final Map<String, dynamic> metadataMap =
-          Map<String, dynamic>.from(data['metadata'] as Map<String, dynamic>);
-      const List<String> previewMetadataKeys = <String>[
-        'thumbnailTimeSeconds',
-        'isCustomThumbnail',
-        'preview_trim_start_ms',
-        'preview_trim_end_ms',
-        'preview_effective_duration_ms',
-        'preview_crop_mode',
-        'preview_aspect_ratio',
-        'preview_captions_enabled',
-        'preview_manual_caption',
-        PublishFirestoreFields.crossPostSubscriptionTier,
-      ];
-      for (final String key in previewMetadataKeys) {
-        final Object? value = additionalMetadata[key];
-        if (value != null) {
-          metadataMap[key] = value;
-        }
-      }
-      data['metadata'] = metadataMap;
-    }
-    return data;
   }
 
   /// Add video to appropriate feeds based on privacy setting
@@ -1120,4 +1450,40 @@ class VideoUploadService {
       );
     }
   }
+}
+
+class _CanonicalPublishMetadata {
+  const _CanonicalPublishMetadata({
+    required this.title,
+    required this.description,
+    this.thumbnailUrl,
+  });
+
+  final String title;
+  final String description;
+  final String? thumbnailUrl;
+}
+
+_CanonicalPublishMetadata _resolveCanonicalPublishMetadata({
+  required String caption,
+  Map<String, dynamic>? additionalMetadata,
+}) {
+  final String trimmedCaption = caption.trim();
+  final String title = ((additionalMetadata?['title'] as String?) ??
+          trimmedCaption)
+      .trim();
+  final String description = ((additionalMetadata?['description'] as String?) ??
+          trimmedCaption)
+      .trim();
+  final String? thumb = ((additionalMetadata?['thumbnailUrl'] as String?) ??
+          (additionalMetadata?['thumbnailURL'] as String?) ??
+          (additionalMetadata?['thumbnail_url'] as String?))
+      ?.trim();
+  return _CanonicalPublishMetadata(
+    title: title.isNotEmpty ? title : 'Untitled Video',
+    description: description.isNotEmpty
+        ? description
+        : (title.isNotEmpty ? title : 'Untitled Video'),
+    thumbnailUrl: (thumb != null && thumb.isNotEmpty) ? thumb : null,
+  );
 }

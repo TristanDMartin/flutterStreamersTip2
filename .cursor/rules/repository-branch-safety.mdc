@@ -1,0 +1,42 @@
+---
+description: Hard repository and branch boundary — never switch repos/branches or write website code during Flutter work
+alwaysApply: true
+---
+
+# Repository / branch safety — do not violate
+
+This checkout is the **FLUTTER APP**.
+
+## Locked identity
+
+| Surface | GitHub repo | Local path | Required branch |
+|---|---|---|---|
+| WEBSITE | `streamerstipReact` | `/Users/tristanmartin/Projects/streamerstipReact` | `homepage-merge-staging` |
+| FLUTTER APP | `flutterStreamersTip2` | `/Users/tristanmartin/Projects/flutterST` | `flutterStreamersTip2` |
+
+`flutterST` is the local folder for GitHub `flutterStreamersTip2` on branch `flutterStreamersTip2`. Folder name, GitHub name, and branch name are **one checkout**, not three codebases. Do not treat this folder as a patches/drop-pack repo, and do not move implementation work to a different clone because of the folder name.
+
+## Before any code change
+
+Run and report:
+
+```bash
+git rev-parse --show-toplevel
+git branch --show-current
+git status --short
+```
+
+Stop unless this workspace is `/Users/tristanmartin/Projects/flutterST` on `flutterStreamersTip2`. If required code is not on this branch, stop and report what is missing. Do not restore code from another branch.
+
+## Never without explicit user approval
+
+- `git checkout`, `git switch`, `git worktree`, or any command that changes branches
+- Creating a new branch
+- Switching because related StreamersTip code exists elsewhere
+- Modifying `/Users/tristanmartin/Projects/streamerstipReact` during Flutter work
+
+A task that mentions another repo/branch is **not** authorization to switch to it.
+
+If a branch change seems necessary, stop and report: current repo, current branch, needed branch, why. Wait for explicit approval.
+
+Website and Flutter must share the same canonical Firestore contracts, but they remain separate repositories.

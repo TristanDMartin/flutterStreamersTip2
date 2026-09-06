@@ -38,6 +38,44 @@ void main() {
       );
     });
 
+    test('rejects owner local pending instant-play overlays', () {
+      expect(
+        isDiscoverEligibleHomeVideo(
+          _video(
+            id: 'local',
+            status: 'uploading',
+            videoURL: 'file:///tmp/cap.mp4',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        rejectDiscoverEligibleHomeVideo(
+          _video(
+            id: 'local',
+            status: 'processing',
+            videoURL: 'file:///data/cap.mp4',
+          ),
+        ),
+        'owner_local_pending',
+      );
+    });
+
+    test('rejects failed and processing statuses', () {
+      expect(
+        isDiscoverEligibleHomeVideo(
+          _video(id: 'f', status: 'failed'),
+        ),
+        isFalse,
+      );
+      expect(
+        isDiscoverEligibleHomeVideo(
+          _video(id: 'p', status: 'processing'),
+        ),
+        isFalse,
+      );
+    });
+
     test('rejects cached deleted video even with playable url', () {
       expect(
         isDiscoverEligibleHomeVideo(

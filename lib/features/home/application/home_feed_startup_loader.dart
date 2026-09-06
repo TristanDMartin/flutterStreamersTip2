@@ -4,7 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../../../models/home_video.dart';
+import '../../../services/optimistic_video_service.dart';
 import '../../../services/video_service.dart' as video_service;
+import '../domain/home_feed_pending_upload_merge.dart';
 import 'home_feed_warm_cache.dart';
 
 /// Fresh startup feed load result.
@@ -67,7 +69,13 @@ class HomeFeedStartupLoader {
     if (cached == null || cached.videos.isEmpty) {
       return null;
     }
-    return cached.videos;
+    final List<HomeVideo> playable = HomeFeedWarmCache.remotePlayableOnly(
+      cached.videos,
+    );
+    if (playable.isEmpty) {
+      return null;
+    }
+    return playable;
   }
 
   Future<List<HomeVideo>?> restoreDiskWarmFeed(String? userId) async {
@@ -129,7 +137,37 @@ class HomeFeedStartupLoader {
     }
     final List<HomeVideo> realVideos = _videoService.getAllVideos();
     _log('📱 Loaded ${realVideos.length} real videos from VideoService');
-    if (realVideos.isEmpty) {
+    // Cold start: Instant Publish memory is gone — pull the signed-in owner's
+    // uploading/processing/ready docs into VideoService so Profile/Streamer
+    // (and owner Home merge) see the same videoId immediately.
+    try {
+      final bool ownerMerged = await _videoService.mergeProfileVideosForUser(
+        signedInUserId,
+        forceServer: true,
+        viewName: 'HomeStartupOwnerMerge',
+      );
+      _log(
+        '📱 Owner profile merge on startup changed=$ownerMerged '
+        'state=${_videoService.getAllVideos().length}',
+      );
+    } catch (e) {
+      _log('⚠️ Owner profile merge on startup failed: $e');
+    }
+    final List<HomeVideo> afterOwnerMerge = _videoService.getAllVideos();
+    final User? authUser = FirebaseAuth.instance.currentUser;
+    if (authUser != null) {
+      await OptimisticVideoService().restorePersistedOptimisticVideos();
+      upsertOwnerPendingOptimisticVideos(
+        ownerId: authUser.uid,
+        optimisticVideoService: OptimisticVideoService(),
+        existingVideos: _videoService.getAllVideos(),
+        currentUserDisplayName: authUser.displayName,
+        currentUserPhotoUrl: authUser.photoURL,
+        upsert: _videoService.addVideo,
+      );
+    }
+    final List<HomeVideo> withOwnerPending = _videoService.getAllVideos();
+    if (withOwnerPending.isEmpty && afterOwnerMerge.isEmpty) {
       _log('⚠️ No real videos found, keeping feed honest with an empty state');
       return const HomeFeedStartupSuccess(
         videos: <HomeVideo>[],
@@ -137,7 +175,7 @@ class HomeFeedStartupLoader {
       );
     }
     return HomeFeedStartupSuccess(
-      videos: realVideos,
+      videos: withOwnerPending.isNotEmpty ? withOwnerPending : afterOwnerMerge,
       clearError: true,
       cacheUserId: cacheUserId ?? signedInUserId,
     );

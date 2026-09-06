@@ -7,6 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'home_first_frame_gate.dart';
 import 'home_feed_background_refresh.dart';
 import 'home_feed_engagement_coordinator.dart';
+import 'home_feed_deletion_sync.dart';
 import 'home_feed_startup_loader.dart';
 import 'home_feed_warm_cache.dart';
 import 'home_for_you_feed_loader.dart';
@@ -17,6 +18,7 @@ import '../domain/home_feed_engagement_mapper.dart';
 import '../domain/home_feed_mutator.dart';
 import '../domain/home_feed_pagination.dart';
 import '../domain/home_feed_processing.dart';
+import '../domain/home_feed_pending_upload_merge.dart';
 import '../models/home_feed_state.dart';
 import '../../../models/feed_tab.dart';
 import '../../../models/home_video.dart';
@@ -31,6 +33,7 @@ import '../../../services/algorithm_cache_service.dart';
 import '../../../services/global_playback_manager.dart';
 import '../../../constants/playback_owners.dart';
 import 'package:streamers_tip/utils/home_feed_interaction_diagnostics.dart';
+import 'package:streamers_tip/utils/home_video_playback.dart';
 import 'package:streamers_tip/utils/interaction_diagnostics.dart';
 import 'package:streamers_tip/utils/like_interaction_boundary.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
@@ -52,6 +55,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       HomeFeedWarmCache(_algorithmCacheService);
   late final HomeFeedStartupLoader _startupLoader;
   late final HomeFeedBackgroundRefreshCoordinator _backgroundRefresh;
+  late final HomeFeedDeletionSync _deletionSync;
   HomeForYouRealtimeFeedListener? _forYouRealtimeFeedListener;
   String? _lastForYouFeedFingerprint;
   Future<void>? _freshVideosRefreshInFlight;
@@ -86,13 +90,18 @@ class HomeViewModel extends StateNotifier<HomeState> {
       videoService: videoService,
       log: secureLog,
     );
+    _deletionSync = HomeFeedDeletionSync(
+      onVideosRemoved: _onPaintedFeedVideosDeleted,
+    );
     updateVideoLikeState = _updateVideoLikeState;
     updateVideoFavoriteState = _updateVideoFavoriteState;
+    _syncDeletionListeners();
   }
 
   @override
   void dispose() {
     _freshVideosRefreshInFlight = null;
+    _deletionSync.dispose();
     _forYouRealtimeFeedListener?.dispose();
     _forYouRealtimeFeedListener = null;
     _feedRefreshSubscription?.cancel();
@@ -125,6 +134,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
     _applyLiveFeedSnapshot(
       incoming: result.videos,
+      removedVideoIds: result.removedVideoIds,
       reason: 'live_feed_snapshot',
     );
     if (result.videos.isNotEmpty) {
@@ -138,6 +148,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   void _applyLiveFeedSnapshot({
     required List<HomeVideo> incoming,
     required String reason,
+    Set<String> removedVideoIds = const <String>{},
   }) {
     if (!mounted) {
       return;
@@ -146,9 +157,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
       LikeInteractionBoundary.reportFeedRefresh(source: reason);
       final List<HomeVideo> queuedIncoming =
           List<HomeVideo>.unmodifiable(incoming);
+      final Set<String> queuedRemoved =
+          Set<String>.unmodifiable(removedVideoIds);
       LikeInteractionBoundary.runOrQueue(
         () => _applyLiveFeedSnapshot(
           incoming: queuedIncoming,
+          removedVideoIds: queuedRemoved,
           reason: '${reason}_queued_after_interaction',
         ),
         reason: reason,
@@ -156,19 +170,32 @@ class HomeViewModel extends StateNotifier<HomeState> {
       return;
     }
     final List<HomeVideo> current = List<HomeVideo>.from(state.forYouVideos);
+    final List<HomeVideo> currentWithoutRemoved = dropHomeFeedVideosById(
+      existing: current,
+      removedIds: removedVideoIds,
+    );
+    if (removedVideoIds.isNotEmpty &&
+        currentWithoutRemoved.length != current.length) {
+      secureLog(
+        'HOME_FEED_DROP_DELETED count=${current.length - currentWithoutRemoved.length} '
+        'ids=${removedVideoIds.take(8).join(",")}',
+      );
+    }
     HomeFeedInteractionDiagnostics.logFeedReplaceAttempt(
       reason: reason,
       incomingCount: incoming.length,
-      currentCount: current.length,
+      currentCount: currentWithoutRemoved.length,
     );
-    if (current.isNotEmpty && incoming.length < current.length) {
+    if (currentWithoutRemoved.isNotEmpty &&
+        incoming.length < currentWithoutRemoved.length) {
       InteractionDiagnostics.logBlockedFeedReplacement(
         incomingCount: incoming.length,
-        currentCount: current.length,
+        currentCount: currentWithoutRemoved.length,
       );
-      final List<HomeVideo> patched = mergeHomeFeedPreserveOrder(
-        existing: current,
+      final List<HomeVideo> patched = reconcileLiveHomeFeedSnapshot(
+        existing: currentWithoutRemoved,
         incoming: incoming,
+        removedIds: removedVideoIds,
       );
       if (!_feedListsEquivalent(current, patched)) {
         _updateForYouFeed(
@@ -186,25 +213,47 @@ class HomeViewModel extends StateNotifier<HomeState> {
       return;
     }
     if (shouldRejectShrinkingFeedReplacement(
-      current: current,
+      current: currentWithoutRemoved,
       incoming: incoming,
       reason: reason,
     )) {
       HomeFeedInteractionDiagnostics.logFeedReplaceBlocked(reason: reason);
+      if (!_feedListsEquivalent(current, currentWithoutRemoved)) {
+        _updateForYouFeed(
+          videos: currentWithoutRemoved,
+          isLoading: false,
+          nextCursor: currentForYouSlice(state).nextCursor,
+          clearError: true,
+        );
+      }
       secureLog(
         '⏭️ HomeProvider: Blocked feed replacement ($reason) '
-        'incoming=${incoming.length} current=${current.length}',
+        'incoming=${incoming.length} current=${currentWithoutRemoved.length}',
       );
       return;
     }
-    final List<HomeVideo> mergedVideos = _mergeIncomingForYouVideos(incoming);
-    if (mergedVideos.length < current.length) {
+    final List<HomeVideo> mergedVideos = reconcileLiveHomeFeedSnapshot(
+      existing: currentWithoutRemoved
+          .where((HomeVideo video) => !isHomeVideoOwnerPendingLocal(video))
+          .toList(growable: false),
+      incoming: incoming,
+      removedIds: removedVideoIds,
+    );
+    if (mergedVideos.length < currentWithoutRemoved.length) {
       HomeFeedInteractionDiagnostics.logFeedReplaceBlocked(
         reason: 'merge_shrink_guard',
       );
+      if (!_feedListsEquivalent(current, currentWithoutRemoved)) {
+        _updateForYouFeed(
+          videos: currentWithoutRemoved,
+          isLoading: false,
+          nextCursor: currentForYouSlice(state).nextCursor,
+          clearError: true,
+        );
+      }
       secureLog(
         '⏭️ HomeProvider: Blocked shrinking merge ($reason) '
-        'merged=${mergedVideos.length} current=${current.length}',
+        'merged=${mergedVideos.length} current=${currentWithoutRemoved.length}',
       );
       return;
     }
@@ -246,13 +295,30 @@ class HomeViewModel extends StateNotifier<HomeState> {
     if (!mounted) {
       return;
     }
-    final List<HomeVideo> serviceVideos = _videoService.getAllVideos();
-    if (serviceVideos.isEmpty) {
-      return;
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      upsertOwnerPendingOptimisticVideos(
+        ownerId: user.uid,
+        optimisticVideoService: _optimisticVideoService,
+        existingVideos: _videoService.getAllVideos(),
+        currentUserDisplayName: user.displayName,
+        currentUserPhotoUrl: user.photoURL,
+        upsert: _videoService.addVideo,
+      );
     }
-    _applyLiveFeedSnapshot(
-      incoming: serviceVideos,
-      reason: 'optimistic_overlay_refresh',
+    final List<HomeVideo> serviceVideos = _videoService.getAllVideos();
+    final List<HomeVideo> base = serviceVideos.isNotEmpty
+        ? serviceVideos
+        : state.forYouVideos
+            .where((HomeVideo video) => !isHomeVideoOwnerPendingLocal(video))
+            .toList(growable: false);
+    // Always recompose display even when canonical count is unchanged so a
+    // newly created pending overlay can move 22 → 23.
+    _updateForYouFeed(
+      videos: base,
+      isLoading: false,
+      nextCursor: currentForYouSlice(state).nextCursor,
+      clearError: true,
     );
   }
 
@@ -274,12 +340,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
   static HomeState _initialStateFromWarmMemory() {
     final CachedFeedResult? warm = AlgorithmCacheService().peekForYouWarmFeed();
     if (warm != null && warm.videos.isNotEmpty) {
-      return HomeState(
-        forYouVideos: warm.videos,
-        isLoading: false,
-        hasLoaded: true,
-        hasMoreContent: true,
-      );
+      final List<HomeVideo> playable =
+          HomeFeedWarmCache.remotePlayableOnly(warm.videos);
+      if (playable.isNotEmpty) {
+        return HomeState(
+          forYouVideos: playable,
+          isLoading: false,
+          hasLoaded: true,
+          hasMoreContent: true,
+        );
+      }
     }
     return const HomeState(isLoading: true);
   }
@@ -325,6 +395,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
       return;
     }
     _lastForYouFeedFingerprint = fingerprint;
+    secureLog(
+      '🏠 HomeProvider: Applying For You display feed '
+      'canonical=${videos.length} display=${displayVideos.length}',
+    );
     state = applyForYouFeedUpdate(
       state: state,
       mergedVideos: displayVideos,
@@ -334,12 +408,73 @@ class HomeViewModel extends StateNotifier<HomeState> {
       error: error,
       clearError: clearError,
     );
+    _syncDeletionListeners();
+  }
+
+  void _syncDeletionListeners() {
+    if (!mounted) {
+      return;
+    }
+    _deletionSync.syncPaintedVideos(<HomeVideo>[
+      ...state.forYouVideos,
+      ...state.followingVideos,
+    ]);
+  }
+
+  void _onPaintedFeedVideosDeleted(Set<String> videoIds, String reason) {
+    if (!mounted || videoIds.isEmpty) {
+      return;
+    }
+    for (final String videoId in videoIds) {
+      _videoService.removeVideo(
+        videoId,
+        source: 'home_feed_deletion_sync',
+        reason: reason,
+      );
+    }
+    final List<HomeVideo> nextForYou = dropHomeFeedVideosById(
+      existing: state.forYouVideos,
+      removedIds: videoIds,
+    );
+    final List<HomeVideo> nextFollowing = dropHomeFeedVideosById(
+      existing: state.followingVideos,
+      removedIds: videoIds,
+    );
+    final bool forYouChanged =
+        nextForYou.length != state.forYouVideos.length;
+    final bool followingChanged =
+        nextFollowing.length != state.followingVideos.length;
+    if (!forYouChanged && !followingChanged) {
+      return;
+    }
+    secureLog(
+      'HOME_FEED_DELETE_APPLIED reason=$reason '
+      'removed=${videoIds.length} forYou=${state.forYouVideos.length}->${nextForYou.length} '
+      'following=${state.followingVideos.length}->${nextFollowing.length}',
+    );
+    if (forYouChanged) {
+      _lastForYouFeedFingerprint = null;
+      _updateForYouFeed(
+        videos: nextForYou,
+        isLoading: false,
+        nextCursor: currentForYouSlice(state).nextCursor,
+        clearError: true,
+      );
+    }
+    if (followingChanged) {
+      _updateFollowingFeed(
+        videos: nextFollowing,
+        isLoading: false,
+        nextCursor: state.followingSlice?.nextCursor,
+        clearError: true,
+      );
+    }
   }
 
   String _feedFingerprint(List<HomeVideo> videos) {
     return videos.map((HomeVideo video) {
-      return '${video.id}:${video.status}:${video.videoURL}:'
-          '${video.caption}:${video.overlayCaption}:'
+      return '${video.id}:${video.status}:${video.isDeleted}:'
+          '${video.videoURL}:${video.caption}:${video.overlayCaption}:'
           '${video.comments}:${video.isFavorited}';
     }).join('|');
   }
@@ -359,7 +494,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
   List<HomeVideo> _mergeIncomingForYouVideos(List<HomeVideo> incomingVideos) {
     final List<HomeVideo> incoming =
         dedupeHomeVideosById(_readyVideosFromFeed(incomingVideos));
-    final List<HomeVideo> existing = dedupeHomeVideosById(state.forYouVideos);
+    // Strip owner-pending locals from existing before canonical merge so the
+    // pending overlay is always re-applied in [_updateForYouFeed].
+    final List<HomeVideo> existingCanonical = state.forYouVideos
+        .where((HomeVideo video) => !isHomeVideoOwnerPendingLocal(video))
+        .toList(growable: false);
+    final List<HomeVideo> existing =
+        dedupeHomeVideosById(_readyVideosFromFeed(existingCanonical));
     return mergeHomeFeedPreserveOrder(
       existing: existing,
       incoming: incoming,
@@ -383,6 +524,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       error: error,
       clearError: clearError,
     );
+    _syncDeletionListeners();
   }
 
   void _appendRecycledForYouFeed({
@@ -817,6 +959,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
         clearError: result.clearError,
         error: result.error,
       );
+      // Restore may have completed before Home subscribed to feedRefreshStream.
+      _refreshPendingOverlay();
       state = state.copyWith(followingVideos: const <HomeVideo>[]);
       if (result.cacheUserId != null && result.videos.isNotEmpty) {
         unawaited(

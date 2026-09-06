@@ -1,7 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'activation_state.dart';
 import 'onboarding_v1_constants.dart';
+import 'resolve_onboarding_destination.dart';
+
+User? _readAuthUser() {
+  try {
+    return FirebaseAuth.instance.currentUser;
+  } catch (_) {
+    return null;
+  }
+}
 
 enum CreatorStatus {
   newCreator('new_creator'),
@@ -44,6 +55,7 @@ class OnboardingState {
     this.tippyOnboardingV1Attached = false,
     this.tippyFunnelCompleted = false,
     this.essentialProfileComplete = false,
+    this.activationState = '',
   });
 
   factory OnboardingState.initial() {
@@ -127,6 +139,21 @@ class OnboardingState {
         (!tippyFunnelCompleted || !essentialProfileComplete)) {
       resolvedCompleted = false;
     }
+    final User? authUser = _readAuthUser();
+    final OnboardingDestination destination = resolveOnboardingDestination(
+      userData: data,
+      emailVerified: authUser?.emailVerified == true,
+      isPasswordProvider: authUser?.providerData.any(
+            (UserInfo info) => info.providerId == 'password',
+          ) ??
+          false,
+    );
+    final ActivationDecision activation = resolveActivationState(
+      isAuthenticated: authUser != null,
+      destination: destination,
+      hasFirstGrowthPlan: onboarding['firstGrowthPlanId'] is String,
+      firstMissionChoice: onboarding['firstMissionChoice'] as String?,
+    );
     return OnboardingState(
       version: resolvedVersion,
       status: resolvedCompleted ? OnboardingStatus.completed : status,
@@ -159,6 +186,7 @@ class OnboardingState {
       tippyOnboardingV1Attached: tippyAttached,
       tippyFunnelCompleted: tippyFunnelCompleted,
       essentialProfileComplete: essentialProfileComplete,
+      activationState: activation.state,
     );
   }
 
@@ -181,6 +209,8 @@ class OnboardingState {
   final bool tippyOnboardingV1Attached;
   final bool tippyFunnelCompleted;
   final bool essentialProfileComplete;
+  /// Canonical activation machine. Empty until populated from the resolver.
+  final String activationState;
 
   bool get needsTippyGuidedProfile =>
       !essentialProfileComplete &&

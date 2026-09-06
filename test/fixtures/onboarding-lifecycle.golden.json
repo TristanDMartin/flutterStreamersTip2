@@ -1,0 +1,409 @@
+{
+  "version": 1,
+  "notes": "Same vectors for TS and Dart. Clients must not re-resolve lifecycle; these outputs are what /api/account/status must return.",
+  "vectors": [
+    {
+      "id": "sticky_complete_ignores_local_stage",
+      "input": {
+        "userData": {
+          "username": "creator1",
+          "onboarding": {
+            "lifecycle": "COMPLETE",
+            "tippyFunnelCompleted": true,
+            "essentialProfileComplete": true,
+            "completed": true
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": "avatar",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "COMPLETE",
+        "tippyStageHint": null,
+        "allowApp": true,
+        "reason": "sticky_complete",
+        "activationState": "ACTIVATED"
+      }
+    },
+    {
+      "id": "no_user_doc_password_unverified",
+      "input": {
+        "userData": null,
+        "emailVerified": false,
+        "isPasswordProvider": true,
+        "localTippyStage": null,
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "VERIFY",
+        "tippyStageHint": "verify_email",
+        "allowApp": false,
+        "reason": "no_user_doc_needs_verify",
+        "activationState": "EMAIL_VERIFICATION_REQUIRED"
+      }
+    },
+    {
+      "id": "skipped_photo_resumes_username_not_display_name",
+      "input": {
+        "userData": {
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false,
+            "photoStatus": "skipped"
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": "welcome",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "username",
+        "allowApp": false,
+        "reason": "tippy_in_progress",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "recycled_without_tippy_complete_restarts_welcome",
+      "input": {
+        "userData": {
+          "identityRecycled": true,
+          "username": "samehandle",
+          "displayName": "Same Person",
+          "hasCompletedOnboarding": true,
+          "createdAt": "2025-01-01T00:00:00.000Z",
+          "onboarding": {
+            "status": "completed",
+            "completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": "bio",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "welcome",
+        "allowApp": false,
+        "reason": "identity_recycled_restart",
+        "activationState": "GUEST_PERSONALIZATION"
+      }
+    },
+    {
+      "id": "ignore_local_resume_beats_verify_and_mid_tippy",
+      "input": {
+        "userData": {
+          "identityRecycled": true,
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false,
+            "ignoreLocalResume": true,
+            "forceWelcome": true
+          }
+        },
+        "emailVerified": false,
+        "isPasswordProvider": true,
+        "localTippyStage": "bio",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "welcome",
+        "allowApp": false,
+        "reason": "identity_recycled_restart",
+        "activationState": "GUEST_PERSONALIZATION"
+      }
+    },
+    {
+      "id": "mid_tippy_unverified_password_goes_verify",
+      "input": {
+        "userData": {
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false
+          }
+        },
+        "emailVerified": false,
+        "isPasswordProvider": true,
+        "localTippyStage": "username",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "VERIFY",
+        "tippyStageHint": "verify_email",
+        "allowApp": false,
+        "reason": "tippy_needs_email_verify",
+        "activationState": "EMAIL_VERIFICATION_REQUIRED"
+      }
+    },
+    {
+      "id": "local_username_stage_preserved",
+      "input": {
+        "userData": {
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": "username",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "username",
+        "allowApp": false,
+        "reason": "tippy_in_progress",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "legacy_display_name_stage_normalizes_to_username",
+      "input": {
+        "userData": {
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": "display_name",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "username",
+        "allowApp": false,
+        "reason": "tippy_in_progress",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "verified_password_new_account_continues_at_account_secured",
+      "input": {
+        "userData": {
+          "username": "newcreator",
+          "onboarding": {
+            "version": 1,
+            "completed": false
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "verify_email",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "account_secured",
+        "allowApp": false,
+        "reason": "new_account_starts_tippy",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "verified_password_no_user_doc_continues_at_account_secured",
+      "input": {
+        "userData": null,
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "verify_email",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "account_secured",
+        "allowApp": false,
+        "reason": "no_user_doc_verified",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "verified_password_recycle_does_not_rewind_after_verify",
+      "input": {
+        "userData": {
+          "identityRecycled": true,
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false,
+            "ignoreLocalResume": true,
+            "forceWelcome": true
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "verify_email",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "account_secured",
+        "allowApp": false,
+        "reason": "tippy_in_progress",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "google_verified_no_user_doc_continues_at_account_secured",
+      "input": {
+        "userData": null,
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": "welcome",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "account_secured",
+        "allowApp": false,
+        "reason": "no_user_doc_verified",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "apple_verified_no_user_doc_continues_at_account_secured",
+      "input": {
+        "userData": null,
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": null,
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "account_secured",
+        "allowApp": false,
+        "reason": "no_user_doc_verified",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "stale_local_welcome_cannot_rewind_verified_password",
+      "input": {
+        "userData": {
+          "username": "beacon16062",
+          "onboarding": {
+            "version": 1,
+            "completed": false
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "welcome",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "account_secured",
+        "allowApp": false,
+        "reason": "new_account_starts_tippy",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "claimed_username_incomplete_identity",
+      "input": {
+        "userData": {
+          "username": "beacon16062",
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "username",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "username",
+        "allowApp": false,
+        "reason": "tippy_in_progress",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "verified_password_recycle_without_attach_continues_identity",
+      "input": {
+        "userData": {
+          "identityRecycled": true,
+          "onboarding": {
+            "tippyOnboardingV1Attached": false,
+            "slim7Completed": false,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false,
+            "ignoreLocalResume": true,
+            "forceWelcome": true
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "verify_email",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "account_secured",
+        "allowApp": false,
+        "reason": "identity_recycled_restart",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    }
+  ]
+}

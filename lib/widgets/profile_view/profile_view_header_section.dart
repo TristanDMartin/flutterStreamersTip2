@@ -25,11 +25,13 @@ class ProfileViewHeaderSection extends StatelessWidget {
     required this.userData,
     required this.profileUserId,
     required this.isCurrentUser,
+    this.useInitialDataOnly = false,
   });
 
   final Map<String, dynamic> userData;
   final String profileUserId;
   final bool isCurrentUser;
+  final bool useInitialDataOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +52,7 @@ class ProfileViewHeaderSection extends StatelessWidget {
               const SizedBox(height: 14),
               _ProfileQuietStats(
                 profileUserId: profileUserId,
+                useInitialDataOnly: useInitialDataOnly,
               ),
               if (isCurrentUser) ...<Widget>[
                 const SizedBox(height: 14),
@@ -57,14 +60,15 @@ class ProfileViewHeaderSection extends StatelessWidget {
               ],
             ],
           ),
-          Positioned(
-            top: 4,
-            right: 0,
-            child: CreatorScoreBadge(
-              userId: profileUserId,
-              compact: true,
+          if (!useInitialDataOnly)
+            Positioned(
+              top: 4,
+              right: 0,
+              child: CreatorScoreBadge(
+                userId: profileUserId,
+                compact: true,
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -109,9 +113,8 @@ class _ProfileAvatarRing extends StatelessWidget {
                       avatarUrl,
                       key: ValueKey<String>(avatarUrl),
                       fit: BoxFit.cover,
-                      errorBuilder:
-                          (BuildContext c, Object e, StackTrace? s) =>
-                              _AvatarInitial(userData: userData),
+                      errorBuilder: (BuildContext c, Object e, StackTrace? s) =>
+                          _AvatarInitial(userData: userData),
                     )
                   : _AvatarInitial(userData: userData),
             ),
@@ -223,12 +226,17 @@ class _ProfileNameAndHandle extends StatelessWidget {
 class _ProfileQuietStats extends ConsumerWidget {
   const _ProfileQuietStats({
     required this.profileUserId,
+    required this.useInitialDataOnly,
   });
 
   final String profileUserId;
+  final bool useInitialDataOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (useInitialDataOnly) {
+      return const _StaticProfileQuietStats();
+    }
     final List<HomeVideo> allVideos = ref.watch(videoServiceStateProvider);
     final bool isVideoServiceLoading = ref.watch(videoServiceLoadingProvider);
     final List<HomeVideo> userVideos =
@@ -254,6 +262,83 @@ class _ProfileQuietStats extends ConsumerWidget {
         fontWeight: FontWeight.w400,
         height: 1.0,
       ),
+    );
+  }
+}
+
+class _StaticProfileQuietStats extends StatelessWidget {
+  const _StaticProfileQuietStats();
+
+  @override
+  Widget build(BuildContext context) {
+    const TextStyle valueStyle = TextStyle(
+      color: StreamerCardBackStyle.softText,
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    );
+    const TextStyle labelStyle = TextStyle(
+      color: StreamerCardBackStyle.muted,
+      fontSize: 12,
+      fontWeight: FontWeight.w400,
+      height: 1.0,
+    );
+    return const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        Expanded(
+          child: _StaticProfileStat(
+            label: 'Posts',
+            value: '0',
+            valueStyle: valueStyle,
+            labelStyle: labelStyle,
+          ),
+        ),
+        SizedBox(width: 12),
+        Expanded(
+          child: _StaticProfileStat(
+            label: 'Followers',
+            value: '0',
+            valueStyle: valueStyle,
+            labelStyle: labelStyle,
+          ),
+        ),
+        SizedBox(width: 12),
+        Expanded(
+          child: _StaticProfileStat(
+            label: 'Following',
+            value: '0',
+            valueStyle: valueStyle,
+            labelStyle: labelStyle,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StaticProfileStat extends StatelessWidget {
+  const _StaticProfileStat({
+    required this.label,
+    required this.value,
+    required this.valueStyle,
+    required this.labelStyle,
+  });
+
+  final String label;
+  final String value;
+  final TextStyle valueStyle;
+  final TextStyle labelStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(value, style: valueStyle),
+        const SizedBox(height: 6),
+        Text(label, style: labelStyle),
+      ],
     );
   }
 }

@@ -72,6 +72,9 @@ String siteWorkspaceApprovalUrl({
   );
 }
 
+String siteTippyCreatorMemoryUrl({String? base}) =>
+    siteApiPath('/api/tippy/creator-memory', base: base);
+
 String siteTippyChatUrl({String? base}) =>
     siteApiPath('/api/tippy/chat', base: base);
 
@@ -81,8 +84,20 @@ String siteTippyChatsUrl({String? base}) =>
 String siteTippyChatByIdUrl(String chatId, {String? base}) =>
     siteApiPath('/api/tippy/chats/${Uri.encodeComponent(chatId)}', base: base);
 
+String siteAccountStatusUrl({String? base}) =>
+    siteApiPath('/api/account/status', base: base);
+
 String siteAccountProvisionUrl({String? base}) =>
     siteApiPath('/api/account/provision', base: base);
+
+String siteAccountDeleteUrl({String? base}) =>
+    siteApiPath('/api/account/delete', base: base);
+
+String siteAccountDeactivateUrl({String? base}) =>
+    siteApiPath('/api/account/deactivate', base: base);
+
+String siteAccountReactivateUrl({String? base}) =>
+    siteApiPath('/api/account/reactivate', base: base);
 
 String siteAccountPendingUrl({String? base}) =>
     siteApiPath('/api/account/pending', base: base);
@@ -95,6 +110,15 @@ String siteUsernameChangeUrl({String? base}) =>
 
 String siteUsernameCheckUrl({String? base}) =>
     siteApiPath('/api/username/check', base: base);
+
+String siteOnboardingCompleteUrl({String? base}) =>
+    siteApiPath('/api/onboarding/complete', base: base);
+
+String siteAvatarSaveUrl({String? base}) =>
+    siteApiPath('/api/avatar/save', base: base);
+
+String siteAvatarSyncUrl({String? base}) =>
+    siteApiPath('/api/avatar/sync', base: base);
 
 String siteProfileDisplayNameUrl({String? base}) =>
     siteApiPath('/api/profile/display-name', base: base);

@@ -34,6 +34,7 @@ import 'features/gamification/widgets/gamification_celebration_overlay.dart';
 import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
 import 'services/upload_status_manager.dart';
+import 'services/stuck_publish_cleanup_service.dart';
 import 'config/release_config_health.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'core/theme/app_theme.dart';
@@ -44,6 +45,7 @@ import 'features/home/application/home_startup_playback_coordinator.dart';
 import 'core/firebase_bootstrap.dart';
 import 'core/firebase_bootstrap_ready_provider.dart';
 import 'core/firebase_app_check_startup.dart';
+import 'core/backend/site_api_base.dart';
 import 'qa/qa_runtime.dart';
 
 void main() async {
@@ -52,6 +54,16 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('✅ WidgetsFlutterBinding: Initialized at ${DateTime.now()}');
+  if (kDebugMode) {
+    final String accountApiBase = resolveSiteApiBase();
+    debugPrint('ACCOUNT_API_BASE=$accountApiBase');
+    if (accountApiBase == 'https://streamerstip.com') {
+      debugPrint(
+        'ACCOUNT_API_BASE is PRODUCTION. Local status requires '
+        '--dart-define=SITE_API_BASE=http://localhost:3000',
+      );
+    }
+  }
   STSystemUi.configureDefault();
   _initializeGlobalErrorHandler();
 
@@ -129,7 +141,9 @@ Future<void> _initializeFirebaseAndCrashHandlers() async {
     debugPrint('⚠️ Crashlytics: Firebase unavailable; console-only errors');
     return;
   }
-  unawaited(activateAppCheckIfEnabled());
+  await activateAppCheckIfEnabled();
+  // Warm token in background so Share does not start App Check cold.
+  unawaited(warmAppCheckAtStartup());
   debugPrint('⏰ Crashlytics: Installing handlers after runApp');
   await AnalyticsService.instance.installCrashHandlers();
   await _recordProductionStartupHealth();
@@ -277,7 +291,18 @@ Future<void> _initializeAllServices() async {
       debugPrint('⚠️ FIREBASE: Not initialized, initializing now...');
       await FirebaseIOSService.initialize();
     } else {
-      debugPrint('✅ FIREBASE: Already initialized');
+      // Bootstrap already created the app — keep FirebaseIOSService in sync so
+      // publish/upload gates that check isInitialized do not false-fail.
+      if (!FirebaseIOSService.isInitialized) {
+        // isInitialized now reflects Firebase.apps; log for clarity.
+        debugPrint(
+          '✅ FIREBASE: Already initialized '
+          '(apps=${Firebase.apps.length}, iosServiceReady='
+          '${FirebaseIOSService.isInitialized})',
+        );
+      } else {
+        debugPrint('✅ FIREBASE: Already initialized');
+      }
     }
 
     // Keep error handling cheap and local during the first interactive window.
@@ -326,6 +351,14 @@ Future<void> _initializePhase2Services() async {
 
   await _initializeServiceSafely('FavoritesServiceOptimized', () async {
     await FavoritesServiceOptimized().initialize();
+  }, timeout: serviceTimeout);
+  await _yieldBetweenDeferredServices();
+
+  // Clear ghost Instant Publish / stuck uploading before upload resume.
+  await _initializeServiceSafely('StuckPublishCleanup', () async {
+    await StuckPublishCleanupService.instance.discardAllStuckPublishes(
+      tombstoneServerStuck: true,
+    );
   }, timeout: serviceTimeout);
   await _yieldBetweenDeferredServices();
 
@@ -646,12 +679,18 @@ class MyApp extends ConsumerWidget {
                   },
                 ),
               );
-              if (userId.isEmpty) {
+              final String firebaseUid = Firebase.apps.isNotEmpty
+                  ? (firebase_auth.FirebaseAuth.instance.currentUser?.uid ??
+                      '')
+                  : '';
+              final String gatedUserId =
+                  userId.isNotEmpty ? userId : firebaseUid;
+              if (gatedUserId.isEmpty) {
                 return navigatorChild;
               }
               return GamificationCelebrationOverlay(
                 child: OnboardingGate(
-                  userId: userId,
+                  userId: gatedUserId,
                   email: Firebase.apps.isNotEmpty
                       ? firebase_auth.FirebaseAuth.instance.currentUser?.email
                       : null,

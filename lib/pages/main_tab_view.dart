@@ -5,9 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../components/onboarding/contextual_tip_overlay.dart';
 import '../components/onboarding/contextual_tips_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fa;
-import '../services/first_steps_achievement_service.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/inbox_view_optimized.dart';
 import '../widgets/profile_view_optimized.dart';
@@ -58,7 +55,6 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   Timer? _dataSyncRetryTimer;
   bool _dataSyncStarted = false;
   bool _dataSyncCompleted = false;
-  bool _firstStepsToastChecked = false;
   final GlobalKey _homeViewKey = GlobalKey();
 
   @override
@@ -66,7 +62,6 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentIndex = widget.initialTabIndex;
-    ref.read(mainTabActiveIndexProvider.notifier).setIndex(_currentIndex);
     _networkViewModel = NetworkViewModelAdvanced();
     _authService = ref.read(robustAuthServiceProvider);
     ref.listenManual<int?>(
@@ -78,8 +73,8 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     _startDataSync();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      ref.read(mainTabActiveIndexProvider.notifier).setIndex(_currentIndex);
       _syncPlaybackForCurrentTab();
-      unawaited(_maybeShowFirstStepsAchievementToast());
       if (!QaRuntime.isMobileFeedE2e) {
         Future<void>.delayed(const Duration(milliseconds: 900), () {
           if (!mounted || _currentIndex != 0) return;
@@ -104,14 +99,25 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed || !mounted) {
+    if (state != AppLifecycleState.resumed) {
       return;
     }
-    invalidateSubscriptionEntitlements(ref);
-    _cameraNavTimer?.cancel();
-    if (_currentIndex != 0) {
-      _syncPlaybackForCurrentTab();
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      try {
+        invalidateSubscriptionEntitlements(ref);
+      } catch (error) {
+        debugPrint(
+          'MainTabView: skipped resume entitlements after lifecycle: $error',
+        );
+      }
+      _cameraNavTimer?.cancel();
+      if (_currentIndex != 0) {
+        _syncPlaybackForCurrentTab();
+      }
+    });
   }
 
   void _startDataSync() {
@@ -316,21 +322,13 @@ class _MainTabViewState extends ConsumerState<MainTabView>
   }
 
   void _onUploadTapped() {
-    // Pause HomeView videos before navigating to CameraView
     secureLog('🚨 CAMERA NAVIGATION: Tap detected!');
     _pauseAllHomeViewVideos();
-
-    secureLog('🚨 CAMERA NAVIGATION: About to call Navigator.push');
-    // AUDIO FIX: Add delay to ensure disposal completes before navigation
-    _cameraNavTimer = Timer(const Duration(milliseconds: 200), () {
+    _cameraNavTimer?.cancel();
+    Navigator.of(context).pushNamed(AppRoutes.camera).then((_) {
       if (!mounted) return;
-      // Navigate directly to StreamersTip camera view
-      Navigator.of(context).pushNamed(AppRoutes.camera).then((_) {
-        if (!mounted) return;
-        _syncPlaybackForCurrentTab();
-      });
+      _syncPlaybackForCurrentTab();
     });
-    secureLog('🚨 CAMERA NAVIGATION: Navigator.push completed');
   }
 
   void _refreshHomeView() {
@@ -460,45 +458,5 @@ class _MainTabViewState extends ConsumerState<MainTabView>
       user: user,
       isCurrentUser: true,
     );
-  }
-
-  Future<void> _maybeShowFirstStepsAchievementToast() async {
-    if (_firstStepsToastChecked || !mounted) {
-      return;
-    }
-    _firstStepsToastChecked = true;
-    final fa.User? user = fa.FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return;
-    }
-    try {
-      final DocumentSnapshot<Map<String, dynamic>> snap =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get();
-      final Map<String, dynamic>? data = snap.data();
-      final Map<String, dynamic>? onboarding =
-          (data?['onboarding'] as Map?)?.cast<String, dynamic>();
-      final bool levelOneDone = onboarding?['hasCompletedLevelOne'] == true;
-      final List<String> completedMissions =
-          (onboarding?['completedMissions'] as List?)
-                  ?.map((Object? e) => e.toString())
-                  .toList() ??
-              <String>[];
-      final bool hasFirstPostMission =
-          completedMissions.contains('upload_first_post');
-      final bool eligible = levelOneDone || hasFirstPostMission;
-      if (!mounted) {
-        return;
-      }
-      await FirstStepsAchievementService.instance.maybeShowToast(
-        context: context,
-        uid: user.uid,
-        isEligible: eligible,
-      );
-    } catch (e) {
-      secureLog('First Steps achievement toast skipped: $e');
-    }
   }
 }

@@ -26,6 +26,8 @@ enum OverallPublishState {
 
 class PublishNowRequest {
   final String? videoId;
+  /// Stable client idempotency key (Share / retry / reconnect).
+  final String? publishRequestId;
   final File videoFile;
   final String caption;
   final List<String> hashtags;
@@ -34,9 +36,15 @@ class PublishNowRequest {
   final List<CrossPostRequest> crossPostRequests;
   final Map<String, dynamic>? additionalMetadata;
   final void Function(double progress)? onProgress;
+  /// Fires after Worker create + Firestore `videos/{id}` owner proof.
+  final void Function(CanonicalPublishAck proof)? onCanonicalCreated;
+  /// When set, byte upload skips Worker create (Share already awaited it).
+  final CanonicalPublishAck? preCreatedAck;
+  final bool skipModeration;
 
   const PublishNowRequest({
     this.videoId,
+    this.publishRequestId,
     required this.videoFile,
     required this.caption,
     required this.hashtags,
@@ -45,6 +53,9 @@ class PublishNowRequest {
     required this.crossPostRequests,
     this.additionalMetadata,
     this.onProgress,
+    this.onCanonicalCreated,
+    this.preCreatedAck,
+    this.skipModeration = false,
   });
 }
 
@@ -113,6 +124,8 @@ class PublishProvider extends ChangeNotifier {
   final Map<String, String> _errorDetails = {};
   String? _uploadedVideoId;
   String? _scheduledPostId;
+  String? _inflightPublishRequestId;
+  Future<PublishExecutionResult>? _inflightPublishFuture;
 
   StreamersTipState get streamerstipState => _streamerstipState;
   Map<String, CrossPostState> get crossPostResults =>
@@ -160,8 +173,35 @@ class PublishProvider extends ChangeNotifier {
       .toList();
 
   Future<PublishExecutionResult> publishNow(PublishNowRequest request) async {
-    _startPublish(request.crossPostRequests);
+    final String requestId = (request.publishRequestId ?? request.videoId ?? '')
+        .trim();
+    if (requestId.isNotEmpty &&
+        _inflightPublishRequestId == requestId &&
+        _inflightPublishFuture != null) {
+      debugPrint(
+        'PublishProvider: rejoining in-flight publishRequestId=$requestId',
+      );
+      return _inflightPublishFuture!;
+    }
+    final Future<PublishExecutionResult> future = _executePublishNow(request);
+    if (requestId.isNotEmpty) {
+      _inflightPublishRequestId = requestId;
+      _inflightPublishFuture = future;
+    }
+    try {
+      return await future;
+    } finally {
+      if (_inflightPublishRequestId == requestId) {
+        _inflightPublishRequestId = null;
+        _inflightPublishFuture = null;
+      }
+    }
+  }
 
+  Future<PublishExecutionResult> _executePublishNow(
+    PublishNowRequest request,
+  ) async {
+    _startPublish(request.crossPostRequests);
     try {
       final result = await _uploadService.publishWithCrossPost(
         videoFile: request.videoFile,
@@ -173,12 +213,13 @@ class PublishProvider extends ChangeNotifier {
         videoId: request.videoId,
         additionalMetadata: request.additionalMetadata,
         onProgress: request.onProgress,
+        onCanonicalCreated: request.onCanonicalCreated,
+        preCreatedAck: request.preCreatedAck,
+        skipModeration: request.skipModeration,
       );
-
       final uploadedVideoId =
           result.streamerstipResult.metadata?['videoId'] as String?;
       _uploadedVideoId = uploadedVideoId;
-
       if (result.streamerstipSuccess) {
         if (uploadedVideoId != null && uploadedVideoId.isNotEmpty) {
           _streamerstipState = StreamersTipState.processing;
@@ -199,7 +240,6 @@ class PublishProvider extends ChangeNotifier {
             result.streamerstipResult.error ?? 'Failed to publish video';
         _errorDetails['streamerstip'] = rawError;
       }
-
       _applyCrossPostResults(result.crossPostResults);
       if (result.streamerstipSuccess &&
           _uploadedVideoId != null &&
@@ -224,7 +264,6 @@ class PublishProvider extends ChangeNotifier {
         }
       }
       notifyListeners();
-
       return PublishExecutionResult(
         publishResult: result,
         scheduledPostId: _scheduledPostId,
@@ -299,6 +338,8 @@ class PublishProvider extends ChangeNotifier {
     _errorDetails.clear();
     _uploadedVideoId = null;
     _scheduledPostId = null;
+    _inflightPublishRequestId = null;
+    _inflightPublishFuture = null;
     notifyListeners();
   }
 

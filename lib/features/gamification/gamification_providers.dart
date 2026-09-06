@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../components/onboarding/authenticated_app_shell_ready.dart';
 import '../../providers/current_user_provider.dart';
+import './achievements/achievement_definition.dart';
+import './achievements/achievement_repository.dart';
 import 'data/gamification_repository.dart';
 import 'models/user_progress_bundle.dart';
 import 'services/gamification_event_service.dart';
@@ -19,16 +22,31 @@ final Provider<GamificationEventService> gamificationEventServiceProvider =
 
 /// Live progression + missions + tier snapshot for the signed-in user.
 ///
-/// Always listens while authenticated so Home Progression, Tippy, and Academy
-/// match website Mission Control (`users/{uid}/gamification/state`).
-/// Do not gate this behind a mount-only flag — that previously forced Level 1
-/// fallback forever because [ProgressionSubscriptionScope] was never mounted.
+/// Phase 1J.5: listen only after ACTIVATED / app-shell boot. During Tippy
+/// onboarding this stays on fallback so Firestore gamification is not hydrated.
 final StreamProvider<UserProgressBundle> userProgressBundleProvider =
     StreamProvider<UserProgressBundle>((Ref ref) {
+  final bool shellReady = ref.watch(authenticatedAppShellReadyProvider);
   final AsyncValue<String?> authUid = ref.watch(authUserIdStreamProvider);
   final String? uid = authUid.valueOrNull;
-  if (uid == null || uid.isEmpty) {
+  if (!shellReady || uid == null || uid.isEmpty) {
     return Stream<UserProgressBundle>.value(UserProgressBundle.fallback());
   }
   return ref.watch(gamificationRepositoryProvider).watchProgressBundle(uid);
+});
+
+final Provider<AchievementRepository> achievementRepositoryProvider =
+    Provider<AchievementRepository>(
+  (Ref ref) => AchievementRepository(),
+);
+
+final StreamProvider<AchievementSnapshot> achievementSnapshotProvider =
+    StreamProvider<AchievementSnapshot>((Ref ref) {
+  final bool shellReady = ref.watch(authenticatedAppShellReadyProvider);
+  final AsyncValue<String?> authUid = ref.watch(authUserIdStreamProvider);
+  final String? uid = authUid.valueOrNull;
+  if (!shellReady || uid == null || uid.isEmpty) {
+    return Stream<AchievementSnapshot>.value(AchievementSnapshot.empty);
+  }
+  return ref.watch(achievementRepositoryProvider).watch(uid);
 });

@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../core/firebase_app_check_startup.dart';
+
 const String _workerBaseUrl =
     'https://streamerstip-mux-api.streamerstip.workers.dev';
 
@@ -45,10 +47,14 @@ class R2MediaService {
     if (idToken == null || idToken.isEmpty) {
       throw Exception('Failed to get auth token');
     }
-    final headers = {
+    final headers = <String, String>{
       'Authorization': 'Bearer ${idToken.trim()}',
       'X-Upload-Type': type,
     };
+    final String? appCheckToken = await fetchAppCheckHttpToken();
+    if (appCheckToken != null && appCheckToken.isNotEmpty) {
+      headers['X-Firebase-AppCheck'] = appCheckToken;
+    }
 
     final uploadPaths = ['/api/media/upload', '/media/upload'];
     Object? lastError;

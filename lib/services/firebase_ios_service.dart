@@ -124,7 +124,10 @@ class FirebaseIOSService {
     }
   }
 
-  static bool get isInitialized => _isInitialized;
+  /// True when this service completed init, or when Firebase already has an app
+  /// (e.g. via [FirebaseBootstrap] on Android — the usual startup path).
+  static bool get isInitialized =>
+      _isInitialized || Firebase.apps.isNotEmpty;
   static bool get isIOS => _isIOS;
   static bool get isWeb => _isWeb;
 }

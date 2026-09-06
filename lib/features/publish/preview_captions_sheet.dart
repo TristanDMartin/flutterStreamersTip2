@@ -99,9 +99,13 @@ class _PreviewCaptionsSheetState extends State<PreviewCaptionsSheet> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text(
-              'Show captions on preview',
+              'Burn captions into video',
               style:
                   TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Shown on preview and baked on publish',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
             value: _enabled,
             activeThumbColor: PublishFlowTokens.primaryStart,
@@ -114,7 +118,7 @@ class _PreviewCaptionsSheetState extends State<PreviewCaptionsSheet> {
               maxLines: 3,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Type caption text…',
+                hintText: 'Caption text (bottom of frame)…',
                 hintStyle:
                     TextStyle(color: Colors.white.withValues(alpha: 0.4)),
                 filled: true,
@@ -123,6 +127,14 @@ class _PreviewCaptionsSheetState extends State<PreviewCaptionsSheet> {
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(color: PublishFlowTokens.border),
                 ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Separate from Text overlays. Using both can look like double text.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 11,
               ),
             ),
           ],

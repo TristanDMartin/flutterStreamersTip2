@@ -24,6 +24,8 @@ import '../utils/video_caption_resolver.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/home_video_playback.dart';
 import '../utils/profile_grid_video_order.dart';
+import '../features/home/domain/home_feed_pending_upload_merge.dart';
+import '../features/home/domain/owner_video_resolver.dart';
 import '../services/public_profile_firestore.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
@@ -84,6 +86,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   final Set<String> _selectedVideoIds = <String>{};
   bool _isBulkDeleting = false;
   late final VideoService _videoServiceNotifier;
+  bool _ownerPendingSyncScheduled = false;
 
   bool get _isViewingOwnProfile {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
@@ -99,26 +102,26 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         ref.read(providers.videoServiceStateProvider.notifier);
     _resetCachedFutures();
     _primeProfileVideoTab();
+    OptimisticVideoService().addListener(_onOptimisticVideosChanged);
     _optimisticFeedRefreshSubscription =
         OptimisticVideoService().feedRefreshStream.listen((_) {
       if (!mounted) return;
       if (widget.feedType != ProfileVideoFeedType.videos) return;
       if (!_isViewingOwnProfile) return;
 
-      _resetCachedFutures();
-      _mergedProfileVideosForUserId = null;
-      _profileGridMergeScheduled = false;
-      ref.invalidate(userVideosProvider(widget.userId ?? ''));
-      ref
-          .read(providers.videoServiceStateProvider.notifier)
-          .loadAllVideos(source: 'profile_optimistic_refresh');
+      // Instant Publish: sync local card immediately. Do NOT reload the entire
+      // home feed here — that made Profile/Streamer wait on network.
+      _syncOwnerPendingIntoVideoService();
       final String? uid = widget.userId;
-      if (uid != null && uid.isNotEmpty) {
+      if (uid == null || uid.isEmpty) {
+        return;
+      }
+      unawaited(
         ref
             .read(providers.videoServiceStateProvider.notifier)
             .mergeProfileVideosForUser(
               uid,
-              forceServer: true,
+              forceServer: false,
               viewName: widget.viewName,
             )
             .then((bool changed) async {
@@ -129,8 +132,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             uid,
             mergeChangedState: changed,
           );
-        });
-      }
+        }),
+      );
     });
     if (widget.feedType == ProfileVideoFeedType.videos) {
       final String? uid = widget.userId;
@@ -172,6 +175,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   @override
   void dispose() {
+    OptimisticVideoService().removeListener(_onOptimisticVideosChanged);
     _optimisticFeedRefreshSubscription?.cancel();
     unawaited(_videoServiceNotifier.stopOwnerVideosListener());
     // Cancel all video deletion listeners
@@ -180,6 +184,44 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     }
     _videoListeners.clear();
     super.dispose();
+  }
+
+  void _onOptimisticVideosChanged() {
+    if (!mounted) {
+      return;
+    }
+    if (widget.feedType != ProfileVideoFeedType.videos) {
+      return;
+    }
+    if (!_isViewingOwnProfile) {
+      return;
+    }
+    _syncOwnerPendingIntoVideoService();
+  }
+
+  void _syncOwnerPendingIntoVideoService() {
+    if (!mounted) {
+      return;
+    }
+    if (!_isViewingOwnProfile) {
+      return;
+    }
+    final String? uid = widget.userId;
+    if (uid == null || uid.isEmpty) {
+      return;
+    }
+    final firebase_auth.User? authUser =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    final VideoService videoService =
+        ref.read(providers.videoServiceStateProvider.notifier);
+    upsertOwnerPendingOptimisticVideos(
+      ownerId: uid,
+      optimisticVideoService: OptimisticVideoService(),
+      existingVideos: videoService.getAllVideos(),
+      currentUserDisplayName: authUser?.displayName,
+      currentUserPhotoUrl: authUser?.photoURL,
+      upsert: videoService.addVideo,
+    );
   }
 
   @override
@@ -213,11 +255,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     if (widget.feedType != ProfileVideoFeedType.videos) return;
     if (_isViewingOwnProfile) {
       _getDraftsFuture();
+      _syncOwnerPendingIntoVideoService();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _ensureVideoServiceLoaded();
       _mergeProfileVideosForGridIfNeeded();
+      if (_isViewingOwnProfile) {
+        _syncOwnerPendingIntoVideoService();
+      }
     });
   }
 
@@ -246,7 +292,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         _profileGridHydrationComplete = true;
         return;
       }
-      if (_profileGridMergeAttempts >= 3) {
+      if (_profileGridMergeAttempts >= 5) {
         return;
       }
     } else {
@@ -260,32 +306,76 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         _profileGridMergeScheduled = false;
         return;
       }
-      ref
-          .read(providers.videoServiceLoadingProvider.notifier)
-          .setIsLoading(true);
+      final bool alreadyHasCanonicalGrid =
+          ref.read(userVideosProvider(uid)).isNotEmpty;
+      final bool alreadyHasOptimistic =
+          OptimisticVideoService().getOptimisticVideosForUser(uid).isNotEmpty;
+      final bool alreadyHasGridContent =
+          alreadyHasCanonicalGrid || alreadyHasOptimistic;
+      if (!alreadyHasGridContent) {
+        ref
+            .read(providers.videoServiceLoadingProvider.notifier)
+            .setIsLoading(true);
+      }
       try {
+        // Even when Instant Publish restore fills the grid, force a server
+        // merge once so VideoService gets owner uploading/ready docs. Cache
+        // reads were leaving APP_PROFILE_VIDEO_IDS=[] forever.
         final bool changed = await ref
             .read(providers.videoServiceStateProvider.notifier)
             .mergeProfileVideosForUser(
               uid,
-              forceServer: true,
+              forceServer: !alreadyHasCanonicalGrid,
               viewName: widget.viewName,
             );
         if (mounted && _isViewingOwnProfile) {
+          _syncOwnerPendingIntoVideoService();
           await ProfilePostCountReconcile.afterProfileVideoMerge(
             uid,
             mergeChangedState: changed,
           );
         }
-        if (mounted) {
-          setState(() {
-            _profileGridHydrationComplete = true;
+        if (!mounted) {
+          return;
+        }
+        final int loadedCount = ref.read(userVideosProvider(uid)).length;
+        // Retry only when BOTH canonical and optimistic are empty.
+        final bool shouldRetryEmptyOwnGrid = _isViewingOwnProfile &&
+            loadedCount == 0 &&
+            !alreadyHasOptimistic &&
+            _profileGridMergeAttempts < 5;
+        setState(() {
+          _profileGridHydrationComplete = !shouldRetryEmptyOwnGrid;
+        });
+        if (shouldRetryEmptyOwnGrid) {
+          Future<void>.delayed(const Duration(milliseconds: 900), () {
+            if (!mounted) {
+              return;
+            }
+            _profileGridMergeScheduled = false;
+            _mergeProfileVideosForGridIfNeeded();
           });
+          return;
         }
       } catch (e, stackTrace) {
         if (kDebugMode) {
           debugPrint('❌ ProfileView: mergeProfileVideosForUser failed: $e');
           debugPrint('$stackTrace');
+        }
+        if (mounted && _isViewingOwnProfile && _profileGridMergeAttempts < 5) {
+          Future<void>.delayed(const Duration(milliseconds: 900), () {
+            if (!mounted) {
+              return;
+            }
+            _profileGridMergeScheduled = false;
+            _mergeProfileVideosForGridIfNeeded();
+          });
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _profileGridHydrationComplete = true;
+          });
         }
       } finally {
         _profileGridMergeScheduled = false;
@@ -400,17 +490,23 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           .snapshots()
           .listen((snapshot) {
         if (!mounted) return;
-
-        // If video document doesn't exist or status is 'deleted', invalidate provider
-        if (!snapshot.exists) {
-          _handleVideoDeletion(video.id);
+        final Map<String, dynamic>? data = snapshot.data();
+        final bool hasDurablePending =
+            OptimisticVideoService().isOptimisticVideo(video.id) ||
+                isOwnerProtectedPendingVideo(video);
+        final bool shouldRemove = shouldRemoveOwnerVideoFromSnapshot(
+          docExists: snapshot.exists,
+          data: data,
+          isOwnerViewing: _isViewingOwnProfile,
+          hasDurablePending: hasDurablePending,
+        );
+        if (!shouldRemove) {
           return;
         }
-
-        final data = snapshot.data();
-        if (data == null || !isVideoVisibleInFeed(data)) {
-          _handleVideoDeletion(video.id);
-        }
+        _handleVideoDeletion(
+          video.id,
+          reason: snapshot.exists ? 'tombstone' : 'missing_doc',
+        );
       });
 
       _videoListeners[video.id] = subscription;
@@ -420,11 +516,18 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   /// Sync profile grid when Firestore marks a video deleted.
   /// Do not invalidate [videoServiceStateProvider]: that disposes [VideoService]
   /// while [VideoDeletionService] may still be refreshing after bulk delete.
-  void _handleVideoDeletion(String videoId) {
+  void _handleVideoDeletion(
+    String videoId, {
+    String reason = 'tombstone',
+  }) {
     if (!mounted) return;
     _videoListeners[videoId]?.cancel();
     _videoListeners.remove(videoId);
-    ref.read(providers.videoServiceStateProvider.notifier).removeVideo(videoId);
+    ref.read(providers.videoServiceStateProvider.notifier).removeVideo(
+          videoId,
+          source: 'profile_deletion_listener',
+          reason: reason,
+        );
   }
 
   /// Check if favorites should be visible based on privacy settings
@@ -503,9 +606,20 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildUserVideosGrid() {
-    return Consumer(
-      builder: (context, ref, child) {
-        try {
+    return ListenableBuilder(
+      listenable: OptimisticVideoService(),
+      builder: (BuildContext context, Widget? _) {
+        return Consumer(
+          builder: (context, ref, child) {
+            return _buildUserVideosGridBody(ref);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildUserVideosGridBody(WidgetRef ref) {
+    try {
           final videoServiceState =
               ref.watch(providers.videoServiceStateProvider);
           final videoServiceNotifier =
@@ -521,8 +635,31 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                   videoServiceNotifier.isMergingProfileVideos;
           _ensureVideoServiceLoaded();
 
-          // Watch user videos from centralized VideoService
-          final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
+          // Watch canonical owner slice, then merge durable Instant Publish
+          // through ONE owner resolver — never fight public-feed readiness.
+          final List<HomeVideo> watchedUserVideos =
+              ref.watch(userVideosProvider(widget.userId ?? ''));
+          final firebase_auth.User? authUser = currentUser;
+          final List<HomeVideo> userVideos = mergeOwnerProfileVideos(
+            profileUserId: widget.userId ?? '',
+            viewerId: authUser?.uid ?? '',
+            canonicalVideos: watchedUserVideos,
+            optimisticVideoService: OptimisticVideoService(),
+            currentUserDisplayName: authUser?.displayName,
+            currentUserPhotoUrl: authUser?.photoURL,
+          );
+          if (_isViewingOwnProfile &&
+              userVideos.isEmpty &&
+              !_ownerPendingSyncScheduled) {
+            _ownerPendingSyncScheduled = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _ownerPendingSyncScheduled = false;
+              if (!mounted) {
+                return;
+              }
+              _syncOwnerPendingIntoVideoService();
+            });
+          }
           if (kDebugMode) {
             debugPrint(
               'APP_PROFILE_VIDEO_IDS view=${widget.viewName} '
@@ -530,27 +667,30 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
               '${userVideos.map((v) => v.id).toList()}',
             );
           }
-          final List<OptimisticVideo> optimisticVideos = _isViewingOwnProfile
-              ? (OptimisticVideoService()
-                  .getOptimisticVideosForUser(widget.userId ?? '')
-                  .where((video) =>
-                      video.status.isProcessing || video.status.hasFailed)
-                  .where((video) =>
-                      !userVideos.any((item) => item.id == video.videoId))
-                  .toList()
-                ..sort((a, b) => b.createdAt.compareTo(a.createdAt)))
-              : <OptimisticVideo>[];
+          // Pending is already merged into [userVideos]; keep empty so the
+          // grid does not double-insert / thrash with VideoService.
+          final List<OptimisticVideo> optimisticVideos = <OptimisticVideo>[];
+          if (kDebugMode && _isViewingOwnProfile) {
+            debugPrint(
+              'PROFILE_PENDING_INSERTED count=0 '
+              'ids=[] reason=merged_into_owner_resolver',
+            );
+          }
 
           final bool isServiceBootstrapping = videoServiceState.isEmpty &&
               (isLoadingVideos ||
                   _bootstrapLoadScheduled ||
                   videoServiceNotifier.isHydratingFeed);
+          final bool hasDurableOwnerPending = _isViewingOwnProfile &&
+              OptimisticVideoService()
+                  .getOptimisticVideosForUser(widget.userId ?? '')
+                  .isNotEmpty;
           final bool isProfileVideoHydrating =
               widget.feedType == ProfileVideoFeedType.videos &&
                   widget.userId != null &&
                   widget.userId!.isNotEmpty &&
                   userVideos.isEmpty &&
-                  optimisticVideos.isEmpty &&
+                  !hasDurableOwnerPending &&
                   (videoServiceState.isEmpty ||
                       !_profileGridHydrationComplete ||
                       isLoadingVideos ||
@@ -574,7 +714,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           }
           final bool shouldShowLoadingPlaceholder = videoServiceState.isEmpty &&
               userVideos.isEmpty &&
-              optimisticVideos.isEmpty &&
+              !hasDurableOwnerPending &&
               (isLoadingVideos ||
                   _bootstrapLoadScheduled ||
                   videoServiceNotifier.isHydratingFeed ||
@@ -598,14 +738,14 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
                 if (userVideos.isEmpty &&
                     drafts.isEmpty &&
-                    optimisticVideos.isEmpty &&
+                    !hasDurableOwnerPending &&
                     isServiceBootstrapping) {
                   return _buildLoadingGridPlaceholder();
                 }
 
                 if (userVideos.isEmpty &&
                     drafts.isEmpty &&
-                    optimisticVideos.isEmpty) {
+                    !hasDurableOwnerPending) {
                   return _buildEmptyState(
                     icon: Icons.videocam_outlined,
                     title: 'No Videos Yet',
@@ -646,8 +786,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             subtitle: 'Please try again later',
           );
         }
-      },
-    );
   }
 
   Widget _buildFavoritesGrid() {
@@ -1017,10 +1155,24 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     }
 
     final bool failed = video.status.hasFailed;
+    final bool hasLocalPlayback =
+        video.localVideoPath != null &&
+        video.localVideoPath!.trim().isNotEmpty &&
+        File(video.localVideoPath!).existsSync();
     final progress = ((video.uploadProgress ?? 0.0) * 100).clamp(0, 100);
 
     return GestureDetector(
-      onTap: failed ? () => _retryOptimisticUpload(video) : null,
+      onTap: failed
+          ? () => _retryOptimisticUpload(video)
+          : hasLocalPlayback
+              ? () {
+                  final HomeVideo localCard = homeVideoFromOptimisticVideo(
+                    optimistic: video,
+                  );
+                  widget.onVideoTap?.call();
+                  _openVideoPlayer(localCard, 0, <HomeVideo>[localCard]);
+                }
+              : null,
       child: AspectRatio(
         aspectRatio: _resolveAspectRatioFromOptimisticVideo(video),
         child: Opacity(
@@ -1064,7 +1216,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        failed ? 'Failed' : 'Processing',
+                        failed
+                            ? 'Failed'
+                            : hasLocalPlayback
+                                ? 'Posting'
+                                : 'Processing',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 10,
@@ -1084,7 +1240,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                       child: Icon(
                         failed
                             ? Icons.error_outline_rounded
-                            : Icons.hourglass_top_rounded,
+                            : hasLocalPlayback
+                                ? Icons.play_arrow_rounded
+                                : Icons.hourglass_top_rounded,
                         color: Colors.white,
                         size: 22,
                       ),
@@ -1138,7 +1296,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                                   ? 'Tap to retry'
                                   : 'Retry from your original video')
                               : progress <= 0
-                                  ? 'Processing your video...'
+                                  ? 'Posting…'
                                   : 'Transcoding ${progress.toStringAsFixed(0)}%',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.86),
@@ -1469,6 +1627,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         _isViewingOwnProfile &&
         widget.feedType == ProfileVideoFeedType.videos;
     final bool isProcessing = isHomeVideoProcessing(video);
+    final bool isOwnerPendingLocal = isHomeVideoOwnerPendingLocal(video);
     return GestureDetector(
       onLongPress:
           _isViewingOwnProfile && widget.feedType == ProfileVideoFeedType.videos
@@ -1494,10 +1653,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                 _openVideoPlayer(video, index, allVideos);
               },
               showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
-              showDurationBadge: !isProcessing,
+              showDurationBadge: !isProcessing && !isOwnerPendingLocal,
             ),
           ),
-          if (isProcessing)
+          if (isProcessing && !isOwnerPendingLocal)
             Positioned.fill(
               child: IgnorePointer(
                 child: DecoratedBox(
@@ -1512,6 +1671,32 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (isOwnerPendingLocal)
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 8,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      'Posting…',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

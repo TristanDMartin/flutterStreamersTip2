@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/backend/site_api_base.dart';
 import '../shared/retention/retention_event_constants.dart';
+import 'product_event_tracking_service.dart';
 
 /// Posts shared retention events to the website `/api/track` endpoint.
 /// Best-effort only — failures are logged and never block UI flows.
@@ -73,6 +74,9 @@ class RetentionTrackingService {
     String? planId,
     Map<String, dynamic>? metadata,
   }) {
+    unawaited(
+      ProductEventTrackingService.instance.growthPlanCreated(planId: planId),
+    );
     return trackEvent(
       uid: uid,
       type: RetentionEventTypes.createdContentPlan,

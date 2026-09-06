@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../services/robust_auth_service.dart';
+import '../components/onboarding/account_enforcement.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../utils/password_validation.dart';
 import '../qa/qa_keys.dart';
@@ -20,13 +21,17 @@ class SignupView extends ConsumerStatefulWidget {
   /// When set, skips default post-auth navigation so Tippy onboarding can continue.
   final VoidCallback? onAuthenticatedStay;
 
-  /// Tippy guided profile chooses @username later — collect email/password only.
+  /// Fired as soon as createUser succeeds so Tippy can close signup UI.
+  final VoidCallback? onAccountCreated;
+
+  /// Hide the username field. Tippy collects it and reserves via pending API.
   final bool deferUsernameSelection;
 
   const SignupView({
     super.key,
     this.dismiss,
     this.onAuthenticatedStay,
+    this.onAccountCreated,
     this.deferUsernameSelection = false,
   });
 
@@ -54,11 +59,12 @@ class _SignupViewState extends ConsumerState<SignupView> {
         if (!next.isLoggedIn || !mounted) {
           return;
         }
+        if (widget.onAuthenticatedStay != null) {
+          return;
+        }
         final firebase_auth.User? user =
             firebase_auth.FirebaseAuth.instance.currentUser;
-        if (user != null &&
-            !user.emailVerified &&
-            widget.onAuthenticatedStay == null) {
+        if (user != null && !user.emailVerified) {
           return;
         }
         debugPrint('✅ User authenticated, resolving post-auth destination');
@@ -360,7 +366,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
     final String password = _passwordController.text;
     final String confirmPassword = _confirmPasswordController.text;
     final String username = widget.deferUsernameSelection
-        ? _provisionalUsernameFromEmail(email)
+        ? ''
         : _usernameController.text.trim();
     if (email.isEmpty ||
         password.isEmpty ||
@@ -418,7 +424,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
       final result = await authService.debouncedSignUpWithEmail(
         email: email,
         password: password,
-        displayName: username,
+        displayName: username.isNotEmpty ? username : 'Creator',
         username: username,
       );
       if (!result.success && mounted) {
@@ -427,6 +433,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
           _showAlert = true;
         });
       } else if (result.success && mounted) {
+        widget.onAccountCreated?.call();
         if (widget.onAuthenticatedStay != null) {
           widget.onAuthenticatedStay!();
           return;
@@ -442,23 +449,6 @@ class _SignupViewState extends ConsumerState<SignupView> {
         });
       }
     }
-  }
-
-  String _provisionalUsernameFromEmail(String email) {
-    final String local = email.split('@').first.toLowerCase().replaceAll(
-          RegExp(r'[^a-z0-9_]'),
-          '',
-        );
-    final String base = local.length >= 3
-        ? local.substring(0, local.length > 16 ? 16 : local.length)
-        : 'creator';
-    final String suffix =
-        DateTime.now().millisecondsSinceEpoch.toRadixString(36);
-    final String candidate = '${base}_$suffix';
-    if (candidate.length <= 30) {
-      return candidate;
-    }
-    return candidate.substring(0, 30);
   }
 
   Widget _buildSignInSection() {
@@ -496,6 +486,19 @@ class _SignupViewState extends ConsumerState<SignupView> {
   }
 
   String _getUserFriendlyErrorMessage(String error) {
+    for (final String copy in kSignupRestrictionCopy.values) {
+      if (error.contains(copy)) {
+        return copy;
+      }
+    }
+    if (error.contains('DISPOSABLE_EMAIL') ||
+        error.contains('temporary email')) {
+      return signupRestrictionMessage('disposable_email');
+    }
+    if (error.contains('SIGNUP_BLOCKED') ||
+        error.contains('SIGNUP_CHALLENGE_REQUIRED')) {
+      return messageFromSignupRestriction(code: 'SIGNUP_BLOCKED').message;
+    }
     if (error.contains('email-already-in-use') ||
         error.contains('already registered') ||
         error.contains('already in use')) {

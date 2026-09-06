@@ -46,6 +46,7 @@ import 'widgets/tippy_chat_chrome.dart';
 import 'widgets/tippy_context_strip.dart';
 import 'widgets/tippy_goal_sheet.dart';
 import 'widgets/tippy_memory_empty_state.dart';
+import 'widgets/creator_read_card.dart';
 
 class TippyChatPage extends ConsumerStatefulWidget {
   const TippyChatPage({
@@ -1436,16 +1437,23 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
                             },
                             onCaption: _runGenerateCaption,
                             onGeneratePlan: _runCreatePlan,
-                            footer: !_memoryReady
-                                ? TippyMemoryEmptyState(
+                            footer: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                const CreatorReadCard(),
+                                if (!_memoryReady)
+                                  TippyMemoryEmptyState(
                                     onUploadTap: () {
                                       Navigator.of(context)
                                           .pushNamed(AppRoutes.camera);
                                     },
                                   )
-                                : TippyContextStrip(
+                                else
+                                  TippyContextStrip(
                                     data: _uiPayload.contextStrip,
                                   ),
+                              ],
+                            ),
                           ),
                         ],
                       ),

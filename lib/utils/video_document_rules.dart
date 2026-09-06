@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/home_video.dart';
+import 'video_ready_contract.dart';
 import 'video_url_resolver.dart';
 
 /// Feed-visible statuses (legacy `active`; target is `ready`).
@@ -12,12 +13,16 @@ const Set<String> kVideoVisibleInFeedStatuses = {
 };
 
 /// Owner profile grid/status visibility.
+/// Includes `uploading` (Worker direct-upload create) so Instant Publish
+/// rows appear on Profile/Streamer before Mux marks processing/ready.
 const Set<String> kOwnerProfileVideoStatuses = {
+  'uploading',
   'processing',
   'ready',
   'published',
   'active',
   'failed',
+  'upload_failed',
 };
 
 /// Public profile/card video visibility for non-owner viewers.
@@ -53,6 +58,9 @@ bool canShowVideo({
   final bool isOwner = viewerId.isNotEmpty && viewerId == ownerId;
   if (isOwner) {
     return kOwnerProfileVideoStatuses.contains(status);
+  }
+  if (isVideoOwnerFeedTombstoned(video)) {
+    return false;
   }
 
   final String visibility =
@@ -186,6 +194,78 @@ bool isPublicFeedVisibility(Map<String, dynamic> data) {
       (visibility == null && privacy == null);
 }
 
+/// Only `active` is the canonical public write. Missing is a legacy read.
+const String kRenderableAccountStatus = 'active';
+
+/// Account states that must never render on any public surface.
+const Set<String> kNonRenderableAccountStatuses = {
+  'deactivated',
+  'deleting',
+  'deleted',
+  'banned',
+  'suspended',
+  'disabled',
+};
+
+/// New writes use `active`. Legacy publicUsers docs often omit the field.
+/// Missing/empty = active. Explicit tombstones and unknown non-empty values hide.
+bool isRenderableAccountStatus(Object? raw) {
+  if (raw == null) {
+    return true;
+  }
+  if (raw is! String) {
+    return false;
+  }
+  final String normalized = raw.trim().toLowerCase();
+  if (normalized.isEmpty) {
+    return true;
+  }
+  if (kNonRenderableAccountStatuses.contains(normalized)) {
+    return false;
+  }
+  return normalized == kRenderableAccountStatus;
+}
+
+bool isOwnerAccountRenderable(Map<String, dynamic>? data) {
+  if (data == null) {
+    return false;
+  }
+  if (data['isDeleted'] == true || data['deleted'] == true) {
+    return false;
+  }
+  final String status = (data['status'] as String? ?? '').toLowerCase();
+  if (status == 'deleted' || status == 'removed') {
+    return false;
+  }
+  return isRenderableAccountStatus(data['accountStatus']);
+}
+
+/// Video-level owner tombstone. Missing flags stay eligible for legacy docs.
+bool isVideoOwnerFeedTombstoned(Map<String, dynamic> data) {
+  return data['feedEligible'] == false || data['ownerActive'] == false;
+}
+
+/// Mirror of web `isFeedCreatorEligible`. Missing owner docs hide the video.
+bool isFeedCreatorEligible({
+  required String? ownerId,
+  Map<String, dynamic>? user,
+  Map<String, dynamic>? publicUser,
+}) {
+  if (ownerId == null || ownerId.isEmpty) {
+    return false;
+  }
+  if (user == null && publicUser == null) {
+    return false;
+  }
+  if (user != null && !isOwnerAccountRenderable(user)) {
+    return false;
+  }
+  if (publicUser != null && !isOwnerAccountRenderable(publicUser)) {
+    return false;
+  }
+  return true;
+}
+
 /// Fast reject before expensive hydration. Returns a machine-readable reason.
 String? rejectFeedCandidateBeforeHydration(
   Map<String, dynamic> data, {
@@ -197,6 +277,9 @@ String? rejectFeedCandidateBeforeHydration(
   if (data['deletedAt'] != null) {
     return 'deletedAt';
   }
+  if (isVideoOwnerFeedTombstoned(data)) {
+    return 'owner_tombstone';
+  }
   final String status = (data['status'] as String? ?? '').toLowerCase();
   if (status == 'deleted' || status == 'removed') {
     return 'status:$status';
@@ -207,8 +290,9 @@ String? rejectFeedCandidateBeforeHydration(
   if (data['visible'] == false) {
     return 'visible:false';
   }
-  if (data['isReadyForFeed'] != true) {
-    return 'isReadyForFeed:not_true';
+  // Explicit false excludes. Missing allowed for legacy playable docs.
+  if (data['isReadyForFeed'] == false) {
+    return 'isReadyForFeed:false';
   }
   if (!isPublicFeedVisibility(data)) {
     return 'visibility';
@@ -226,13 +310,19 @@ bool isVideoVisibleInFeed(Map<String, dynamic>? data) {
   if (data == null) {
     return false;
   }
-  if (data['isDeleted'] == true) {
+  if (data['isDeleted'] == true || data['deleted'] == true) {
     return false;
   }
   if (data['status'] == 'deleted') {
     return false;
   }
   if (data['deletedAt'] != null) {
+    return false;
+  }
+  if (isVideoOwnerFeedTombstoned(data)) {
+    return false;
+  }
+  if (getOwnerId(data) == null) {
     return false;
   }
   final String status = (data['status'] as String? ?? '').toLowerCase();
@@ -243,7 +333,9 @@ bool isHomeVideoVisibleInFeed(HomeVideo video) {
   return isVideoVisibleInFeed(<String, dynamic>{
     'status': video.status,
     'isDeleted': video.isDeleted,
+    'deleted': video.isDeleted,
     'deletedAt': video.deletedAt,
+    'ownerId': video.creator.id,
   });
 }
 
@@ -262,12 +354,40 @@ bool isVideoDeletedFromFirestore(Map<String, dynamic> data) {
   return false;
 }
 
-/// Home/discover public feed: visible status + not deleted + feed-ready flags.
+/// Ids in a public-feed snapshot that must leave painted Home (website delete,
+/// soft-delete, or feed-ineligible). Docs often keep `visibility=public` after
+/// tombstone, so they still appear in the For You listener query.
+Set<String> collectInvisiblePublicFeedDocIds(
+  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+) {
+  final Set<String> removed = <String>{};
+  for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in docs) {
+    final Map<String, dynamic> data = doc.data();
+    if (isVideoDeletedFromFirestore(data) ||
+        !isVideoVisibleInFeed(data) ||
+        !isVideoEligibleForPublicFeed(data)) {
+      removed.add(doc.id);
+    }
+  }
+  return removed;
+}
+
+/// Home/discover public feed: ready status + not deleted + feed-ready flags +
+/// playable remote media. Incomplete / failed uploads must never pass.
 bool isVideoEligibleForPublicFeed(Map<String, dynamic> data) {
   if (!isVideoVisibleInFeed(data)) {
     return false;
   }
-  if (data['visible'] == false || data['isReadyForFeed'] != true) {
+  if (isVideoOwnerFeedTombstoned(data)) {
+    return false;
+  }
+  if (data['visible'] == false || data['isReadyForFeed'] == false) {
+    return false;
+  }
+  if (videoStatusIsFailed(data)) {
+    return false;
+  }
+  if (!videoHasPlayableSource(data)) {
     return false;
   }
   return true;
@@ -275,10 +395,20 @@ bool isVideoEligibleForPublicFeed(Map<String, dynamic> data) {
 
 /// Canonical reject reason for Home + Discover lists (owner + visibility + status).
 String? rejectDiscoverVideoCandidate(Map<String, dynamic> data) {
-  return rejectFeedCandidateBeforeHydration(
+  final String? base = rejectFeedCandidateBeforeHydration(
     data,
     readOwnerId: getOwnerId,
   );
+  if (base != null) {
+    return base;
+  }
+  if (videoStatusIsFailed(data)) {
+    return 'upload_failed';
+  }
+  if (!videoHasPlayableSource(data)) {
+    return 'no_playable_url';
+  }
+  return null;
 }
 
 /// Discover/Home shared eligibility: public feed rules + playable URL.
@@ -299,6 +429,7 @@ bool isDiscoverEligibleFromFirestore(
     }
     return false;
   }
+  // Prefer resolveReadyPlaybackUrl so local/placeholder URLs never qualify.
   if (!hasReadyPlaybackSource(data)) {
     if (logSkip && kDebugMode) {
       logDiscoverVideoSkip(

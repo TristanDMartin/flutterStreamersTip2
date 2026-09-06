@@ -70,7 +70,19 @@ void main() {
       );
     });
 
-    test('requires isReadyForFeed to be explicitly true', () {
+    test('excludes explicit isReadyForFeed false; allows missing legacy', () {
+      expect(
+        rejectFeedCandidateBeforeHydration(
+          {
+            'status': 'ready',
+            'isReadyForFeed': false,
+            'visibility': 'public',
+            'ownerId': 'abc123owner0000000000000001',
+          },
+          readOwnerId: getOwnerId,
+        ),
+        'isReadyForFeed:false',
+      );
       expect(
         rejectFeedCandidateBeforeHydration(
           {
@@ -80,7 +92,124 @@ void main() {
           },
           readOwnerId: getOwnerId,
         ),
-        'isReadyForFeed:not_true',
+        isNull,
+      );
+    });
+
+    test('rejects owner tombstone flags even when status is ready', () {
+      expect(
+        rejectFeedCandidateBeforeHydration(
+          {
+            'status': 'ready',
+            'isReadyForFeed': true,
+            'visibility': 'public',
+            'ownerId': 'abc123owner0000000000000001',
+            'ownerActive': false,
+          },
+          readOwnerId: getOwnerId,
+        ),
+        'owner_tombstone',
+      );
+      expect(
+        isVideoEligibleForPublicFeed({
+          'status': 'ready',
+          'isReadyForFeed': true,
+          'ownerId': 'abc123owner0000000000000001',
+          'hlsUrl': 'https://stream.mux.com/x.m3u8',
+          'feedEligible': false,
+        }),
+        isFalse,
+      );
+    });
+
+    test('hides videos when the owner account is missing or deleted', () {
+      expect(
+        isFeedCreatorEligible(
+          ownerId: 'deleted-user-123',
+        ),
+        isFalse,
+      );
+      expect(
+        isFeedCreatorEligible(
+          ownerId: 'deleted-user-123',
+          publicUser: <String, dynamic>{
+            'accountStatus': 'deleted',
+          },
+        ),
+        isFalse,
+      );
+      expect(
+        isFeedCreatorEligible(
+          ownerId: 'active-user-123',
+          publicUser: <String, dynamic>{
+            'accountStatus': 'active',
+          },
+        ),
+        isTrue,
+      );
+      expect(
+        isFeedCreatorEligible(
+          ownerId: 'legacy-user-123',
+          publicUser: <String, dynamic>{
+            'username': 'legacycreator',
+          },
+        ),
+        isTrue,
+      );
+      expect(
+        isOwnerAccountRenderable(<String, dynamic>{'username': 'creator'}),
+        isTrue,
+      );
+      expect(
+        isOwnerAccountRenderable(<String, dynamic>{
+          'accountStatus': 'banned',
+        }),
+        isFalse,
+      );
+      expect(
+        isOwnerAccountRenderable(<String, dynamic>{
+          'accountStatus': 'deactivated',
+        }),
+        isFalse,
+      );
+    });
+
+    test('public feed eligibility rejects failed and non-playable docs', () {
+      expect(
+        isVideoEligibleForPublicFeed({
+          'status': 'ready',
+          'isReadyForFeed': true,
+          'ownerId': 'abc123owner0000000000000001',
+          'hlsUrl': 'https://stream.mux.com/x.m3u8',
+        }),
+        isTrue,
+      );
+      expect(
+        isVideoEligibleForPublicFeed({
+          'status': 'ready',
+          'isReadyForFeed': true,
+          'ownerId': 'abc123owner0000000000000001',
+          'uploadError': 'mux failed',
+        }),
+        isFalse,
+      );
+      expect(
+        isVideoEligibleForPublicFeed({
+          'status': 'processing',
+          'isReadyForFeed': false,
+          'ownerId': 'abc123owner0000000000000001',
+        }),
+        isFalse,
+      );
+      expect(
+        isDiscoverEligibleFromFirestore({
+          'status': 'ready',
+          'isReadyForFeed': true,
+          'visibility': 'public',
+          'ownerId': 'abc123owner0000000000000001',
+          'transcodingError': 'asset errored',
+        }),
+        isFalse,
       );
     });
   });
@@ -101,6 +230,72 @@ void main() {
           viewerUserId: owner,
         ),
         isNull,
+      );
+    });
+
+    test('allows uploading Worker stubs for owner profile Instant Publish', () {
+      expect(
+        rejectProfileListCandidate(
+          <String, dynamic>{
+            'status': 'uploading',
+            'visibility': 'public',
+            'ownerId': owner,
+          },
+          owner,
+          viewerUserId: owner,
+        ),
+        isNull,
+      );
+      expect(
+        canShowVideo(
+          video: <String, dynamic>{
+            'status': 'uploading',
+            'visibility': 'public',
+            'isDeleted': false,
+          },
+          viewerId: owner,
+          ownerId: owner,
+        ),
+        isTrue,
+      );
+      expect(
+        canShowVideo(
+          video: <String, dynamic>{
+            'status': 'uploading',
+            'visibility': 'public',
+            'isDeleted': false,
+          },
+          viewerId: otherViewer,
+          ownerId: owner,
+        ),
+        isFalse,
+      );
+    });
+
+    test('hides deactivated owner videos from public profile viewers', () {
+      expect(
+        canShowVideo(
+          video: <String, dynamic>{
+            'status': 'ready',
+            'visibility': 'public',
+            'ownerActive': false,
+          },
+          viewerId: otherViewer,
+          ownerId: owner,
+        ),
+        isFalse,
+      );
+      expect(
+        canShowVideo(
+          video: <String, dynamic>{
+            'status': 'ready',
+            'visibility': 'public',
+            'ownerActive': false,
+          },
+          viewerId: owner,
+          ownerId: owner,
+        ),
+        isTrue,
       );
     });
 

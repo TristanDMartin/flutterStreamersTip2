@@ -23,6 +23,13 @@ void main() {
             'monthlyAiCredits': 500,
             'canBulkPublish': true,
           },
+          'levels': <String, dynamic>{
+            'dailyBriefLevel': 'advanced',
+            'creatorMemoryLevel': 'persistent',
+            'creatorScoreLevel': 'detailed',
+            'weeklyReportLevel': 'growth',
+            'academyAccessLevel': 'full',
+          },
           'usage': <String, dynamic>{
             'monthlyCreditsRemaining': 100,
           },
@@ -40,6 +47,8 @@ void main() {
     expect(snapshot.tierApi, 'pro');
     expect(snapshot.entitlements.monthlyAiCredits, 500);
     expect(snapshot.usage.monthlyCreditsRemaining, 100);
+    expect(snapshot.levels.weeklyReportLevel, 'growth');
+    expect(snapshot.levels.creatorScoreLevel, 'detailed');
     repo.dispose();
   });
 }

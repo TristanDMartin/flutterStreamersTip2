@@ -49,6 +49,21 @@ void main() {
       expect(connected.first['url'], 'https://www.youtube.com/@technqs');
     });
 
+    test('falls back to onboarding.selectedPlatforms when unconnected', () {
+      final List<Map<String, dynamic>> platforms =
+          UserProfileFirestore.parsePlatformsFromUserData(
+        <String, dynamic>{
+          'onboarding': <String, dynamic>{
+            'selectedPlatforms': <String>['facebook', 'youtube', 'kick', 'twitch'],
+          },
+        },
+      );
+      expect(
+        platforms.map((Map<String, dynamic> p) => p['type']).toList(),
+        <String>['facebook', 'youtube', 'kick', 'twitch'],
+      );
+    });
+
     test('parses legacy map-shaped platforms', () {
       final List<Map<String, dynamic>> platforms =
           UserProfileFirestore.parsePlatformsFromUserData(

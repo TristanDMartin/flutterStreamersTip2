@@ -51,6 +51,9 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 flutter run
 ```
 
+Debug builds now activate the App Check **debug provider by default**
+(no `ST_ENABLE_APP_CHECK_DEBUG` dart-define required).
+
 2. In another terminal, capture the debug token:
 
 ```bash

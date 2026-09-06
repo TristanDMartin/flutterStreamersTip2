@@ -2,6 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/email_verification_feature_gate.dart';
+import '../components/onboarding/email_verification.dart';
+import '../components/onboarding/email_verification_sender.dart';
+import '../components/onboarding/complete_verified_activation.dart';
 
 Future<bool> showEmailVerificationRequiredSheet({
   required BuildContext context,
@@ -32,6 +35,16 @@ class _EmailVerificationRequiredSheetState
   bool _isResending = false;
   bool _isChecking = false;
   String? _statusMessage;
+  late final String _intendedUid;
+  late final String _intendedEmail;
+
+  @override
+  void initState() {
+    super.initState();
+    final User? user = FirebaseAuth.instance.currentUser;
+    _intendedUid = user?.uid ?? '';
+    _intendedEmail = user?.email ?? '';
+  }
 
   Future<void> _resendEmail() async {
     if (_isResending) {
@@ -43,8 +56,11 @@ class _EmailVerificationRequiredSheetState
     });
     try {
       final User? user = FirebaseAuth.instance.currentUser;
-      if (user != null && !user.emailVerified) {
-        await user.sendEmailVerification();
+      if (user != null &&
+          !user.emailVerified &&
+          _intendedUid.isNotEmpty &&
+          user.uid == _intendedUid) {
+        await sendBoundEmailVerification(user: user);
         if (mounted) {
           setState(() {
             _statusMessage = 'Verification email sent!';
@@ -72,20 +88,46 @@ class _EmailVerificationRequiredSheetState
     }
     setState(() {
       _isChecking = true;
-      _statusMessage = 'Checking verification...';
     });
-    final bool verified =
-        await EmailVerificationFeatureGate.refreshVerificationStatus();
+    final VerificationIdentityResult result =
+        await confirmBoundEmailVerification(
+      intendedUid: _intendedUid,
+      intendedEmail: _intendedEmail,
+    );
     if (!mounted) {
       return;
     }
-    if (verified) {
+    if (result.status == VerificationIdentityStatus.ready) {
+      setState(() {
+        _statusMessage = 'Email verified\nContinuing…';
+      });
+      try {
+        await completeVerifiedActivation(
+          intendedUid: _intendedUid.isEmpty ? null : _intendedUid,
+        );
+      } on VerifiedActivationException catch (error) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isChecking = false;
+          _statusMessage = error.code == 'EMAIL_VERIFICATION_REQUIRED'
+              ? 'Email not verified yet. Check your inbox.'
+              : kVerifiedActivationPersistentError;
+        });
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
       Navigator.of(context).pop(true);
       return;
     }
     setState(() {
       _isChecking = false;
-      _statusMessage = 'Email not verified yet. Check your inbox.';
+      _statusMessage = result.status == VerificationIdentityStatus.mismatch
+          ? 'This app is signed in as a different account.'
+          : 'Email not verified yet. Check your inbox.';
     });
   }
 

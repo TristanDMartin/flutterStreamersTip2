@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../services/product_event_tracking_service.dart';
 import '../../services/public_profile_firestore.dart';
 import '../../utils/avatar_url_resolver.dart';
 import '../../widgets/optimized_avatar_image.dart';
@@ -112,6 +115,11 @@ Future<void> showCreatorScoreBottomSheet(
   BuildContext context, {
   required String userId,
 }) {
+  unawaited(
+    ProductEventTrackingService.instance.creatorScoreViewed(
+      surface: 'creator_score_sheet',
+    ),
+  );
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,

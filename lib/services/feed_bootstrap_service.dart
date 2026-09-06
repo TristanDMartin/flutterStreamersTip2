@@ -147,36 +147,71 @@ class FeedBootstrapService {
           .limit(20);
 
       final snapshot = await query.get();
-
-      final videos = snapshot.docs.where((doc) {
+      final List<QueryDocumentSnapshot<Map<String, dynamic>>> visible =
+          snapshot.docs.where((QueryDocumentSnapshot<Map<String, dynamic>> doc) {
         return isVideoVisibleInFeed(doc.data());
-      }).map((doc) {
-        final data = doc.data();
-        return HomeVideo(
-          id: doc.id,
-          creator: app_user.User(
-            id: data['creatorId'] ?? '',
-            username: data['creatorUsername'] ?? '',
-            displayName: data['creatorDisplayName'] ?? '',
-            avatarURL: data['creatorAvatarURL'],
-          ),
-          videoURL: resolveVideoUrl(data),
-          thumbnailURL: data['thumbnailURL'],
-          likes: data['likes'] ?? 0,
-          comments: data['comments'] ?? 0,
-          views: data['views'] ?? 0,
-          caption: data['caption'] ?? '',
-          isLiked: data['isLiked'] ?? false,
-          isFavorited: data['isFavorited'] ?? false,
-          isDraft: data['isDraft'] ?? false,
-          mlScore: (data['mlScore'] ?? 0.0).toDouble(),
-          categoryId: data['categoryId'] ?? '',
-          status: data['status'] as String? ?? 'ready',
-          visibility: data['visibility'] as String? ?? 'public',
-          isDeleted: data['isDeleted'] == true || data['deleted'] == true,
-          deletedAt: data['deletedAt'] as Timestamp?,
-        );
       }).toList();
+      final Set<String> ownerIds = visible
+          .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+              getOwnerId(doc.data()))
+          .whereType<String>()
+          .toSet();
+      final List<DocumentSnapshot<Map<String, dynamic>>> ownerSnaps =
+          ownerIds.isEmpty
+              ? <DocumentSnapshot<Map<String, dynamic>>>[]
+              : await Future.wait(
+                  ownerIds.map(
+                    (String id) =>
+                        _firestore.collection('publicUsers').doc(id).get(),
+                  ),
+                );
+      final Map<String, Map<String, dynamic>> publicUsers =
+          <String, Map<String, dynamic>>{};
+      for (final DocumentSnapshot<Map<String, dynamic>> snap in ownerSnaps) {
+        final Map<String, dynamic>? data = snap.data();
+        if (snap.exists && data != null) {
+          publicUsers[snap.id] = data;
+        }
+      }
+      final videos = <HomeVideo>[];
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in visible) {
+        final Map<String, dynamic> data = doc.data();
+        final String? ownerId = getOwnerId(data);
+        if (!isFeedCreatorEligible(
+          ownerId: ownerId,
+          publicUser: ownerId == null ? null : publicUsers[ownerId],
+        )) {
+          continue;
+        }
+        final Map<String, dynamic> owner = publicUsers[ownerId] ??
+            <String, dynamic>{};
+        videos.add(
+          HomeVideo(
+            id: doc.id,
+            creator: app_user.User(
+              id: ownerId ?? '',
+              username: (owner['username'] as String?) ?? '',
+              displayName: (owner['displayName'] as String?) ?? '',
+              avatarURL: owner['avatarURL'] ?? owner['avatarUrl'],
+            ),
+            videoURL: resolveVideoUrl(data),
+            thumbnailURL: data['thumbnailURL'],
+            likes: data['likes'] ?? 0,
+            comments: data['comments'] ?? 0,
+            views: data['views'] ?? 0,
+            caption: data['caption'] ?? '',
+            isLiked: data['isLiked'] ?? false,
+            isFavorited: data['isFavorited'] ?? false,
+            isDraft: data['isDraft'] ?? false,
+            mlScore: (data['mlScore'] ?? 0.0).toDouble(),
+            categoryId: data['categoryId'] ?? '',
+            status: data['status'] as String? ?? 'ready',
+            visibility: data['visibility'] as String? ?? 'public',
+            isDeleted: data['isDeleted'] == true || data['deleted'] == true,
+            deletedAt: data['deletedAt'] as Timestamp?,
+          ),
+        );
+      }
 
       // Generate ETag for caching
       final etag = _generateETag(videos);

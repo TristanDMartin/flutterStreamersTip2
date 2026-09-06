@@ -24,16 +24,24 @@ bool looksLikeLocalOrPlaceholderVideoUrl(String url) {
       lower.contains('placeholder');
 }
 
-bool isReadyPlaybackStatus(String? rawStatus, {bool isReadyForFeed = false}) {
-  final status = (rawStatus ?? '').trim().toLowerCase();
-  return isReadyForFeed &&
-      (status == 'ready' || status == 'active' || status == 'published');
+bool isReadyPlaybackStatus(String? rawStatus, {bool? isReadyForFeed}) {
+  final String status = (rawStatus ?? '').trim().toLowerCase();
+  final bool statusOk =
+      status == 'ready' || status == 'active' || status == 'published';
+  if (!statusOk) {
+    return false;
+  }
+  // Explicit false excludes. Missing allowed for legacy playable docs.
+  if (isReadyForFeed == false) {
+    return false;
+  }
+  return true;
 }
 
 String? resolveReadyPlaybackUrl(Map<String, dynamic> video) {
-  final bool isReadyForFeed = video['isReadyForFeed'] == true;
+  final bool? feedFlag = video['isReadyForFeed'] as bool?;
   final String? rawStatus = video['status'] as String?;
-  if (!isReadyPlaybackStatus(rawStatus, isReadyForFeed: isReadyForFeed)) {
+  if (!isReadyPlaybackStatus(rawStatus, isReadyForFeed: feedFlag)) {
     return null;
   }
 

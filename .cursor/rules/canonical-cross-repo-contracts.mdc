@@ -1,0 +1,42 @@
+---
+description: Shared backend/domain contracts for website + Flutter — fix implementations, not the contract
+alwaysApply: true
+---
+
+# Canonical cross-repo contract rule
+
+Website: `streamerstipReact` / `homepage-merge-staging`  
+Flutter: `flutterST` (GitHub `flutterStreamersTip2`) / `flutterStreamersTip2`
+
+Source of truth: `docs/CANONICAL_CONTRACTS.md` (must stay identical in both repos).
+
+Both repositories implement the SAME backend/domain contracts. Do not solve parity by adding repo-specific meanings for the same data. Never switch branches to achieve parity.
+
+For any feature shared by web + Flutter:
+
+1. Identify the canonical server/data contract first (`docs/CANONICAL_CONTRACTS.md`).
+2. Compare BOTH implementations against that contract.
+3. Update each repo independently on its locked branch.
+4. Do not change branches.
+5. Do not introduce web-only or Flutter-only field aliases unless required temporarily for migration.
+6. Legacy aliases may be READ for compatibility; new writes must use canonical field names.
+7. If one repo behaves differently, fix the repo implementation — do not change the shared contract to accommodate the bug.
+
+Canonical video fields: `ownerId`, `categoryId`, `status`, `canonicalPlaybackUrl`, `muxPlaybackId`, `isReadyForFeed`, `feedEligible`, `ownerActive`, `isDeleted`, `publishedAt`, `createdAt`.
+
+Canonical account deletion lifecycle: `accountStatus = active | deactivated | deleting | deleted`.
+
+Public feed eligibility: `status == ready` (legacy `published`/`active`), `isReadyForFeed != false`, `feedEligible != false`, `ownerActive != false`, `isDeleted != true`, owner doc exists, owner is renderable, playback is usable.
+
+Owner renderable: new writes use `accountStatus = active`. Missing/empty `accountStatus` on an existing non-deleted owner doc is legacy-active. Explicit `deactivated|deleting|deleted|banned|suspended|disabled` hides. Missing owner id or missing owner doc hides. No orphaned videos. Missing `ownerActive`/`feedEligible` is not assumed true unless ownership is resolved.
+
+Deletion and deactivation disable visibility server-side first, then (delete only) physical cleanup. Never delete Mux before the hide stamp. Firebase Auth onDelete must run the same cascade as POST /api/account/delete.
+
+Before considering a shared-behavior task complete, report:
+
+- Canonical contract changed: yes/no
+- Website updated: yes/no
+- Flutter updated: yes/no
+- Migration needed: yes/no
+- Server/backend updated: yes/no
+- Remaining parity differences: none or list them

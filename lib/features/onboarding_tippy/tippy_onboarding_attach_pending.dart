@@ -24,35 +24,10 @@ Future<void> attachPendingTippyOnboardingIfNeeded() async {
     final DocumentSnapshot<Map<String, dynamic>> snap =
         await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final Map<String, dynamic>? data = snap.data();
-    final Map<String, dynamic> onboarding =
-        (data?['onboarding'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{};
-    final bool alreadyDone = onboarding['tippyFunnelCompleted'] == true ||
-        onboarding['landingChoice'] != null ||
-        onboarding['completed'] == true ||
-        data?['hasCompletedOnboarding'] == true ||
-        data?['onboardingComplete'] == true;
-    if (alreadyDone) {
-      await store.clear();
-      return;
-    }
-    final String username = (data?['username'] as String?)?.trim() ?? '';
-    final bool existingCreatorIdentity = username.isNotEmpty &&
-        (onboarding['creatorCardCompleted'] == true ||
-            onboarding['essentialProfileComplete'] == true);
-    // Returning Google users who once tapped Get Started mid-quiz should not
-    // be pulled back into Tippy. Only attach when they finished the slim 7
-    // and are in the post-quiz Tippy funnel.
-    if (existingCreatorIdentity &&
-        !TippyOnboardingStages.isPostQuizStage(session.stage)) {
-      await store.clear();
-      return;
-    }
-    // Established account (has username, Tippy not mid-funnel) signing in
-    // after a guest quiz — do not attach / restart.
-    final bool midTippy = onboarding['tippyOnboardingV1Attached'] == true ||
-        onboarding['slim7Completed'] == true;
-    if (username.isNotEmpty && !midTippy) {
+    if (shouldSkipPendingTippyAttach(
+      userData: data,
+      sessionStage: session.stage,
+    )) {
       await store.clear();
       return;
     }
@@ -71,7 +46,11 @@ Future<void> attachPendingTippyOnboardingIfNeeded() async {
   }
   final TippyOnboardingAttachService attach = TippyOnboardingAttachService();
   try {
-    await attach.attach(session);
+    final bool startedFromWelcome = await store.peekStartedFromWelcome();
+    await attach.attach(
+      session,
+      startedFromWelcome: startedFromWelcome,
+    );
   } catch (error) {
     debugPrint('Tippy onboarding attach deferred: $error');
   } finally {
@@ -102,34 +81,82 @@ Future<bool> userNeedsTippyFunnelContinuation(String uid) async {
   }
 }
 
+bool _isTippyCompleteOnThisUid(Map<String, dynamic> onboarding) {
+  return onboarding['tippyFunnelCompleted'] == true &&
+      (onboarding['essentialProfileComplete'] == true ||
+          onboarding['creatorCardCompleted'] == true);
+}
+
+Map<String, dynamic> _onboardingMap(Map<String, dynamic>? data) {
+  return (data?['onboarding'] as Map?)?.cast<String, dynamic>() ??
+      <String, dynamic>{};
+}
+
+/// Recycled identities are never "returning complete" until THIS uid
+/// finishes Tippy. Username leftover / legacy flags must not skip Meet Tippy.
+bool isReturningCompleteTippyUserFromData(Map<String, dynamic>? data) {
+  if (data == null) {
+    return false;
+  }
+  final Map<String, dynamic> onboarding = _onboardingMap(data);
+  if (data['identityRecycled'] == true) {
+    return _isTippyCompleteOnThisUid(onboarding);
+  }
+  final bool alreadyDone = onboarding['tippyFunnelCompleted'] == true ||
+      onboarding['landingChoice'] != null ||
+      onboarding['completed'] == true ||
+      data['hasCompletedOnboarding'] == true ||
+      data['onboardingComplete'] == true;
+  if (alreadyDone) {
+    return true;
+  }
+  final String username = (data['username'] as String?)?.trim() ?? '';
+  if (username.isEmpty) {
+    return false;
+  }
+  final bool midTippy = onboarding['tippyOnboardingV1Attached'] == true ||
+      onboarding['slim7Completed'] == true;
+  return !midTippy;
+}
+
+bool shouldSkipPendingTippyAttach({
+  required Map<String, dynamic>? userData,
+  required String sessionStage,
+}) {
+  if (userData == null) {
+    return false;
+  }
+  final Map<String, dynamic> onboarding = _onboardingMap(userData);
+  if (userData['identityRecycled'] == true) {
+    return _isTippyCompleteOnThisUid(onboarding);
+  }
+  final bool alreadyDone = onboarding['tippyFunnelCompleted'] == true ||
+      onboarding['landingChoice'] != null ||
+      onboarding['completed'] == true ||
+      userData['hasCompletedOnboarding'] == true ||
+      userData['onboardingComplete'] == true;
+  if (alreadyDone) {
+    return true;
+  }
+  final String username = (userData['username'] as String?)?.trim() ?? '';
+  final bool existingCreatorIdentity = username.isNotEmpty &&
+      (onboarding['creatorCardCompleted'] == true ||
+          onboarding['essentialProfileComplete'] == true);
+  if (existingCreatorIdentity &&
+      !TippyOnboardingStages.isPostQuizStage(sessionStage)) {
+    return true;
+  }
+  final bool midTippy = onboarding['tippyOnboardingV1Attached'] == true ||
+      onboarding['slim7Completed'] == true;
+  return username.isNotEmpty && !midTippy;
+}
+
 /// Existing account chosen via Continue with Google/Apple — do not treat as new.
 Future<bool> isReturningCompleteTippyUser(String uid) async {
   try {
     final DocumentSnapshot<Map<String, dynamic>> snap =
         await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    final Map<String, dynamic>? data = snap.data();
-    if (data == null) {
-      return false;
-    }
-    final Map<String, dynamic> onboarding =
-        (data['onboarding'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{};
-    final bool alreadyDone = onboarding['tippyFunnelCompleted'] == true ||
-        onboarding['landingChoice'] != null ||
-        onboarding['completed'] == true ||
-        data['hasCompletedOnboarding'] == true ||
-        data['onboardingComplete'] == true;
-    if (alreadyDone) {
-      return true;
-    }
-    final String username = (data['username'] as String?)?.trim() ?? '';
-    if (username.isEmpty) {
-      return false;
-    }
-    // Mid-Tippy (attached, not finished) still needs the funnel.
-    final bool midTippy = onboarding['tippyOnboardingV1Attached'] == true ||
-        onboarding['slim7Completed'] == true;
-    return !midTippy;
+    return isReturningCompleteTippyUserFromData(snap.data());
   } catch (_) {
     return false;
   }

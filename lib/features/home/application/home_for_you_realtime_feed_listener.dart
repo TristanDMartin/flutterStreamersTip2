@@ -4,20 +4,26 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../models/home_video.dart';
 import '../../../utils/feed_snapshot_engagement_filter.dart';
+import '../../../utils/video_document_rules.dart';
 import '../../../utils/video_feed_diagnostics.dart';
 import '../../../utils/interaction_diagnostics.dart';
 import '../../../utils/like_interaction_boundary.dart';
 import '../data/home_for_you_feed_repository.dart';
+import '../domain/home_feed_mutator.dart';
 
 /// Result of processing a debounced For You Firestore snapshot.
 class HomeForYouFeedSnapshotResult {
   const HomeForYouFeedSnapshotResult({
     required this.videos,
     required this.usingFallbackListener,
+    this.removedVideoIds = const <String>{},
   });
 
   final List<HomeVideo> videos;
   final bool usingFallbackListener;
+
+  /// Docs in this snapshot that must leave Home (deleted / not feed-visible).
+  final Set<String> removedVideoIds;
 
   bool get shouldSwitchToFallback =>
       videos.isEmpty && !usingFallbackListener;
@@ -35,7 +41,7 @@ class HomeForYouRealtimeFeedListener {
         _log = log ?? _noopLog;
 
   final HomeForYouFeedRepository _repository;
-  final Future<List<HomeVideo>> Function(
+  final Future<HomeRealtimeFeedBuildResult> Function(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) buildVideosFromSnapshot;
   final Future<void> Function(HomeForYouFeedSnapshotResult result)
@@ -142,25 +148,31 @@ class HomeForYouRealtimeFeedListener {
           );
         }
         final int docCount = snapshot.docs.length;
-        final List<HomeVideo> liveVideos =
+        final Set<String> removedVideoIds =
+            collectInvisiblePublicFeedDocIds(snapshot.docs);
+        final HomeRealtimeFeedBuildResult built =
             await buildVideosFromSnapshot(snapshot.docs);
         if (generation != _generation) {
           return;
         }
         InteractionDiagnostics.logRealtimeFeedBuild(
           docCount: docCount,
-          builtCount: liveVideos.length,
+          builtCount: built.videos.length,
         );
-        if (docCount > 3 && liveVideos.length < docCount ~/ 2) {
+        if (docCount > 3 && built.videos.length < docCount ~/ 2) {
           _log(
-            '⚠️ HomeProvider: Realtime snapshot built ${liveVideos.length}/'
+            '⚠️ HomeProvider: Realtime snapshot built ${built.videos.length}/'
             '$docCount playable videos — merge will preserve existing feed',
           );
         }
         final HomeForYouFeedSnapshotResult result =
             HomeForYouFeedSnapshotResult(
-          videos: liveVideos,
+          videos: built.videos,
           usingFallbackListener: _usingFallbackFeedListener,
+          removedVideoIds: <String>{
+            ...removedVideoIds,
+            ...built.removedVideoIds,
+          },
         );
         if (result.shouldSwitchToFallback) {
           _log(

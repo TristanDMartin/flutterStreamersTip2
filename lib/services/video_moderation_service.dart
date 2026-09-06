@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import '../features/publish/publish_validation_limits.dart';
+
 class VideoModerationResult {
   final bool isApproved;
   final List<String> violations;
@@ -129,26 +131,26 @@ class VideoModerationService {
     Map<String, dynamic>? metadata,
   }) async {
     try {
-      // 1. Check video file size and duration
-      final fileSize = await videoFile.length();
-      final duration = await _getVideoDuration(videoFile);
+      // 1. Check video file size and duration (same limits as publish validation)
+      final int fileSize = await videoFile.length();
+      final double duration = await _getVideoDuration(videoFile);
+      final int maxBytes =
+          PublishValidationLimits.maxFileSizeMB * 1024 * 1024;
 
-      if (fileSize > 100 * 1024 * 1024) {
-        // 100MB limit
+      if (fileSize > maxBytes) {
         return const VideoModerationResult(
           isApproved: false,
-          violations: ['file_too_large'],
-          reason: 'Video file is too large (max 100MB)',
+          violations: <String>['file_too_large'],
+          reason: PublishValidationLimits.errorFileSize,
           confidence: 1.0,
         );
       }
 
-      if (duration > 300) {
-        // 5 minutes limit
+      if (duration > PublishValidationLimits.maxVideoDurationSeconds) {
         return const VideoModerationResult(
           isApproved: false,
-          violations: ['duration_too_long'],
-          reason: 'Video is too long (max 5 minutes)',
+          violations: <String>['duration_too_long'],
+          reason: PublishValidationLimits.errorDuration,
           confidence: 1.0,
         );
       }
