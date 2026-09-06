@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../gamification_backend_config.dart';
 import 'achievement_catalog.dart';
 import 'achievement_definition.dart';
+import 'acknowledge_result.dart';
 
 /// Read-only achievement data layer. Unlocks are Worker-owned.
 class AchievementRepository {
@@ -16,13 +17,27 @@ class AchievementRepository {
     FirebaseFirestore? firestore,
     http.Client? httpClient,
     String? baseUrl,
-  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+    Future<String?> Function()? readIdToken,
+  })  : _firestoreOverride = firestore,
         _http = httpClient ?? http.Client(),
-        _baseUrl = baseUrl ?? kGamificationEventsBaseUrl;
+        _baseUrl = baseUrl ?? kGamificationEventsBaseUrl,
+        _readIdToken = readIdToken ?? AchievementRepository._defaultReadIdToken;
 
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? _firestoreOverride;
   final http.Client _http;
   final String _baseUrl;
+  final Future<String?> Function() _readIdToken;
+
+  FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
+
+  static Future<String?> _defaultReadIdToken() async {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return null;
+    }
+    return user.getIdToken();
+  }
 
   Stream<AchievementSnapshot> watch(String uid) {
     final DocumentReference<Map<String, dynamic>> userRef =
@@ -109,18 +124,23 @@ class AchievementRepository {
     return controller.stream;
   }
 
-  Future<void> acknowledge(String rawKey) async {
+  Future<AchievementAcknowledgeResult> acknowledge(String rawKey) async {
     final String key = AchievementCatalog.canonicalizeKey(rawKey);
     if (!AchievementCatalog.isLaunchKey(key)) {
-      return;
+      return const AchievementAcknowledgeSuccess();
     }
-    final User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return;
+    String? token;
+    try {
+      token = await _readIdToken();
+    } on FirebaseAuthException catch (error) {
+      debugPrint('AchievementRepository: ack token ${error.code}');
+      return const AchievementAcknowledgeFailure(isSessionExpired: true);
+    } catch (error) {
+      debugPrint('AchievementRepository: ack token failed');
+      return const AchievementAcknowledgeFailure(isSessionExpired: false);
     }
-    final String? token = await user.getIdToken();
     if (token == null || token.isEmpty) {
-      return;
+      return const AchievementAcknowledgeFailure(isSessionExpired: true);
     }
     final String noSlash = _baseUrl.endsWith('/')
         ? _baseUrl.substring(0, _baseUrl.length - 1)
@@ -137,13 +157,16 @@ class AchievementRepository {
         },
         body: jsonEncode(<String, String>{'key': key}),
       );
-      if (res.statusCode >= 400) {
-        debugPrint(
-          'AchievementRepository: ack HTTP ${res.statusCode} ${res.body}',
-        );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return const AchievementAcknowledgeSuccess();
       }
-    } catch (e) {
-      debugPrint('AchievementRepository: ack failed (non-fatal): $e');
+      debugPrint('AchievementRepository: ack HTTP ${res.statusCode}');
+      return AchievementAcknowledgeFailure(
+        isSessionExpired: res.statusCode == 401,
+      );
+    } catch (error) {
+      debugPrint('AchievementRepository: ack request failed');
+      return const AchievementAcknowledgeFailure(isSessionExpired: false);
     }
   }
 

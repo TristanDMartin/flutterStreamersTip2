@@ -8,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../components/onboarding/onboarding_style.dart';
 import '../../../services/progression_service.dart';
+import '../../../providers/current_user_provider.dart';
 import '../achievements/achievement_catalog.dart';
 import '../achievements/achievement_definition.dart';
 import '../achievements/achievement_hex_badge.dart';
+import '../achievements/acknowledge_result.dart';
 import '../gamification_providers.dart';
 import '../models/daily_mission_model.dart';
 import '../models/gamification_celebration_state.dart';
@@ -39,6 +41,7 @@ class _GamificationCelebrationOverlayState
   Map<String, String> _previousMissionStatus = <String, String>{};
   bool _levelUpDismissInFlight = false;
   bool _achievementAckInFlight = false;
+  String? _achievementAckError;
   bool _initializedBundle = false;
 
   @override
@@ -74,6 +77,25 @@ class _GamificationCelebrationOverlayState
         next.whenData(_onAchievementsUpdated);
       },
     );
+    ref.listen<AsyncValue<String?>>(
+      authUserIdStreamProvider,
+      (AsyncValue<String?>? previous, AsyncValue<String?> next) {
+        final String? prevUid = previous?.valueOrNull;
+        final String? nextUid = next.valueOrNull;
+        if (prevUid == nextUid) {
+          return;
+        }
+        _locallyAcknowledged.clear();
+        _achievementAckInFlight = false;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _achievementCelebration = null;
+          _achievementAckError = null;
+        });
+      },
+    );
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -81,6 +103,8 @@ class _GamificationCelebrationOverlayState
         if (_achievementCelebration != null)
           _AchievementCelebrationModal(
             definition: _achievementCelebration!,
+            isBusy: _achievementAckInFlight,
+            errorMessage: _achievementAckError,
             onContinue: _acknowledgeCurrentAchievement,
           )
         else if (_levelUpCelebration != null)
@@ -145,16 +169,35 @@ class _GamificationCelebrationOverlayState
     if (current == null || _achievementAckInFlight) {
       return;
     }
-    _achievementAckInFlight = true;
-    _locallyAcknowledged.add(current.key);
-    setState(() => _achievementCelebration = null);
-    await ref.read(achievementRepositoryProvider).acknowledge(current.key);
-    _achievementAckInFlight = false;
-    final AchievementSnapshot? snapshot =
-        ref.read(achievementSnapshotProvider).valueOrNull;
-    if (snapshot != null) {
-      _onAchievementsUpdated(snapshot);
+    setState(() {
+      _achievementAckInFlight = true;
+      _achievementAckError = null;
+    });
+    final AchievementAcknowledgeResult result =
+        await ref.read(achievementRepositoryProvider).acknowledge(current.key);
+    if (!mounted) {
+      return;
     }
+    if (result is AchievementAcknowledgeSuccess) {
+      _locallyAcknowledged.add(current.key);
+      setState(() {
+        _achievementAckInFlight = false;
+        _achievementAckError = null;
+        _achievementCelebration = null;
+      });
+      final AchievementSnapshot? snapshot =
+          ref.read(achievementSnapshotProvider).valueOrNull;
+      if (snapshot != null) {
+        _onAchievementsUpdated(snapshot);
+      }
+      return;
+    }
+    final AchievementAcknowledgeFailure failure =
+        result as AchievementAcknowledgeFailure;
+    setState(() {
+      _achievementAckInFlight = false;
+      _achievementAckError = failure.userMessage;
+    });
   }
 
   Future<void> _detectMissionCompletion(
@@ -229,10 +272,14 @@ class _AchievementCelebrationModal extends StatelessWidget {
   const _AchievementCelebrationModal({
     required this.definition,
     required this.onContinue,
+    required this.isBusy,
+    this.errorMessage,
   });
 
   final AchievementDefinition definition;
   final VoidCallback onContinue;
+  final bool isBusy;
+  final String? errorMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -285,11 +332,23 @@ class _AchievementCelebrationModal extends StatelessWidget {
                   ),
                 ),
               ],
+              if (errorMessage != null && errorMessage!.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               GradientPillButton(
-                label: 'Continue',
+                label: isBusy ? 'Continuing…' : 'Continue',
                 icon: Icons.check_rounded,
-                onPressed: onContinue,
+                onPressed: isBusy ? null : onContinue,
               ),
             ],
           ),
