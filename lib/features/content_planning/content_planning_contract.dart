@@ -4,7 +4,7 @@
 /// Local copy: `contracts/content-planning.v1.json`.
 library;
 
-const String kContentPlanningContractVersion = '1.0.0';
+const String kContentPlanningContractVersion = '1.1.0';
 
 const List<String> kContentItemStatuses = <String>[
   'idea',
@@ -15,6 +15,7 @@ const List<String> kContentItemStatuses = <String>[
   'approved',
   'scheduled',
   'publishing',
+  'completed',
   'published',
   'missed',
   'failed',
@@ -31,6 +32,7 @@ const Map<String, String> kContentItemStatusLabels = <String, String>{
   'approved': 'Approved',
   'scheduled': 'Scheduled',
   'publishing': 'Publishing',
+  'completed': 'Completed',
   'published': 'Published',
   'missed': 'Missed',
   'failed': 'Failed',
@@ -47,8 +49,7 @@ const Map<String, String> _legacyStatusAliases = <String, String>{
   'needsreview': 'ready_for_review',
   'needs_review': 'ready_for_review',
   'posted': 'published',
-  'completed': 'published',
-  'done': 'published',
+  'done': 'completed',
   'repurpose': 'archived',
   'canceled': 'cancelled',
 };
@@ -216,7 +217,8 @@ const List<String> kRequiredContentItemFields = <String>[
 
 bool isClosedContentItemStatus(Object? status) {
   final String normalized = normalizeContentItemStatus(status);
-  return normalized == 'published' ||
+  return normalized == 'completed' ||
+      normalized == 'published' ||
       normalized == 'archived' ||
       normalized == 'cancelled' ||
       normalized == 'failed' ||
@@ -249,6 +251,7 @@ const List<({String value, String label})> kContentItemStatusChoices =
   (value: 'approved', label: 'Approved'),
   (value: 'scheduled', label: 'Scheduled'),
   (value: 'publishing', label: 'Publishing'),
+  (value: 'completed', label: 'Completed'),
   (value: 'published', label: 'Published'),
   (value: 'missed', label: 'Missed'),
   (value: 'failed', label: 'Failed'),

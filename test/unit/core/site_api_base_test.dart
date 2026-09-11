@@ -12,8 +12,16 @@ void main() {
       'https://streamerstip.com/api/avatar/sync',
     );
     expect(
+      siteTippyCreditsUrl(base: 'https://streamerstip.com'),
+      'https://streamerstip.com/api/tippy/credits',
+    );
+    expect(
       siteTippyCreatorMemoryUrl(base: 'https://streamerstip.com'),
       'https://streamerstip.com/api/tippy/creator-memory',
+    );
+    expect(
+      siteAuthResolveLoginUrl(base: 'https://streamerstip.com'),
+      'https://streamerstip.com/api/auth/resolve-login',
     );
   });
 }

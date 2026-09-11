@@ -72,6 +72,9 @@ String siteWorkspaceApprovalUrl({
   );
 }
 
+String siteTippyCreditsUrl({String? base}) =>
+    siteApiPath('/api/tippy/credits', base: base);
+
 String siteTippyCreatorMemoryUrl({String? base}) =>
     siteApiPath('/api/tippy/creator-memory', base: base);
 
@@ -101,6 +104,9 @@ String siteAccountReactivateUrl({String? base}) =>
 
 String siteAccountPendingUrl({String? base}) =>
     siteApiPath('/api/account/pending', base: base);
+
+String siteAuthResolveLoginUrl({String? base}) =>
+    siteApiPath('/api/auth/resolve-login', base: base);
 
 String siteUsernameClaimUrl({String? base}) =>
     siteApiPath('/api/username/claim', base: base);

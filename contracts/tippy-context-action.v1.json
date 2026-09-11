@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamerstip.com/contracts/tippy-context-action.v1.json",
+  "title": "StreamersTip Tippy Context + Action Layer v1",
+  "description": "Shared web + Flutter contract. Tippy always receives surface context. Tippy only surfaces that context when it improves the current interaction. Phase 1 is inbound snapshots. Phases 2–5 are documented, not implied as shipped.",
+  "version": "1.0.0",
+  "principle": "Tippy should always have context. Tippy should only surface context when it improves the current interaction.",
+  "levels": {
+    "1_conversational": "shipped",
+    "2_contextual": "phase_1",
+    "3_actionable": "phase_2_3",
+    "4_proactive": "phase_4_not_started"
+  },
+  "phases": {
+    "1": "Context awareness — surfaces pass TippySurfaceSnapshot automatically",
+    "2": "Dynamic actions generated from the situation",
+    "3": "In-place actions without requiring /ask-tippy",
+    "4": "Proactive intelligence with confidence/importance — do not start before phases 1–3",
+    "5": "Daily operating layer (briefing, what changed, autonomous prep)"
+  },
+  "surfaces": [
+    "planner",
+    "analytics",
+    "publish",
+    "mission_control",
+    "creator_score",
+    "checkup",
+    "profile",
+    "ask_tippy",
+    "other"
+  ],
+  "confidence": ["high", "medium", "low"],
+  "inbound": {
+    "whereAmI": "Canonical surface id + path",
+    "whatAmIDoing": "Current task on that surface (tab, draft, selected item)",
+    "relevantData": "Facts only. Never invented metrics. Primitives only (string | number | boolean | null).",
+    "availableActions": "What Tippy may do here (id + label)"
+  },
+  "activityTruth": {
+    "hiddenBlock": "activity_truth_v1",
+    "placement": "Sibling of surface_snapshot_v1. Do not nest evidence objects inside relevantData.",
+    "contains": "Facts and provenance only. Never conclusions such as the plan is stale.",
+    "pipeline": "Intent → Reality → Evidence → Judgment → Action",
+    "states": [
+      "planned",
+      "scheduled",
+      "due",
+      "overdue",
+      "creator_reported",
+      "completed",
+      "published",
+      "verified"
+    ],
+    "factFields": ["kind", "state", "source", "confidence", "asOf", "label", "count"],
+    "rules": [
+      "Plans are intentions, not evidence.",
+      "Never compound a stale plan.",
+      "Never upgrade evidence.",
+      "Reconcile only when uncertainty affects the decision."
+    ],
+    "phase": "1.5 — judgment and qualified language. Phase 2 executes repair actions."
+  },
+  "outbound": {
+    "observation": "What changed or what matters",
+    "judgment": "What Tippy would or would not do",
+    "recommendedAction": "One primary next move",
+    "confidence": "high | medium | low",
+    "availableActions": "Situation-specific actions",
+    "shouldSurface": "Whether to show this now. Greeting and low confidence stay silent."
+  },
+  "greetingRule": "A greeting alone is Dialogue. Snapshot is still attached. Do not dump the snapshot."
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamerstip.com/contracts/tippy-planner-actions.v1.json",
+  "title": "StreamersTip Tippy Planner action family v1",
+  "description": "Canonical catalog of Tippy Planner operators. Only reschedule_plan is open. Other actions are documented, not shipped. Do not invent a giant edit-planner tool. Flutter must copy this file as-is; do not implement unopened actions.",
+  "version": "1.0.0",
+  "id": "tippy-planner-actions.v1",
+  "pipeline": [
+    "understand",
+    "resolve",
+    "preview",
+    "confirm",
+    "execute",
+    "verify"
+  ],
+  "rules": {
+    "modelMustNotMutate": true,
+    "previewFromStoredProposalOnly": true,
+    "confirmIsProductEventOnProposalId": true,
+    "neverPromiseUnopenedAction": true,
+    "archiveBeforeDelete": true,
+    "repairBeforeCreateWhenOverdue": true,
+    "noGiantEditPlannerTool": true
+  },
+  "actions": [
+    {
+      "id": "create_content_plan",
+      "purpose": "Create a new plan from an approved preview (goal, schedule, campaign, game, platform, or idea).",
+      "status": "legacy_tool_not_on_proposal_pipeline"
+    },
+    {
+      "id": "reschedule_plan",
+      "purpose": "Move unfinished work and dates.",
+      "status": "open",
+      "contract": "contracts/tippy-reschedule-plan.v1.json"
+    },
+    {
+      "id": "edit_plan",
+      "purpose": "Change plan-level settings: dates, cadence, titles, formats, priorities, platforms.",
+      "status": "documented_not_shipped"
+    },
+    {
+      "id": "edit_plan_item",
+      "purpose": "Change a specific task or item.",
+      "status": "documented_not_shipped"
+    },
+    {
+      "id": "archive_plan",
+      "purpose": "Reversible removal from active planning. Default recommendation for removal.",
+      "status": "documented_not_shipped"
+    },
+    {
+      "id": "delete_plan",
+      "purpose": "Permanent deletion. Stronger confirmation than archive.",
+      "status": "documented_not_shipped"
+    },
+    {
+      "id": "repair_plan",
+      "purpose": "Propose a recovery schedule from stale or overdue work. Prefer over creating more when workload is behind.",
+      "status": "documented_not_shipped"
+    }
+  ],
+  "removalPreviewChoices": [
+    "Archive all",
+    "Delete all",
+    "Choose plans"
+  ],
+  "staleWorkloadCreateChoices": [
+    "Repair current plan",
+    "Create anyway"
+  ]
+}

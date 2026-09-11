@@ -9,6 +9,7 @@ import '../../../routing/app_navigator.dart';
 import '../../../services/creator_intelligence_analytics_service.dart';
 import '../../../shared/analytics/analytics_event_constants.dart';
 import '../../content_planning/content_plan_detail_view.dart';
+import '../../content_planning/content_planning_api_client.dart';
 import '../../content_planning/content_planning_models.dart';
 import '../../content_planning/content_planning_provider.dart';
 import '../../content_planning/content_planning_repository.dart';
@@ -215,7 +216,59 @@ class _AcademyLessonViewState extends ConsumerState<AcademyLessonView> {
       items: <ContentPlanItem>[...plan.items, item],
       itemCount: plan.items.length + 1,
     );
-    await repo.updatePlan(userId: user.uid, plan: updated);
+    String savedPlanId = plan.id;
+    try {
+      final ContentPlanningApiClient api = ContentPlanningApiClient();
+      if (plans.isEmpty) {
+        final DateTime start = DateTime.now();
+        savedPlanId = await api.createPlan(
+          userId: user.uid,
+          title: 'Academy Actions',
+          description: 'Tasks created from Streamer Academy lessons.',
+          startDate: start,
+          endDate: start.add(const Duration(days: 30)),
+          source: 'academy',
+          items: <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': item.id,
+              'title': item.title,
+              'description': item.description ?? '',
+              'type': item.type ?? 'post',
+              'status': item.status,
+              'notes': item.notes,
+              'tags': item.tags,
+            },
+          ],
+        );
+      } else {
+        await api.addPlanItem(
+          userId: user.uid,
+          planId: plan.id,
+          title: item.title,
+          type: item.type ?? 'post',
+          description: item.description ?? '',
+          status: item.status,
+          notes: item.notes,
+          tags: item.tags,
+        );
+      }
+    } on ContentPlanningApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+      return;
+    } on ContentPlanningException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+      return;
+    }
     await ref.read(academyXpServiceProvider).awardPlannerApply(
           userId: user.uid,
           guideId: guideId,
@@ -227,7 +280,9 @@ class _AcademyLessonViewState extends ConsumerState<AcademyLessonView> {
     }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ContentPlanDetailView(plan: updated),
+        builder: (_) => ContentPlanDetailView(
+          plan: updated.copyWith(id: savedPlanId),
+        ),
       ),
     );
   }

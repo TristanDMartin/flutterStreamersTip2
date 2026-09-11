@@ -250,118 +250,11 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     if (_busy) {
       return;
     }
-    final _PlanContext planContext = _buildPlanContext();
-    if (!planContext.hasUsefulContext) {
-      setState(() {
-        _lines.add(
-          const _ChatLine(
-            user: false,
-            text:
-                'Tell me what this content plan should be about first, then I can add it to your planner.',
-            isError: true,
-          ),
-        );
-      });
-      _scrollToEnd();
-      return;
-    }
-    final MeEntitlementsData? me =
-        ref.read(meEntitlementsProvider).valueOrNull;
-    final List<ContentPlan> plans =
-        ref.read(contentPlansProvider).valueOrNull ?? const <ContentPlan>[];
-    if (me != null && !canAffordAiAction(me, 'contentPlan')) {
-      setState(() {
-        _lines.add(
-          const _ChatLine(
-            user: false,
-            text:
-                'Not enough AI credits for a content plan. '
-                'Upgrade or wait for your monthly reset.',
-            isError: true,
-          ),
-        );
-      });
-      _scrollToEnd();
-      return;
-    }
-    if (me != null && !canCreateContentPlan(me, plans.length)) {
-      setState(() {
-        _lines.add(
-          const _ChatLine(
-            user: false,
-            text:
-                'Your Creator plan includes one active content plan. '
-                'Upgrade to Pro for unlimited plans.',
-            isError: true,
-          ),
-        );
-      });
-      _scrollToEnd();
-      return;
-    }
-    setState(() {
-      _busy = true;
-    });
-    try {
-      final TippyPlanResult result = await _service.createPlan(
-        messages: planContext.messages,
-        prompt: planContext.prompt,
-      );
-      if (!mounted) {
-        return;
-      }
-      final String? planId = result.planId?.trim();
-      String assistantText = result.message ??
-          (planId == null || planId.isEmpty
-              ? 'Created a new content plan and added it to your planner.'
-              : 'Created a new content plan: $planId');
-      if (planId != null &&
-          planId.isNotEmpty &&
-          !assistantText.contains('streamerstip://content-plan/')) {
-        assistantText =
-            '${assistantText.trim()}\nstreamerstip://content-plan/$planId';
-      }
-      setState(() {
-        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
-        _pendingRetryAction = null;
-        _lines.add(
-          _ChatLine(
-            user: false,
-            text: assistantText,
-          ),
-        );
-      });
-      ref.invalidate(contentPlansProvider);
-      await _persistConversation();
-      await _refreshCreditsSnapshot();
-      unawaited(
-        ref.read(creatorIntelligenceAnalyticsProvider).trackContentPlanCreated(
-              planId: planId,
-            ),
-      );
-      final String? uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        unawaited(
-          RetentionTrackingService.instance.trackContentPlanCreated(
-            uid: uid,
-            planId: planId,
-            metadata: const <String, dynamic>{'surface': 'tippy_chat'},
-          ),
-        );
-      }
-    } on TippyChatException catch (e) {
-      await _handleTippyError(
-        error: e,
-        retryAction: const _RetryAction(_RetryActionType.createPlan),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-        });
-      }
-      _scrollToEnd();
-    }
+    final String prompt = _input.text.trim().isEmpty
+        ? 'Create a content plan from this conversation and add it to my planner.'
+        : _input.text.trim();
+    _input.text = prompt;
+    await _send();
   }
 
   Future<void> _openContentPlanById(String planId) async {
@@ -654,34 +547,8 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     final String prompt = _input.text.trim().isEmpty
         ? 'Propose 3 posting slots this week based on my goals'
         : _input.text.trim();
-    setState(() => _busy = true);
-    try {
-      final TippyScheduleProposalResult result =
-          await _service.proposeSchedule(prompt: prompt);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _lines.add(
-          _ChatLine(
-            user: false,
-            text: result.message ??
-                'Review the schedule proposals below and approve the ones you want.',
-            cards: result.ui.cards,
-          ),
-        );
-        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
-      });
-      await _persistConversation();
-      await _refreshCreditsSnapshot();
-    } on TippyChatException catch (e) {
-      await _handleTippyError(error: e);
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-      _scrollToEnd();
-    }
+    _input.text = prompt;
+    await _send();
   }
 
   Future<void> _reviewScheduleProposal(TippyUiCardData card) async {
@@ -700,29 +567,9 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     if (approved != true || !mounted) {
       return;
     }
-    setState(() => _busy = true);
-    try {
-      await _service.approveScheduleProposal(proposalId: proposalId);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _lines.add(
-          _ChatLine(
-            user: false,
-            text: 'Approved "${card.title}". It is now on your schedule.',
-          ),
-        );
-      });
-      await _persistConversation();
-    } on TippyChatException catch (e) {
-      await _handleTippyError(error: e);
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-      _scrollToEnd();
-    }
+    _input.text =
+        'Confirm this schedule proposal: ${card.title}. $proposalId';
+    await _send();
   }
 
   _PlanContext _buildPlanContext() {

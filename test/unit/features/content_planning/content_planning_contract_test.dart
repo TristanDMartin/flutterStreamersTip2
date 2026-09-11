@@ -4,7 +4,7 @@ import 'package:streamers_tip/features/content_planning/content_planning_contrac
 void main() {
   group('contentPlanningContract v1', () {
     test('exposes a version', () {
-      expect(kContentPlanningContractVersion, '1.0.0');
+      expect(kContentPlanningContractVersion, '1.1.0');
     });
 
     test('normalizes legacy Flutter and website statuses', () {
@@ -13,7 +13,8 @@ void main() {
       expect(normalizeContentItemStatus('planned'), 'draft');
       expect(normalizeContentItemStatus('recording'), 'in_progress');
       expect(normalizeContentItemStatus('editing'), 'in_progress');
-      expect(normalizeContentItemStatus('completed'), 'published');
+      expect(normalizeContentItemStatus('completed'), 'completed');
+      expect(normalizeContentItemStatus('done'), 'completed');
       expect(normalizeContentItemStatus('repurpose'), 'archived');
       expect(normalizeContentItemStatus('canceled'), 'cancelled');
     });

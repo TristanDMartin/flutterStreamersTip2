@@ -72,21 +72,31 @@ class TippyChatService {
     if (_creditsCache != null) {
       return _creditsCache!;
     }
-    final TippySuccessEnvelope envelope = await _authedGet('/tippy/credits');
-    final String greeting = _readString(
-          envelope.data['greeting'],
-        ) ??
-        _readString(envelope.data['personalizedGreeting']) ??
-        'Hey creator, what are we building today?';
-    final TippyCreditsInfo info = TippyCreditsInfo(
-      greeting: greeting,
-      creditsRemaining: envelope.credits?.remaining,
-      tier: envelope.credits?.tier,
-      nudge: _readString(envelope.data['nudge']),
-      memoryReady: envelope.data['memoryReady'] == true,
-    );
-    _creditsCache = info;
-    return info;
+    const String fallbackGreeting = 'Hey creator, what are we building today?';
+    try {
+      final Map<String, String> headers = await _buildHeaders();
+      final http.Response response = await _executeRequest(
+        () => _client.get(
+          Uri.parse(siteTippyCreditsUrl()),
+          headers: headers,
+        ),
+      );
+      final Map<String, dynamic>? body = _tryDecodeMap(response.body);
+      if (body == null || response.statusCode >= 300) {
+        return const TippyCreditsInfo(greeting: fallbackGreeting);
+      }
+      final TippyCreditsInfo info = TippyCreditsInfo(
+        greeting: fallbackGreeting,
+        creditsRemaining: _readInt(body['creditsRemaining']),
+        tier: _readString(body['tier'] ?? body['effectiveTier']),
+      );
+      _creditsCache = info;
+      return info;
+    } on TippyAuthException {
+      rethrow;
+    } catch (_) {
+      return const TippyCreditsInfo(greeting: fallbackGreeting);
+    }
   }
 
   Future<String?> fetchNudge() async {
@@ -108,57 +118,13 @@ class TippyChatService {
     if (text.isEmpty) {
       throw const TippyChatException('Message is required.');
     }
-    // Canonical Ask Tippy history path (same as website /ask-tippy).
-    if (clientMessageId != null && clientMessageId.trim().isNotEmpty) {
-      return sendPersistedMessage(
-        message: text,
-        chatId: chatId,
-        clientMessageId: clientMessageId.trim(),
-        platform: platform,
-      );
-    }
-    final Stopwatch stopwatch = Stopwatch()..start();
-    secureLog('frontend_send_click', name: 'TippyLatency');
-    final Map<String, dynamic> payload = <String, dynamic>{
-      'messages': messages
-          .take(20)
-          .map(
-            (TippyChatMessage m) => <String, String>{
-              'role': m.role,
-              'content': m.content,
-            },
-          )
-          .toList(growable: false),
-    };
-    final TippySuccessEnvelope envelope = await _authedPost(
-      '/tippy/chat',
-      payload,
-    );
-    secureLog(
-      'ai_complete requestId=${envelope.requestId} elapsedMs=${stopwatch.elapsedMilliseconds}',
-      name: 'TippyLatency',
-    );
-    PerformanceMonitoringService().trackNetworkRequest(
-      '/tippy/chat',
-      stopwatch.elapsed,
-      statusCode: 200,
-    );
-    final String? assistantText = _readString(
-      envelope.data['message'] ?? envelope.data['assistantMessage'],
-    );
-    final String cleanedAssistantText = _cleanPublicAiText(assistantText);
-    if (cleanedAssistantText.isEmpty) {
-      throw const TippyChatException('Tippy returned an empty response.');
-    }
-    _creditsCache = _creditsCache?.copyWith(
-      creditsRemaining: envelope.credits?.remaining,
-      tier: envelope.credits?.tier,
-    );
-    return TippyChatResult(
-      message: cleanedAssistantText,
-      creditsRemaining: envelope.credits?.remaining,
-      ui: TippyUiPayload.fromJson(envelope.data['ui']),
+    return sendPersistedMessage(
+      message: text,
       chatId: chatId,
+      clientMessageId: (clientMessageId != null && clientMessageId.trim().isNotEmpty)
+          ? clientMessageId.trim()
+          : 'flt_${DateTime.now().millisecondsSinceEpoch}_${text.hashCode}',
+      platform: platform,
     );
   }
 
@@ -331,14 +297,16 @@ class TippyChatService {
           errorMessage ?? 'Tippy request failed (${response.statusCode}).';
       throw TippyChatException(
         requestId.isEmpty ? baseMessage : '$baseMessage (ref: $requestId)',
-        code: errorCode ?? 'INTERNAL_ERROR',
+        code: errorCode != null && _knownErrorCodes.contains(errorCode)
+            ? errorCode
+            : (errorCode == null ? 'INTERNAL_ERROR' : 'UNKNOWN_BACKEND_ERROR'),
         status: response.statusCode,
         requestId: requestId,
       );
     }
-    final String? assistantText = _readString(
-      data['message'] ?? data['assistantMessage'],
-    );
+    final String? assistantText = _readString(data['message']) ??
+        _readString(_readMap(data['assistantMessage'])?['content']) ??
+        _readString(data['assistantMessage']);
     final String cleaned = _cleanPublicAiText(assistantText);
     if (cleaned.isEmpty) {
       throw const TippyChatException('Tippy returned an empty response.');
@@ -354,8 +322,55 @@ class TippyChatService {
   }
 
   Future<TippyContextSnapshot> fetchContext() async {
-    final TippySuccessEnvelope envelope = await _authedGet('/tippy/context');
-    return TippyContextSnapshot.fromMap(envelope.data);
+    const String fallbackGreeting = 'Hey creator, what are we building today?';
+    try {
+      final Map<String, String> headers = await _buildHeaders();
+      final http.Response response = await _executeRequest(
+        () => _client.get(
+          Uri.parse(siteTippyCreatorMemoryUrl()),
+          headers: headers,
+        ),
+      );
+      final Map<String, dynamic>? body = _tryDecodeMap(response.body);
+      if (body == null || body['success'] != true) {
+        return const TippyContextSnapshot(
+          memoryReady: false,
+          greeting: fallbackGreeting,
+          ui: TippyUiPayload.empty,
+        );
+      }
+      final Map<String, dynamic> memory =
+          _readMap(body['memory']) ?? <String, dynamic>{};
+      final Map<String, dynamic> identity =
+          _readMap(memory['identity']) ?? <String, dynamic>{};
+      final Map<String, dynamic> goals =
+          _readMap(memory['goals']) ?? <String, dynamic>{};
+      final String? niche = _readString(identity['niche']);
+      final bool memoryReady =
+          (niche ?? '').isNotEmpty || goals['goalIds'] != null;
+      final TippyUiPayload parsedUi = TippyUiPayload.fromJson(body['ui']);
+      final TippyContextStripData strip = parsedUi.contextStrip.hasContent
+          ? parsedUi.contextStrip
+          : TippyContextStripData(
+              nicheLabel: niche,
+              memoryReady: memoryReady,
+            );
+      return TippyContextSnapshot(
+        memoryReady: memoryReady,
+        greeting: fallbackGreeting,
+        ui: TippyUiPayload(
+          contextStrip: strip,
+          cards: parsedUi.cards,
+          suggestedPrompts: parsedUi.suggestedPrompts,
+        ),
+      );
+    } catch (_) {
+      return const TippyContextSnapshot(
+        memoryReady: false,
+        greeting: fallbackGreeting,
+        ui: TippyUiPayload.empty,
+      );
+    }
   }
 
   Future<Map<String, dynamic>> saveCreatorGoal(
@@ -407,32 +422,14 @@ class TippyChatService {
   Future<TippyScheduleProposalResult> proposeSchedule({
     required String prompt,
   }) async {
-    final TippySuccessEnvelope envelope = await _authedPost(
-      '/tippy/propose-schedule',
-      <String, dynamic>{'prompt': prompt},
-    );
-    final List<Map<String, dynamic>> proposals = <Map<String, dynamic>>[];
-    if (envelope.data['proposals'] is List) {
-      for (final Object? item in envelope.data['proposals'] as List<Object?>) {
-        if (item is Map<String, dynamic>) {
-          proposals.add(item);
-        } else if (item is Map) {
-          proposals.add(Map<String, dynamic>.from(item));
-        }
-      }
-    }
-    return TippyScheduleProposalResult(
-      proposals: proposals,
-      message: _readString(envelope.data['message']),
-      ui: TippyUiPayload.fromJson(envelope.data['ui']),
-      creditsRemaining: envelope.credits?.remaining,
+    throw const TippyChatException(
+      'Schedule proposals from this screen are disabled. Ask Tippy in chat instead.',
     );
   }
 
   Future<void> approveScheduleProposal({required String proposalId}) async {
-    await _authedPost(
-      '/tippy/approve-schedule',
-      <String, dynamic>{'proposalId': proposalId},
+    throw const TippyChatException(
+      'Legacy schedule approval is disabled. Confirm in Tippy chat instead.',
     );
   }
 
@@ -459,35 +456,8 @@ class TippyChatService {
     required List<TippyChatMessage> messages,
     String? prompt,
   }) async {
-    final String cleanPrompt = (prompt ?? '').trim();
-    final List<TippyChatMessage> contextMessages = messages
-        .where((TippyChatMessage message) => message.content.trim().isNotEmpty)
-        .take(20)
-        .toList(growable: false);
-    final Map<String, dynamic> payload = <String, dynamic>{
-      if (cleanPrompt.isNotEmpty) 'prompt': cleanPrompt,
-      'messages': contextMessages
-          .map(
-            (TippyChatMessage m) => <String, String>{
-              'role': m.role,
-              'content': m.content,
-            },
-          )
-          .toList(growable: false),
-    };
-    final TippySuccessEnvelope envelope = await _authedPost(
-      '/tippy/create-plan',
-      payload,
-    );
-    _creditsCache = _creditsCache?.copyWith(
-      creditsRemaining: envelope.credits?.remaining,
-      tier: envelope.credits?.tier,
-    );
-    return TippyPlanResult(
-      planId: _readString(envelope.data['planId']),
-      itemCount: _readInt(envelope.data['itemCount']),
-      message: _readString(envelope.data['message']),
-      creditsRemaining: envelope.credits?.remaining,
+    throw const TippyChatException(
+      'Plan creation from this screen is disabled. Ask Tippy in chat instead.',
     );
   }
 
@@ -533,15 +503,6 @@ class TippyChatService {
       creditsRemaining: envelope.credits?.remaining,
       ui: TippyUiPayload.fromJson(envelope.data['ui']),
     );
-  }
-
-  Future<TippySuccessEnvelope> _authedGet(String endpoint) async {
-    final Uri uri = _buildUri(endpoint);
-    final Map<String, String> headers = await _buildHeaders();
-    final http.Response response = await _executeRequest(
-      () => _client.get(uri, headers: headers),
-    );
-    return _parseEnvelope(response);
   }
 
   Future<TippySuccessEnvelope> _authedPost(

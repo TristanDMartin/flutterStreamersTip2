@@ -590,3 +590,159 @@ Not email match. Not cookie match. Not old UID match. A deleted / deleting / ban
 If Brain has confirmed platforms, Tippy must not re-ask “which platforms are you on?” Website and Flutter both skip that DNA question and may say they already know the setup (Twitch-first, etc.). Goals / experience / schedule remain asked until confirmed.
 
 **Checkup persists in Brain and is visible on Mission Control.** After claim, Checkup is an in-account Brain record — not only a pre-signup screen. Website Mission Control (`/dashboard/mission-control`) and Flutter’s Tippy home / Command Center read the same Brain (`GET /api/tippy/creator-memory`) and project `Your Creator Read` from checkup-derived layers (`observations`, `inferences`, `confirmedFacts`, `currentStrategy`, `platformIntelligence`). Continuity copy: “I brought over what I learned from your Checkup. Here’s what I want us to focus on first.” Learn More opens Brain-backed detail, not a dead guest session. If Brain has no Checkup-derived layer, do not invent one. An activated user may be redirected from `/checkup` to Mission Control only when Brain already has that attached Checkup. Phase 2 is not frozen. Phase 3 is not started.
+
+---
+
+## 11. Appearance preference
+
+Canonical `users/{uid}.appearance`:
+
+```
+light | dark | system
+```
+
+This is the **only** account-level appearance field. Do not write `webTheme`, `mobileTheme`, or `themeMode` on the user document.
+
+| Value | Meaning |
+|---|---|
+| `light` | Always light |
+| `dark` | Always dark |
+| `system` | Follow OS `prefers-color-scheme` / platform brightness |
+
+Default when missing: `system`.
+
+Clients may cache the same three values locally for instant startup (`st_appearance` on web, `themeMode` in Flutter SharedPreferences). For authenticated users the user document is the source of truth. Guests use local/system preference only.
+
+Visual tokens are defined in Flutter `lib/core/theme/st_theme_tokens.dart` (`StThemeColors` / `StAppTheme`). Website CSS variables (`--st-*`) must map to those values. Do not invent a second product palette.
+
+OBS browser-source overlays (`/streamer/{username}/overlay/{type}`) stay dark and do not follow account appearance.
+
+---
+
+## 12. Tippy Context + Action Layer
+
+Machine copy: `contracts/tippy-context-action.v1.json`. Website types: `types/tippyContextAction.ts`. Flutter should copy the same JSON; do not invent a second snapshot shape.
+
+**Canonical principle:** Tippy should always have context. Tippy should only surface context when it improves the current interaction. Knowing something and deciding it is appropriate to say are two different systems.
+
+**Opening Tippy does not destroy the context that caused Tippy to be opened.** `/ask-tippy` and the header widget are conversational surfaces. They may attach chat metadata (`chatCount`) onto the active product snapshot. They must not replace Planner / Analytics / Publish / Mission Control / Profile / Checkup with a generic `ask_tippy` snapshot. Conceptual stack: product context → Ask Tippy conversation, not product context replaced by Ask Tippy.
+
+Tippy is an intelligence layer across StreamersTip, not only a chat destination. Chat (`/ask-tippy` and the widget) remains the conversational home.
+
+| Level | Behavior | Status |
+|---|---|---|
+| 1 — Conversational | Ask Tippy and get intelligent answers | Shipped |
+| 2 — Contextual | Tippy understands the current screen/task | Phase 1 (this section) |
+| 3 — Actionable | Tippy can operate that feature | Partial; Phase 2–3 |
+| 4 — Proactive | Tippy notices important changes and comes to you | Not started. Do not build interruption UI before Phases 1–3. |
+
+### Inbound snapshot (`TippySurfaceSnapshot`)
+
+Every major surface passes:
+
+`where_am_i` → `what_am_i_doing` → `what_data_is_relevant` → `what_can_tippy_do_here`
+
+Facts only. Never invent metrics. Greeting turns still attach the snapshot; they must not dump it.
+
+Surfaces: `planner`, `analytics`, `publish`, `mission_control`, `creator_score`, `checkup`, `profile`, `ask_tippy`, `other`.
+
+### Outbound (`TippyLayerResponse`) — contract only in Phase 1
+
+`observation` → `judgment` → `recommended_action` → `confidence` → `available_actions` → `shouldSurface`
+
+`shouldSurface` is false for greetings (unless urgent) and for `low` / `medium` confidence. Phase 4 may interrupt only on high-confidence, high-impact events.
+
+### Build order
+
+1. Context awareness (inbound snapshots on major surfaces)
+2. Dynamic situation actions (replace generic chips)
+3. In-place Tippy (actions without requiring `/ask-tippy`)
+4. Proactive intelligence with confidence/importance
+5. Daily operating layer (briefing, what changed, autonomous prep)
+
+This section is **not** Checkup Phase 3 and does not expand Tippy Brain.
+
+### Phase 1.5 — Creator Reality & Evidence Layer
+
+Pipeline: **Intent → Reality → Evidence → Judgment → Action**.
+
+Keep `TippySurfaceSnapshot` top-level fields unchanged (`version`, `surface`, `path`, `whereAmI`, `whatAmIDoing`, `relevantData`, `availableActions`). Nested evidence does **not** go in `relevantData` (primitives only).
+
+Additive hidden block, sibling of `surface_snapshot_v1:`:
+
+`activity_truth_v1:{...}`
+
+`activity_truth_v1` contains **facts and provenance only**, not conclusions. Each behavioral fact has `kind`, `state`, `source`, `confidence`, and `asOf` where known. The judgment layer (prompt policy) may conclude “the plan is stale.” The data layer must not store that sentence.
+
+Evidence states: `planned` | `scheduled` | `due` | `overdue` | `creator_reported` | `completed` | `published` | `verified`.
+
+Canonical rules:
+
+1. **Plans are intentions, not evidence.**
+2. **Never compound a stale plan.**
+3. **Never upgrade evidence.**
+4. **Reconcile only when uncertainty affects the decision.** Historical reconciliation is required for questions about past performance (“What did I accomplish?”, “Was I consistent?”) and for strategy that depends on prior execution (“Should I stream tonight?”). It must **not** block an explicit forward-looking plan-management request (“Move these plans to October 5”, “Redo my week”, “Reschedule the unfinished work”) unless resolving that history is required to execute the request safely.
+
+Language: creator-reported → “you told me”; StreamersTip session → “StreamersTip recorded a session”; connected platform → connection only; StreamersTip ready/feed-eligible video or ST analytics publish → “StreamersTip recorded a publish”; `verified` → platform/system confirmation (not currently supplied by Twitch/YouTube APIs).
+
+`users.postCount`, unready video docs, Planner completion, scheduling, and Creator Score must never independently produce “you published…”. Planner `completed` / `done` store as `completed`. Planner `published` is publication evidence only. `done` is a read/write alias of `completed`. Do not alias `completed` to `published`. Historical rows already stored as `published` stay `published` (no backfill).
+
+Incomplete reality: known → advise; planned but unverified → qualify; conflicting/stale → reconcile when history affects the decision; unknown → ask; overdue → repair before adding workload. Explicit reschedule/reset of unfinished plans: inspect matching plans, disambiguate if needed, prepare a server proposal, confirm. Phase 1.5 **describes / proposes**. Phase 2A **executes** only confirmed `reschedule_plan`. Preserve completed items unless the creator asked for a full reset.
+
+Tippy may list candidate plans from existing `users/{uid}/contentPlans` reads (canonical `planId`, title, unfinished/overdue/completed counts, date range). That inspection is **not** stored in `activity_truth_v1`.
+
+**Flutter parity (not implemented in this website change):** Flutter Tippy chat must send the same `activity_truth_v1` block and the same evidence states, sources, and confidence values. No Flutter-only field aliases. Copy `contracts/tippy-context-action.v1.json` as-is.
+
+### Phase 2A — Plan rescheduling (`reschedule_plan`)
+
+Machine copy: `contracts/tippy-reschedule-plan.v1.json`. Website types: `types/tippyReschedulePlan.ts`.
+
+This is the first allowed Tippy Planner mutation on the stored-proposal pipeline. Implement **only** `reschedule_plan` now. Other Planner operators are catalogued below; do not implement them in this slice. Do not open caption generation, publishing, or Creator Score changes here.
+
+Pipeline: **Resolve → Prepare → Preview → Confirm → Execute → Verify → Report**.
+
+The model must not directly mutate Planner data. Prepare is a server-generated, immutable proposal. Tippy may only describe that payload. Confirmation is a product event tied to `proposalId`. Conversational “yes” / “yes I confirm” may map only to `confirm(proposalId)` when one pending proposal is active. It must never reconstruct dates or plan IDs from that text.
+
+`preserveSpacing: true` means **common delta**: shift every unfinished item by one UTC calendar-day delta so the earliest unfinished item lands on `requestedWindow.start`. Relative gaps and clock times are preserved. Do not redistribute items across the window. The preview lists the actual resulting dates; confirm executes that exact proposal. If the last date falls after `requestedWindow.end`, `fitsRequestedWindow` is false — still require confirm of those dates, do not silently compress.
+
+On confirm, re-read the plan and proposed items. If `sourceVersion` no longer matches, perform **no writes**, return `409 proposal_stale`, and require a new preview. Do not silently recompute. Duplicate confirm is idempotent by `proposalId`. Report success only after re-reading affected records.
+
+Execute uses the canonical Planner writer: Worker `PATCH /api/content-planning/plans/{planId}/items/{itemId}` then plan date PATCH (`contentItems` SoT + `contentPlans.items[]` dual-write). Production confirm requires the creator bearer token. Admin Firestore bypass is not allowed. Undo is **not implemented** — do not offer undo until a reverse Worker PATCH is verified.
+
+Never fall back to the newest active plan. Never use coarse `updateTippyContentPlanDates()`, `prep_launch_week`, or `update_content_plan` as the executor. Those tools are gated. Completed / published items are untouched. Mixed stored types are described as **unfinished items**, not streams.
+
+While a proposal is pending or an execution result is being shown, Tippy must not surface contradictory CTAs (no Schedule it, Generate caption, Create content plan). Show only Confirm / Review / Cancel.
+
+**Flutter:** copy `contracts/tippy-reschedule-plan.v1.json` as-is after this Web contract is stable. Do not implement Flutter in the same change.
+
+### Phase 2 Planner action family (catalog — do not implement beyond 2A)
+
+Machine copy: `contracts/tippy-planner-actions.v1.json`.
+
+Tippy is the Planner operator, not a click-through coach. Long-term it must **create, edit, archive/delete, repair, and recommend** content plans. Every mutation uses the same safe pipeline as `reschedule_plan`:
+
+**Understand → Resolve target → Preview → Confirm → Execute → Verify**
+
+The model never mutates Planner data. Confirmation is a product event on a stored `proposalId`. “Yes I confirm” maps only to `confirm(proposalId)`. Tippy must **never** say it will create, edit, archive, delete, or repair unless that action is open and executable. “I can’t delete plans directly” is correct until `delete_plan` / `archive_plan` ship.
+
+| Action | Purpose | Status |
+|---|---|---|
+| `create_content_plan` | Create a new plan from an approved preview | Legacy create tool exists today. Migrate onto stored preview/confirm in a later slice. Not opened here. |
+| `reschedule_plan` | Move unfinished work / dates | **Open (Phase 2A)** |
+| `edit_plan` | Plan-level dates, cadence, title, format, priority, platforms | Documented, not shipped |
+| `edit_plan_item` | One task/item | Documented, not shipped |
+| `archive_plan` | Reversible removal from active planning | Documented, not shipped. **Default** recommendation for removal. |
+| `delete_plan` | Permanent deletion | Documented, not shipped. Stronger confirmation than archive. |
+| `repair_plan` | Recovery schedule from stale/overdue work | Documented, not shipped. Prefer over creating more when workload is behind. |
+
+Removal example: “Delete all my content plans.” Resolve count + unfinished/completed impact. Preview chips: Archive all / Delete all / Choose plans. Nothing has changed yet. Execute only the stored proposal after explicit confirm.
+
+Edit example: “Make my streaming plan Monday, Wednesday, Friday.” Resolve the plan, preview date/cadence mutations, confirm, then execute.
+
+Create example: “Build me a GTA 6 launch plan starting November 19.” Gather missing constraints only when necessary, preview, then create after confirm.
+
+Suggestions stay on Reality Layer. If eight items are overdue, do not immediately create another plan. Offer **Repair current plan** or **Create anyway**.
+
+Do not implement `edit_plan`, `edit_plan_item`, `archive_plan`, `delete_plan`, or `repair_plan` in this change. Do not invent a giant “edit planner” tool. Flutter copies each action contract when that Web slice is frozen.
+
+**Creator Score — separate canonical review (do not patch here):** planning/scheduling events (`content.plan_created`, `content.plan_item_created`, `content.plan_item_completed`, `content.scheduled`) currently feed consistency and `publishingDiscipline`. That can look like publishing consistency. Later review should split planning discipline vs publishing consistency vs audience vs growth vs community vs execution. Tippy must never infer completed publishing from Creator Score.

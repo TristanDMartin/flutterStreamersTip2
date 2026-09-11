@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 
 import '../../core/backend/http_api_base_url.dart';
 import 'content_planning_api_client.dart';
-import 'content_planning_contract.dart';
 import 'content_planning_models.dart';
 import '../../utils/user_profile_firestore.dart';
 
@@ -496,25 +495,8 @@ class FirestoreContentPlanningRepository implements ContentPlanningRepository {
     required String userId,
     required ContentPlan plan,
   }) async {
-    if (plan.id.isEmpty) {
-      throw const ContentPlanningException('Plan id is required.');
-    }
-    final Map<String, dynamic> update = plan.toUpdateJson()
-      ..addAll(<String, dynamic>{
-        'userId': userId,
-        'ownerUid': userId,
-        'source': normalizeContentSource(plan.source) ?? 'flutter',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    final DocumentReference<Map<String, dynamic>> userRef =
-        _userContentPlansRef(userId).doc(plan.id);
-    final DocumentSnapshot<Map<String, dynamic>> userDoc = await userRef.get();
-    if (!userDoc.exists) {
-      // Phase 0 freeze: never write top-level contentPlans.
-      throw const ContentPlanningException(
-        'Plan not found in users/{uid}/contentPlans. Legacy top-level plans are read-only.',
-      );
-    }
-    await userRef.set(update, SetOptions(merge: true));
+    throw const ContentPlanningException(
+      'Direct plan saves are disabled. Use Tippy or the website Planner.',
+    );
   }
 }

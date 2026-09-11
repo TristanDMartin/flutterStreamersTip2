@@ -1,12 +1,10 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/support_shell_style.dart';
+import 'content_planning_api_client.dart';
 import 'content_planning_contract.dart';
 import 'content_planning_models.dart';
-import 'content_planning_provider.dart';
-import 'content_planning_repository.dart';
 
 /// Editable plan view backed by `users/{uid}/contentPlans/{id}` or
 /// `contentPlans/{id}` (see [FirestoreContentPlanningRepository]).
@@ -35,7 +33,6 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
   late final TextEditingController _draftIdeas;
   late String _status;
   DateTime? _scheduledAt;
-  bool _saving = false;
   late List<ContentPlanItem> _items;
 
   static const List<({String value, String label})> _statusChoices =
@@ -97,41 +94,10 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
     super.dispose();
   }
 
-  Future<void> _pickSchedule() async {
-    final DateTime now = DateTime.now();
-    final DateTime initial = _scheduledAt ?? now.add(const Duration(days: 1));
-    final DateTime? date = await showDatePicker(
-      context: context,
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 730)),
-      initialDate: initial,
-    );
-    if (date == null || !mounted) {
-      return;
-    }
-    final TimeOfDay? time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initial),
-    );
-    if (time == null) {
-      return;
-    }
-    setState(() {
-      _scheduledAt = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      );
-    });
-  }
-
   Future<void> _openItemEditor(int index) async {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final ContentPlanItem? updated =
-        await showModalBottomSheet<ContentPlanItem>(
+    final ContentPlanItem? next = await showModalBottomSheet<ContentPlanItem>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -149,70 +115,43 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
         );
       },
     );
-    if (updated != null && mounted) {
-      setState(() {
-        _items = List<ContentPlanItem>.from(_items)..[index] = updated;
-      });
-    }
-  }
-
-  Future<void> _save() async {
-    final User? user = FirebaseAuth.instance.currentUser;
-    if (user == null || _saving) {
+    if (next == null || !mounted) {
       return;
     }
-    setState(() => _saving = true);
-    final ContentPlan updated = ContentPlan(
-      id: widget.plan.id,
-      title: _title.text.trim().isEmpty ? 'Untitled plan' : _title.text.trim(),
-      itemCount: _items.isNotEmpty ? _items.length : widget.plan.itemCount,
-      userId: user.uid,
-      description: _emptyToNull(_description.text),
-      platform: _emptyToNull(_platform.text),
-      contentType: _emptyToNull(_contentType.text),
-      caption: _emptyToNull(_caption.text),
-      hashtags: _splitComma(_hashtags.text),
-      status: _status,
-      scheduledAt: _scheduledAt,
-      createdAt: widget.plan.createdAt,
-      updatedAt: widget.plan.updatedAt,
-      source: normalizeContentSource(widget.plan.source) ?? 'flutter',
-      notes: _emptyToNull(_notes.text),
-      checklist: _splitLines(_checklist.text),
-      draftIdeas: _splitLines(_draftIdeas.text),
-      items: _items,
-    );
+    final String userId = widget.plan.userId;
+    if (userId.isEmpty || widget.plan.id.isEmpty) {
+      return;
+    }
+    final int currentVersion = _items[index].version ?? 0;
     try {
-      await ref.read(contentPlanningRepositoryProvider).updatePlan(
-            userId: user.uid,
-            plan: updated,
-          );
-      ref.invalidate(contentPlansProvider);
+      final int? savedVersion = await ContentPlanningApiClient().patchPlanItem(
+        userId: userId,
+        planId: widget.plan.id,
+        itemId: next.id,
+        title: next.title,
+        description: next.description,
+        type: next.type,
+        status: next.status,
+        caption: next.caption,
+        notes: next.notes,
+        tags: next.tags,
+        expectedVersion: _items[index].version,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _items[index] = next.copyWith(
+          version: savedVersion ?? currentVersion + 1,
+        );
+      });
+    } on ContentPlanningApiException catch (e) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Plan updated'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Theme.of(context).colorScheme.primary,
-        ),
+        SnackBar(content: Text(e.message)),
       );
-    } on ContentPlanningException catch (e) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
     }
   }
 
@@ -285,22 +224,6 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                     fontSize: 17,
                   ),
                 ),
-                actions: <Widget>[
-                  if (_saving)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: Center(
-                        child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: scheme.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
               ),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -333,7 +256,7 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                       shell: shell,
                       scheme: scheme,
                       title: 'Plan setup',
-                      subtitle: 'Name, channel, and format',
+                      subtitle: 'View only — edit steps below',
                       children: <Widget>[
                         _PlanShellField(
                           shell: shell,
@@ -410,9 +333,7 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                           scheme: scheme,
                           status: _status,
                           choices: _statusChoices,
-                          onChanged: (String status) {
-                            setState(() => _status = status);
-                          },
+                          onChanged: (_) {},
                         ),
                         const SizedBox(height: 16),
                         _PlanScheduleTile(
@@ -420,12 +341,8 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
                           scheme: scheme,
                           scheduleLabel: scheduleLabel,
                           hasSchedule: hasSchedule,
-                          onTap: _pickSchedule,
-                          onClear: hasSchedule
-                              ? () {
-                                  setState(() => _scheduledAt = null);
-                                }
-                              : null,
+                          onTap: null,
+                          onClear: null,
                         ),
                       ],
                     ),
@@ -510,43 +427,6 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
             ],
           ),
         ],
-      ),
-      bottomNavigationBar: Material(
-        color: shell.scaffold.withValues(alpha: 0.96),
-        elevation: 8,
-        shadowColor: shell.shadowSoft,
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: _saving
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: scheme.onPrimary,
-                      ),
-                    )
-                  : Icon(Icons.save_rounded, color: scheme.onPrimary),
-              label: Text(
-                _saving ? 'Saving…' : 'Save changes',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -991,7 +871,7 @@ class _PlanStatusSelector extends StatelessWidget {
           ChoiceChip(
             label: Text(choice.label),
             selected: status == choice.value,
-            onSelected: (_) => onChanged(choice.value),
+            onSelected: null,
             selectedColor: scheme.primary.withValues(alpha: 0.22),
             backgroundColor: shell.chipUnselectedBg,
             labelStyle: TextStyle(
@@ -1021,7 +901,7 @@ class _PlanScheduleTile extends StatelessWidget {
     required this.scheme,
     required this.scheduleLabel,
     required this.hasSchedule,
-    required this.onTap,
+    this.onTap,
     this.onClear,
   });
 
@@ -1029,7 +909,7 @@ class _PlanScheduleTile extends StatelessWidget {
   final ColorScheme scheme;
   final String scheduleLabel;
   final bool hasSchedule;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final VoidCallback? onClear;
 
   @override
@@ -1131,6 +1011,7 @@ class _PlanShellField extends StatelessWidget {
       child: TextField(
         controller: controller,
         maxLines: maxLines,
+        readOnly: true,
         style: TextStyle(
           color: shell.onChrome,
           fontWeight: FontWeight.w600,

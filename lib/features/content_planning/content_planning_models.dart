@@ -270,6 +270,7 @@ class ContentPlan {
   }
 
   ContentPlan copyWith({
+    String? id,
     String? title,
     String? description,
     String? platform,
@@ -285,7 +286,7 @@ class ContentPlan {
     int? itemCount,
   }) {
     return ContentPlan(
-      id: id,
+      id: id ?? this.id,
       title: title ?? this.title,
       userId: userId,
       description: description ?? this.description,

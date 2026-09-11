@@ -216,6 +216,93 @@ class ContentPlanningApiClient {
     }
   }
 
+  Future<String> createPlan({
+    required String userId,
+    required String title,
+    required DateTime startDate,
+    required DateTime endDate,
+    String description = '',
+    String? source,
+    String? status,
+    List<Map<String, dynamic>>? items,
+  }) async {
+    final Map<String, String> headers = await _authHeaders();
+    final http.Response response = await _client
+        .post(
+          _uri('/api/content-planning/plans'),
+          headers: headers,
+          body: jsonEncode(<String, dynamic>{
+            'userId': userId,
+            'title': title,
+            'description': description,
+            'startDate': startDate.toUtc().toIso8601String(),
+            'endDate': endDate.toUtc().toIso8601String(),
+            if (source != null) 'source': source,
+            if (status != null) 'status': status,
+            if (items != null) 'items': items,
+          }),
+        )
+        .timeout(const Duration(seconds: 25));
+    final Map<String, dynamic> body = await _decode(response);
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        body['success'] != true) {
+      _throwApiFailure(
+        body,
+        response.statusCode,
+        'Failed to create content plan.',
+      );
+    }
+    final String planId = (body['planId'] ?? '').toString();
+    if (planId.isEmpty) {
+      throw const ContentPlanningApiException('Invalid create plan response.');
+    }
+    return planId;
+  }
+
+  Future<String> addPlanItem({
+    required String userId,
+    required String planId,
+    required String title,
+    required String type,
+    String description = '',
+    String? status,
+    String? notes,
+    List<String>? tags,
+  }) async {
+    final Map<String, String> headers = await _authHeaders();
+    final http.Response response = await _client
+        .post(
+          _uri('/api/content-planning/plans/$planId/items'),
+          headers: headers,
+          body: jsonEncode(<String, dynamic>{
+            'userId': userId,
+            'title': title,
+            'type': type,
+            'description': description,
+            if (status != null) 'status': status,
+            if (notes != null) 'notes': notes,
+            if (tags != null) 'tags': tags,
+          }),
+        )
+        .timeout(const Duration(seconds: 25));
+    final Map<String, dynamic> body = await _decode(response);
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        body['success'] != true) {
+      _throwApiFailure(
+        body,
+        response.statusCode,
+        'Failed to add plan item.',
+      );
+    }
+    final String itemId = (body['itemId'] ?? '').toString();
+    if (itemId.isEmpty) {
+      throw const ContentPlanningApiException('Invalid add item response.');
+    }
+    return itemId;
+  }
+
   /// Phase 4: rebuild calendar projections from contentItems on the Worker.
   Future<void> syncProfileCalendar({required String userId}) async {
     final Map<String, String> headers = await _authHeaders();

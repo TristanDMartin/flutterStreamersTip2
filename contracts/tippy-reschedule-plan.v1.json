@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamerstip.com/contracts/tippy-reschedule-plan.v1.json",
+  "title": "StreamersTip Tippy reschedule_plan v1",
+  "description": "Phase 2A Web action contract. Tippy may prepare and confirm an unfinished-only plan reschedule. The model never mutates Planner data. Confirmation executes a stored proposalId. Flutter must copy this file as-is; do not implement Flutter until the Web contract is stable.",
+  "version": "1.0.0",
+  "id": "tippy-reschedule-plan.v1",
+  "action": "reschedule_plan",
+  "flow": [
+    "resolve",
+    "prepare",
+    "preview",
+    "confirm",
+    "execute",
+    "verify",
+    "report"
+  ],
+  "rules": {
+    "modelMustNotMutate": true,
+    "previewFromStoredProposalOnly": true,
+    "confirmIsProductEvent": true,
+    "naturalLanguageYesMapsOnlyToConfirmProposalId": true,
+    "neverReinterpretYesIntoDatesOrPlanIds": true,
+    "neverFallbackToNewestActivePlan": true,
+    "neverUseCoarseUpdateTippyContentPlanDates": true,
+    "requiresCreatorBearerToken": true,
+    "canonicalWriter": "worker_content_planning_patch",
+    "undoImplemented": false,
+    "completedItemsUntouched": true,
+    "idempotentByProposalId": true,
+    "staleDoesNotRecompute": true,
+    "reportFromRereadNotWriteAck": true
+  },
+  "scope": "unfinished_only",
+  "preserveSpacing": {
+    "value": true,
+    "semantics": "common_delta",
+    "description": "Shift every unfinished item by one common UTC calendar-day delta so the earliest unfinished item lands on requestedWindow.start. Relative gaps and clock times are preserved. Do not redistribute or scale items to fit requestedWindow.end. If the last proposed date is after requestedWindow.end, fitsRequestedWindow is false; the preview still lists the actual proposed dates and confirm executes those dates exactly."
+  },
+  "proposal": {
+    "fields": [
+      "proposalId",
+      "action",
+      "planId",
+      "planTitle",
+      "scope",
+      "requestedWindow",
+      "preserveSpacing",
+      "fitsRequestedWindow",
+      "itemIds",
+      "expectedMutations",
+      "unchangedCompletedCount",
+      "proposedPlanStart",
+      "proposedPlanEnd",
+      "sourceVersion",
+      "status",
+      "chatId",
+      "expiresAt"
+    ],
+    "status": ["pending", "executed", "cancelled", "expired", "stale"],
+    "ttlMinutes": 30,
+    "store": "users/{uid}/tippyProposals/{proposalId}"
+  },
+  "confirm": {
+    "input": "proposalId",
+    "conflict": {
+      "code": "proposal_stale",
+      "http": 409,
+      "writes": false
+    },
+    "expired": {
+      "code": "proposal_expired",
+      "http": 409,
+      "writes": false
+    },
+    "ownership": {
+      "http": 403,
+      "writes": false
+    }
+  },
+  "cta": {
+    "whilePendingOrReporting": ["Confirm changes", "Review dates", "Cancel"],
+    "suppress": [
+      "schedule_post",
+      "open_scheduler_modal",
+      "generate_caption",
+      "create_caption",
+      "create_content_plan",
+      "save_to_planner",
+      "open_upload"
+    ]
+  },
+  "wording": {
+    "mixedTypes": "unfinished items",
+    "uniformType": "use the stored item type (streams, clips, posts, …)",
+    "neverPromiseMutationFromProseAlone": true
+  }
+}

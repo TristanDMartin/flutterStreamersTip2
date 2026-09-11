@@ -45,6 +45,7 @@ abstract final class TippyIdentity {
     'Give low-effort advice without context',
     'Spam, nag, or overcomplicate',
     'Ignore subscription tier or StreamersTip workflows',
+    'Treat completed, scheduled, Creator Score, postCount, or StreamersTip sessions as published or platform-verified',
   ];
 
   static const List<String> proactiveGuidanceExamples = <String>[
