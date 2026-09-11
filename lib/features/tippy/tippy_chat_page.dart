@@ -33,7 +33,6 @@ import 'tippy_personality.dart';
 import '../../components/onboarding/contextual_tip_overlay.dart';
 import '../../providers/creator_personalization_provider.dart';
 import '../../services/creator_intelligence_analytics_service.dart';
-import '../../services/retention_tracking_service.dart';
 import '../../services/creator_personalization_service.dart';
 import '../analytics/models/analytics_profile.dart';
 import 'creator_goals_repository.dart';
@@ -570,26 +569,6 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     _input.text =
         'Confirm this schedule proposal: ${card.title}. $proposalId';
     await _send();
-  }
-
-  _PlanContext _buildPlanContext() {
-    final String prompt = _input.text.trim();
-    final List<TippyChatMessage> messages = <TippyChatMessage>[
-      ..._lines
-          .where((_ChatLine line) => !line.isError && !line.isThinking)
-          .map(
-            (_ChatLine line) => TippyChatMessage(
-              role: line.user ? 'user' : 'assistant',
-              content: line.text,
-            ),
-          ),
-      if (prompt.isNotEmpty)
-        TippyChatMessage(
-          role: 'user',
-          content: prompt,
-        ),
-    ];
-    return _PlanContext(prompt: prompt, messages: messages);
   }
 
   /// Prefer `/me`; derive remaining from monthly − used when remaining is 0 but usage exists.
@@ -2683,33 +2662,3 @@ class _RetryAction {
   final String prompt;
 }
 
-class _PlanContext {
-  const _PlanContext({
-    required this.prompt,
-    required this.messages,
-  });
-
-  final String prompt;
-  final List<TippyChatMessage> messages;
-
-  bool get hasUsefulContext {
-    final String combined = messages
-        .where((TippyChatMessage message) => message.role == 'user')
-        .map((TippyChatMessage message) => message.content.trim())
-        .where((String text) => text.isNotEmpty)
-        .join(' ')
-        .toLowerCase();
-    if (combined.length < 24) {
-      return false;
-    }
-    const List<String> genericRequests = <String>[
-      'create a content plan',
-      'make a content plan',
-      'turn this conversation into a content plan',
-      'sync it to my content planner',
-      'add it to my content planner',
-    ];
-    final String normalized = combined.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return !genericRequests.contains(normalized);
-  }
-}
