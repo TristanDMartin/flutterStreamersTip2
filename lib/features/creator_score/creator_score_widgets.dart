@@ -496,7 +496,7 @@ class _ScoreHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final String rankLine = isLoading
         ? 'Loading live score'
-        : '${score.rankLabel} · level ${score.level}';
+        : '${score.rankLabel} · Level ${score.level}';
 
     return Container(
       padding: const EdgeInsets.all(16),

@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'creator_score_labels.dart';
+
 class CreatorScore {
   const CreatorScore({
     required this.score,
@@ -27,7 +29,7 @@ class CreatorScore {
 
   static const CreatorScore fallback = CreatorScore(
     score: 0,
-    rankLabel: 'New Creator',
+    rankLabel: CreatorScoreLabels.fallbackLabel,
     level: 1,
     consistencyScore: 0,
     contentScore: 0,
@@ -49,9 +51,13 @@ class CreatorScore {
       return fallback;
     }
 
+    final int score = _readScore(data['score']);
     return CreatorScore(
-      score: _readScore(data['score']),
-      rankLabel: _readString(data['rankLabel'], fallback.rankLabel),
+      score: score,
+      rankLabel: CreatorScoreLabels.displayLabel(
+        score: score,
+        rankLabel: data['rankLabel'],
+      ),
       level: _readScore(data['level'], fallbackValue: fallback.level, min: 1),
       consistencyScore: _readScore(data['consistencyScore']),
       contentScore: _readScore(data['contentScore']),
@@ -75,11 +81,6 @@ class CreatorScore {
       _ => fallbackValue,
     };
     return parsed.clamp(min, 100);
-  }
-
-  static String _readString(Object? value, String fallbackValue) {
-    final String? text = value is String ? value.trim() : null;
-    return text == null || text.isEmpty ? fallbackValue : text;
   }
 
   static List<String> _readRecommendations(Object? value) {

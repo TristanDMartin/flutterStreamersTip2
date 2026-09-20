@@ -21,6 +21,8 @@ The example top-level tree (`creatorProfiles/{uid}`, `creatorGrowth/{uid}`, `cre
 | Growth plan | `users/{uid}/contentPlans/{planId}` | Tippy / content-planning APIs |
 | Creator Score | `users/{uid}/creatorScore/current` | Cloudflare Worker only |
 | Score categories | `creatorScore/current.categories` | Same Worker write |
+| Score Label (`rankLabel`) | Performance band from Score (Getting Started → Exceptional Performance). **Not** XP title. | Same Worker write; clients may re-derive from `score` for display |
+| XP / Level / XP Title | `users/{uid}/gamification/state` (+ `rankTitle`) | Worker |
 | Missions | `users/{uid}/gamificationMissions/{missionId}` | Worker `/gamification/events` |
 | XP / Level / Streak | `users/{uid}/gamification/state` | Worker |
 | Achievements | `users/{uid}/gamificationAchievements/{key}` | Worker |
