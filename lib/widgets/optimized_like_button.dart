@@ -233,7 +233,16 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) {
-        debugPrint('❌ OptimizedLikeButton: No user logged in');
+        final StreamersTipLikeService service = StreamersTipLikeService();
+        if (_isLiked) {
+          service.queuePendingLikeAfterAuth(widget.videoId);
+        } else {
+          service.clearPendingLike();
+        }
+        debugPrint(
+          '🔐 OptimizedLikeButton: no user — '
+          '${_isLiked ? 'queued pending like' : 'cleared pending like'}',
+        );
         return;
       }
 

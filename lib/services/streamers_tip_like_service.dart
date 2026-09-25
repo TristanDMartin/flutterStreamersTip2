@@ -1,18 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'network_connectivity_service.dart';
+import 'pending_auth_redirect_service.dart';
 import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
 import '../features/gamification/gamification_like_events_policy.dart';
+import '../routing/app_routes.dart';
 import '../utils/interaction_diagnostics.dart';
 import '../utils/like_interaction_boundary.dart';
 import 'creator_intelligence_analytics_service.dart';
 import 'progression_service.dart';
+import 'unified_avatar_service.dart' show NavigationService;
 
 /// Like state for a video
 class LikeState {
@@ -92,6 +96,9 @@ class StreamersTipLikeService extends ChangeNotifier {
   final Map<String, DateTime> _lastLikeTimes = {};
   static const Duration _rateLimit = Duration(seconds: 1);
 
+  // Guest like → login: apply after auth (matches website openLogin UX).
+  String? _pendingLikeVideoId;
+
   // State management
   bool _isInitialized = false;
   String? _syncedUserId;
@@ -140,6 +147,7 @@ class StreamersTipLikeService extends ChangeNotifier {
             return;
           }
           await loadUserLikedVideos(user.uid);
+          await consumePendingLikeAfterAuth(user.uid);
         },
       );
 
@@ -150,6 +158,52 @@ class StreamersTipLikeService extends ChangeNotifier {
       debugPrint('❌ StreamersTipLikeService: Initialization failed: $e');
       rethrow;
     }
+  }
+
+  /// Stash a like intent for guests, open auth, then apply after sign-in.
+  void queuePendingLikeAfterAuth(String videoId) {
+    if (videoId.isEmpty) {
+      return;
+    }
+    _pendingLikeVideoId = videoId;
+    PendingAuthRedirectService.instance.setAction((_) async {
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        return;
+      }
+      await consumePendingLikeAfterAuth(user.uid);
+    });
+    final NavigatorState? navigator =
+        NavigationService.navigatorKey.currentState;
+    if (navigator != null && FirebaseAuth.instance.currentUser == null) {
+      navigator.pushNamed(AppRoutes.auth);
+    }
+    debugPrint(
+      '🔐 StreamersTipLikeService: Queued pending like for $videoId (awaiting auth)',
+    );
+  }
+
+  void clearPendingLike() {
+    if (_pendingLikeVideoId == null) {
+      return;
+    }
+    debugPrint(
+      '🔐 StreamersTipLikeService: Cleared pending like for $_pendingLikeVideoId',
+    );
+    _pendingLikeVideoId = null;
+  }
+
+  /// Apply a guest-stashed like once the user is signed in.
+  Future<void> consumePendingLikeAfterAuth(String userId) async {
+    final String? videoId = _pendingLikeVideoId;
+    if (videoId == null || videoId.isEmpty || userId.isEmpty) {
+      return;
+    }
+    _pendingLikeVideoId = null;
+    debugPrint(
+      '💖 StreamersTipLikeService: Applying pending like for $videoId after auth',
+    );
+    await likeVideo(videoId, userId, source: 'pending_auth');
   }
 
   /// Get like state for a video

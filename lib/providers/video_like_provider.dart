@@ -170,8 +170,16 @@ class VideoLikeNotifier extends StateNotifier<VideoLikeState> {
   }) async {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
+      if (targetLiked) {
+        _likeService.queuePendingLikeAfterAuth(_videoId);
+      } else {
+        _likeService.clearPendingLike();
+      }
       if (kDebugMode) {
-        debugPrint('❌ VideoLikeNotifier: no user for $_videoId');
+        debugPrint(
+          '🔐 VideoLikeNotifier: no user for $_videoId — '
+          '${targetLiked ? 'queued pending like' : 'cleared pending like'}',
+        );
       }
       onComplete?.call();
       return;

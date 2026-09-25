@@ -34,6 +34,7 @@ import '../features/video_player/application/video_cell_init_error_classifier.da
 import '../features/video_player/application/video_cell_watchdog_tokens.dart';
 import '../features/video_player/application/video_cell_activation_coordinator.dart';
 import '../utils/home_video_playback.dart';
+import '../utils/firestore_map_readers.dart';
 import '../features/video_player/widgets/video_player_premium_feed_scrim.dart';
 import '../features/video_player/widgets/video_player_contained_stage.dart';
 import '../features/video_player/widgets/video_player_media3_home_surface.dart';
@@ -975,7 +976,8 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
-  /// Comment badge = all visible comment docs (top-level + replies), not deleted.
+  /// Comment badge = top-level comments only (exclude replies), not deleted.
+  /// Matches CF `commentCounts.js` / website rail contract.
   void _initializeCommentCountListener() {
     _commentCountSubscription?.cancel();
     _commentCountSubscription = null;
@@ -1060,9 +1062,10 @@ class _VideoPlayerViewOptimizedState
         in snapshot.docs) {
       final Map<String, dynamic> data = doc.data();
       final bool deleted = data['deleted'] as bool? ?? false;
-      if (!deleted) {
-        n++;
+      if (deleted || !isTopLevelComment(data)) {
+        continue;
       }
+      n++;
     }
     return n;
   }

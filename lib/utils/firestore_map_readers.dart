@@ -58,6 +58,23 @@ int readVideoCommentCountFromFirestore(Map<String, dynamic> data) {
   );
 }
 
+/// Dual-read web `parentId` and Flutter `parentCommentId` for reply nesting.
+String? readCommentParentId(Map<String, dynamic> data) {
+  final Object? parentCommentId = data['parentCommentId'];
+  if (parentCommentId is String && parentCommentId.trim().isNotEmpty) {
+    return parentCommentId.trim();
+  }
+  final Object? parentId = data['parentId'];
+  if (parentId is String && parentId.trim().isNotEmpty) {
+    return parentId.trim();
+  }
+  return null;
+}
+
+bool isTopLevelComment(Map<String, dynamic> data) {
+  return readCommentParentId(data) == null;
+}
+
 int readVideoBookmarkCountFromFirestore(Map<String, dynamic> data) {
   return intFieldFromMapKeys(
     data,

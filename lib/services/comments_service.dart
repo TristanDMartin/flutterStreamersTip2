@@ -10,6 +10,7 @@ import '../features/gamification/emit_engagement_gamification.dart';
 import '../features/gamification/gamification_event_types.dart';
 import 'progression_service.dart';
 import 'creator_intelligence_analytics_service.dart';
+import '../utils/firestore_map_readers.dart';
 
 class VideoCommentsSnapshot {
   final List<Comment> comments;
@@ -48,8 +49,9 @@ class CommentsService {
     _eventTriggerService = eventTriggerService;
   }
 
-  /// Resync comment counter with actual comment count in subcollection
-  /// This is useful if the counter got out of sync due to manual deletions
+  /// Resync comment counter with actual top-level comment count in subcollection.
+  /// Dual-writes aliases Flutter/web read via max-of (`comments`, `commentCount`,
+  /// `commentsCount`). Matches CF `commentCounts.js` top-level-only contract.
   Future<void> resyncCommentCounter(String videoId) async {
     try {
       debugPrint('🔄 Resyncing comment counter for video: $videoId');
@@ -63,14 +65,15 @@ class CommentsService {
 
       final actualCount = commentsSnapshot.docs.where((doc) {
         final data = doc.data();
-        final parentCommentId = (data['parentCommentId'] as String?)?.trim();
         final deleted = data['deleted'] as bool? ?? false;
-        return (parentCommentId == null || parentCommentId.isEmpty) && !deleted;
+        return isTopLevelComment(data) && !deleted;
       }).length;
 
-      // Update the video document's comments field
+      // Dual-write aliases (max-of readers on Flutter + website).
       await _firestore.collection('videos').doc(videoId).update({
         'comments': actualCount,
+        'commentCount': actualCount,
+        'commentsCount': actualCount,
       });
 
       debugPrint(
@@ -78,6 +81,12 @@ class CommentsService {
     } catch (e) {
       debugPrint('❌ Error resyncing comment counter for $videoId: $e');
     }
+  }
+
+  /// Web writes `parentId`; Flutter historically wrote `parentCommentId`.
+  /// Dual-read both so replies nest correctly across clients.
+  String? _readParentCommentId(Map<String, dynamic> data) {
+    return readCommentParentId(data);
   }
 
   CollectionReference<Map<String, dynamic>> _commentsCollection(
@@ -113,8 +122,8 @@ class CommentsService {
           canonicalCommentKeys.contains(_commentDedupeKey(data))) {
         continue;
       }
-      final parentCommentId = (data['parentCommentId'] as String?)?.trim();
-      if (parentCommentId != null && parentCommentId.isNotEmpty) {
+      final parentCommentId = _readParentCommentId(data);
+      if (parentCommentId != null) {
         final reply = _commentFromData(
           id: doc.id,
           data: data,
@@ -205,6 +214,7 @@ class CommentsService {
   }) {
     final hasCanonicalReplyContract = data.containsKey('replyCount') ||
         data.containsKey('parentCommentId') ||
+        data.containsKey('parentId') ||
         data.containsKey('deleted') ||
         data.containsKey('likedBy');
     if (hasCanonicalReplyContract) {
@@ -436,6 +446,8 @@ class CommentsService {
           currentUserId: currentUser.uid,
           author: author,
         ),
+        // Dual-write: web CF uses parentId; Flutter nests via parentCommentId.
+        'parentId': null,
         'parentCommentId': null,
         'likedBy': const <String>[],
         'replyCount': 0,
@@ -520,6 +532,8 @@ class CommentsService {
             currentUserId: currentUser.uid,
             author: author,
           ),
+          // Dual-write: web CF uses parentId; Flutter nests via parentCommentId.
+          'parentId': parentId,
           'parentCommentId': parentId,
           'likedBy': const <String>[],
           'replyCount': 0,
@@ -645,8 +659,7 @@ class CommentsService {
 
       final commentData = commentDoc.data()!;
       final commentAuthorId = _readCommentUserId(commentData);
-      final parentCommentId =
-          (commentData['parentCommentId'] as String?)?.trim();
+      final parentCommentId = _readParentCommentId(commentData);
       final alreadyDeleted = commentData['deleted'] as bool? ?? false;
 
       // Check if current user can delete this comment
@@ -677,7 +690,7 @@ class CommentsService {
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        if (parentCommentId != null && parentCommentId.isNotEmpty) {
+        if (parentCommentId != null) {
           final parentRef = _commentsCollection(videoId).doc(parentCommentId);
           final parentDoc = await transaction.get(parentRef);
           if (parentDoc.exists) {
@@ -693,7 +706,7 @@ class CommentsService {
       });
 
       // Only top-level comments affect the video-level comment counter.
-      if (parentCommentId == null || parentCommentId.isEmpty) {
+      if (parentCommentId == null) {
         await _eventTriggerService?.triggerCommentDeleteEvent(
           videoId: videoId,
         );
