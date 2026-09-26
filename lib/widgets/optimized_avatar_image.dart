@@ -7,6 +7,7 @@ class OptimizedAvatarImage extends StatelessWidget {
   final Color? backgroundColor;
   final Widget? placeholder;
   final Widget? errorWidget;
+  final String? displayName;
 
   const OptimizedAvatarImage({
     super.key,
@@ -15,6 +16,7 @@ class OptimizedAvatarImage extends StatelessWidget {
     this.backgroundColor,
     this.placeholder,
     this.errorWidget,
+    this.displayName,
   });
 
   @override
@@ -31,11 +33,30 @@ class OptimizedAvatarImage extends StatelessWidget {
         fit: BoxFit.cover,
         placeholder: (context, url) => _buildPlaceholder(),
         errorWidget: (context, url, error) => _buildErrorWidget(),
-        memCacheWidth: (size * 2).round(), // Optimize memory usage
+        memCacheWidth: (size * 2).round(),
         memCacheHeight: (size * 2).round(),
-        maxWidthDiskCache: (size * 3).round(), // Optimize disk cache
+        maxWidthDiskCache: (size * 3).round(),
         maxHeightDiskCache: (size * 3).round(),
       ),
+    );
+  }
+
+  Widget _buildInitialsOrPerson() {
+    final String trimmed = (displayName ?? '').trim();
+    if (trimmed.isNotEmpty) {
+      return Text(
+        trimmed.substring(0, 1).toUpperCase(),
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.4,
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+    return Icon(
+      Icons.person,
+      color: Colors.white,
+      size: size * 0.5,
     );
   }
 
@@ -44,12 +65,8 @@ class OptimizedAvatarImage extends StatelessWidget {
       width: size,
       height: size,
       color: backgroundColor ?? Colors.grey[800],
-      child: placeholder ??
-          const Icon(
-            Icons.person,
-            color: Colors.white,
-            size: 28,
-          ),
+      alignment: Alignment.center,
+      child: placeholder ?? _buildInitialsOrPerson(),
     );
   }
 
@@ -58,12 +75,9 @@ class OptimizedAvatarImage extends StatelessWidget {
       width: size,
       height: size,
       color: backgroundColor ?? Colors.grey[800],
-      child: errorWidget ??
-          const Icon(
-            Icons.error_outline,
-            color: Colors.white,
-            size: 28,
-          ),
+      alignment: Alignment.center,
+      // Never show an error/broken icon for avatars — initials or person mark.
+      child: errorWidget ?? _buildInitialsOrPerson(),
     );
   }
 }

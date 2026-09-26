@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import '../models/connection_lite.dart';
 import '../services/connections_service.dart';
 import '../services/user_blocking_service.dart';
+import '../utils/avatar_url_resolver.dart';
 
 /// ConnectionsSearchOverlay - Full-screen search for connections
 ///
@@ -317,19 +319,37 @@ class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
       child: ListTile(
         leading: Stack(
           children: [
-            // Avatar
-            CircleAvatar(
-              radius: 24,
-              backgroundImage: connection.avatarUrl.isNotEmpty
-                  ? NetworkImage(connection.avatarUrl)
-                  : null,
-              backgroundColor: Colors.white.withValues(alpha: 0.2),
-              child: connection.avatarUrl.isEmpty
-                  ? Icon(
-                      Icons.person,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    )
-                  : null,
+            // Avatar — never show a broken NetworkImage
+            Builder(
+              builder: (BuildContext context) {
+                final Widget fallback = CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  child: Icon(
+                    Icons.person,
+                    color: Colors.white.withValues(alpha: 0.7),
+                  ),
+                );
+                final String? resolved = isNetworkAvatarUrl(connection.avatarUrl)
+                    ? normalizeAvatarPhotoUrl(connection.avatarUrl)
+                    : null;
+                if (resolved == null || resolved.isEmpty) {
+                  return fallback;
+                }
+                return ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl: resolved,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 96,
+                    memCacheHeight: 96,
+                    placeholder: (BuildContext c, String u) => fallback,
+                    errorWidget: (BuildContext c, String u, Object e) =>
+                        fallback,
+                  ),
+                );
+              },
             ),
 
             // Online status

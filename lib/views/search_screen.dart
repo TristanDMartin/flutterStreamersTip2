@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import '../services/creator_intelligence_analytics_service.dart';
 import '../services/search_api_service.dart';
@@ -10,6 +11,7 @@ import '../routing/app_navigator.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/theme/support_shell_style.dart';
+import '../utils/avatar_url_resolver.dart';
 
 /// StreamersTip search screen with unified results feed
 class SearchScreen extends ConsumerStatefulWidget {
@@ -608,21 +610,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         ),
         child: Row(
           children: <Widget>[
-            CircleAvatar(
-              radius: 28,
+            _SearchResultAvatar(
+              avatarUrl: result.avatarUrl,
+              title: result.title,
               backgroundColor: cs.surfaceContainerHighest,
-              backgroundImage:
-                  result.avatarUrl != null && result.avatarUrl!.isNotEmpty
-                      ? NetworkImage(result.avatarUrl!)
-                      : null,
-              child: result.avatarUrl == null || result.avatarUrl!.isEmpty
-                  ? Text(
-                      result.title.isNotEmpty
-                          ? result.title[0].toUpperCase()
-                          : '?',
-                      style: TextStyle(color: cs.onSurface),
-                    )
-                  : null,
+              foregroundColor: cs.onSurface,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -740,6 +732,49 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SearchResultAvatar extends StatelessWidget {
+  const _SearchResultAvatar({
+    required this.avatarUrl,
+    required this.title,
+    required this.backgroundColor,
+    required this.foregroundColor,
+  });
+
+  final String? avatarUrl;
+  final String title;
+  final Color backgroundColor;
+  final Color foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final String initial =
+        title.isNotEmpty ? title[0].toUpperCase() : '?';
+    final Widget fallback = CircleAvatar(
+      radius: 28,
+      backgroundColor: backgroundColor,
+      child: Text(initial, style: TextStyle(color: foregroundColor)),
+    );
+    final String? resolved =
+        isNetworkAvatarUrl(avatarUrl) ? normalizeAvatarPhotoUrl(avatarUrl) : null;
+    if (resolved == null || resolved.isEmpty) {
+      return fallback;
+    }
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: resolved,
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        memCacheWidth: 112,
+        memCacheHeight: 112,
+        placeholder: (BuildContext context, String url) => fallback,
+        errorWidget: (BuildContext context, String url, Object error) =>
+            fallback,
       ),
     );
   }
