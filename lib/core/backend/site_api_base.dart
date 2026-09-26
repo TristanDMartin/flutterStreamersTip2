@@ -72,6 +72,72 @@ String siteWorkspaceApprovalUrl({
   );
 }
 
+String siteWorkspaceContextUrl({String? base}) =>
+    siteApiPath('/api/workspace/context', base: base);
+
+String siteWorkspaceMembersUrl({String? base, String? workspaceId}) {
+  final String root = resolveSiteApiBase(explicitOverride: base);
+  if (workspaceId == null || workspaceId.isEmpty) {
+    return '$root/api/workspace/members';
+  }
+  return '$root/api/workspace/members'
+      '?workspaceId=${Uri.encodeQueryComponent(workspaceId)}';
+}
+
+String siteWorkspaceMemberUrl({
+  required String memberId,
+  String? base,
+}) {
+  return siteApiPath(
+    '/api/workspace/members/${Uri.encodeComponent(memberId)}',
+    base: base,
+  );
+}
+
+String siteWorkspaceMemberSearchUrl({
+  required String query,
+  String? workspaceId,
+  String? base,
+}) {
+  final String root = resolveSiteApiBase(explicitOverride: base);
+  final StringBuffer buf = StringBuffer(
+    '$root/api/workspace/members/search?q=${Uri.encodeQueryComponent(query)}',
+  );
+  if (workspaceId != null && workspaceId.isNotEmpty) {
+    buf.write('&workspaceId=${Uri.encodeQueryComponent(workspaceId)}');
+  }
+  return buf.toString();
+}
+
+String siteWorkspaceInvitesUrl({
+  String scope = 'incoming',
+  String? workspaceId,
+  String? status,
+  String? base,
+}) {
+  final String root = resolveSiteApiBase(explicitOverride: base);
+  final StringBuffer buf = StringBuffer(
+    '$root/api/workspace/invites?scope=${Uri.encodeQueryComponent(scope)}',
+  );
+  if (workspaceId != null && workspaceId.isNotEmpty) {
+    buf.write('&workspaceId=${Uri.encodeQueryComponent(workspaceId)}');
+  }
+  if (status != null && status.isNotEmpty) {
+    buf.write('&status=${Uri.encodeQueryComponent(status)}');
+  }
+  return buf.toString();
+}
+
+String siteWorkspaceInviteUrl({
+  required String inviteId,
+  String? base,
+}) {
+  return siteApiPath(
+    '/api/workspace/invites/${Uri.encodeComponent(inviteId)}',
+    base: base,
+  );
+}
+
 String siteTippyCreditsUrl({String? base}) =>
     siteApiPath('/api/tippy/credits', base: base);
 

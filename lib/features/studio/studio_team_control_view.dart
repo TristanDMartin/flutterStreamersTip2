@@ -7,6 +7,7 @@ import '../../routing/app_routes.dart';
 import '../tippy/models/tippy_launch_context.dart';
 import 'models/studio_team_control_models.dart';
 import 'studio_team_control_service.dart';
+import 'workspace_team_panel.dart';
 
 class StudioTeamControlView extends ConsumerStatefulWidget {
   const StudioTeamControlView({super.key});
@@ -239,6 +240,16 @@ class _StudioTeamControlViewState extends ConsumerState<StudioTeamControlView> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          _card(
+            shell,
+            title: 'Team seats & invites',
+            child: WorkspaceTeamPanel(
+              shell: shell,
+              initialWorkspaceId: control.workspaceId,
+              onChanged: _load,
+            ),
+          ),
           if (!control.entitled) ...<Widget>[
             const SizedBox(height: 16),
             Text(
@@ -276,33 +287,6 @@ class _StudioTeamControlViewState extends ConsumerState<StudioTeamControlView> {
               ),
             ),
           ] else ...<Widget>[
-            const SizedBox(height: 16),
-            _card(
-              shell,
-              title: 'Team',
-              child: control.members.isEmpty
-                  ? Text(
-                      'No teammates yet.',
-                      style: TextStyle(color: shell.mutedStrong),
-                    )
-                  : Column(
-                      children: control.members
-                          .map(
-                            (StudioTeamMemberSummary m) => ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(
-                                m.displayName,
-                                style: TextStyle(color: shell.onChrome),
-                              ),
-                              trailing: Text(
-                                m.role,
-                                style: TextStyle(color: shell.muted),
-                              ),
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-            ),
             const SizedBox(height: 12),
             _card(
               shell,
