@@ -133,6 +133,9 @@ class TwoFactorAuthService {
       final Map<String, dynamic> data = await _send('status');
       return <String, dynamic>{
         'enabled': data['enabled'] == true,
+        'verified': data['verified'] == true,
+        'hasSecret': data['hasSecret'] == true,
+        'sessionVerified': data['sessionVerified'] != false,
         'method': data['method'],
         'backupCodesRemaining': data['backupCodesRemaining'] ?? 0,
       };
@@ -162,6 +165,15 @@ class TwoFactorAuthService {
     required String code,
   }) =>
       verify2FACode(userId: userId, code: code);
+
+  /// True when this sign-in (server `auth_time`) still needs a 2FA code.
+  Future<bool> isSessionChallengeRequired(String userId) async {
+    final Map<String, dynamic>? status = await get2FAStatus(userId);
+    if (status == null) return false;
+    return status['verified'] == true &&
+        status['hasSecret'] == true &&
+        status['sessionVerified'] == false;
+  }
 
   Future<bool> requires2FA(String userId) async {
     try {

@@ -7,6 +7,8 @@ import '../features/onboarding_tippy/tippy_onboarding_attach_pending.dart';
 import '../features/onboarding_tippy/tippy_onboarding_host_presence.dart';
 import '../routing/app_routes.dart';
 import '../services/pending_auth_redirect_service.dart';
+import '../services/two_factor_auth_service.dart';
+import '../widgets/two_factor_verification_view.dart';
 
 bool _consumeOrGoHomeInFlight = false;
 
@@ -26,6 +28,9 @@ Future<void> navigateAfterAuthenticated(BuildContext context) async {
   }
   // Tippy route already owns the funnel — stay put.
   if (TippyOnboardingHostPresence.isActive) {
+    return;
+  }
+  if (!await _passTwoFactorSessionGate(context, user.uid)) {
     return;
   }
   try {
@@ -58,6 +63,30 @@ Future<void> navigateAfterAuthenticated(BuildContext context) async {
   } finally {
     _consumeOrGoHomeInFlight = false;
   }
+}
+
+/// Every sign-in method must pass the server 2FA challenge when 2FA is on.
+Future<bool> _passTwoFactorSessionGate(
+  BuildContext context,
+  String userId,
+) async {
+  final bool isRequired =
+      await TwoFactorAuthService().isSessionChallengeRequired(userId);
+  if (!isRequired) return true;
+  if (!context.mounted) return false;
+  final bool? isVerified = await Navigator.of(context).push<bool>(
+    MaterialPageRoute<bool>(
+      builder: (BuildContext routeContext) => TwoFactorVerificationView(
+        userId: userId,
+        onVerified: (bool verified) =>
+            Navigator.of(routeContext).pop(verified),
+        onCancel: () => Navigator.of(routeContext).pop(false),
+      ),
+    ),
+  );
+  if (isVerified == true) return context.mounted;
+  await firebase_auth.FirebaseAuth.instance.signOut();
+  return false;
 }
 
 bool firebaseUserNeedsEmailVerification(firebase_auth.User? user) {
