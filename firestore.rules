@@ -341,7 +341,8 @@ service cloud.firestore {
 
     function clientSecretUserFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['twoFactorSecret', 'twoFactorBackupCodes', 'backupCodes', 'phoneNumber']);
+        .hasAny(['twoFactorSecret', 'twoFactorBackupCodes', 'backupCodes', 'phoneNumber',
+                 'twoFactorEnabled', 'twoFactorVerified', 'twoFactorMethod', 'twoFactorEnabledAt']);
     }
 
     function isServerOwnedUserSubcollection(name) {
@@ -367,6 +368,8 @@ service cloud.firestore {
         'creatorReferrals',
         'growthReports',
         'growthShareArtifacts',
+        // 2FA secret + hashed backup codes — /api/two-factor/* only
+        'security',
       ];
     }
 
@@ -685,14 +688,14 @@ service cloud.firestore {
       
       match /{subcollection}/{documentId} {
         allow read: if isAuthenticated() && isOwner(userId) &&
-          subcollection != 'tippyProposals';
+          !(subcollection in ['tippyProposals', 'security']);
         allow write: if hasVerifiedEmail() &&
           isOwner(userId) &&
           !isServerOwnedUserSubcollection(subcollection);
 
         match /{nested=**} {
           allow read: if isAuthenticated() && isOwner(userId) &&
-            subcollection != 'tippyProposals';
+            !(subcollection in ['tippyProposals', 'security']);
           allow write: if hasVerifiedEmail() &&
             isOwner(userId) &&
             !isServerOwnedUserSubcollection(subcollection);
@@ -1877,10 +1880,18 @@ service cloud.firestore {
       allow get: if canGetChat(chatId);
       allow list: if isAuthenticated() &&
                      request.auth.uid in resource.data.participants;
+      // dm_{uidA}_{uidB} must contain exactly those two users (no third-party squatting).
       allow create: if hasVerifiedEmail() &&
-                       request.auth.uid in request.resource.data.participants &&
                        request.resource.data.participants is list &&
-                       request.resource.data.participants.size() >= 2;
+                       request.auth.uid in request.resource.data.participants &&
+                       request.resource.data.participants.size() >= 2 &&
+                       (!chatId.matches('dm_.*') || (
+                         request.resource.data.participants.size() == 2 &&
+                         chatId in [
+                           'dm_' + request.resource.data.participants[0] + '_' + request.resource.data.participants[1],
+                           'dm_' + request.resource.data.participants[1] + '_' + request.resource.data.participants[0]
+                         ]
+                       ));
       allow update: if hasVerifiedEmail() &&
                        request.auth.uid in resource.data.participants &&
                        request.resource.data.participants == resource.data.participants;

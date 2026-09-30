@@ -81,7 +81,8 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
     final user = firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final bool? confirm = await showDialog<bool>(
+    final TextEditingController codeController = TextEditingController();
+    final String? code = await showDialog<String>(
       context: context,
       builder: (BuildContext ctx) {
         final ColorScheme cs = Theme.of(ctx).colorScheme;
@@ -95,18 +96,38 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          content: Text(
-            'Are you sure you want to disable two-factor authentication? '
-            'This will make your account less secure.',
-            style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Enter a current authenticator or backup code to disable '
+                'two-factor authentication. This makes your account less '
+                'secure.',
+                style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: codeController,
+                autofocus: true,
+                maxLength: 8,
+                keyboardType: TextInputType.visiblePassword,
+                textCapitalization: TextCapitalization.characters,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'Authenticator or backup code',
+                ),
+              ),
+            ],
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
+              onPressed: () => Navigator.of(ctx).pop(),
               child: Text('Cancel', style: TextStyle(color: cs.primary)),
             ),
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
+              onPressed: () =>
+                  Navigator.of(ctx).pop(codeController.text.trim()),
               child: Text(
                 'Disable',
                 style: TextStyle(
@@ -120,9 +141,13 @@ class _TwoFactorSettingsViewState extends ConsumerState<TwoFactorSettingsView> {
       },
     );
 
-    if (confirm == true) {
+    Future<void>.delayed(
+      const Duration(milliseconds: 500),
+      codeController.dispose,
+    );
+    if (code != null && code.isNotEmpty) {
       try {
-        await _twoFactorService.disable2FA(user.uid);
+        await _twoFactorService.disable2FA(user.uid, code: code);
         if (mounted) {
           final ColorScheme cs = Theme.of(context).colorScheme;
           setState(() => _actionError = null);

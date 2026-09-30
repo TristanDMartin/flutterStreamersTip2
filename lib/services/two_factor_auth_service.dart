@@ -1,79 +1,140 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
-import 'totp_service.dart';
+import 'package:http/http.dart' as http;
 
+import '../core/app_check_http_headers.dart';
+import '../core/backend/site_api_base.dart';
+
+const Duration _kTwoFactorTimeout = Duration(seconds: 30);
+
+class TwoFactorApiException implements Exception {
+  const TwoFactorApiException(this.message, {this.statusCode});
+
+  final String message;
+  final int? statusCode;
+
+  @override
+  String toString() => message;
+}
+
+class TwoFactorSetupSecret {
+  const TwoFactorSetupSecret({required this.secret, required this.otpauthUrl});
+
+  final String secret;
+  final String otpauthUrl;
+}
+
+/// 2FA secrets and backup codes live server-side at
+/// `users/{uid}/security/twoFactor`; all mutations go through
+/// `/api/two-factor/*` (same contract as the website).
 class TwoFactorAuthService {
-  FirebaseFirestore? _firestoreCache;
-  final TotpService _totpService = TotpService();
+  TwoFactorAuthService({http.Client? client}) : _client = client;
 
-  FirebaseFirestore get _firestore {
-    if (_firestoreCache == null) {
-      if (Firebase.apps.isEmpty) {
-        throw StateError('Firebase not initialized');
-      }
-      _firestoreCache = FirebaseFirestore.instance;
-    }
-    return _firestoreCache!;
-  }
+  final http.Client? _client;
 
-  /// Enable 2FA for a user with authenticator app
-  Future<bool> enable2FA({
-    required String userId,
-    required String method, // 'authenticator' or 'sms'
-    String? phoneNumber,
+  Future<Map<String, dynamic>> _post(
+    String action, [
+    Map<String, dynamic> body = const <String, dynamic>{},
+  ]) =>
+      _send(action, body: body);
+
+  Future<Map<String, dynamic>> _send(
+    String action, {
+    Map<String, dynamic>? body,
   }) async {
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw const TwoFactorApiException('Sign in again to continue.');
+    }
+    final String? idToken = await user.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw const TwoFactorApiException('Session expired. Sign in again.');
+    }
+    final Map<String, String> headers = await buildAuthenticatedHttpHeaders(
+      idToken: idToken,
+      extra: const <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    );
+    final Uri uri = Uri.parse(siteTwoFactorUrl(action));
+    final http.Client client = _client ?? http.Client();
     try {
-      final secret = _totpService.generateSecret();
-      final backupCodes = _generateBackupCodes();
-
-      await _firestore.collection('users').doc(userId).update({
-        'twoFactorEnabled': true,
-        'twoFactorMethod': method,
-        'twoFactorSecret': secret,
-        'backupCodes': backupCodes.map((code) => _hashCode(code)).toList(),
-        'twoFactorEnabledAt': FieldValue.serverTimestamp(),
-        if (phoneNumber != null) 'phoneNumber': phoneNumber,
-      });
-
-      return true;
-    } catch (e) {
-      debugPrint('❌ Failed to enable 2FA: $e');
-      return false;
+      final http.Response response = body == null
+          ? await client.get(uri, headers: headers).timeout(_kTwoFactorTimeout)
+          : await client
+              .post(uri, headers: headers, body: jsonEncode(body))
+              .timeout(_kTwoFactorTimeout);
+      final Map<String, dynamic> data = _decode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return data;
+      }
+      throw TwoFactorApiException(
+        data['error'] is String
+            ? data['error'] as String
+            : 'Two-factor request failed.',
+        statusCode: response.statusCode,
+      );
+    } finally {
+      if (_client == null) client.close();
     }
   }
 
-  /// Disable 2FA for a user
-  Future<bool> disable2FA(String userId) async {
+  Map<String, dynamic> _decode(String body) {
     try {
-      await _firestore.collection('users').doc(userId).update({
-        'twoFactorEnabled': false,
-        'twoFactorMethod': null,
-        'twoFactorSecret': null,
-        'twoFactorDisabledAt': FieldValue.serverTimestamp(),
-      });
-
-      return true;
-    } catch (e) {
-      debugPrint('❌ Failed to disable 2FA: $e');
-      return false;
-    }
+      final Object? decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return <String, dynamic>{};
   }
 
-  /// Get 2FA status for a user
+  /// Starts authenticator setup; the server stores the pending secret.
+  Future<TwoFactorSetupSecret> startAuthenticatorSetup({
+    required String email,
+  }) async {
+    final Map<String, dynamic> data = await _post('generate');
+    final String secret = (data['manualEntryKey'] ?? data['secret'] ?? '')
+        .toString();
+    if (secret.isEmpty) {
+      throw const TwoFactorApiException('Could not start 2FA setup.');
+    }
+    final String label = Uri.encodeComponent('StreamersTip:$email');
+    return TwoFactorSetupSecret(
+      secret: secret,
+      otpauthUrl:
+          'otpauth://totp/$label?secret=$secret&issuer=StreamersTip',
+    );
+  }
+
+  /// Confirms setup with a TOTP code; returns one-time backup codes.
+  Future<List<String>> confirmAuthenticatorSetup(String code) async {
+    final Map<String, dynamic> data =
+        await _post('verify', <String, dynamic>{'token': code.trim()});
+    if (data['success'] != true) {
+      throw const TwoFactorApiException('Invalid code. Please try again.');
+    }
+    final Object? codes = data['backupCodes'];
+    return codes is List ? codes.map((Object? c) => '$c').toList() : <String>[];
+  }
+
+  /// Disables 2FA. Requires a current authenticator or backup code.
+  Future<bool> disable2FA(String userId, {required String code}) async {
+    await _post('disable', <String, dynamic>{'code': code.trim()});
+    return true;
+  }
+
   Future<Map<String, dynamic>?> get2FAStatus(String userId) async {
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (!doc.exists) return null;
-
-      final data = doc.data();
-      return {
-        'enabled': data?['twoFactorEnabled'] ?? false,
-        'method': data?['twoFactorMethod'],
-        'secret': data?['twoFactorSecret'],
-        'enabledAt': data?['twoFactorEnabledAt'],
+      final Map<String, dynamic> data = await _send('status');
+      return <String, dynamic>{
+        'enabled': data['enabled'] == true,
+        'method': data['method'],
+        'backupCodesRemaining': data['backupCodesRemaining'] ?? 0,
       };
     } catch (e) {
       debugPrint('❌ Failed to get 2FA status: $e');
@@ -81,107 +142,36 @@ class TwoFactorAuthService {
     }
   }
 
-  /// Verify 2FA code
+  /// Verifies a TOTP code or a one-time backup code server-side.
   Future<bool> verify2FACode({
     required String userId,
     required String code,
   }) async {
     try {
-      final status = await get2FAStatus(userId);
-      if (status == null || !status['enabled']) {
-        return false;
-      }
-
-      final method = status['method'];
-      final secret = status['secret'];
-
-      if (method == 'authenticator' && secret != null) {
-        return _totpService.verifyCode(secret: secret, code: code);
-      }
-
-      return false;
-    } catch (e) {
-      debugPrint('❌ Failed to verify 2FA code: $e');
-      return false;
+      final Map<String, dynamic> data =
+          await _post('challenge', <String, dynamic>{'token': code.trim()});
+      return data['success'] == true;
+    } on TwoFactorApiException catch (e) {
+      if (e.statusCode == 400) return false;
+      rethrow;
     }
   }
 
-  /// Verify backup code
   Future<bool> verifyBackupCode({
     required String userId,
     required String code,
-  }) async {
-    try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (!doc.exists) return false;
+  }) =>
+      verify2FACode(userId: userId, code: code);
 
-      final data = doc.data();
-      final backupCodes = data?['backupCodes'] as List<dynamic>?;
-
-      if (backupCodes == null) return false;
-
-      final hashedCode = _hashCode(code);
-      if (backupCodes.contains(hashedCode)) {
-        final updatedCodes = backupCodes.where((c) => c != hashedCode).toList();
-
-        await _firestore.collection('users').doc(userId).update({
-          'backupCodes': updatedCodes,
-        });
-
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      debugPrint('❌ Failed to verify backup code: $e');
-      return false;
-    }
-  }
-
-  /// Generate new backup codes
-  Future<List<String>> generateNewBackupCodes(String userId) async {
-    final backupCodes = _generateBackupCodes();
-
-    await _firestore.collection('users').doc(userId).update({
-      'backupCodes': backupCodes.map((code) => _hashCode(code)).toList(),
-    });
-
-    return backupCodes;
-  }
-
-  /// Check if user needs 2FA verification
   Future<bool> requires2FA(String userId) async {
-    final status = await get2FAStatus(userId);
-    return status?['enabled'] == true;
-  }
-
-  /// Get TOTP secret for QR code generation
-  Future<String?> getTotpSecret(String userId) async {
-    final status = await get2FAStatus(userId);
-    return status?['secret'] as String?;
-  }
-
-  List<String> _generateBackupCodes() {
-    final random = Random.secure();
-    final codes = <String>[];
-
-    for (int i = 0; i < 10; i++) {
-      final code = List.generate(
-        6,
-        (_) => random.nextInt(36).toRadixString(36).toUpperCase(),
-      ).join();
-      codes.add(code);
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> doc =
+          await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      final Map<String, dynamic>? data = doc.data();
+      return data?['twoFactorVerified'] == true;
+    } catch (e) {
+      debugPrint('❌ Failed to read 2FA flag: $e');
+      return false;
     }
-
-    return codes;
-  }
-
-  String _hashCode(String code) {
-    return '${code.substring(0, 3)}***';
-  }
-
-  /// Get current TOTP code for testing
-  String getCurrentTotpCode(String secret) {
-    return _totpService.generateCode(secret);
   }
 }

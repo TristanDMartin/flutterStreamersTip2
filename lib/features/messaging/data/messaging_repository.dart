@@ -89,6 +89,11 @@ class MessagingRepository {
       final DocumentSnapshot<Map<String, dynamic>> existing =
           await transaction.get(canonicalRef);
       if (existing.exists) {
+        final List<dynamic> stored =
+            existing.data()?['participants'] as List<dynamic>? ?? <dynamic>[];
+        if (stored.length != 2 || !participants.every(stored.contains)) {
+          throw StateError('This conversation is unavailable.');
+        }
         return;
       }
       transaction.set(canonicalRef, <String, dynamic>{

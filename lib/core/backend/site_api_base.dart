@@ -180,6 +180,9 @@ String siteAuthResolveLoginUrl({String? base}) =>
 String sitePasswordResetRequestUrl({String? base}) =>
     siteApiPath('/api/auth/password-reset/request', base: base);
 
+String siteTwoFactorUrl(String action, {String? base}) =>
+    siteApiPath('/api/two-factor/${Uri.encodeComponent(action)}', base: base);
+
 String siteUsernameClaimUrl({String? base}) =>
     siteApiPath('/api/username/claim', base: base);
 

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../services/two_factor_auth_service.dart';
-import '../services/totp_service.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 class TwoFactorSetupView extends ConsumerStatefulWidget {
@@ -20,7 +19,6 @@ class TwoFactorSetupView extends ConsumerStatefulWidget {
 
 class _TwoFactorSetupViewState extends ConsumerState<TwoFactorSetupView> {
   final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
-  final TotpService _totpService = TotpService();
   final TextEditingController _codeController = TextEditingController();
   bool _showBackupCodes = false;
   List<String> _backupCodes = [];
@@ -41,11 +39,17 @@ class _TwoFactorSetupViewState extends ConsumerState<TwoFactorSetupView> {
       return;
     }
 
-    _secret = _totpService.generateSecret();
-    final email = user.email ?? 'user';
-    _setupUrl =
-        'otpauth://totp/StreamersTip:$email?secret=$_secret&issuer=StreamersTip';
-
+    try {
+      final TwoFactorSetupSecret setup = await _twoFactorService
+          .startAuthenticatorSetup(email: user.email ?? 'user');
+      _secret = setup.secret;
+      _setupUrl = setup.otpauthUrl;
+    } catch (e) {
+      _showError('$e');
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    if (!mounted) return;
     setState(() {});
 
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -67,34 +71,16 @@ class _TwoFactorSetupViewState extends ConsumerState<TwoFactorSetupView> {
       return;
     }
 
-    final totpService = TotpService();
-    if (!totpService.verifyCode(secret: _secret, code: code)) {
-      _showError('Invalid code. Please try again.');
-      return;
-    }
-
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _showError('User not found');
-      return;
-    }
-
     try {
-      final success = await _twoFactorService.enable2FA(
-        userId: user.uid,
-        method: 'authenticator',
-      );
-
-      if (success && mounted) {
-        _backupCodes = await _twoFactorService.generateNewBackupCodes(user.uid);
-        setState(() {
-          _showBackupCodes = true;
-        });
-      } else {
-        _showError('Failed to enable 2FA');
-      }
+      final List<String> backupCodes =
+          await _twoFactorService.confirmAuthenticatorSetup(code);
+      if (!mounted) return;
+      setState(() {
+        _backupCodes = backupCodes;
+        _showBackupCodes = true;
+      });
     } catch (e) {
-      _showError('Error: $e');
+      _showError('$e');
     }
   }
 

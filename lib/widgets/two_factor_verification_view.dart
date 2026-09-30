@@ -41,9 +41,12 @@ class _TwoFactorVerificationViewState
 
     try {
       final code = _codeController.text.trim();
-      if (code.length != 6) {
+      final int expectedLength = _useBackupCode ? 8 : 6;
+      if (code.length != expectedLength) {
         setState(() {
-          _errorMessage = 'Please enter a 6-digit code';
+          _errorMessage = _useBackupCode
+              ? 'Please enter an 8-character backup code'
+              : 'Please enter a 6-digit code';
           _isVerifying = false;
         });
         return;
@@ -143,8 +146,11 @@ class _TwoFactorVerificationViewState
                   ),
                   child: TextField(
                     controller: _codeController,
-                    keyboardType: TextInputType.number,
-                    maxLength: _useBackupCode ? null : 6,
+                    keyboardType: _useBackupCode
+                        ? TextInputType.text
+                        : TextInputType.number,
+                    textCapitalization: TextCapitalization.characters,
+                    maxLength: _useBackupCode ? 8 : 6,
                     textAlign: TextAlign.center,
                     autofocus: true,
                     style: const TextStyle(
