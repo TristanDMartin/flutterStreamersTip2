@@ -50,6 +50,28 @@ service cloud.firestore {
         request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
     }
 
+    function isDirectChatIdForRequester(chatId) {
+      return isAuthenticated() &&
+        chatId is string &&
+        (
+          chatId.matches('^dm_' + request.auth.uid + '_.+$') ||
+          chatId.matches('^dm_.+_' + request.auth.uid + '$')
+        );
+    }
+
+    function canGetChat(chatId) {
+      return isAuthenticated() && (
+        (
+          exists(/databases/$(database)/documents/chats/$(chatId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        ) ||
+        (
+          !exists(/databases/$(database)/documents/chats/$(chatId)) &&
+          isDirectChatIdForRequester(chatId)
+        )
+      );
+    }
+
     function isVideoDocumentOwner() {
       return isAuthenticated() && isVideoDataOwner(resource.data);
     }
@@ -266,6 +288,9 @@ service cloud.firestore {
           'accountStatus', 'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
           'emailVerified', 'publicProfileEnabled', 'provisionedAt', 'verifiedAt',
           'gamification',
+          // Set once at signup provisioning (Admin SDK only) — self-editable
+          // would be worthless for giveaway eligibility checks.
+          'dateOfBirth', 'dateOfBirthSetAt', 'dateOfBirthSource', 'ageGate',
           'appleOriginalTransactionId', 'googlePurchaseToken', 'revenueCatCustomerId',
           // Username identity — Cloud Functions Admin SDK only
           'username', 'handle', 'usernameNormalized', 'usernameLowercase',
@@ -302,6 +327,7 @@ service cloud.firestore {
                'hasUsedTrial', 'trialConsumedAt', 'canceledDuringTrial',
                'accountStatus', 'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
                'gamification',
+               'dateOfBirth', 'dateOfBirthSetAt', 'dateOfBirthSource', 'ageGate',
                // Identity — claim via /api/username/* / Admin only
                'username', 'handle', 'usernameNormalized', 'usernameLowercase',
                'usernameCompacted', 'usernameVersion', 'usernameUpdatedAt',
@@ -331,6 +357,7 @@ service cloud.firestore {
         'contentPlans',
         // Tippy Intelligence — server-written via authenticated APIs
         'creatorMemory',
+        'tippyProposals',
         'tippyRecommendations',
         'tippyTrendHistory',
         'tippyPlannerHistory',
@@ -578,6 +605,11 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Tippy Phase 2A reschedule proposals — Admin SDK only
+      match /tippyProposals/{proposalId} {
+        allow read, write: if false;
+      }
+
       match /tippyRecommendations/{recId} {
         allow read: if isOwner(userId);
         allow write: if false;
@@ -652,13 +684,15 @@ service cloud.firestore {
       }
       
       match /{subcollection}/{documentId} {
-        allow read: if isAuthenticated() && isOwner(userId);
+        allow read: if isAuthenticated() && isOwner(userId) &&
+          subcollection != 'tippyProposals';
         allow write: if hasVerifiedEmail() &&
           isOwner(userId) &&
           !isServerOwnedUserSubcollection(subcollection);
 
         match /{nested=**} {
-          allow read: if isAuthenticated() && isOwner(userId);
+          allow read: if isAuthenticated() && isOwner(userId) &&
+            subcollection != 'tippyProposals';
           allow write: if hasVerifiedEmail() &&
             isOwner(userId) &&
             !isServerOwnedUserSubcollection(subcollection);
@@ -1731,6 +1765,11 @@ service cloud.firestore {
       match /contentItems/{itemId} {
         allow read: if canReadWorkspace(workspaceId);
         allow write: if false;
+
+        match /comments/{commentId} {
+          allow read: if canReadWorkspace(workspaceId);
+          allow write: if false;
+        }
       }
 
       // Phase 3 publish inventory linked to scheduled_posts + contentItems
@@ -1835,7 +1874,8 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      allow read: if isAuthenticated() &&
+      allow get: if canGetChat(chatId);
+      allow list: if isAuthenticated() &&
                      request.auth.uid in resource.data.participants;
       allow create: if hasVerifiedEmail() &&
                        request.auth.uid in request.resource.data.participants &&
