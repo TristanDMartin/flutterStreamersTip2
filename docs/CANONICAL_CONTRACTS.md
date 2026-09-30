@@ -199,10 +199,11 @@ Resolvers: web `lib/onboarding/resolveOnboardingDestination.ts`; Flutter `lib/co
 ### Birthday gate (runs ahead of lifecycle)
 
 - Every authenticated account needs a valid private DOB before anything else — email, Google, Apple, new or existing. Unverified password accounts verify email first.
+- Email signup (web and Flutter) collects the DOB in the form and sends it to `/api/account/pending`; under 13 is blocked before the Auth account exists.
 - `GET /api/account/status` adds `birthdayRequired`, `birthdayLocked`, `ageEligibility { hasDateOfBirth, meetsMinimumAge, isAdult }`. When gated: `activationState = BIRTHDAY_REQUIRED`, `tippyStageHint = birthday`, `allowApp = false`. Lifecycle is untouched, so COMPLETE accounts return to the app after saving.
 - Clients route `birthday` → web `/onboarding/birthday`, Flutter `BirthdayStepView` (in `OnboardingGate`).
 - Write: `POST /api/account/date-of-birth { dateOfBirth: 'YYYY-MM-DD' }` only (server, write-once). Stored on `users/{uid}` if provisioned, else `pendingAccounts/{uid}` (copied at provisioning): `dateOfBirth`, `dateOfBirthSetAt`, `dateOfBirthSource` (`signup_form | birthday_step`), `ageGate { status: passed | under_minimum_age }`.
-- Under 13 → `ageGate.status = under_minimum_age`; the step is locked (no retry) and the client signs out.
+- Under 13 → `ageGate.status = under_minimum_age`; the step is locked (no retry) and the client signs out immediately, keeping the "not eligible" notice on screen.
 - DOB is never mirrored to `publicUsers` or any public API. Age-restricted features (e.g. VI Hub) read `ageEligibility`, never the date.
 - Golden: `contracts/birthday-gate.golden.json`.
 

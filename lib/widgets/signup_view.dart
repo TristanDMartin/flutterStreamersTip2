@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../services/robust_auth_service.dart';
 import '../components/onboarding/account_enforcement.dart';
+import '../components/onboarding/date_of_birth.dart';
+import '../components/onboarding/widgets/date_of_birth_selects.dart';
 import '../utils/auth_post_login_navigation.dart';
 import '../utils/password_validation.dart';
 import '../qa/qa_keys.dart';
@@ -45,6 +47,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+  DateOfBirthParts _dateOfBirth = const DateOfBirthParts();
   bool _showAlert = false;
   String _alertMessage = "";
   Brightness? _appliedSystemUiBrightness;
@@ -315,6 +318,12 @@ class _SignupViewState extends ConsumerState<SignupView> {
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
           ),
+          const SizedBox(height: 16),
+          _SignupDateOfBirthField(
+            value: _dateOfBirth,
+            onChanged: (DateOfBirthParts next) =>
+                setState(() => _dateOfBirth = next),
+          ),
           if (!widget.deferUsernameSelection) ...<Widget>[
             const SizedBox(height: 16),
             _SignupAuthTextField(
@@ -402,6 +411,14 @@ class _SignupViewState extends ConsumerState<SignupView> {
         return;
       }
     }
+    final String? dobError = _dateOfBirthError();
+    if (dobError != null) {
+      setState(() {
+        _alertMessage = dobError;
+        _showAlert = true;
+      });
+      return;
+    }
     if (password != confirmPassword) {
       setState(() {
         _alertMessage = 'Passwords do not match';
@@ -426,6 +443,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
         password: password,
         displayName: username.isNotEmpty ? username : 'Creator',
         username: username,
+        dateOfBirth: _dateOfBirth.validation?.isoDate,
       );
       if (!result.success && mounted) {
         setState(() {
@@ -448,6 +466,24 @@ class _SignupViewState extends ConsumerState<SignupView> {
           _showAlert = true;
         });
       }
+    }
+  }
+
+  String? _dateOfBirthError() {
+    final DateOfBirthValidation? validation = _dateOfBirth.validation;
+    if (validation == null) {
+      return 'Please enter your date of birth';
+    }
+    switch (validation.issue) {
+      case null:
+        return null;
+      case DateOfBirthIssue.underMinimumAge:
+        return 'You must be at least $kMinimumSignupAge years old to create an account.';
+      case DateOfBirthIssue.futureDate:
+        return 'Date of birth cannot be in the future.';
+      case DateOfBirthIssue.invalidDate:
+      case DateOfBirthIssue.unreasonableAge:
+        return 'Enter a valid date of birth.';
     }
   }
 
@@ -998,5 +1034,43 @@ enum PasswordStrength {
       case PasswordStrength.strong:
         return StThemeColors.successGreen;
     }
+  }
+}
+
+class _SignupDateOfBirthField extends StatelessWidget {
+  const _SignupDateOfBirthField({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final DateOfBirthParts value;
+  final ValueChanged<DateOfBirthParts> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Date of birth',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.white.withValues(alpha: 0.85),
+          ),
+        ),
+        const SizedBox(height: 8),
+        DateOfBirthSelects(value: value, onChanged: onChanged),
+        const SizedBox(height: 8),
+        Text(
+          'We use this to confirm eligibility for giveaways and age-restricted '
+          'promotions. You must be at least $kMinimumSignupAge to sign up.',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.white.withValues(alpha: 0.55),
+          ),
+        ),
+      ],
+    );
   }
 }

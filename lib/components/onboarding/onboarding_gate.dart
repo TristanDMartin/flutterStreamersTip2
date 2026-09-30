@@ -531,12 +531,14 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     if (_shouldShowBirthdayStep) {
       final AccountStatusSnapshot? status = _accountStatus;
       return OnboardingFullScreenShell(
-        child: BirthdayStepView(
-          key: ValueKey<bool>(status?.birthdayLocked == true),
-          onCompleted: _onBirthdaySaved,
-          isLocked: status?.birthdayLocked == true,
-          isReturningAccount: status?.isReturningComplete == true ||
-              status?.lifecycle == 'COMPLETE',
+        child: _OnboardingNavigator(
+          child: BirthdayStepView(
+            key: ValueKey<bool>(status?.birthdayLocked == true),
+            onCompleted: _onBirthdaySaved,
+            isLocked: status?.birthdayLocked == true,
+            isReturningAccount: status?.isReturningComplete == true ||
+                status?.lifecycle == 'COMPLETE',
+          ),
         ),
       );
     }

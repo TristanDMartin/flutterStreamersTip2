@@ -1523,6 +1523,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     required String password,
     required String displayName,
     required String username,
+    String? dateOfBirth,
   }) {
     return _debouncedAuth('signup', (requestId) async {
       try {
@@ -1532,6 +1533,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           displayName,
           username,
           requestId: requestId,
+          dateOfBirth: dateOfBirth,
         );
         return AuthRequestResult(
           requestId: requestId,
@@ -1551,7 +1553,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Sign up with email and password
   Future<void> signUpWithEmail(
       String email, String password, String displayName, String username,
-      {String? requestId}) async {
+      {String? requestId, String? dateOfBirth}) async {
     debugPrint('AUTH_TRANSITION email_signup starting');
 
     try {
@@ -1630,6 +1632,7 @@ class RobustAuthenticationService extends ChangeNotifier {
                 : normalizedUsername,
             displayName: profileDisplayName,
             onboardingSessionId: onboardingSessionId,
+            dateOfBirth: dateOfBirth,
           );
         } on SignupRestrictionException {
           rethrow;

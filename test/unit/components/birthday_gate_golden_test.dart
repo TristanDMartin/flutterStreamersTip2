@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/components/onboarding/account_navigation.dart';
 import 'package:streamers_tip/components/onboarding/date_of_birth.dart';
+import 'package:streamers_tip/components/onboarding/widgets/date_of_birth_selects.dart';
 
 Map<String, dynamic>? _asMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : null;
@@ -84,6 +85,20 @@ void main() {
         tippyStageHint: 'birthday',
       );
       expect(actual.route, 'birthday');
+    });
+  });
+
+  group('DateOfBirthParts', () {
+    test('clears a day that no longer fits the chosen month', () {
+      const DateOfBirthParts input =
+          DateOfBirthParts(month: 1, day: 31, year: 2001);
+      final DateOfBirthParts actual = input.copyWith(month: 2);
+      expect(actual.day, isNull);
+      expect(actual.month, 2);
+    });
+
+    test('is incomplete until month, day and year are set', () {
+      expect(const DateOfBirthParts(month: 1, day: 1).validation, isNull);
     });
   });
 }

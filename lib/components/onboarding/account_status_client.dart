@@ -184,6 +184,7 @@ Future<void> createPendingAccount({
   String? preferredUsername,
   String? displayName,
   String? onboardingSessionId,
+  String? dateOfBirth,
 }) async {
   final User? user = FirebaseAuth.instance.currentUser;
   final String? idToken = await user?.getIdToken(true);
@@ -203,6 +204,7 @@ Future<void> createPendingAccount({
           'displayName': displayName,
           if (onboardingSessionId != null)
             'onboardingSessionId': onboardingSessionId,
+          if (dateOfBirth != null) 'dateOfBirth': dateOfBirth,
         }),
       )
       .timeout(const Duration(seconds: 20));
