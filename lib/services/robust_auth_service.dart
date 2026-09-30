@@ -35,6 +35,7 @@ import 'username_lock_service.dart';
 import 'two_factor_auth_service.dart';
 import 'retention_tracking_service.dart';
 import 'r2_media_service.dart';
+import 'password_reset_request_client.dart';
 
 /// Request-scoped authentication result
 class AuthRequestResult {
@@ -2379,7 +2380,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Send password reset email
   Future<void> sendPasswordResetEmail(String email) async {
     try {
-      await _authInstance.sendPasswordResetEmail(email: email.trim());
+      await requestSitePasswordReset(email);
       debugPrint("✅ Password reset email sent");
     } catch (e) {
       debugPrint("❌ Password reset error: $e");
@@ -2429,33 +2430,14 @@ class RobustAuthenticationService extends ChangeNotifier {
       }
       if (targetEmail != null && targetEmail.trim().isNotEmpty) {
         try {
-          await _authInstance.sendPasswordResetEmail(email: targetEmail.trim());
-        } on firebase_auth.FirebaseAuthException catch (e) {
-          if (e.code == 'invalid-email') {
-            return const PasswordResetRequestResult(
-              success: false,
-              error: 'Enter a valid email address.',
-            );
-          }
-          if (e.code == 'too-many-requests') {
-            return const PasswordResetRequestResult(
-              success: false,
-              error: 'Too many requests. Please try again later.',
-            );
-          }
-          if (_isNetworkAuthError(e)) {
-            return const PasswordResetRequestResult(
-              success: false,
-              error: 'Network error. Please check your connection.',
-            );
-          }
-          if (_isFirebaseUnavailableError(e)) {
-            return const PasswordResetRequestResult(
-              success: false,
-              error:
-                  'Still connecting. Please wait a moment and try again.',
-            );
-          }
+          await requestSitePasswordReset(targetEmail);
+        } on PasswordResetRequestException catch (e) {
+          return PasswordResetRequestResult(
+            success: false,
+            error: e.isRateLimited
+                ? 'Too many requests. Please try again later.'
+                : e.message,
+          );
         } catch (e) {
           if (_isNetworkAuthError(e)) {
             return const PasswordResetRequestResult(

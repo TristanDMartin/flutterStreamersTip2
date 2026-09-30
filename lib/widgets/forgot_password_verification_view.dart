@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'reset_password_view.dart';
+import '../services/password_reset_request_client.dart';
 
 class ForgotPasswordVerificationView extends ConsumerStatefulWidget {
   final String email;
@@ -92,7 +92,7 @@ class _ForgotPasswordVerificationViewState
 
   Future<void> _sendVerificationEmail() async {
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: widget.email);
+      await requestSitePasswordReset(widget.email);
       debugPrint("✉️ Password reset email sent to ${widget.email}");
     } catch (e) {
       debugPrint("❌ Error sending password reset email: $e");

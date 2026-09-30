@@ -177,6 +177,9 @@ String siteAccountDateOfBirthUrl({String? base}) =>
 String siteAuthResolveLoginUrl({String? base}) =>
     siteApiPath('/api/auth/resolve-login', base: base);
 
+String sitePasswordResetRequestUrl({String? base}) =>
+    siteApiPath('/api/auth/password-reset/request', base: base);
+
 String siteUsernameClaimUrl({String? base}) =>
     siteApiPath('/api/username/claim', base: base);
 

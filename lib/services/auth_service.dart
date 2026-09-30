@@ -14,6 +14,7 @@ import 'username_lock_service.dart';
 import '../components/onboarding/account_status_client.dart';
 import '../core/firebase_app_check_startup.dart';
 import 'r2_media_service.dart';
+import 'password_reset_request_client.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/password_validation.dart';
 
@@ -595,7 +596,7 @@ class AuthenticationService extends ChangeNotifier {
     try {
       setLoading(true);
 
-      await _auth.sendPasswordResetEmail(email: email);
+      await requestSitePasswordReset(email);
 
       // appLog("✅ Password reset email sent to: $email");
       setLoading(false);
