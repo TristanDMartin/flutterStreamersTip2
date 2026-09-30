@@ -66,6 +66,9 @@ class AccountStatusSnapshot {
     this.canonicalUsername,
     this.provisioned = false,
     this.accountStatus,
+    this.birthdayRequired = false,
+    this.birthdayLocked = false,
+    this.isReturningComplete = false,
   });
 
   final String? activationState;
@@ -78,12 +81,16 @@ class AccountStatusSnapshot {
   final String? canonicalUsername;
   final bool provisioned;
   final String? accountStatus;
+  final bool birthdayRequired;
+  final bool birthdayLocked;
+  final bool isReturningComplete;
 
   AccountNavigation get navigation => navigationFromAccountStatus(
         activationState: activationState,
         activationReason: activationReason,
         tippyStageHint: tippyStageHint,
         allowApp: allowApp,
+        birthdayRequired: birthdayRequired,
       );
 }
 
@@ -167,6 +174,9 @@ Future<AccountStatusSnapshot> _fetchAccountStatusOnce() async {
     canonicalUsername: (data['canonicalUsername'] as String?)?.trim(),
     provisioned: data['provisioned'] == true,
     accountStatus: (data['accountStatus'] as String?)?.trim(),
+    birthdayRequired: data['birthdayRequired'] == true,
+    birthdayLocked: data['birthdayLocked'] == true,
+    isReturningComplete: data['isReturningComplete'] == true,
   );
 }
 
@@ -209,6 +219,56 @@ Future<void> createPendingAccount({
       preferredUsername: preferredUsername?.trim(),
       provisioned: false,
     ),
+  );
+}
+
+class DateOfBirthSaveException implements Exception {
+  const DateOfBirthSaveException({required this.code, required this.message});
+
+  final String code;
+  final String message;
+
+  bool get isAgeLocked =>
+      code == 'UNDER_MINIMUM_AGE' || code == 'AGE_GATE_LOCKED';
+
+  @override
+  String toString() => message;
+}
+
+/// POST /api/account/date-of-birth — private DOB, written once server-side.
+Future<void> saveDateOfBirth(String isoDate) async {
+  final User? user = FirebaseAuth.instance.currentUser;
+  final String? idToken = await user?.getIdToken();
+  if (idToken == null || idToken.isEmpty) {
+    throw StateError('AUTH_REQUIRED');
+  }
+  final Map<String, String> headers = await buildAuthenticatedHttpHeaders(
+    idToken: idToken,
+    extra: const <String, String>{'Content-Type': 'application/json'},
+  );
+  final http.Response response = await http
+      .post(
+        Uri.parse(siteAccountDateOfBirthUrl()),
+        headers: headers,
+        body: jsonEncode(<String, dynamic>{'dateOfBirth': isoDate}),
+      )
+      .timeout(const Duration(seconds: 20));
+  clearAccountStatusClientCache();
+  if (response.statusCode >= 200 && response.statusCode < 300) {
+    return;
+  }
+  Object? decoded;
+  try {
+    decoded = jsonDecode(response.body);
+  } catch (_) {
+    decoded = null;
+  }
+  final Map<String, dynamic> data =
+      decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  throw DateOfBirthSaveException(
+    code: (data['code'] as String?) ?? 'REQUEST_FAILED',
+    message: (data['message'] as String?) ??
+        'Could not save your birthday. Please try again.',
   );
 }
 

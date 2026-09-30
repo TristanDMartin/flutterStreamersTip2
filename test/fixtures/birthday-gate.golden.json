@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "notes": "Same vectors for TS and Dart. /api/account/status returns birthdayRequired/birthdayLocked from these rules; clients route to /onboarding/birthday when birthdayRequired is true. The DOB lives only on private users/{uid} or pendingAccounts/{uid}; never publicUsers.",
+  "now": "2026-06-15T00:00:00Z",
+  "gateVectors": [
+    {
+      "id": "social_new_account_without_dob",
+      "input": { "userData": null, "pending": null, "emailVerified": true, "isPasswordProvider": false },
+      "expected": { "required": true, "locked": false, "dateOfBirth": null }
+    },
+    {
+      "id": "existing_complete_account_without_dob",
+      "input": { "userData": { "username": "creator1", "onboarding": { "lifecycle": "COMPLETE" } }, "pending": null, "emailVerified": true, "isPasswordProvider": false },
+      "expected": { "required": true, "locked": false, "dateOfBirth": null }
+    },
+    {
+      "id": "existing_account_with_dob",
+      "input": { "userData": { "dateOfBirth": "2000-06-15" }, "pending": null, "emailVerified": true, "isPasswordProvider": false },
+      "expected": { "required": false, "locked": false, "dateOfBirth": "2000-06-15" }
+    },
+    {
+      "id": "email_signup_dob_on_pending_account",
+      "input": { "userData": null, "pending": { "dateOfBirth": "1999-01-31" }, "emailVerified": true, "isPasswordProvider": true },
+      "expected": { "required": false, "locked": false, "dateOfBirth": "1999-01-31" }
+    },
+    {
+      "id": "unverified_password_account_verifies_first",
+      "input": { "userData": null, "pending": null, "emailVerified": false, "isPasswordProvider": true },
+      "expected": { "required": false, "locked": false, "dateOfBirth": null }
+    },
+    {
+      "id": "invalid_stored_dob_is_ignored",
+      "input": { "userData": { "dateOfBirth": "2000-02-30" }, "pending": null, "emailVerified": true, "isPasswordProvider": false },
+      "expected": { "required": true, "locked": false, "dateOfBirth": null }
+    },
+    {
+      "id": "under_minimum_age_is_locked",
+      "input": { "userData": null, "pending": { "ageGate": { "status": "under_minimum_age" } }, "emailVerified": true, "isPasswordProvider": false },
+      "expected": { "required": true, "locked": true, "dateOfBirth": null }
+    }
+  ],
+  "eligibilityVectors": [
+    {
+      "id": "no_dob",
+      "input": { "dateOfBirth": null },
+      "expected": { "hasDateOfBirth": false, "meetsMinimumAge": false, "isAdult": false }
+    },
+    {
+      "id": "teen",
+      "input": { "dateOfBirth": "2010-01-01" },
+      "expected": { "hasDateOfBirth": true, "meetsMinimumAge": true, "isAdult": false }
+    },
+    {
+      "id": "turns_18_today",
+      "input": { "dateOfBirth": "2008-06-15" },
+      "expected": { "hasDateOfBirth": true, "meetsMinimumAge": true, "isAdult": true }
+    },
+    {
+      "id": "turns_18_tomorrow",
+      "input": { "dateOfBirth": "2008-06-16" },
+      "expected": { "hasDateOfBirth": true, "meetsMinimumAge": true, "isAdult": false }
+    }
+  ]
+}

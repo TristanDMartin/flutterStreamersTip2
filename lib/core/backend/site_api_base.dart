@@ -171,6 +171,9 @@ String siteAccountReactivateUrl({String? base}) =>
 String siteAccountPendingUrl({String? base}) =>
     siteApiPath('/api/account/pending', base: base);
 
+String siteAccountDateOfBirthUrl({String? base}) =>
+    siteApiPath('/api/account/date-of-birth', base: base);
+
 String siteAuthResolveLoginUrl({String? base}) =>
     siteApiPath('/api/auth/resolve-login', base: base);
 

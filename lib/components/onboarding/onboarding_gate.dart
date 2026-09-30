@@ -20,6 +20,7 @@ import '../../services/tester_promo_data_service.dart';
 import '../../services/app_session_cache.dart';
 import 'onboarding_tester_config.dart';
 import 'onboarding_style.dart';
+import 'widgets/birthday_step_view.dart';
 import 'widgets/onboarding_full_screen_shell.dart';
 
 /// Single onboarding gate — /api/account/status owns navigation.
@@ -109,7 +110,18 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
     );
   }
 
-  bool get _isShowingOnboarding => _shouldShowTippyOnboarding;
+  bool get _shouldShowBirthdayStep =>
+      _isReady &&
+      !_isTesterSession &&
+      _effectiveStatusRoute == 'birthday';
+
+  bool get _isShowingOnboarding =>
+      _shouldShowBirthdayStep || _shouldShowTippyOnboarding;
+
+  void _onBirthdaySaved() {
+    clearAccountStatusClientCache();
+    unawaited(_refreshAccountStatus());
+  }
 
   void _syncAuthenticatedAppShellReady() {
     final bool ready = _shouldShowMainApp;
@@ -292,8 +304,9 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
         hasSignupClosedFloor: _signupClosedFloor != null,
         verifyFloorReleased: _verifyFloorReleased,
       );
-      final bool needsOnboardingShell =
-          statusRoute == 'onboarding' || statusRoute == 'verify-email';
+      final bool needsOnboardingShell = statusRoute == 'onboarding' ||
+          statusRoute == 'verify-email' ||
+          statusRoute == 'birthday';
 
       final OnboardingState migrated = needsOnboardingShell
           ? await _service.fetchOnboarding(widget.userId).timeout(
@@ -514,6 +527,18 @@ class _OnboardingGateState extends ConsumerState<OnboardingGate> {
   Widget build(BuildContext context) {
     if (!_isReady) {
       return const _AuthenticatedOnboardingSplash();
+    }
+    if (_shouldShowBirthdayStep) {
+      final AccountStatusSnapshot? status = _accountStatus;
+      return OnboardingFullScreenShell(
+        child: BirthdayStepView(
+          key: ValueKey<bool>(status?.birthdayLocked == true),
+          onCompleted: _onBirthdaySaved,
+          isLocked: status?.birthdayLocked == true,
+          isReturningAccount: status?.isReturningComplete == true ||
+              status?.lifecycle == 'COMPLETE',
+        ),
+      );
     }
     if (_shouldShowTippyOnboarding) {
       return OnboardingFullScreenShell(

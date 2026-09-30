@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../components/onboarding/widgets/onboarding_login_footer.dart';
 import 'tippy_onboarding_debug_log.dart';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -1070,6 +1071,12 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView>
                           ),
                         ),
                       ],
+                      if (firebase_auth.FirebaseAuth.instance.currentUser ==
+                          null)
+                        OnboardingLoginFooter(
+                          onLogIn: _openLogin,
+                          isDisabled: _isUiBusy,
+                        ),
                     ],
                   ),
                 ),
@@ -1081,6 +1088,15 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView>
         ),
       ),
     );
+  }
+
+  void _openLogin() {
+    final NavigatorState navigator = Navigator.of(context, rootNavigator: true);
+    if (navigator.canPop()) {
+      navigator.popUntil((Route<dynamic> route) => route.isFirst);
+      return;
+    }
+    navigator.pushNamed('/auth');
   }
 
   Widget _buildBackBar(TippyOnboardingGuestSession session) {

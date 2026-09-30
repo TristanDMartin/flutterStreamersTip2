@@ -6,7 +6,7 @@ class AccountNavigation {
     required this.tippyStageHint,
   });
 
-  /// app | verify-email | onboarding | signin
+  /// app | verify-email | birthday | onboarding | signin
   final String route;
   final String? tippyStageHint;
 }
@@ -67,7 +67,14 @@ AccountNavigation navigationFromAccountStatus({
   String? activationReason,
   String? tippyStageHint,
   bool allowApp = false,
+  bool birthdayRequired = false,
 }) {
+  if (birthdayRequired || activationState == 'BIRTHDAY_REQUIRED') {
+    return const AccountNavigation(
+      route: 'birthday',
+      tippyStageHint: 'birthday',
+    );
+  }
   final String? rawHint =
       (tippyStageHint ?? '').trim().isEmpty ? null : tippyStageHint!.trim();
   final String? hint = floorHintForActivation(
