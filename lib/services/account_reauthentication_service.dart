@@ -36,6 +36,65 @@ class AccountReauthenticationService {
     }
   }
 
+  /// Returns a TOTP or backup code; throws when the user cancels.
+  Future<String> promptForTwoFactorCode(BuildContext context) async {
+    final TextEditingController controller = TextEditingController();
+    final String? code = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext ctx) {
+        final ColorScheme cs = Theme.of(ctx).colorScheme;
+        final TextTheme tt = Theme.of(ctx).textTheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          title: Text(
+            'Two-Factor Code',
+            style: tt.titleLarge?.copyWith(color: cs.onSurface),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 8,
+            keyboardType: TextInputType.visiblePassword,
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              labelText: 'Authenticator or backup code',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onSubmitted: (String value) => Navigator.of(ctx).pop(value),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('Cancel', style: TextStyle(color: cs.primary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: Text(
+                'Continue',
+                style: TextStyle(
+                  color: cs.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    Future<void>.delayed(
+      const Duration(milliseconds: 500),
+      controller.dispose,
+    );
+    final String trimmed = code?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      throw const AccountReauthenticationCancelled();
+    }
+    return trimmed;
+  }
+
   String _resolveProviderId(firebase_auth.User user) {
     if (user.providerData.isEmpty) {
       return 'password';

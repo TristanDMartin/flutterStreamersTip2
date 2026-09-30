@@ -5,7 +5,7 @@ library;
 const int kMinimumSignupAge = 13;
 const int kAdultAge = 18;
 const int kMaxReasonableAge = 120;
-const int kDobYearOptionCount = 88;
+const int kDobYearOptionCount = 101;
 const String kAgeGateUnderMinimumAge = 'under_minimum_age';
 
 const List<String> kDobMonthLabels = <String>[
@@ -30,8 +30,9 @@ int daysInDobMonth({required int month, required int year}) {
   return DateTime.utc(year > 0 ? year : 2000, month + 1, 0).day;
 }
 
+/// Starts at the current year so the picker does not reveal the age cutoff.
 List<int> dobYearOptions({DateTime? now}) {
-  final int newest = (now ?? DateTime.now()).year - kMinimumSignupAge;
+  final int newest = (now ?? DateTime.now()).year;
   return List<int>.generate(kDobYearOptionCount, (int i) => newest - i);
 }
 

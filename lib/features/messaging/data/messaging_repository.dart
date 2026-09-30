@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../domain/messaging_ids.dart';
 import '../domain/messaging_message.dart';
 import '../domain/normalize_chat_message.dart';
+import '../../../services/privacy_settings_service.dart';
 
 /// Canonical messaging repository. UI should call this instead of Firestore.
 ///
@@ -83,6 +84,15 @@ class MessagingRepository {
         ));
       }
       return existingId;
+    }
+
+    final String? blockMessage =
+        await PrivacySettingsService.instance.directMessageBlockMessage(
+      senderId: currentUserId,
+      recipientId: otherUserId,
+    );
+    if (blockMessage != null) {
+      throw StateError(blockMessage);
     }
 
     await _firestore.runTransaction((Transaction transaction) async {

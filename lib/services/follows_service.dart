@@ -852,11 +852,7 @@ class FollowsService {
           await userRef.update(payload);
         }
       }
-      // Always mirror onto publicUsers (peer / streamer reads).
-      await _firestore.collection('publicUsers').doc(userId).set(
-            payload,
-            SetOptions(merge: true),
-          );
+      // publicUsers counts are server-owned (followCounts trigger mirrors them).
       debugPrint(
         '✅ FollowsService: Repaired counters for $userId '
         '(followers ${counts.followersCount}, following ${counts.followingCount})',

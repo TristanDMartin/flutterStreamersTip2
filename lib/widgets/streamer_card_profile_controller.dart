@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../models/creator_profile_snapshot.dart';
 import '../services/creator_cache_service.dart';
 import '../services/public_profile_firestore.dart';
+import '../services/privacy_settings_service.dart';
 import '../utils/user_profile_firestore.dart';
 
 @immutable
@@ -110,6 +111,20 @@ class StreamerCardProfileController extends ChangeNotifier {
         if (!_state.hasDisplayData) {
           _setMissingUserState();
         }
+        return;
+      }
+
+      final bool canView = await PrivacySettingsService.instance.canViewProfile(
+        viewerId: FirebaseAuth.instance.currentUser?.uid,
+        profileOwnerId: resolvedDocId,
+      );
+      if (!canView) {
+        _setState(
+          const StreamerCardProfileState(
+            isLoading: false,
+            error: 'This profile is private.',
+          ),
+        );
         return;
       }
 

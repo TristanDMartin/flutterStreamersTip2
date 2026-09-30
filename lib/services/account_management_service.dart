@@ -210,10 +210,12 @@ class AccountManagementService {
   Future<AccountDeletionResult> deleteAccount({
     required BuildContext context,
     required WidgetRef ref,
+    String twoFactorCode = '',
   }) {
     return AccountDeletionService().deleteCurrentAccount(
       context: context,
       ref: ref,
+      twoFactorCode: twoFactorCode,
     );
   }
 

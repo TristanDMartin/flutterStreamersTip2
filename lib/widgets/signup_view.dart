@@ -1064,7 +1064,7 @@ class _SignupDateOfBirthField extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           'We use this to confirm eligibility for giveaways and age-restricted '
-          'promotions. You must be at least $kMinimumSignupAge to sign up.',
+          'promotions.',
           style: TextStyle(
             fontSize: 12,
             color: Colors.white.withValues(alpha: 0.55),

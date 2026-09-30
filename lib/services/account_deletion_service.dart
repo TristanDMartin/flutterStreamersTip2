@@ -117,6 +117,7 @@ class AccountDeletionService {
   Future<AccountDeletionResult> deleteCurrentAccount({
     required BuildContext context,
     required WidgetRef ref,
+    String twoFactorCode = '',
   }) async {
     final firebase_auth.User? user =
         firebase_auth.FirebaseAuth.instance.currentUser;
@@ -131,7 +132,7 @@ class AccountDeletionService {
         ref.read(robustAuthServiceProvider);
     bool cloudDeleteSucceeded = false;
     try {
-      await _postCanonicalDelete(user);
+      await _postCanonicalDelete(user, twoFactorCode);
       cloudDeleteSucceeded = true;
     } catch (e) {
       debugPrint('❌ AccountDeletionService cloud delete failed: $e');
@@ -181,7 +182,10 @@ class AccountDeletionService {
     );
   }
 
-  Future<void> _postCanonicalDelete(firebase_auth.User user) async {
+  Future<void> _postCanonicalDelete(
+    firebase_auth.User user,
+    String twoFactorCode,
+  ) async {
     const int maxAttempts = 3;
     Object? lastError;
     for (int attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -204,7 +208,10 @@ class AccountDeletionService {
           .post(
             Uri.parse(siteAccountDeleteUrl(base: _base)),
             headers: headers,
-            body: jsonEncode(<String, dynamic>{'confirmation': 'DELETE'}),
+            body: jsonEncode(<String, dynamic>{
+              'confirmation': 'DELETE',
+              'code': twoFactorCode,
+            }),
           )
           .timeout(const Duration(seconds: 60));
       final Map<String, dynamic> body = decodeAccountDeleteJson(response.body);

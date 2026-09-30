@@ -8,6 +8,7 @@ import '../widgets/screen_feedback_state.dart';
 import '../services/account_management_service.dart';
 import '../services/account_deletion_service.dart';
 import '../services/account_visibility_service.dart';
+import '../services/account_reauthentication_service.dart';
 import '../routing/app_routes.dart';
 import '../services/unified_avatar_service.dart' as nav;
 import '../utils/avatar_url_resolver.dart';
@@ -265,6 +266,28 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   bool get _isDeactivated =>
       (_userData?['accountStatus'] as String?) == 'deactivated';
 
+  bool get _hasTwoFactor => _userData?['twoFactorVerified'] == true;
+
+  /// Re-auth + optional 2FA code. Returns null when cancelled or failed.
+  Future<String?> _confirmSensitiveSession() async {
+    const AccountReauthenticationService reauth =
+        AccountReauthenticationService();
+    try {
+      await reauth.reauthenticateCurrentUser(context);
+      if (!_hasTwoFactor || !mounted) {
+        return '';
+      }
+      return await reauth.promptForTwoFactorCode(context);
+    } on AccountReauthenticationCancelled {
+      return null;
+    } catch (e) {
+      if (mounted) {
+        _setActionError(UserFacingError.message(e));
+      }
+      return null;
+    }
+  }
+
   Future<void> _deactivateAccount() async {
     if (_isAccountActionInFlight) {
       return;
@@ -305,10 +328,14 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
     if (confirmed != true || !mounted) {
       return;
     }
-    setState(() => _isAccountActionInFlight = true);
     _clearActionError();
-    final AccountVisibilityResult result =
-        await _accountVisibilityService.deactivateCurrentAccount();
+    final String? twoFactorCode = await _confirmSensitiveSession();
+    if (twoFactorCode == null || !mounted) {
+      return;
+    }
+    setState(() => _isAccountActionInFlight = true);
+    final AccountVisibilityResult result = await _accountVisibilityService
+        .deactivateCurrentAccount(twoFactorCode: twoFactorCode);
     if (!mounted) {
       return;
     }
@@ -365,6 +392,12 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
               Text(
                 'This will permanently delete your account and all data.',
                 style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Website subscriptions are cancelled immediately. App Store '
+                'or Google Play subscriptions must be cancelled in that store.',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
               Text(
@@ -510,12 +543,17 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       },
     );
 
-    if (finalConfirm == true && mounted) {
-      await _performAccountDeletion();
+    if (finalConfirm != true || !mounted) {
+      return;
+    }
+    _clearActionError();
+    final String? twoFactorCode = await _confirmSensitiveSession();
+    if (twoFactorCode != null && mounted) {
+      await _performAccountDeletion(twoFactorCode);
     }
   }
 
-  Future<void> _performAccountDeletion() async {
+  Future<void> _performAccountDeletion(String twoFactorCode) async {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -542,6 +580,7 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
           await _accountManagementService.deleteAccount(
         context: context,
         ref: ref,
+        twoFactorCode: twoFactorCode,
       );
       if (!mounted) {
         return;

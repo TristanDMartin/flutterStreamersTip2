@@ -29,10 +29,13 @@ class AccountVisibilityService {
   final http.Client _client;
   final String _base;
 
-  Future<AccountVisibilityResult> deactivateCurrentAccount() {
+  Future<AccountVisibilityResult> deactivateCurrentAccount({
+    String twoFactorCode = '',
+  }) {
     return _postVisibility(
       url: siteAccountDeactivateUrl(base: _base),
       action: 'deactivate',
+      requestBody: <String, dynamic>{'code': twoFactorCode},
     );
   }
 
@@ -46,6 +49,7 @@ class AccountVisibilityService {
   Future<AccountVisibilityResult> _postVisibility({
     required String url,
     required String action,
+    Map<String, dynamic> requestBody = const <String, dynamic>{},
   }) async {
     final firebase_auth.User? user =
         firebase_auth.FirebaseAuth.instance.currentUser;
@@ -76,7 +80,7 @@ class AccountVisibilityService {
             .post(
               Uri.parse(url),
               headers: headers,
-              body: jsonEncode(<String, dynamic>{}),
+              body: jsonEncode(requestBody),
             )
             .timeout(const Duration(seconds: 60));
         final Map<String, dynamic> body =
