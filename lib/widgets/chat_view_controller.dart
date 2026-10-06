@@ -176,6 +176,13 @@ abstract class ChatViewService {
     required String userId,
     required String reason,
     String? additionalDetails,
+    String? chatId,
+  });
+  Future<void> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String? additionalDetails,
   });
   Future<void> blockUser({
     required String targetUserId,
@@ -292,9 +299,25 @@ class ChatViewServiceAdapter implements ChatViewService {
     required String userId,
     required String reason,
     String? additionalDetails,
+    String? chatId,
   }) =>
       _reportService.reportUser(
         userId: userId,
+        reason: reason,
+        additionalDetails: additionalDetails,
+        chatId: chatId,
+      );
+
+  @override
+  Future<void> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String? additionalDetails,
+  }) =>
+      _reportService.reportMessage(
+        chatId: chatId,
+        messageId: messageId,
         reason: reason,
         additionalDetails: additionalDetails,
       );
@@ -585,6 +608,37 @@ class ChatViewController extends ChangeNotifier {
     );
   }
 
+  Future<ChatActionFeedback> reportMessage(
+    app_message.Message message, {
+    required ChatReportReason reason,
+    String? additionalDetails,
+  }) async {
+    final String? messageId = message.id;
+    final String chatId = _chat.id ?? '';
+    if (messageId == null || messageId.isEmpty || chatId.isEmpty) {
+      return const ChatActionFeedback(
+        message: 'Unable to report this message.',
+        isError: true,
+      );
+    }
+    try {
+      await _chatService.reportMessage(
+        chatId: chatId,
+        messageId: messageId,
+        reason: reason.title,
+        additionalDetails: additionalDetails,
+      );
+      return const ChatActionFeedback(
+        message: 'Report submitted. Thanks for letting us know.',
+      );
+    } catch (_) {
+      return const ChatActionFeedback(
+        message: 'We couldn’t submit that report.',
+        isError: true,
+      );
+    }
+  }
+
   Future<ChatActionFeedback> toggleReactionOnMessage(
     app_message.Message message,
     String emoji,
@@ -678,6 +732,7 @@ class ChatViewController extends ChangeNotifier {
             reason: resolvedReason.title,
             additionalDetails:
                 additionalDetails ?? 'Reported from direct message settings.',
+            chatId: _chat.id,
           );
           return const ChatActionFeedback(
             message: 'Report submitted. Thanks for letting us know.',

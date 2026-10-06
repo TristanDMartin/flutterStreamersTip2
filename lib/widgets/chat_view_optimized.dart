@@ -488,10 +488,9 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
         if (report == null || !mounted) {
           return;
         }
-        final ChatActionFeedback feedback =
-            await _controller.handleSettingsAction(
-          ChatSettingsAction.report,
-          reportReason: report.reason,
+        final ChatActionFeedback feedback = await _controller.reportMessage(
+          message,
+          reason: report.reason,
           additionalDetails: report.additionalDetails,
         );
         if (mounted) {
@@ -787,8 +786,7 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
     final ColorScheme scheme = Theme.of(context).colorScheme;
 
     final bool dark = Theme.of(context).brightness == Brightness.dark;
-    final Color pageBg =
-        dark ? ChatUiTokens.chatScaffold : shell.scaffold;
+    final Color pageBg = dark ? ChatUiTokens.chatScaffold : shell.scaffold;
     return Scaffold(
       backgroundColor: pageBg,
       resizeToAvoidBottomInset: false,
@@ -807,8 +805,7 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
               actions: <Widget>[
                 IconButton(
                   onPressed: _deleteSelectedMessages,
-                  icon:
-                      const Icon(Icons.undo_rounded, color: Colors.redAccent),
+                  icon: const Icon(Icons.undo_rounded, color: Colors.redAccent),
                 ),
               ],
             )
@@ -1750,8 +1747,8 @@ class _ChatMessagesPane extends StatelessWidget {
               messages[index + 1].from == message.from;
           final bool isLastInGroup = !nextSame;
           final bool isLastOverall = index == messages.length - 1;
-          final bool isSeenByPeer = message.isRead ||
-              message.readBy.contains(otherUserId);
+          final bool isSeenByPeer =
+              message.isRead || message.readBy.contains(otherUserId);
           return _ChatMessageBubble(
             message: message,
             isMe: isMe,
@@ -2103,9 +2100,7 @@ class _ChatMessageBubble extends StatelessWidget {
                                 ],
                               ),
                               child: Text(
-                                count > 1
-                                    ? '${entry.key} $count'
-                                    : entry.key,
+                                count > 1 ? '${entry.key} $count' : entry.key,
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -2533,7 +2528,7 @@ class _ChatComposer extends StatelessWidget {
             builder: (BuildContext context, TextEditingValue value, _) {
               final bool hasText = value.text.trim().isNotEmpty;
               if (hasText) {
-                  return AnimatedContainer(
+                return AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   width: 36,
                   height: 36,

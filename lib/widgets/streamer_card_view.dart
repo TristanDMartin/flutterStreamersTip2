@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -18,6 +17,7 @@ import 'adult_external_link_dialog.dart';
 import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
+import '../services/report_service.dart';
 import '../services/profile_link_service.dart';
 import '../utils/post_count_rules.dart';
 import '../utils/platform_rules.dart';
@@ -216,11 +216,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       connectedOnly: true,
     );
     final bool viewerIsOwner = widget.currentUserId != null &&
-        widget.currentUserId ==
-            (_resolvedUserDocId ?? widget.userId);
+        widget.currentUserId == (_resolvedUserDocId ?? widget.userId);
     // Match website streamer page: keep past events for 7 days, then drop.
-    final List<CalendarEvent> events =
-        filterStreamerPageCalendarEvents(
+    final List<CalendarEvent> events = filterStreamerPageCalendarEvents(
       events: UserProfileFirestore.parseStreamerFacingCalendarEvents(
         _userData,
         viewerIsOwner: viewerIsOwner,
@@ -1516,7 +1514,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     decoration: StreamerCardBackStyle.cardDecoration,
                     child: Column(
                       children: <Widget>[
-                        for (int i = 0; i < reportReasons.length; i++) ...<Widget>[
+                        for (int i = 0;
+                            i < reportReasons.length;
+                            i++) ...<Widget>[
                           if (i > 0) _sheetDivider(),
                           InkWell(
                             onTap: () {
@@ -1676,13 +1676,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   /// Submit report to backend
   Future<void> _submitReport(String reason) async {
     try {
-      await FirebaseFirestore.instance.collection('reports').add({
-        'reporterId': widget.currentUserId,
-        'reportedUserId': widget.userId,
-        'reason': reason,
-        'timestamp': FieldValue.serverTimestamp(),
-        'type': 'user_report',
-      });
+      await ReportService().reportUser(userId: widget.userId, reason: reason);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2274,12 +2268,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildTags() {
-    final List<String> hashtags = _readHashtags()
-        .where((String tag) {
-          final String cleaned = tag.replaceAll('#', '').trim().toLowerCase();
-          return !StreamerCardBackStyle.roleHashtagKeys.contains(cleaned);
-        })
-        .toList(growable: false);
+    final List<String> hashtags = _readHashtags().where((String tag) {
+      final String cleaned = tag.replaceAll('#', '').trim().toLowerCase();
+      return !StreamerCardBackStyle.roleHashtagKeys.contains(cleaned);
+    }).toList(growable: false);
     if (hashtags.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -2428,13 +2420,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             ),
             const SizedBox(height: 8),
             ...upcoming.take(5).map(
-              (CalendarEvent event) => _UpcomingCalendarRow(
-                event: event,
-                isBookmarked: _bookmarkedEventIds.contains(event.id),
-                isPast: false,
-                onTap: () => unawaited(_toggleBookmark(event)),
-              ),
-            ),
+                  (CalendarEvent event) => _UpcomingCalendarRow(
+                    event: event,
+                    isBookmarked: _bookmarkedEventIds.contains(event.id),
+                    isPast: false,
+                    onTap: () => unawaited(_toggleBookmark(event)),
+                  ),
+                ),
           ],
         ],
       ),
@@ -3113,9 +3105,7 @@ class _UpcomingCalendarRow extends StatelessWidget {
                     ),
                   ),
                   Icon(
-                    isBookmarked
-                        ? Icons.bookmark
-                        : Icons.bookmark_border,
+                    isBookmarked ? Icons.bookmark : Icons.bookmark_border,
                     color: isBookmarked
                         ? StreamerCardBackStyle.lavender
                         : StreamerCardBackStyle.muted,

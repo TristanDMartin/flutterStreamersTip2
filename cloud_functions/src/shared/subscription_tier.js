@@ -4,12 +4,13 @@ const {
   isPaidSubscriptionStatus,
   isSubscriptionPeriodActive,
   normalizeTierString,
-  readPeriodEndFromUserDoc,
 } = require('./subscription_entitlements');
 
 /**
  * Canonical tier resolution — server-owned fields only.
- * Does not read client-writable legacy root fields (plan, tier, stripeRole).
+ * Does not read client-writable fields (plan, tier, stripeRole, or the
+ * users/{uid}.subscription map). Billing docs are merged into
+ * `subscriptionTier` by loadUserWithBilling.
  */
 function resolveTierFromUserDoc(userData = {}) {
   const rootTierRaw = userData.subscriptionTier;
@@ -30,26 +31,6 @@ function resolveTierFromUserDoc(userData = {}) {
       }
       return {tier: 'starter', sourceField: 'subscriptionTier+inactive'};
     }
-  }
-
-  const sub =
-    userData.subscription && typeof userData.subscription === 'object'
-      ? userData.subscription
-      : {};
-  const subStatus = String(sub.status || sub.subscriptionStatus || '')
-    .toLowerCase()
-    .trim();
-  const subTier = normalizeTierString(sub.tier || sub.plan);
-  const subPeriodEnd = readPeriodEndFromUserDoc({subscription: sub});
-  const subPeriodActive =
-    !subPeriodEnd || subPeriodEnd.getTime() > Date.now();
-
-  if (
-    subTier &&
-    isPaidSubscriptionStatus(subStatus) &&
-    subPeriodActive
-  ) {
-    return {tier: subTier, sourceField: 'subscription.tier'};
   }
 
   return {tier: 'starter', sourceField: 'none'};

@@ -1,39 +1,13 @@
 /**
- * Privileged moderation: JWT custom claim `admin` and/or Firestore admin
- * fields on users/{uid} (same model as client rules).
+ * Privileged moderation. Authorization is the Auth custom claim `admin` only;
+ * Firestore user fields and usernames are never trusted for admin access.
+ * Grant with scripts/grant_admin_claims.js.
  */
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 
 const db = () => admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
-
-const FALLBACK_ADMIN_UIDS = new Set(['bU0RxyZ2L4ULAv1Co5L4f825yV73']);
-const FALLBACK_ADMIN_USERNAMES = new Set(['technqs', 'buzzz']);
-
-function isFirestoreAdminUserData(d) {
-  if (!d || typeof d !== 'object') {
-    return false;
-  }
-  if (d.isAdmin === true || d.role === 'admin') {
-    return true;
-  }
-  if (d.admin && d.admin.isAdmin === true) {
-    return true;
-  }
-  if (d.adminAccess === true && d.adminStatus === 'active') {
-    return true;
-  }
-  return false;
-}
-
-function isFallbackAdminIdentity(uid, userData) {
-  if (FALLBACK_ADMIN_UIDS.has(uid)) {
-    return true;
-  }
-  const username = String(userData?.username || '').toLowerCase().trim();
-  return FALLBACK_ADMIN_USERNAMES.has(username);
-}
 
 async function requireAdminAccess(request) {
   if (!request.auth) {
@@ -44,23 +18,7 @@ async function requireAdminAccess(request) {
   if (record.customClaims && record.customClaims.admin === true) {
     return uid;
   }
-  const snap = await db().collection('users').doc(uid).get();
-  const userData = snap.exists ? snap.data() : {};
-  if (isFallbackAdminIdentity(uid, userData)) {
-    console.log('ADMIN_FINAL_DECISION=granted source=cloud_fallback uid=' + uid);
-    return uid;
-  }
-  if (snap.exists && isFirestoreAdminUserData(userData)) {
-    console.log('ADMIN_FINAL_DECISION=granted source=cloud_firestore uid=' + uid);
-    return uid;
-  }
-  console.warn(
-    'ADMIN_FINAL_DECISION=denied uid=' + uid +
-    ' isAdmin=' + !!userData.isAdmin +
-    ' role=' + (userData.role || '') +
-    ' adminAccess=' + !!userData.adminAccess +
-    ' adminStatus=' + (userData.adminStatus || ''),
-  );
+  console.warn('ADMIN_FINAL_DECISION=denied uid=' + uid);
   throw new HttpsError('permission-denied', 'Admin access required');
 }
 

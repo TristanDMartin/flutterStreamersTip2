@@ -4,29 +4,32 @@ import 'package:streamers_tip/features/gamification/models/subscription_plan.dar
 
 void main() {
   group('resolveSubscriptionTierFromUserDocument', () {
-    test('prefers subscription.tier', () {
+    test('prefers server-owned subscriptionTier', () {
+      const Map<String, dynamic> raw = <String, dynamic>{
+        'subscriptionTier': 'pro',
+        'entitlements': <String, dynamic>{
+          'tippyAi': <String, Object>{'tier': 'studio'},
+        },
+      };
+      final SubscriptionTierResolution r =
+          resolveSubscriptionTierFromUserDocument(raw);
+      expect(r.plan, SubscriptionPlan.pro);
+      expect(r.sourceField, 'subscriptionTier');
+    });
+
+    test('ignores client-writable subscription map, plan and stripeRole', () {
       const Map<String, dynamic> raw = <String, dynamic>{
         'subscription': <String, String>{
           'tier': 'studio',
           'status': 'active',
         },
-        'plan': 'starter',
-      };
-      final SubscriptionTierResolution r =
-          resolveSubscriptionTierFromUserDocument(raw);
-      expect(r.plan, SubscriptionPlan.studio);
-      expect(r.sourceField, 'subscription.tier');
-    });
-
-    test('reads stripeRole when subscription map empty', () {
-      const Map<String, dynamic> raw = <String, String>{
         'stripeRole': 'studio',
-        'plan': 'starter',
+        'plan': 'studio',
       };
       final SubscriptionTierResolution r =
           resolveSubscriptionTierFromUserDocument(raw);
-      expect(r.plan, SubscriptionPlan.studio);
-      expect(r.sourceField, 'stripeRole');
+      expect(r.plan, SubscriptionPlan.unknown);
+      expect(r.sourceField, 'none');
     });
 
     test('reads entitlements.tippyAi.plan', () {

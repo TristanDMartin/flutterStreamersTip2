@@ -19,6 +19,7 @@ class _FakeChatViewService implements ChatViewService {
   int pastedImageSendCount = 0;
   final List<String> mutedChatIds = <String>[];
   final List<String> reportedUserIds = <String>[];
+  final List<String> reportedMessageIds = <String>[];
   final List<String> blockedUserIds = <String>[];
 
   @override
@@ -55,10 +56,30 @@ class _FakeChatViewService implements ChatViewService {
   }
 
   @override
-  Future<bool> sendMessage(String chatId, String text) async {
+  Future<bool> sendMessage(
+    String chatId,
+    String text, {
+    String? clientId,
+  }) async {
     sentMessages.add('$chatId::$text');
     return sendShouldSucceed;
   }
+
+  @override
+  Future<bool> toggleReaction(
+    String chatId,
+    String messageId,
+    String emoji,
+  ) async =>
+      true;
+
+  @override
+  Future<bool> editMessage(
+    String chatId,
+    String messageId,
+    String newText,
+  ) async =>
+      true;
 
   @override
   Future<bool> sendReplyMessage(
@@ -103,8 +124,19 @@ class _FakeChatViewService implements ChatViewService {
     required String userId,
     required String reason,
     String? additionalDetails,
+    String? chatId,
   }) async {
     reportedUserIds.add('$userId::$reason');
+  }
+
+  @override
+  Future<void> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String? additionalDetails,
+  }) async {
+    reportedMessageIds.add('$chatId::$messageId::$reason');
   }
 
   @override

@@ -29,16 +29,12 @@ function resolveStudioBypass({uid, email, userData = {}} = {}) {
   const emailAllowed =
     STUDIO_BYPASS_EMAILS.has(normalizeEmail(email)) ||
     STUDIO_BYPASS_EMAILS.has(normalizeEmail(userData.email));
-  const isAdmin =
-    userData.isAdmin === true ||
-    userData.role === 'admin' ||
-    userData.admin === true;
-  if (!uidAllowed && !emailAllowed && !isAdmin) {
+  if (!uidAllowed && !emailAllowed) {
     return null;
   }
   return {
     tier: 'studio',
-    tierSource: isAdmin ? 'admin' : 'studio_bypass',
+    tierSource: 'studio_bypass',
     status: 'admin_granted',
     hasEntitlement: true,
     canUseTippy: true,

@@ -32,4 +32,4 @@ echo "  firebase functions:config:set event_reminder.task_secret=\"\$(openssl ra
 echo "  # or set EVENT_REMINDER_TASK_SECRET in the functions runtime env"
 echo ""
 echo "Deploy:"
-echo "  cd \$(dirname \"\$0\")/.. && firebase deploy --only functions:onBookmarkCreate,functions:onBookmarkUpdate,functions:onBookmarkDelete,functions:deliverEventReminder,functions:sendEventNotification"
+echo "  cd \$(dirname \"\$0\")/.. && firebase deploy --only functions:onBookmarkCreate,functions:onBookmarkUpdate,functions:onBookmarkDelete,functions:deliverEventReminder"

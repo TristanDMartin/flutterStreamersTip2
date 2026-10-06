@@ -4,24 +4,9 @@ const {HttpsError} = require('firebase-functions/v2/https');
 const FieldValue = admin.firestore.FieldValue;
 const firestore = admin.firestore();
 
-const MAX_BULK_DELETE = 50;
+const {resolveOwnerId} = require('./video_owner');
 
-function resolveOwnerId(data) {
-  if (!data || typeof data !== 'object') {
-    return null;
-  }
-  return (
-    data.ownerId ||
-    data.userId ||
-    data.user_id ||
-    data.authorId ||
-    data.uid ||
-    data.creatorId ||
-    data.creator_id ||
-    data.videoOwnerId ||
-    null
-  );
-}
+const MAX_BULK_DELETE = 50;
 
 function resolveCategory(data) {
   if (!data || typeof data !== 'object') {
@@ -36,19 +21,7 @@ function resolveCategory(data) {
 }
 
 async function requestIsAdmin(auth) {
-  if (auth?.token?.admin === true) {
-    return true;
-  }
-  if (!auth?.uid) {
-    return false;
-  }
-  const userDoc = await firestore.collection('users').doc(auth.uid).get();
-  const data = userDoc.data() || {};
-  return (
-    data.isAdmin === true ||
-    data.role === 'admin' ||
-    (data.admin && data.admin.isAdmin === true)
-  );
+  return auth?.token?.admin === true;
 }
 
 function canDeleteVideo(data, authUid, isAdmin) {
@@ -211,6 +184,8 @@ async function softDeleteOneVideo({
       visibility: 'private',
       visible: false,
       isReadyForFeed: false,
+      feedEligible: false,
+      ownerActive: false,
       updatedAt: FieldValue.serverTimestamp(),
     },
     {merge: true},

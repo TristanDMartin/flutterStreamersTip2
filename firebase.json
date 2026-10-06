@@ -8,6 +8,7 @@
   },
   "functions": {
     "source": "cloud_functions",
+    "codebase": "flutter",
     "runtime": "nodejs22",
     "ignore": [
       "node_modules",

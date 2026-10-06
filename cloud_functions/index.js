@@ -1,5 +1,5 @@
 const functions = require('firebase-functions');
-const {onRequest, onCall, HttpsError} = require('firebase-functions/v2/https');
+const {onRequest, onCall} = require('firebase-functions/v2/https');
 const {defineSecret} = require('firebase-functions/params');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
@@ -12,7 +12,6 @@ const os = require('os');
 admin.initializeApp();
 const firestore = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
-const storage = admin.storage();
 
 // Video transcoding helpers (format check only - no server transcoding)
 const {transcodeVideo: transcodeVideoHelper, uploadVariant, getPublicUrl, cleanupFiles} = require('./src/videoTranscoding');
@@ -22,6 +21,7 @@ const {
   scoreVideoForFeed,
   feedMirrorPayload,
 } = require('./src/feed_ranking');
+const {evaluateScheduledPublish} = require('./src/videos/scheduled_publish_guard');
 
 function safeEmitTelemetry(eventType, payload) {
   try {
@@ -316,80 +316,6 @@ async function _processVideoForBackfill(storageClient, db, videoId, userId, orig
   }
 }
 
-    // Make existing transcoded video files public
-    exports.makeVideoFilesPublic = functions
-      .runWith({
-        timeoutSeconds: 540,
-        memory: '1GB',
-      })
-      .https.onRequest(async (req, res) => {
-        const storageClient = new Storage();
-        const bucket = storageClient.bucket('streamerstip-6cfdb.firebasestorage.app');
-        
-        try {
-          console.log('🔍 Finding all 720p and 480p video files...');
-          
-          const [files720] = await bucket.getFiles({
-            prefix: 'videos/',
-            matchGlob: '**/*_720p.mp4',
-          });
-          
-          const [files480] = await bucket.getFiles({
-            prefix: 'videos/',
-            matchGlob: '**/*_480p.mp4',
-          });
-          
-          const allFiles = [...files720, ...files480];
-          console.log(`📊 Found ${allFiles.length} files to make public (720p: ${files720.length}, 480p: ${files480.length})`);
-          
-          let succeeded = 0;
-          let failed = 0;
-          const errors = [];
-          
-          // Process files in batches to avoid overwhelming the system
-          const batchSize = 10;
-          for (let i = 0; i < allFiles.length; i += batchSize) {
-            const batch = allFiles.slice(i, i + batchSize);
-            await Promise.all(batch.map(async (file) => {
-              try {
-                await file.makePublic();
-                succeeded++;
-                if (succeeded % 10 === 0) {
-                  console.log(`✅ Made ${succeeded} files public...`);
-                }
-              } catch (error) {
-                failed++;
-                errors.push({
-                  file: file.name,
-                  error: error.message,
-                });
-                console.error(`❌ Failed to make ${file.name} public:`, error.message);
-              }
-            }));
-          }
-          
-          console.log(`✅ Completed! Made ${succeeded} files public, ${failed} failed`);
-          
-          return res.status(200).json({
-            success: true,
-            summary: {
-              total: allFiles.length,
-              succeeded: succeeded,
-              failed: failed,
-            },
-            errors: errors.slice(0, 50), // Limit errors in response
-            message: `Made ${succeeded} out of ${allFiles.length} files public.`,
-          });
-        } catch (error) {
-          console.error('❌ Error making files public:', error);
-          return res.status(500).json({
-            success: false,
-            error: error.message,
-            message: 'Failed to make files public.',
-          });
-        }
-      });
-
     // ============================================================================
     // USER PROFILE HELPERS
     // ============================================================================
@@ -611,14 +537,6 @@ exports.deliverEventReminder = functions.https.onRequest(async (req, res) => {
   }
 });
 
-// Callable kept for admin/manual tests.
-exports.sendEventNotification = functions.https.onCall(async (data, _context) => {
-  return deliverEventReminderPayload({
-    ...(data || {}),
-    phase: 'deliver',
-  });
-});
-
 /* Legacy setTimeout scheduler removed — see src/event_reminder_tasks.js */
 // ============================================================================
 // POST COUNTER TRIGGERS - Single source of truth for post counts
@@ -830,199 +748,8 @@ async function reconcileUserPostCount(userId) {
 // NOTIFICATION TRIGGERS - Create notifications for likes, comments, follows
 // ============================================================================
 
-// Trigger: When a video is liked
-exports.onLikeCreate = functions.firestore
-  .document('likes/{videoId}/byUser/{userId}')
-  .onCreate(async (snap, context) => {
-    const { videoId, userId } = context.params;
-    const likerId = userId;
 
-    console.log(`👍 Like created: Video ${videoId} by user ${likerId}`);
 
-    try {
-      // Get video data to find the owner
-      const videoDoc = await admin.firestore().collection('videos').doc(videoId).get();
-      if (!videoDoc.exists) {
-        console.log(`❌ Video ${videoId} not found`);
-        return null;
-      }
-
-      const videoData = videoDoc.data();
-      const videoOwnerId = videoData.userId;
-
-      // Don't notify if user likes their own video
-      if (likerId === videoOwnerId) {
-        console.log(`ℹ️ User liked their own video, skipping notification`);
-        return null;
-      }
-
-      // Get liker's user data
-      const likerDoc = await admin.firestore().collection('users').doc(likerId).get();
-      if (!likerDoc.exists) {
-        console.log(`❌ Liker user ${likerId} not found`);
-        return null;
-      }
-
-      const likerData = likerDoc.data();
-
-      // Create notification
-      await admin.firestore()
-        .collection('notifications')
-        .doc(videoOwnerId)
-        .collection('items')
-        .add({
-          type: 'like',
-          videoId: videoId,
-          user: {
-            id: likerId,
-            displayName: likerData.displayName || 'Unknown',
-            username: likerData.username || 'unknown',
-            avatarUrl: likerData.avatarURL || null,
-          },
-          postThumbnailUrl: videoData.thumbnailUrl || null,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          status: 'delivered',
-        });
-
-      console.log(`✅ Like notification created for user ${videoOwnerId}`);
-      return null;
-    } catch (error) {
-      console.error(`❌ Error creating like notification:`, error);
-      return null;
-    }
-  });
-
-// Trigger: When a comment is created
-exports.onCommentCreate = functions.firestore
-  .document('videos/{videoId}/comments/{commentId}')
-  .onCreate(async (snap, context) => {
-    const { videoId, commentId } = context.params;
-    const commentData = snap.data();
-    const commenterId = commentData.userId;
-
-    console.log(`💬 Comment created: Video ${videoId} by user ${commenterId}`);
-
-    try {
-      // Get video data to find the owner
-      const videoDoc = await admin.firestore().collection('videos').doc(videoId).get();
-      if (!videoDoc.exists) {
-        console.log(`❌ Video ${videoId} not found`);
-        return null;
-      }
-
-      const videoData = videoDoc.data();
-      const videoOwnerId = videoData.userId;
-
-      // Don't notify if user comments on their own video
-      if (commenterId === videoOwnerId) {
-        console.log(`ℹ️ User commented on their own video, skipping notification`);
-        return null;
-      }
-
-      // Get commenter's user data
-      const commenterDoc = await admin.firestore().collection('users').doc(commenterId).get();
-      if (!commenterDoc.exists) {
-        console.log(`❌ Commenter user ${commenterId} not found`);
-        return null;
-      }
-
-      const commenterData = commenterDoc.data();
-
-      // Create notification
-      await admin.firestore()
-        .collection('notifications')
-        .doc(videoOwnerId)
-        .collection('items')
-        .add({
-          type: 'comment',
-          videoId: videoId,
-          commentId: commentId,
-          commentText: commentData.text || '',
-          user: {
-            id: commenterId,
-            displayName: commenterData.displayName || 'Unknown',
-            username: commenterData.username || 'unknown',
-            avatarUrl: commenterData.avatarURL || null,
-          },
-          postThumbnailUrl: videoData.thumbnailUrl || null,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          status: 'delivered',
-        });
-
-      console.log(`✅ Comment notification created for user ${videoOwnerId}`);
-      return null;
-    } catch (error) {
-      console.error(`❌ Error creating comment notification:`, error);
-      return null;
-    }
-  });
-
-// Trigger: When a user follows another user
-exports.onFollowCreate = functions.firestore
-  .document('follows/{followId}')
-  .onCreate(async (snap, _context) => {
-    const followData = snap.data();
-    const followerId = followData.followerId;
-    // Flutter writes followingId/targetUserId; React writes followedId — accept all.
-    const followedId =
-      followData.followedId || followData.followingId || followData.targetUserId;
-
-    console.log(`👥 Follow created: ${followerId} -> ${followedId}`);
-
-    try {
-      if (!followerId || !followedId) {
-        console.log(`❌ Follow doc missing followerId/followedId: ${snap.id}`);
-        return null;
-      }
-
-      // Don't notify if user somehow follows themselves
-      if (followerId === followedId) {
-        console.log(`ℹ️ User tried to follow themselves, skipping notification`);
-        return null;
-      }
-
-      // Get follower's user data
-      const followerDoc = await admin.firestore().collection('users').doc(followerId).get();
-      if (!followerDoc.exists) {
-        console.log(`❌ Follower user ${followerId} not found`);
-        return null;
-      }
-
-      const followerData = followerDoc.data();
-
-      // Create notification
-      await admin.firestore()
-        .collection('notifications')
-        .doc(followedId)
-        .collection('items')
-        .add({
-          type: 'follow',
-          user: {
-            id: followerId,
-            displayName: followerData.displayName || 'Unknown',
-            username: followerData.username || 'unknown',
-            avatarUrl: followerData.avatarURL || null,
-          },
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          status: 'delivered',
-        });
-
-      console.log(`✅ Follow notification created for user ${followedId}`);
-      safeEmitTelemetry('follow_create', {
-        followerId,
-        followedId,
-      });
-      return null;
-    } catch (error) {
-      console.error(`❌ Error creating follow notification:`, error);
-      safeEmitTelemetry('follow_error', {
-        followerId,
-        followedId,
-        error: error.message,
-      });
-      return null;
-    }
-  });
 
 // Trigger: When a user is tagged in a video (TagMentionService writes tags/{tagId})
 exports.onTagCreate = functions.firestore
@@ -1866,15 +1593,10 @@ function _formatNumber(num) {
 // =============================================================================
 
 const region = 'us-central1';
-const crypto = require('crypto');
-const { createDirectUpload, handleMuxWebhook } = require('./src/mux');
 const {handleGamificationEvents} = require('./src/gamification/gamification_events_http');
 const {handleProgressionCallable} = require('./src/gamification/progression_callable');
-const {
-  handleDeleteVideo,
-  handleDeleteVideos,
-} = require('./src/videos/delete_video_callable');
-const {cleanupStuckUploads} = require('./src/videos/cleanup_stuck_uploads');
+const {handleDeleteVideos} = require('./src/videos/delete_video_callable');
+const {handleSubmitReport} = require('./src/reports/submit_report_callable');
 const {runProgressionNotificationSweep} = require('./src/gamification/progression_notifications');
 const {handleVerifyMobilePurchase} = require('./src/billing/verify_mobile_purchase');
 const {
@@ -1895,11 +1617,12 @@ exports.gamificationEvents = onRequest({region, cors: true}, handleGamificationE
 exports.progressionSync = onCall({region}, handleProgressionCallable);
 
 /** Soft-delete videos + purge feed/index mirrors (owner or admin). */
-exports.deleteVideo = onCall({region}, handleDeleteVideo);
 exports.deleteVideos = onCall({region}, handleDeleteVideos);
 
+/** Admin SDK-owned moderation reports (server-resolved owner, dedupe, rate limit, DM evidence). */
+exports.submitReport = onCall({region}, handleSubmitReport);
+
 /** Mark uploading/pending/processing videos stuck >2h as failed. */
-exports.cleanupStuckUploads = cleanupStuckUploads;
 
 exports.progressionNotificationSweep = onSchedule(
   {region, schedule: 'every 60 minutes', timeZone: 'UTC'},
@@ -1927,113 +1650,8 @@ exports.tippyUsageReport = onRequest(
     handleTippyUsageReport,
 );
 
-exports.createMuxDirectUpload = onCall({ region }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in');
-  const { videoId, userId } = request.data || {};
-  if (!videoId || !userId) throw new HttpsError('invalid-argument', 'videoId and userId required');
-  if (request.auth.uid !== userId) throw new HttpsError('permission-denied', 'userId mismatch');
-  const result = await createDirectUpload(videoId, userId);
-  return result;
-});
 
-exports.muxWebhook = onRequest({ region }, async (req, res) => {
-  if (req.method !== 'POST') {
-    res.status(405).send('Method not allowed');
-    return;
-  }
-  try {
-    const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    await handleMuxWebhook(payload);
-    res.status(200).send('OK');
-  } catch (e) {
-    console.error('Mux webhook error:', e);
-    res.status(500).send('Webhook processing failed');
-  }
-});
 
-exports.apiCsrfToken = onRequest({region}, (req, res) => {
-  if (req.method !== 'GET' && req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
-  const token = crypto.randomBytes(32).toString('hex');
-  const expiresIn = 3600;
-  res.set('Cache-Control', 'no-store');
-  res.status(200).json({ token, expiresIn });
-});
-
-exports.apiReports = onRequest({region}, async (req, res) => {
-  try {
-    if (req.method === 'GET') {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-      }
-      const idToken = authHeader.split('Bearer ')[1];
-      await admin.auth().verifyIdToken(idToken);
-      const snapshot = await firestore.collection('reports').orderBy('timestamp', 'desc').limit(50).get();
-      const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.status(200).json({ reports });
-      return;
-    }
-    if (req.method === 'POST') {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-      }
-      const idToken = authHeader.split('Bearer ')[1];
-      const decoded = await admin.auth().verifyIdToken(idToken);
-      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-      const { videoId, userId: reportedUserId, reason, type } = body;
-      const collection = type === 'user_report' ? 'user_reports' : 'reports';
-      const doc = type === 'user_report'
-        ? { reporterId: decoded.uid, reportedUserId, reason, timestamp: FieldValue.serverTimestamp(), status: 'pending' }
-        : { videoId, reporterId: decoded.uid, reason, timestamp: FieldValue.serverTimestamp(), status: 'pending' };
-      const ref = await firestore.collection(collection).add(doc);
-      res.status(200).json({ ok: true, id: ref.id });
-      return;
-    }
-    res.status(405).json({ error: 'Method not allowed' });
-  } catch (e) {
-    console.error('apiReports error:', e);
-    res.status(500).json({ error: e.message || 'Internal error' });
-  }
-});
-
-exports.apiVideoUpload = onRequest({region}, async (req, res) => {
-  try {
-    if (req.method !== 'POST') {
-      res.status(405).json({ error: 'Method not allowed' });
-      return;
-    }
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const { videoId, contentType } = body;
-    if (!videoId) {
-      res.status(400).json({ error: 'videoId required' });
-      return;
-    }
-    const bucket = storage.bucket();
-    const path = `videos/${decoded.uid}/${videoId}.mp4`;
-    const file = bucket.file(path);
-    const [url] = await file.getSignedUrl({
-      action: 'write',
-      expires: Date.now() + 60 * 60 * 1000,
-      contentType: contentType || 'video/mp4',
-    });
-    res.status(200).json({ uploadUrl: url, path });
-  } catch (e) {
-    console.error('apiVideoUpload error:', e);
-    res.status(500).json({ error: e.message || 'Internal error' });
-  }
-});
 
 exports.apiGoogleSecurityEvents = functions.region(region).https.onRequest(async (req, res) => {
   try {
@@ -2053,313 +1671,6 @@ exports.apiGoogleSecurityEvents = functions.region(region).https.onRequest(async
   }
 });
 
-function buildOAuthRedirect(provider, baseUrl) {
-  const config = process.env[`${provider.toUpperCase()}_CLIENT_ID`] || functions.config()[provider]?.client_id;
-  if (!config) return null;
-  const scopes = provider === 'kick' ? 'user:read' : provider === 'twitch' ? 'user:read:email' : 'https://www.googleapis.com/auth/youtube.readonly';
-  const authUrl = provider === 'kick' ? `https://kick.com/oauth/authorize` : provider === 'twitch' ? 'https://id.twitch.tv/oauth2/authorize' : 'https://accounts.google.com/o/oauth2/v2/auth';
-  const params = new URLSearchParams({
-    client_id: config,
-    redirect_uri: `${baseUrl}/api${provider.charAt(0).toUpperCase() + provider.slice(1)}AuthCallback`,
-    response_type: 'code',
-    scope: scopes,
-  });
-  return `${authUrl}?${params.toString()}`;
-}
-
-function encodeOAuthState(payload) {
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-}
-
-function decodeOAuthState(rawState) {
-  try {
-    if (!rawState) return {};
-    return JSON.parse(Buffer.from(String(rawState), 'base64url').toString('utf8'));
-  } catch (_) {
-    return {};
-  }
-}
-
-function resolveBaseUrl(req) {
-  return req.headers.origin || req.protocol + '://' + req.get('host') || '';
-}
-
-function sanitizeReturnUrl(returnUrl, baseUrl) {
-  if (typeof returnUrl !== 'string' || returnUrl.trim() === '') {
-    return baseUrl;
-  }
-  try {
-    const candidate = new URL(returnUrl, baseUrl);
-    const allowed = new URL(baseUrl);
-    if (candidate.origin !== allowed.origin) {
-      return baseUrl;
-    }
-    return candidate.toString();
-  } catch (_) {
-    return baseUrl;
-  }
-}
-
-async function fetchYoutubeChannelProfile(accessToken) {
-  const fetch = (await import('node-fetch')).default;
-  const res = await fetch(
-    'https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true',
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error?.message || 'Failed to fetch YouTube channel');
-  }
-  return data.items?.[0] || null;
-}
-
-async function persistYoutubeConnection({uid, tokenData, channel}) {
-  if (!uid) return;
-
-  const channelId = channel?.id || '';
-  const snippet = channel?.snippet || {};
-  const stats = channel?.statistics || {};
-  const displayName = snippet.title || 'YouTube';
-  const username =
-    snippet.customUrl ||
-    channelId ||
-    'connected';
-  const url = channelId ? `https://www.youtube.com/channel/${channelId}` : null;
-  const expiresAt = tokenData.expires_in
-    ? new Date(Date.now() + Number(tokenData.expires_in) * 1000)
-    : null;
-
-  await firestore
-    .collection('users')
-    .doc(uid)
-    .collection('platform_auth')
-    .doc('youtube')
-    .set({
-      provider: 'youtube',
-      channelId,
-      channelTitle: displayName,
-      accessToken: tokenData.access_token || null,
-      refreshToken: tokenData.refresh_token || null,
-      scope: tokenData.scope || null,
-      tokenType: tokenData.token_type || 'Bearer',
-      expiresAt: expiresAt || null,
-      updatedAt: FieldValue.serverTimestamp(),
-      connectedAt: FieldValue.serverTimestamp(),
-    }, {merge: true});
-
-  const userRef = firestore.collection('users').doc(uid);
-  const userSnap = await userRef.get();
-  const currentPlatforms = Array.isArray(userSnap.data()?.platforms)
-    ? [...userSnap.data().platforms]
-    : [];
-  const nextPlatforms = currentPlatforms.filter((platform) => {
-    const type = String(platform?.type || '').toLowerCase();
-    return type !== 'youtube';
-  });
-  nextPlatforms.push({
-    id: channelId || 'youtube_connected',
-    type: 'youtube',
-    username,
-    followers: Number(stats.subscriberCount || 0),
-    url,
-  });
-  await userRef.set({
-    platforms: nextPlatforms,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, {merge: true});
-}
-
-exports.apiKickAuthStart = functions.region(region).https.onRequest((req, res) => {
-  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
-  const url = buildOAuthRedirect('kick', baseUrl);
-  if (!url) {
-    res.status(503).json({ error: 'Kick OAuth not configured' });
-    return;
-  }
-  res.redirect(url);
-});
-
-exports.apiKickAuthCallback = functions.region(region).https.onRequest(async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
-    res.status(400).send('Missing code');
-    return;
-  }
-  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
-  const redirectUri = `${baseUrl}/apiKickAuthCallback`;
-  const clientId = process.env.KICK_CLIENT_ID || functions.config().kick?.client_id;
-  const clientSecret = process.env.KICK_CLIENT_SECRET || functions.config().kick?.client_secret;
-  if (!clientId || !clientSecret) {
-    res.status(503).send('Kick OAuth not configured');
-    return;
-  }
-  try {
-    const fetch = (await import('node-fetch')).default;
-    const tokenRes = await fetch('https://kick.com/api/v2/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
-    });
-    const tokenData = await tokenRes.json();
-    res.redirect(`${baseUrl}?kick_connected=1&access_token=${encodeURIComponent(tokenData.access_token || '')}`);
-  } catch (e) {
-    console.error('Kick callback error:', e);
-    res.status(500).send('OAuth failed');
-  }
-});
-
-exports.apiKickValidate = functions.region(region).https.onRequest(async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    res.status(401).json({ valid: false });
-    return;
-  }
-  try {
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-    const fetch = (await import('node-fetch')).default;
-    const r = await fetch('https://kick.com/api/v2/user', { headers: { Authorization: `Bearer ${token}` } });
-    res.status(200).json({ valid: r.ok });
-  } catch (e) {
-    res.status(200).json({ valid: false });
-  }
-});
-
-exports.apiTwitchAuthStart = functions.region(region).https.onRequest((req, res) => {
-  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
-  const clientId = process.env.TWITCH_CLIENT_ID || functions.config().twitch?.client_id;
-  if (!clientId) {
-    res.status(503).json({ error: 'Twitch OAuth not configured' });
-    return;
-  }
-  const url = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(baseUrl + '/apiTwitchAuthCallback')}&response_type=code&scope=user:read:email`;
-  res.redirect(url);
-});
-
-exports.apiTwitchAuthCallback = functions.region(region).https.onRequest(async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
-    res.status(400).send('Missing code');
-    return;
-  }
-  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
-  const redirectUri = baseUrl + '/apiTwitchAuthCallback';
-  const clientId = process.env.TWITCH_CLIENT_ID || functions.config().twitch?.client_id;
-  const clientSecret = process.env.TWITCH_CLIENT_SECRET || functions.config().twitch?.client_secret;
-  if (!clientId || !clientSecret) {
-    res.status(503).send('Twitch OAuth not configured');
-    return;
-  }
-  try {
-    const fetch = (await import('node-fetch')).default;
-    const tokenRes = await fetch('https://id.twitch.tv/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
-    });
-    const tokenData = await tokenRes.json();
-    res.redirect(`${baseUrl}?twitch_connected=1&access_token=${encodeURIComponent(tokenData.access_token || '')}`);
-  } catch (e) {
-    console.error('Twitch callback error:', e);
-    res.status(500).send('OAuth failed');
-  }
-});
-
-exports.apiYoutubeAuthStart = functions.region(region).https.onRequest((req, res) => {
-  const baseUrl = resolveBaseUrl(req);
-  const clientId = process.env.YOUTUBE_CLIENT_ID || functions.config().youtube?.client_id;
-  if (!clientId) {
-    res.status(503).json({ error: 'YouTube OAuth not configured' });
-    return;
-  }
-  const state = encodeOAuthState({
-    uid: typeof req.query.uid === 'string' ? req.query.uid : '',
-    returnUrl: sanitizeReturnUrl(
-      typeof req.query.returnUrl === 'string' ? req.query.returnUrl : '',
-      baseUrl
-    ),
-  });
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: `${baseUrl}/apiYoutubeAuthCallback`,
-    response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/youtube.upload',
-    access_type: 'offline',
-    prompt: 'consent',
-    include_granted_scopes: 'true',
-    state,
-  });
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  res.redirect(url);
-});
-
-exports.apiYoutubeAuthCallback = functions.region(region).https.onRequest(async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
-    res.status(400).send('Missing code');
-    return;
-  }
-  const baseUrl = resolveBaseUrl(req);
-  const redirectUri = baseUrl + '/apiYoutubeAuthCallback';
-  const clientId = process.env.YOUTUBE_CLIENT_ID || functions.config().youtube?.client_id;
-  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET || functions.config().youtube?.client_secret;
-  if (!clientId || !clientSecret) {
-    res.status(503).send('YouTube OAuth not configured');
-    return;
-  }
-  try {
-    const state = decodeOAuthState(
-      typeof req.query.state === 'string' ? req.query.state : ''
-    );
-    const returnUrl = sanitizeReturnUrl(state.returnUrl, baseUrl);
-    const fetch = (await import('node-fetch')).default;
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
-    });
-    const tokenData = await tokenRes.json();
-    if (!tokenRes.ok) {
-      res.status(500).send(tokenData.error_description || tokenData.error || 'OAuth failed');
-      return;
-    }
-    const channel = tokenData.access_token
-      ? await fetchYoutubeChannelProfile(tokenData.access_token).catch((error) => {
-          console.warn('YouTube profile fetch failed:', error.message);
-          return null;
-        })
-      : null;
-    if (state.uid) {
-      await persistYoutubeConnection({
-        uid: state.uid,
-        tokenData,
-        channel,
-      });
-    }
-
-    const redirectTarget = new URL(returnUrl);
-    redirectTarget.searchParams.set('youtube_connected', '1');
-    if (channel?.snippet?.title) {
-      redirectTarget.searchParams.set(
-        'youtube_channel',
-        channel.snippet.title
-      );
-    }
-    if (!state.uid && tokenData.access_token) {
-      redirectTarget.searchParams.set(
-        'access_token',
-        tokenData.access_token
-      );
-    }
-    res.redirect(redirectTarget.toString());
-  } catch (e) {
-    console.error('YouTube callback error:', e);
-    res.status(500).send('OAuth failed');
-  }
-});
 
 exports.healthCheck = functions.region(region).https.onRequest((req, res) => {
   res.status(200).json({ ok: true });
@@ -2383,35 +1694,9 @@ exports.markChatAsRead = functions.region(region).https.onCall(async (data, cont
   return { ok: true };
 });
 
-exports.onCommentDelete = functions.region(region).firestore
-  .document('videos/{videoId}/comments/{commentId}')
-  .onDelete(async (snap, context) => {
-    const { videoId } = context.params;
-    try {
-      const videoRef = firestore.doc(`videos/${videoId}`);
-      await videoRef.update({ commentCount: FieldValue.increment(-1) });
-      console.log('Comment deleted, decremented count for video', videoId);
-    } catch (e) {
-      console.error('onCommentDelete error:', e);
-    }
-  });
 
-exports.onFollowDelete = functions.region(region).firestore
-  .document('follows/{followId}')
-  .onDelete(async (snap, _context) => {
-    const data = snap.data();
-    const followerId = data.followerId;
-    const followedId = data.followedId;
-    try {
-      await firestore.doc(`users/${followedId}`).update({ followerCount: FieldValue.increment(-1) });
-      await firestore.doc(`users/${followerId}`).update({ followingCount: FieldValue.increment(-1) });
-      console.log('Follow deleted, updated counts for', followerId, followedId);
-    } catch (e) {
-      console.error('onFollowDelete error:', e);
-    }
-  });
 
-exports.onVideoWrite = functions.region(region).firestore
+exports.onVideoWriteFeedMirror = functions.region(region).firestore
   .document('videos/{videoId}')
   .onWrite(async (change, context) => {
     const videoId = context.params.videoId;
@@ -2526,37 +1811,6 @@ exports.apiFeedForYou = onRequest({region, cors: true}, async (req, res) => {
   }
 });
 
-exports.sendWelcomeEmail = functions.region(region).auth.user().onCreate(async (user) => {
-  const email = user.email;
-  if (!email) {
-    console.log('sendWelcomeEmail: no email for', user.uid);
-    return null;
-  }
-  const resendKey = process.env.RESEND_KEY || functions.config().resend?.key;
-  if (!resendKey) {
-    console.log('sendWelcomeEmail: Resend not configured, skipping for', user.uid);
-    return null;
-  }
-  try {
-    const fetch = (await import('node-fetch')).default;
-    const from = process.env.RESEND_FROM || functions.config().resend?.from || 'StreamersTip <onboarding@resend.dev>';
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resendKey}` },
-      body: JSON.stringify({
-        from,
-        to: [email],
-        subject: 'Welcome to StreamersTip',
-        html: '<p>Thanks for signing up. We\'re glad to have you!</p>',
-      }),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    console.log('Welcome email sent to', email);
-  } catch (e) {
-    console.error('sendWelcomeEmail error:', e);
-  }
-  return null;
-});
 
 exports.syncVideoAnalyticsToVideos = onSchedule(
   {schedule: '0 3 * * *', region},
@@ -2678,21 +1932,30 @@ exports.publishDueScheduledPosts = onSchedule(
     for (const doc of due) {
       const data = doc.data();
       const videoId = data.videoId;
-      const userId = data.authorId || data.userId;
-      if (!videoId || !userId) {
-        failed++;
-        await doc.ref.set({
-          status: 'failed',
-          error: 'Missing videoId or userId for scheduled publish.',
-          updatedAt: FieldValue.serverTimestamp(),
-        }, {merge: true});
-        continue;
-      }
-
       try {
-        const videoRef = firestore.collection('videos').doc(videoId);
-        const videoSnap = await videoRef.get();
-        const videoData = videoSnap.exists ? videoSnap.data() || {} : {};
+        const videoRef = videoId ? firestore.collection('videos').doc(videoId) : null;
+        const videoSnap = videoRef ? await videoRef.get() : null;
+        const videoData = videoSnap?.exists ? videoSnap.data() || {} : null;
+        const authorId = data.authorId || data.userId || null;
+        const ownerSnap = authorId
+          ? await firestore.collection('users').doc(authorId).get()
+          : null;
+        const verdict = evaluateScheduledPublish({
+          postData: data,
+          videoData,
+          ownerData: ownerSnap?.exists ? ownerSnap.data() : null,
+        });
+        if (!verdict.ok) {
+          failed++;
+          console.warn('publishDueScheduledPosts rejected', doc.id, verdict.reason);
+          await doc.ref.set({
+            status: 'failed',
+            error: `Scheduled publish rejected: ${verdict.reason}`,
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+          continue;
+        }
+        const userId = verdict.ownerId;
         const privacy = videoData.privacy || data.privacy || 'Everyone';
         const category = videoData.category || data.category || videoData.metadata?.categoryCanonical;
 
@@ -2700,9 +1963,6 @@ exports.publishDueScheduledPosts = onSchedule(
           status: 'published',
           visible: true,
           isReadyForFeed: true,
-          userId,
-          creatorId: userId,
-          creator_id: userId,
           privacy,
           visibility: privacy === 'Private' || privacy === 'private'
             ? 'private'
@@ -2767,23 +2027,6 @@ exports.cleanupExpiredCalendarEvents = onSchedule(
   },
 );
 
-exports.manualCleanupCalendarEvents = onCall({region}, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in');
-  const decoded = await admin.auth().getUser(request.auth.uid);
-  const isAdmin = decoded.customClaims?.admin === true;
-  if (!isAdmin) throw new HttpsError('permission-denied', 'Admin only');
-  const now = admin.firestore.Timestamp.now();
-  const snapshot = await firestore.collection('scheduled_posts').where('status', '==', 'pending').limit(200).get();
-  const toExpire = snapshot.docs.filter(doc => {
-    const schedule = doc.data().schedule;
-    const at = schedule?.scheduledAtUtc;
-    return at && (at.toMillis ? at.toMillis() < now.toMillis() : at < now);
-  });
-  const batch = firestore.batch();
-  toExpire.forEach(doc => batch.update(doc.ref, { status: 'expired', updatedAt: FieldValue.serverTimestamp() }));
-  if (toExpire.length) await batch.commit();
-  return { ok: true, expired: toExpire.length };
-});
 
 const {adminExecute, adminDashboardStats} = require('./src/admin/admin_execute');
 exports.adminExecute = adminExecute(region);

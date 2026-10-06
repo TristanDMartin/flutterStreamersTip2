@@ -21,8 +21,6 @@ SubscriptionTierResolution resolveSubscriptionTierFromUserDocument(
       sourceField: 'none',
     );
   }
-  final Object? sub = raw['subscription'];
-  final Map<String, dynamic>? subMap = sub is Map<String, dynamic> ? sub : null;
   final Object? ent = raw['entitlements'];
   final Map<String, dynamic>? entMap = ent is Map<String, dynamic> ? ent : null;
   Map<String, dynamic>? tippyEnt;
@@ -30,29 +28,15 @@ SubscriptionTierResolution resolveSubscriptionTierFromUserDocument(
   if (tippyObj is Map<String, dynamic>) {
     tippyEnt = tippyObj;
   }
+  // Server-owned fields only; `subscription`, `plan` and `stripeRole` are
+  // client-writable on users/{uid} and must not grant a tier.
   final List<MapEntry<String, String?>> candidates =
       <MapEntry<String, String?>>[
-    MapEntry<String, String?>(
-      'subscription.tier',
-      stringFieldFromMap(subMap, 'tier'),
-    ),
-    MapEntry<String, String?>(
-      'subscription.plan',
-      stringFieldFromMap(subMap, 'plan'),
-    ),
-    MapEntry<String, String?>(
-      'stripeRole',
-      raw['stripeRole'] is String ? raw['stripeRole'] as String : null,
-    ),
     MapEntry<String, String?>(
       'subscriptionTier',
       raw['subscriptionTier'] is String
           ? raw['subscriptionTier'] as String
           : null,
-    ),
-    MapEntry<String, String?>(
-      'plan',
-      raw['plan'] is String ? raw['plan'] as String : null,
     ),
     MapEntry<String, String?>(
       'entitlements.tippyAi.plan',

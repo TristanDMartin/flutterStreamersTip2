@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'report_service.dart';
 import 'unified_bookmark_service.dart';
 import 'video_download_service.dart';
 
@@ -230,8 +231,10 @@ class VideoActionsService {
     final List<String> out = <String>[];
     final Set<String> seen = <String>{};
     for (final String raw in input) {
-      final String cleaned =
-          raw.trim().replaceFirst(RegExp(r'^#+'), '').replaceAll(RegExp(r'\s+'), '');
+      final String cleaned = raw
+          .trim()
+          .replaceFirst(RegExp(r'^#+'), '')
+          .replaceAll(RegExp(r'\s+'), '');
       if (cleaned.isEmpty) continue;
       final String tag = '#${cleaned.toLowerCase()}';
       if (seen.contains(tag)) continue;
@@ -377,21 +380,8 @@ class VideoActionsService {
     }
   }
 
-  Future<void> reportVideo(String videoId, String reason) async {
-    try {
-      final userId = await getCurrentUserId();
-      if (userId == null) throw Exception('User not authenticated');
-      await _firestore.collection('reports').add({
-        'videoId': videoId,
-        'reporterId': userId,
-        'reason': reason,
-        'createdAt': FieldValue.serverTimestamp(),
-        'status': 'pending',
-      });
-    } catch (e) {
-      rethrow;
-    }
-  }
+  Future<void> reportVideo(String videoId, String reason) =>
+      ReportService().reportVideo(videoId: videoId, reason: reason);
 
   /// Negative signal for feed ranking (see [EnhancedAlgorithmService]).
   Future<void> markNotInterested({

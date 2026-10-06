@@ -1,8 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:streamers_tip/utils/secure_log.dart';
 
-/// Service for handling video and user reports
+/// Result of a server-side report submission.
+class ReportSubmission {
+  const ReportSubmission({required this.reportId, required this.isDuplicate});
+
+  final String reportId;
+  final bool isDuplicate;
+}
+
+/// Submits moderation reports through the `submitReport` callable; the server
+/// resolves content owners, dedupes, rate-limits, and maintains counters.
 class ReportService {
   static final ReportService _instance = ReportService._internal();
   factory ReportService() => _instance;
@@ -10,6 +20,8 @@ class ReportService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
 
   Future<String> _requireReporterId() async {
     final currentUser = _auth.currentUser;
@@ -19,203 +31,128 @@ class ReportService {
     return currentUser.uid;
   }
 
-  Future<void> _submitContentReport(Map<String, dynamic> reportData) async {
-    await _firestore.collection('reports').add({
-      ...reportData,
-      'timestamp': FieldValue.serverTimestamp(),
-      'status': 'pending',
-      'reviewedBy': null,
-      'reviewedAt': null,
-      'actionTaken': null,
-    });
-  }
-
-  /// Report a video with specific reason
-  Future<void> reportVideo({
-    required String videoId,
-    required String creatorId,
+  Future<ReportSubmission> _submitReport({
+    required String targetType,
+    required String targetId,
     required String reason,
     String? additionalDetails,
+    String? videoId,
+    String? postId,
+    String? chatId,
   }) async {
+    await _requireReporterId();
     try {
-      final reporterId = await _requireReporterId();
-
-      final reportData = {
-        'reportType': 'video',
-        'videoId': videoId,
-        'creatorId': creatorId,
-        'reporterId': reporterId,
+      final HttpsCallableResult<dynamic> result =
+          await _functions.httpsCallable('submitReport').call(<String, dynamic>{
+        'targetType': targetType,
+        'targetId': targetId,
         'reason': reason,
-        'additionalDetails': additionalDetails,
-      };
-
-      await _submitContentReport(reportData);
-
-      // Update video report count
-      await _firestore.collection('videos').doc(videoId).update({
-        'reportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
+        if (additionalDetails != null) 'details': additionalDetails,
+        if (videoId != null) 'videoId': videoId,
+        if (postId != null) 'postId': postId,
+        if (chatId != null) 'chatId': chatId,
       });
-
-      // Update creator report count
-      await _firestore.collection('users').doc(creatorId).update({
-        'reportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-
-      secureLog('📋 ReportService: Video report submitted successfully',
+      final Map<String, dynamic> data =
+          Map<String, dynamic>.from(result.data as Map);
+      secureLog('📋 ReportService: $targetType report submitted',
           name: 'ReportService');
+      return ReportSubmission(
+        reportId: data['reportId'] as String? ?? '',
+        isDuplicate: data['duplicate'] == true,
+      );
     } catch (e) {
-      secureLog('❌ ReportService: Error reporting video: $e',
+      secureLog('❌ ReportService: Error reporting $targetType: $e',
           name: 'ReportService');
       rethrow;
     }
   }
 
-  /// Report a user with specific reason
-  Future<void> reportUser({
+  /// Report a video. [creatorId] is ignored; the server resolves the owner.
+  Future<ReportSubmission> reportVideo({
+    required String videoId,
+    String? creatorId,
+    required String reason,
+    String? additionalDetails,
+  }) =>
+      _submitReport(
+        targetType: 'video',
+        targetId: videoId,
+        reason: reason,
+        additionalDetails: additionalDetails,
+      );
+
+  /// Report a user. Pass [chatId] from DMs so the server can attach recent
+  /// messages from that user as moderation evidence.
+  Future<ReportSubmission> reportUser({
     required String userId,
     required String reason,
     String? additionalDetails,
-  }) async {
-    try {
-      final reporterId = await _requireReporterId();
+    String? chatId,
+  }) =>
+      _submitReport(
+        targetType: 'user',
+        targetId: userId,
+        reason: reason,
+        additionalDetails: additionalDetails,
+        chatId: chatId,
+      );
 
-      final reportData = {
-        'userId': userId,
-        'reporterId': reporterId,
-        'reason': reason,
-        'additionalDetails': additionalDetails,
-        'timestamp': FieldValue.serverTimestamp(),
-        'status': 'pending',
-        'reviewedBy': null,
-        'reviewedAt': null,
-        'actionTaken': null,
-      };
+  Future<ReportSubmission> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String? additionalDetails,
+  }) =>
+      _submitReport(
+        targetType: 'message',
+        targetId: messageId,
+        reason: reason,
+        additionalDetails: additionalDetails,
+        chatId: chatId,
+      );
 
-      // Add report to user_reports collection
-      await _firestore.collection('user_reports').add(reportData);
-
-      // Update user report count
-      await _firestore.collection('users').doc(userId).update({
-        'reportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-
-      secureLog('📋 ReportService: User report submitted successfully',
-          name: 'ReportService');
-    } catch (e) {
-      secureLog('❌ ReportService: Error reporting user: $e',
-          name: 'ReportService');
-      rethrow;
-    }
-  }
-
-  Future<void> reportComment({
+  Future<ReportSubmission> reportComment({
     required String videoId,
     required String commentId,
-    required String commentAuthorId,
+    String? commentAuthorId,
     required String reason,
     String? additionalDetails,
-  }) async {
-    try {
-      final reporterId = await _requireReporterId();
+  }) =>
+      _submitReport(
+        targetType: 'videoComment',
+        targetId: commentId,
+        reason: reason,
+        additionalDetails: additionalDetails,
+        videoId: videoId,
+      );
 
-      await _submitContentReport({
-        'reportType': 'videoComment',
-        'videoId': videoId,
-        'commentId': commentId,
-        'creatorId': commentAuthorId,
-        'reporterId': reporterId,
-        'reason': reason,
-        'additionalDetails': additionalDetails,
-      });
-
-      await _firestore.collection('videos').doc(videoId).update({
-        'commentReportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _firestore.collection('users').doc(commentAuthorId).update({
-        'reportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      secureLog('❌ ReportService: Error reporting comment: $e',
-          name: 'ReportService');
-      rethrow;
-    }
-  }
-
-  Future<void> reportThread({
+  Future<ReportSubmission> reportThread({
     required String postId,
-    required String authorId,
+    String? authorId,
     required String reason,
     String? additionalDetails,
-  }) async {
-    try {
-      final reporterId = await _requireReporterId();
+  }) =>
+      _submitReport(
+        targetType: 'thread',
+        targetId: postId,
+        reason: reason,
+        additionalDetails: additionalDetails,
+      );
 
-      await _submitContentReport({
-        'reportType': 'thread',
-        'postId': postId,
-        'creatorId': authorId,
-        'reporterId': reporterId,
-        'reason': reason,
-        'additionalDetails': additionalDetails,
-      });
-
-      await _firestore.collection('forumPosts').doc(postId).update({
-        'reportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _firestore.collection('users').doc(authorId).update({
-        'reportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      secureLog('❌ ReportService: Error reporting thread: $e',
-          name: 'ReportService');
-      rethrow;
-    }
-  }
-
-  Future<void> reportThreadComment({
+  Future<ReportSubmission> reportThreadComment({
     required String postId,
     required String commentId,
-    required String commentAuthorId,
+    String? commentAuthorId,
     required String reason,
     String? additionalDetails,
-  }) async {
-    try {
-      final reporterId = await _requireReporterId();
-
-      await _submitContentReport({
-        'reportType': 'threadComment',
-        'postId': postId,
-        'commentId': commentId,
-        'creatorId': commentAuthorId,
-        'reporterId': reporterId,
-        'reason': reason,
-        'additionalDetails': additionalDetails,
-      });
-
-      await _firestore.collection('forumPosts').doc(postId).update({
-        'commentReportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _firestore.collection('users').doc(commentAuthorId).update({
-        'reportCount': FieldValue.increment(1),
-        'lastReportedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      secureLog('❌ ReportService: Error reporting thread comment: $e',
-          name: 'ReportService');
-      rethrow;
-    }
-  }
+  }) =>
+      _submitReport(
+        targetType: 'threadComment',
+        targetId: commentId,
+        reason: reason,
+        additionalDetails: additionalDetails,
+        postId: postId,
+      );
 
   /// Get report statistics for a video
   Future<Map<String, dynamic>> getVideoReportStats(String videoId) async {
