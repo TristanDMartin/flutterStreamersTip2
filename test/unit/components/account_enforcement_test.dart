@@ -33,6 +33,20 @@ void main() {
       expect(actual.reason, kRelationshipBlockIsNotAccountStatus);
     });
 
+    test('lets activation intermediates enter the app', () {
+      for (final String status in <String>[
+        'verificationPending',
+        'verifiedProvisioning',
+        'verificationRequired',
+      ]) {
+        final AccountEnforcementResult actual =
+            resolveAccountEnforcement(status);
+        expect(actual.destination, 'app', reason: status);
+        expect(actual.canEnterApp, isTrue, reason: status);
+        expect(actual.reason, 'activation_in_progress', reason: status);
+      }
+    });
+
     test('does not invent probation', () {
       expect(resolveAccountEnforcement('probation').destination, 'unavailable');
       expect(kCanonicalAccountStatuses.contains('probation'), isFalse);

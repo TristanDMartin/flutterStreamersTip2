@@ -45,6 +45,64 @@ service cloud.firestore {
       return userId is string && userId.size() > 0 && userId.size() <= 128;
     }
 
+    function accountDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function accountStatusOf(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid))
+        ? accountDoc(uid).get('accountStatus', '').lower()
+        : '';
+    }
+
+    // Empty status is legacy-active. Activation intermediates may finish setup.
+    // deactivated, banned, deleting, deleted, and legacy suspended/disabled may not.
+    function accountMayUseProduct(uid) {
+      let status = accountStatusOf(uid);
+      return status == '' ||
+        status == 'active' ||
+        status == 'verificationpending' ||
+        status == 'verifiedprovisioning' ||
+        status == 'verificationrequired';
+    }
+
+    function ageGateStatusOf(uid) {
+      let gate = accountDoc(uid).get('ageGate', {});
+      return gate is map ? gate.get('status', '').lower() : '';
+    }
+
+    function accountHasAgeClearance(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+        ageGateStatusOf(uid) != 'under_minimum_age' &&
+        (
+          ageGateStatusOf(uid) == 'passed' ||
+          (
+            accountDoc(uid).get('dateOfBirth', '') is string &&
+            accountDoc(uid).get('dateOfBirth', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          )
+        );
+    }
+
+    function actorMayCreateContent() {
+      return isAuthenticated() &&
+        accountMayUseProduct(request.auth.uid) &&
+        accountHasAgeClearance(request.auth.uid);
+    }
+
+    function isExplicitUserSubcollection(name) {
+      return name in ['videos', 'tippyChats', 'following', 'followers'];
+    }
+
+    function blockDocExists(blockerId, blockedId) {
+      return exists(/databases/$(database)/documents/users/$(blockerId)/blockedUsers/$(blockedId));
+    }
+
+    function pairIsBlocked(userA, userB) {
+      return userA is string && userB is string &&
+        userA.size() > 0 && userB.size() > 0 && userA != userB &&
+        (blockDocExists(userA, userB) || blockDocExists(userB, userA));
+    }
+
     function isChatParticipant(chatId) {
       return isAuthenticated() &&
         request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
@@ -310,6 +368,7 @@ service cloud.firestore {
           'subscriptionCancelAtPeriodEnd', 'subscriptionPauseResumesAt',
           'canceledDuringTrial', 'hasUsedTrial', 'trialConsumedAt',
           'aiCreditsUsed', 'aiCreditsResetAt',
+          'isPro', 'tier',
           'role', 'isAdmin', 'admin', 'adminAccess', 'adminStatus',
           'entitlementOverride', 'entitlements',
           'accountStatus', 'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
@@ -352,6 +411,7 @@ service cloud.firestore {
                'subscriptionPeriodEnd', 'subscriptionProvider',
                'stripeCustomerId', 'stripeSubscriptionId',
                'hasUsedTrial', 'trialConsumedAt', 'canceledDuringTrial',
+               'isPro', 'tier',
                'accountStatus', 'bannedAt', 'bannedBy', 'banReason', 'adminNotes',
                'gamification',
                'dateOfBirth', 'dateOfBirthSetAt', 'dateOfBirthSource', 'ageGate',
@@ -460,7 +520,18 @@ service cloud.firestore {
       // Subcollections
       match /videos/{videoId} {
         allow read: if isOwner(userId) || canReadVideo();
-        allow write: if hasVerifiedEmail() && isOwner(userId);
+        allow create: if hasVerifiedEmail() && isOwner(userId) && actorMayCreateContent() &&
+          request.resource.data.get('isReadyForFeed', false) == false &&
+          request.resource.data.get('status', 'processing') in ['uploading', 'processing', 'pending', 'draft'] &&
+          !request.resource.data.keys().hasAny([
+            'muxPlaybackId', 'muxAssetId', 'canonicalPlaybackUrl', 'playbackUrl', 'hlsUrl',
+            'feedEligible', 'ownerActive']);
+        allow update: if hasVerifiedEmail() && isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'isReadyForFeed', 'feedEligible', 'ownerActive', 'muxPlaybackId', 'muxAssetId',
+            'canonicalPlaybackUrl']) &&
+          (isVideoSoftDeletePatch() || actorMayCreateContent());
+        allow delete: if hasVerifiedEmail() && isOwner(userId);
       }
       
       match /status/{statusId} {
@@ -626,10 +697,13 @@ service cloud.firestore {
 
       match /tippyChats/{chatId} {
         allow read: if isAuthenticated() && request.auth.uid == userId;
-        allow create, update, delete: if isAuthenticated() && request.auth.uid == userId;
+        allow create, update, delete: if isAuthenticated() &&
+          request.auth.uid == userId &&
+          actorMayCreateContent();
         match /messages/{messageId} {
           allow read: if isAuthenticated() && request.auth.uid == userId;
-          allow create: if hasVerifiedEmail() && request.auth.uid == userId;
+          allow create: if hasVerifiedEmail() && request.auth.uid == userId &&
+            actorMayCreateContent();
           allow update, delete: if false;
         }
       }
@@ -724,6 +798,8 @@ service cloud.firestore {
         allow read, list: if isAuthenticated();
         allow create: if hasVerifiedEmail() &&
           isOwner(userId) &&
+          actorMayCreateContent() &&
+          !pairIsBlocked(request.auth.uid, followingId) &&
           request.resource.data.userId == followingId &&
           acceptsFollowersFrom(followingId);
         allow update: if hasVerifiedEmail() &&
@@ -737,6 +813,8 @@ service cloud.firestore {
         allow read, list: if isAuthenticated();
         allow create: if hasVerifiedEmail() &&
           request.auth.uid == followerId &&
+          actorMayCreateContent() &&
+          !pairIsBlocked(request.auth.uid, userId) &&
           request.resource.data.userId == followerId &&
           acceptsFollowersFrom(userId);
         allow update: if hasVerifiedEmail() &&
@@ -751,14 +829,16 @@ service cloud.firestore {
           !(subcollection in ['tippyProposals', 'security']);
         allow write: if hasVerifiedEmail() &&
           isOwner(userId) &&
-          !isServerOwnedUserSubcollection(subcollection);
+          !isServerOwnedUserSubcollection(subcollection) &&
+          !isExplicitUserSubcollection(subcollection);
 
         match /{nested=**} {
           allow read: if isAuthenticated() && isOwner(userId) &&
             !(subcollection in ['tippyProposals', 'security']);
           allow write: if hasVerifiedEmail() &&
             isOwner(userId) &&
-            !isServerOwnedUserSubcollection(subcollection);
+            !isServerOwnedUserSubcollection(subcollection) &&
+            !isExplicitUserSubcollection(subcollection);
         }
       }
     }
@@ -1152,7 +1232,10 @@ service cloud.firestore {
     match /comments/{commentId} {
       allow read: if true; // Public read
       allow create: if hasVerifiedEmail() &&
-        request.resource.data.uid == request.auth.uid;
+        actorMayCreateContent() &&
+        request.resource.data.uid == request.auth.uid &&
+        (!('postUid' in request.resource.data) ||
+          !pairIsBlocked(request.auth.uid, request.resource.data.postUid));
       allow update: if hasVerifiedEmail() && 
                        request.auth.uid == resource.data.uid &&
                        request.resource.data.uid == resource.data.uid;
@@ -1181,6 +1264,7 @@ service cloud.firestore {
 
       function isThreadAuthorOnCreate() {
         return hasVerifiedEmail() &&
+          actorMayCreateContent() &&
           authorFieldsMatchAuthOnCreate(['authorId', 'creatorId', 'uid', 'userId']);
       }
 
@@ -1209,6 +1293,8 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if true;
         allow create: if hasVerifiedEmail() &&
+          actorMayCreateContent() &&
+          !pairIsBlocked(request.auth.uid, threadData().get('authorId', threadData().get('creatorId', threadData().get('uid', '')))) &&
           authorFieldsMatchAuthOnCreate(['uid', 'authorId']);
         allow update: if hasVerifiedEmail() &&
           (request.auth.uid == resource.data.get('uid', '') ||
@@ -1323,6 +1409,7 @@ service cloud.firestore {
       allow create: if hasVerifiedEmail() &&
                        videoCreateOwnedByAuth() &&
                        videoCreateOwnerFieldsConsistent() &&
+                       actorMayCreateContent() &&
                        request.resource.data.get('isReadyForFeed', false) == false &&
                        request.resource.data.get('status', 'processing') in ['uploading', 'processing', 'pending'] &&
                        !request.resource.data.keys().hasAny([
@@ -1337,6 +1424,7 @@ service cloud.firestore {
                        hasVerifiedEmail() &&
                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) && (
                        isVideoDocumentOwner() &&
+                        actorMayCreateContent() &&
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(
                           ['title', 'description', 'caption', 'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
                            'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
@@ -1347,6 +1435,7 @@ service cloud.firestore {
                      ||
                      (
                        isAuthenticated() &&
+                       actorMayCreateContent() &&
                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) &&
                        canReadVideo() &&
                        (
@@ -1362,9 +1451,14 @@ service cloud.firestore {
       match /likes/{uid} {
         allow read: if isAuthenticated();
         allow create, update: if isAuthenticated()
+          && actorMayCreateContent()
           && request.auth.uid == uid
           && request.resource.data.userId == uid
-          && request.resource.data.videoId == videoId;
+          && request.resource.data.videoId == videoId
+          && !pairIsBlocked(
+            request.auth.uid,
+            videoOwnerIdFromData(get(/databases/$(database)/documents/videos/$(videoId)).data)
+          );
         allow delete: if isAuthenticated() && request.auth.uid == uid;
       }
       match /bookmarks/{uid} {
@@ -1380,7 +1474,12 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if canReadVideoById(videoId);
         allow create: if hasVerifiedEmail() &&
+                         actorMayCreateContent() &&
                          canReadVideoById(videoId) &&
+                         !pairIsBlocked(
+                           request.auth.uid,
+                           videoOwnerIdFromData(get(/databases/$(database)/documents/videos/$(videoId)).data)
+                         ) &&
                          // Ensure user.id matches authenticated user
                          request.resource.data.user.id == request.auth.uid &&
                          // Allow setting parentId, rootId, depth, and replyCount for nested structure
@@ -1955,7 +2054,11 @@ service cloud.firestore {
     // Direct messages — participants only (header unread, inbox, mobile parity)
     match /chatAliases/{legacyChatId} {
       allow read: if isAuthenticated();
-      allow create, update: if hasVerifiedEmail();
+      allow create, update: if hasVerifiedEmail() &&
+        actorMayCreateContent() &&
+        request.resource.data.canonicalChatId is string &&
+        exists(/databases/$(database)/documents/chats/$(request.resource.data.canonicalChatId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/chats/$(request.resource.data.canonicalChatId)).data.participants;
       allow delete: if false;
     }
 
@@ -1965,9 +2068,17 @@ service cloud.firestore {
                      request.auth.uid in resource.data.participants;
       // dm_{uidA}_{uidB} must contain exactly those two users (no third-party squatting).
       allow create: if hasVerifiedEmail() &&
+                       actorMayCreateContent() &&
                        request.resource.data.participants is list &&
                        request.auth.uid in request.resource.data.participants &&
                        request.resource.data.participants.size() >= 2 &&
+                       (
+                         request.resource.data.participants.size() != 2 ||
+                         !pairIsBlocked(
+                           request.auth.uid,
+                           otherDmParticipant(request.resource.data.participants)
+                         )
+                       ) &&
                        (!chatId.matches('dm_.*') || (
                          request.resource.data.participants.size() == 2 &&
                          chatId in [
@@ -1980,14 +2091,30 @@ service cloud.firestore {
                          )
                        ));
       allow update: if hasVerifiedEmail() &&
+                       actorMayCreateContent() &&
                        request.auth.uid in resource.data.participants &&
-                       request.resource.data.participants == resource.data.participants;
+                       request.resource.data.participants == resource.data.participants &&
+                       (
+                         resource.data.participants.size() != 2 ||
+                         !pairIsBlocked(
+                           request.auth.uid,
+                           otherDmParticipant(resource.data.participants)
+                         )
+                       );
       allow delete: if false;
 
       match /messages/{messageId} {
         allow read: if isChatParticipant(chatId);
         allow create: if isChatParticipant(chatId) &&
+                         actorMayCreateContent() &&
                          authorFieldsMatchAuthOnCreate(['from', 'senderId', 'userId']) &&
+                         (
+                           get(/databases/$(database)/documents/chats/$(chatId)).data.participants.size() != 2 ||
+                           !pairIsBlocked(
+                             request.auth.uid,
+                             otherDmParticipant(get(/databases/$(database)/documents/chats/$(chatId)).data.participants)
+                           )
+                         ) &&
                          (!chatId.matches('dm_.*') ||
                           acceptsDirectMessageFrom(
                             request.auth.uid,
@@ -2440,6 +2567,7 @@ service cloud.firestore {
 
     match /gamification_events/{eventId} {
       allow create: if isAuthenticated()
+        && actorMayCreateContent()
         && request.resource.data.keys().hasAll(['uid', 'type'])
         && request.resource.data.uid == request.auth.uid;
       allow read, update, delete: if false;

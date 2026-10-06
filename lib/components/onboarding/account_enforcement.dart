@@ -136,6 +136,16 @@ AccountEnforcementResult resolveAccountEnforcement(
       reason: 'account_deleted',
     );
   }
+  if (status == 'verificationpending' ||
+      status == 'verifiedprovisioning' ||
+      status == 'verificationrequired') {
+    return const AccountEnforcementResult(
+      destination: 'app',
+      canEnterApp: true,
+      legacyActive: false,
+      reason: 'activation_in_progress',
+    );
+  }
   return const AccountEnforcementResult(
     destination: 'unavailable',
     canEnterApp: false,
