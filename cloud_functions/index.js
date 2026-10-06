@@ -22,6 +22,7 @@ const {
   feedMirrorPayload,
 } = require('./src/feed_ranking');
 const {evaluateScheduledPublish} = require('./src/videos/scheduled_publish_guard');
+const {isPairBlocked} = require('./src/shared/user_blocks');
 
 function safeEmitTelemetry(eventType, payload) {
   try {
@@ -523,7 +524,7 @@ exports.deliverEventReminder = functions.https.onRequest(async (req, res) => {
     res.status(405).send('Method Not Allowed');
     return;
   }
-  if (!assertTaskRequestAuthorized(req)) {
+  if (!(await assertTaskRequestAuthorized(req))) {
     res.status(401).json({error: 'Unauthorized'});
     return;
   }
@@ -906,6 +907,7 @@ exports.onSharedDraftCreate = functions.firestore
 
       for (const recipientId of recipientIds) {
         if (!recipientId || recipientId === sharerId) continue;
+        if (await isPairBlocked(sharerId, recipientId)) continue;
         const notificationRef = admin.firestore()
           .collection('notifications')
           .doc(recipientId)
@@ -1653,22 +1655,9 @@ exports.tippyUsageReport = onRequest(
 
 
 
-exports.apiGoogleSecurityEvents = functions.region(region).https.onRequest(async (req, res) => {
-  try {
-    if (req.method !== 'POST') {
-      res.status(405).json({ error: 'Method not allowed' });
-      return;
-    }
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    await firestore.collection('security_events').add({
-      ...body,
-      receivedAt: FieldValue.serverTimestamp(),
-    });
-    res.status(200).json({ ok: true });
-  } catch (e) {
-    console.error('apiGoogleSecurityEvents error:', e);
-    res.status(500).json({ error: e.message || 'Internal error' });
-  }
+/** Disabled: unauthenticated writes. Re-enable only with Google RISC JWT verification. */
+exports.apiGoogleSecurityEvents = functions.region(region).https.onRequest((req, res) => {
+  res.status(410).json({ error: 'Gone' });
 });
 
 

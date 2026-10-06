@@ -7,9 +7,26 @@ const {MISSION_TEMPLATES} = require('./mission_templates');
 const {levelFromTotalXp, rankTitleForLevel} = require('./level_table');
 const {syncGamificationState} = require('./gamification_state');
 const {buildDailyQualificationUpdates} = require('./daily_qualification');
+const {canAccountUseProduct} = require('../shared/account_status');
 
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
+
+const SERVER_DERIVED_EVENT_TYPES = new Set(['streak.extended']);
+const CLIENT_EVENT_TYPES = new Set(
+    Object.values(MISSION_TEMPLATES)
+        .flatMap((tmpl) => [...tmpl.progressEventKeys])
+        .filter((type) => !SERVER_DERIVED_EVENT_TYPES.has(type)),
+);
+const DAILY_EVENT_CAP_PER_TYPE = 20;
+
+function isClientEventTypeAllowed(type) {
+  return CLIENT_EVENT_TYPES.has(type);
+}
+
+function dailyCapDocId(now) {
+  return `daily_${now.toISOString().slice(0, 10)}`;
+}
 
 function readInt(v) {
   if (v === undefined || v === null) return 0;
@@ -58,9 +75,9 @@ function applyEventToMissionList(list, eventType, now) {
     const tid = m.templateId || m.template_id;
     const tmpl = tid ? MISSION_TEMPLATES[tid] : null;
     if (!tmpl || !tmpl.progressEventKeys.has(eventType)) return m;
-    const target = readInt(m.target) || tmpl.target || 1;
+    const target = tmpl.target || 1;
     let progress = readInt(m.progress);
-    const rewardXp = readInt(m.rewardXp) || readInt(m.reward_xp) || tmpl.rewardXp || 0;
+    const rewardXp = tmpl.rewardXp || 0;
     const st = String(m.status || 'active').toLowerCase();
     if (st === 'completed' || st === 'claimed' || progress >= target) return m;
     progress += 1;
@@ -85,10 +102,21 @@ function isAlreadyExistsError(e) {
 async function applyGamificationMissions(db, uid, eventType, eventId) {
   const userRef = db.collection('users').doc(uid);
   const auditRef = userRef.collection('gamification_audit').doc(eventId);
+  const capRef = userRef.collection('gamification_audit').doc(dailyCapDocId(new Date()));
   await db.runTransaction(async (tx) => {
-    const auditSnap = await tx.get(auditRef);
+    const [auditSnap, capSnap, userSnap] = await Promise.all([
+      tx.get(auditRef),
+      tx.get(capRef),
+      tx.get(userRef),
+    ]);
     if (auditSnap.exists) return;
-    const userSnap = await tx.get(userRef);
+    const typeCount = readInt((capSnap.data() || {})[eventType]);
+    if (typeCount >= DAILY_EVENT_CAP_PER_TYPE) {
+      tx.set(auditRef, {eventId, uid, type: eventType, xpGained: 0, capped: true,
+        processedAt: FieldValue.serverTimestamp()});
+      return;
+    }
+    tx.set(capRef, {[eventType]: FieldValue.increment(1)}, {merge: true});
     const d = userSnap.exists ? userSnap.data() : {};
     const hasDaily = Array.isArray(d.dailyMissions);
     const hasWeekly = Array.isArray(d.missions);
@@ -212,10 +240,22 @@ async function handleGamificationEvents(req, res) {
       res.status(403).json({error: 'uid must match authenticated user'});
       return;
     }
+    if (!(await canAccountUseProduct(verifiedUid))) {
+      res.status(403).json({error: 'Account is restricted'});
+      return;
+    }
     const id = eventId.trim();
     const typeStr = eventType.trim();
+    if (id.length > 128) {
+      res.status(400).json({error: 'eventId too long'});
+      return;
+    }
+    if (!isClientEventTypeAllowed(typeStr)) {
+      res.status(200).json({ok: true, ignored: true});
+      return;
+    }
     try {
-      await db.collection('gamification_events').doc(id).create({
+      await db.collection('gamification_events').doc(`${verifiedUid}_${id}`).create({
         uid: verifiedUid,
         type: typeStr,
         source: typeof body.source === 'string' ? body.source.trim() : 'unknown',
@@ -239,4 +279,4 @@ async function handleGamificationEvents(req, res) {
   }
 }
 
-module.exports = {handleGamificationEvents};
+module.exports = {handleGamificationEvents, isClientEventTypeAllowed};

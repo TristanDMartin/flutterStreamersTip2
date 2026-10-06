@@ -11,6 +11,7 @@ const DAILY_REQUEST_LIMITS = {
   studio: 200,
 };
 const {buildUserAccess} = require('../shared/user_tippy_access');
+const {canAccountUseProduct} = require('../shared/account_status');
 const {
   loadUserWithBilling,
   mergeBillingIntoUserData,
@@ -114,6 +115,19 @@ async function verifyFirebaseUser(req, requestId) {
   }
   try {
     const decoded = await admin.auth().verifyIdToken(idToken, true);
+    if (!(await canAccountUseProduct(decoded.uid))) {
+      return {
+        ok: false,
+        status: 403,
+        payload: buildErrorResponse({
+          code: 'ACCOUNT_RESTRICTED',
+          message: 'This account cannot use Tippy right now.',
+          status: 403,
+          retryable: false,
+          requestId,
+        }),
+      };
+    }
     return {
       ok: true,
       uid: decoded.uid,

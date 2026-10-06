@@ -3,6 +3,7 @@
 const admin = require('firebase-admin');
 const {HttpsError} = require('firebase-functions/v2/https');
 const {resolveOwnerId} = require('../videos/video_owner');
+const {canAccountUseProduct} = require('../shared/account_status');
 const {
   parseReportRequest,
   buildReportId,
@@ -154,6 +155,9 @@ async function handleSubmitReport(req) {
   if (!reporterId) throw new HttpsError('unauthenticated', 'Sign in to report content.');
   if (req.auth.token?.email_verified !== true) {
     throw new HttpsError('failed-precondition', 'Verify your email to report content.');
+  }
+  if (!(await canAccountUseProduct(reporterId))) {
+    throw new HttpsError('permission-denied', 'Account is restricted.');
   }
   const parsed = parseReportRequest(req.data);
   if (!parsed.ok) throw new HttpsError('invalid-argument', parsed.reason);

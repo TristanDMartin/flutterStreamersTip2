@@ -149,11 +149,7 @@ function resolveCreditsForUser(userData, access) {
   const directLimit = toNum(userData.creditsMonthlyLimit);
   const directRemaining = toNum(userData.creditsRemaining);
   const directReset = readDate(userData.creditsResetAt);
-  const effectiveLimit = access.limit > 0
-    ? access.limit
-    : Number.isFinite(directLimit) && directLimit > 0
-      ? directLimit
-      : DEFAULT_CREDIT_LIMIT;
+  const effectiveLimit = access.limit > 0 ? access.limit : DEFAULT_CREDIT_LIMIT;
   if (!directReset || directReset.getTime() <= Date.now()) {
     return {
       remaining: effectiveLimit,

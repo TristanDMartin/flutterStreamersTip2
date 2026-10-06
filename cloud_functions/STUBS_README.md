@@ -9,7 +9,7 @@ The 19 functions below were previously deployed from another codebase. They are 
 | **apiCsrfToken** | GET/POST: returns a random CSRF token and `expiresIn` (seconds). |
 | **apiReports** | GET: list last 50 reports (auth required). POST: submit video or user report (auth + body: videoId or userId, reason, type). |
 | **apiVideoUpload** | POST: auth required, body `{ videoId, contentType }`. Returns signed Storage URL for `videos/{uid}/{videoId}.mp4`. |
-| **apiGoogleSecurityEvents** | POST: appends body to `security_events` collection with `receivedAt`. |
+| **apiGoogleSecurityEvents** | Disabled (410) until Google RISC JWT verification is added. |
 | **apiKickAuthStart** | Redirects to Kick OAuth. Requires config: `kick.client_id` or env `KICK_CLIENT_ID`. |
 | **apiKickAuthCallback** | Exchanges code for token, redirects back with `kick_connected=1&access_token=...`. Requires `kick.client_id`, `kick.client_secret` (or env). |
 | **apiKickValidate** | GET with `Authorization: Bearer <token>`. Returns `{ valid: true/false }`. |

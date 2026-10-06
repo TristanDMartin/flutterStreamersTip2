@@ -4,6 +4,7 @@ const {maybeSendLevelUpNotification} = require('./progression_notifications');
 const {levelRowForTotalXp} = require('./level_table');
 const {syncGamificationState} = require('./gamification_state');
 const {streakFromStoredFields} = require('./daily_qualification');
+const {canAccountUseProduct} = require('../shared/account_status');
 
 const FieldValue = admin.firestore.FieldValue;
 
@@ -463,6 +464,9 @@ async function handleProgressionCallable(request) {
 
   const db = admin.firestore();
   const uid = request.auth.uid;
+  if (!(await canAccountUseProduct(uid))) {
+    throw new HttpsError('permission-denied', 'Account is restricted.');
+  }
   const data = request.data || {};
   const action = typeof data.action === 'string' ? data.action.trim() : 'refresh';
 

@@ -21,6 +21,7 @@
  */
 
 const {CloudTasksClient} = require('@google-cloud/tasks');
+const {OAuth2Client} = require('google-auth-library');
 const admin = require('firebase-admin');
 
 const MAX_SCHEDULE_AHEAD_MS = 29 * 24 * 60 * 60 * 1000; // Cloud Tasks ~30d limit
@@ -393,18 +394,28 @@ async function deliverEventReminderPayload(data) {
   return {success: true, sentCount, activityId};
 }
 
-function assertTaskRequestAuthorized(req) {
-  const secret = taskAuthSecret();
-  if (!secret) {
-    // OIDC-only when secret unset — still require Cloud Tasks UA or OIDC header.
-    const auth = req.get('authorization') || '';
-    if (auth.toLowerCase().startsWith('bearer ')) return true;
-    // Emulator / local
-    if (process.env.FUNCTIONS_EMULATOR === 'true') return true;
+async function isTaskOidcTokenValid(req) {
+  const auth = req.get('authorization') || '';
+  if (!auth.toLowerCase().startsWith('bearer ')) return false;
+  try {
+    const ticket = await new OAuth2Client().verifyIdToken({
+      idToken: auth.slice(7).trim(),
+      audience: handlerUrl(),
+    });
+    const payload = ticket.getPayload() || {};
+    return payload.email === serviceAccountEmail() && payload.email_verified === true;
+  } catch (_) {
     return false;
   }
-  const header = req.get('x-event-reminder-secret') || '';
-  return header === secret;
+}
+
+async function assertTaskRequestAuthorized(req) {
+  if (process.env.FUNCTIONS_EMULATOR === 'true') return true;
+  const secret = taskAuthSecret();
+  if (secret) {
+    return (req.get('x-event-reminder-secret') || '') === secret;
+  }
+  return isTaskOidcTokenValid(req);
 }
 
 module.exports = {
