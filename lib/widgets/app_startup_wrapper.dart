@@ -15,6 +15,7 @@ import '../services/global_playback_manager.dart';
 import '../pages/main_tab_view.dart';
 import 'account_status_guard.dart';
 import 'auth_modal_view.dart';
+import 'two_factor_verification_view.dart';
 
 /// App startup wrapper that handles authentication flow
 class AppStartupWrapper extends ConsumerStatefulWidget {
@@ -445,6 +446,20 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
           ),
         );
       case StartupShell.auth:
+        final String? pendingTwoFactorUid =
+            fa.FirebaseAuth.instance.currentUser?.uid;
+        if (authService.isAwaiting2FA && pendingTwoFactorUid != null) {
+          return KeyedSubtree(
+            key: const ValueKey<String>('app_startup_2fa'),
+            child: TwoFactorVerificationView(
+              userId: pendingTwoFactorUid,
+              onVerified: (bool isVerified) {
+                if (isVerified) unawaited(authService.completeTwoFactorAuth());
+              },
+              onCancel: () => unawaited(authService.cancelTwoFactorAuth()),
+            ),
+          );
+        }
         if (kDebugMode) {
           debugPrint('🔐 AppStartupWrapper: Showing auth modal');
         }

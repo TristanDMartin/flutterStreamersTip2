@@ -22,15 +22,15 @@ Future<void> navigateAfterAuthenticated(BuildContext context) async {
   if (user == null || !context.mounted) {
     return;
   }
+  if (!await _passTwoFactorSessionGate(context, user.uid)) {
+    return;
+  }
   await attachPendingTippyOnboardingIfNeeded();
   if (!context.mounted) {
     return;
   }
   // Tippy route already owns the funnel — stay put.
   if (TippyOnboardingHostPresence.isActive) {
-    return;
-  }
-  if (!await _passTwoFactorSessionGate(context, user.uid)) {
     return;
   }
   try {

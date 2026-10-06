@@ -141,6 +141,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   User? _currentUser;
   bool _isLoggedIn = false;
   bool _awaiting2FA = false;
+  String? _restoreGateUid;
   bool _isCheckingAuth = false;
   AuthTransitionState _authTransitionState = AuthTransitionState.checkingAuth;
   String? _signingOutUid;
@@ -256,6 +257,10 @@ class RobustAuthenticationService extends ChangeNotifier {
               debugPrint('AUTH_TRANSITION awaiting_2fa_skip_hydrate');
               return;
             }
+            if (_authTransitionState == AuthTransitionState.checkingAuth) {
+              unawaited(_restoreSessionWithTwoFactorGate(user));
+              return;
+            }
             debugPrint('AUTH_TRANSITION firebase_session_available');
             _cancelAuthRestoreTimeout();
             _promoteFirebaseSession(user);
@@ -324,15 +329,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           notifyListeners();
           return;
         }
-        // User is logged in - show UI immediately, load data in background
-        debugPrint('✅ User logged in - showing UI immediately');
-        _promoteFirebaseSession(currentUser);
-
-        // Load user data in background (non-blocking)
-        _handleUserSignIn(currentUser).catchError((Object e) {
-          debugPrint('❌ Background user data load failed: $e');
-          // Don't change login state - user is still logged in
-        });
+        await _restoreSessionWithTwoFactorGate(currentUser);
       } else {
         final bool hadSession =
             await AuthSessionHintStorage.readHadSession();
@@ -1075,6 +1072,36 @@ class RobustAuthenticationService extends ChangeNotifier {
       case AuthorizationErrorCode.unknown:
       default:
         return 'Apple sign-in failed. Please try again.';
+    }
+  }
+
+  /// Restored sessions must pass the same 2FA gate as fresh sign-ins.
+  Future<void> _restoreSessionWithTwoFactorGate(
+    firebase_auth.User user,
+  ) async {
+    if (_restoreGateUid == user.uid) return;
+    _restoreGateUid = user.uid;
+    try {
+      final bool isChallengeRequired =
+          await _twoFactorService.requires2FA(user.uid) &&
+              await _twoFactorService.isSessionChallengeRequired(user.uid);
+      if (_authInstance.currentUser?.uid != user.uid) return;
+      if (isChallengeRequired) {
+        debugPrint('AUTH_TRANSITION restore_requires_2fa uid=${user.uid}');
+        _cancelAuthRestoreTimeout();
+        _awaiting2FA = true;
+        _isCheckingAuth = false;
+        _authTransitionState = AuthTransitionState.unauthenticated;
+        notifyListeners();
+        return;
+      }
+      debugPrint('AUTH_TRANSITION firebase_session_restored');
+      _promoteFirebaseSession(user);
+      _handleUserSignIn(user).catchError((Object e) {
+        debugPrint('❌ Background user data load failed: $e');
+      });
+    } finally {
+      _restoreGateUid = null;
     }
   }
 

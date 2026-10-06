@@ -167,9 +167,11 @@ class TwoFactorAuthService {
       verify2FACode(userId: userId, code: code);
 
   /// True when this sign-in (server `auth_time`) still needs a 2FA code.
+  /// Fails closed: if the server status is unavailable, accounts with the
+  /// server-written `twoFactorVerified` flag are still challenged.
   Future<bool> isSessionChallengeRequired(String userId) async {
     final Map<String, dynamic>? status = await get2FAStatus(userId);
-    if (status == null) return false;
+    if (status == null) return requires2FA(userId);
     return status['verified'] == true &&
         status['hasSecret'] == true &&
         status['sessionVerified'] == false;
