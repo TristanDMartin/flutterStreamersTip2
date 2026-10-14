@@ -149,7 +149,9 @@ class _AcademyGuideViewState extends ConsumerState<AcademyGuideView> {
                   IconButton(
                     tooltip: 'Share guide',
                     onPressed: () {
-                      SharePlus.instance.share(guide.shareUrl);
+                      SharePlus.instance.share(
+                        ShareParams(text: guide.shareUrl),
+                      );
                     },
                     icon: const Icon(Icons.ios_share_rounded),
                   ),
