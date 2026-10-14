@@ -12,6 +12,8 @@ void agentDebugLog({
   Map<String, Object?> data = const <String, Object?>{},
   String runId = 'pre-fix',
 }) {
+  if (!kDebugMode) return;
+  
   // #region agent log
   final Map<String, Object?> payload = <String, Object?>{
     'sessionId': '7a372d',
@@ -28,6 +30,8 @@ void agentDebugLog({
 }
 
 Future<void> _postAgentDebugLog(Map<String, Object?> payload) async {
+  if (!kDebugMode) return;
+  
   try {
     await http
         .post(
