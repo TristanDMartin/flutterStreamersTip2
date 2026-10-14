@@ -23,6 +23,12 @@ class _ModernVideoEditorViewState
     extends ConsumerState<ModernVideoEditorView> {
   VideoPlayerController? _controller;
   bool _isPlaying = false;
+  double _trimStart = 0.0;
+  double _trimEnd = 1.0;
+  double _playbackSpeed = 1.0;
+  int _rotationAngle = 0; // 0, 90, 180, 270
+  bool _isFlippedHorizontally = false;
+  String _selectedTool = ''; // trim, text, captions, etc.
 
   @override
   void initState() {
@@ -52,6 +58,190 @@ class _ModernVideoEditorViewState
       }
       _isPlaying = !_isPlaying;
     });
+  }
+
+  void _rotateVideo() {
+    setState(() {
+      _rotationAngle = (_rotationAngle + 90) % 360;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Rotated $_rotationAngle°'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _flipVideo() {
+    setState(() {
+      _isFlippedHorizontally = !_isFlippedHorizontally;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_isFlippedHorizontally ? 'Flipped' : 'Unflipped'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _changeSpeed() {
+    setState(() {
+      if (_playbackSpeed == 1.0) {
+        _playbackSpeed = 1.5;
+      } else if (_playbackSpeed == 1.5) {
+        _playbackSpeed = 2.0;
+      } else if (_playbackSpeed == 2.0) {
+        _playbackSpeed = 0.5;
+      } else {
+        _playbackSpeed = 1.0;
+      }
+      _controller?.setPlaybackSpeed(_playbackSpeed);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Speed: ${_playbackSpeed}x'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _openTrimDialog() {
+    final duration = _controller?.value.duration ?? Duration.zero;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: StSupportShellStyle.of(context).surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Trim Video',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Start: ${(_trimStart * duration.inSeconds).toStringAsFixed(1)}s',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  Slider(
+                    value: _trimStart,
+                    onChanged: (value) {
+                      setModalState(() {
+                        _trimStart = value;
+                        if (_trimStart >= _trimEnd) {
+                          _trimStart = _trimEnd - 0.01;
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'End: ${(_trimEnd * duration.inSeconds).toStringAsFixed(1)}s',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  Slider(
+                    value: _trimEnd,
+                    onChanged: (value) {
+                      setModalState(() {
+                        _trimEnd = value;
+                        if (_trimEnd <= _trimStart) {
+                          _trimEnd = _trimStart + 0.01;
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          // Apply trim in parent state
+                        });
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Trim applied'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF7B3FF2),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Apply Trim'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _handleToolTap(String tool) {
+    setState(() => _selectedTool = tool);
+
+    switch (tool) {
+      case 'trim':
+        _openTrimDialog();
+        break;
+      case 'text':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Text overlay coming soon'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        break;
+      case 'captions':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Auto-captions coming soon'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        break;
+      case 'cover':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cover selection coming soon'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        break;
+      case 'filters':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Filters coming soon'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        break;
+      case 'adjust':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Adjust tools coming soon'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        break;
+    }
   }
 
   @override
@@ -126,9 +316,15 @@ class _ModernVideoEditorViewState
                 // Video preview
                 Center(
                   child: _controller != null && _controller!.value.isInitialized
-                      ? AspectRatio(
-                          aspectRatio: _controller!.value.aspectRatio,
-                          child: VideoPlayer(_controller!),
+                      ? Transform.scale(
+                          scaleX: _isFlippedHorizontally ? -1.0 : 1.0,
+                          child: Transform.rotate(
+                            angle: _rotationAngle * 3.14159 / 180,
+                            child: AspectRatio(
+                              aspectRatio: _controller!.value.aspectRatio,
+                              child: VideoPlayer(_controller!),
+                            ),
+                          ),
                         )
                       : Container(
                           color: Colors.black,
@@ -430,33 +626,36 @@ class _ModernVideoEditorViewState
         ? (isDark ? const Color(0xFF7B3FF2) : const Color(0xFF5E3AB8))
         : shell.muted;
 
-    return Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: isSelected
-                ? color.withValues(alpha: 0.15)
-                : shell.surfaceCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? color : shell.surfaceCardBorder,
-              width: isSelected ? 2 : 1,
+    return InkWell(
+      onTap: () => _handleToolTap(label.toLowerCase()),
+      child: Column(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? color.withValues(alpha: 0.15)
+                  : shell.surfaceCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? color : shell.surfaceCardBorder,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
-          child: Icon(icon, color: color, size: 22),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 11,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -466,49 +665,59 @@ class _ModernVideoEditorViewState
     String subtitle,
     StSupportShellStyle shell,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: shell.surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: shell.surfaceCardBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFF7B3FF2).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: const Color(0xFF7B3FF2), size: 22),
+    return InkWell(
+      onTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$title coming soon'),
+            duration: const Duration(seconds: 1),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: shell.onChrome,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: shell.muted,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: shell.surfaceCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: shell.surfaceCardBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF7B3FF2).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: const Color(0xFF7B3FF2), size: 22),
             ),
-          ),
-          Icon(Icons.chevron_right, color: shell.muted),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: shell.onChrome,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: shell.muted,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: shell.muted),
+          ],
+        ),
       ),
     );
   }
