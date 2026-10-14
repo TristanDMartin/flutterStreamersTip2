@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tippy_onboarding_contract.dart';
 import 'tippy_profile_draft.dart';
+import 'tippy_conversation_continuity.dart';
 
 List<Map<String, String>> _parseCheckupProfiles(Object? raw) {
   if (raw is! List<dynamic>) {
@@ -57,6 +58,20 @@ class TippyOnboardingGuestSession {
     DateTime? startedAt,
     this.firstResultAt,
     TippyProfileDraft? profileDraft,
+    this.generatedPreview,
+    this.creatorScorePreview,
+    this.initialGrowthPlan,
+    this.growthOpportunity,
+    this.growthFocus,
+    this.conversationAct,
+    this.conversationTimeline = const <TippyConversationCommit>[],
+    this.completedSteps = const <String>[],
+    this.conversationTurn = 0,
+    this.lastTippyMessage,
+    this.secondarySpeechDelivered = false,
+    this.accountCreated = false,
+    this.claimedUid,
+    this.emailVerified = false,
   })  : profileDraft = profileDraft ?? TippyProfileDraft(),
         startedAt = startedAt ?? updatedAt;
 
@@ -85,6 +100,20 @@ class TippyOnboardingGuestSession {
   final DateTime startedAt;
   final DateTime? firstResultAt;
   final TippyProfileDraft profileDraft;
+  final TippyGeneratedPreview? generatedPreview;
+  final Map<String, dynamic>? creatorScorePreview;
+  final TippyInitialGrowthPlan? initialGrowthPlan;
+  final String? growthOpportunity;
+  final String? growthFocus;
+  final String? conversationAct;
+  final List<TippyConversationCommit> conversationTimeline;
+  final List<String> completedSteps;
+  final int conversationTurn;
+  final String? lastTippyMessage;
+  final bool secondarySpeechDelivered;
+  final bool accountCreated;
+  final String? claimedUid;
+  final bool emailVerified;
 
   factory TippyOnboardingGuestSession.empty() {
     return TippyOnboardingGuestSession(
@@ -138,6 +167,28 @@ class TippyOnboardingGuestSession {
     DateTime? firstResultAt,
     bool clearFirstResultAt = false,
     TippyProfileDraft? profileDraft,
+    TippyGeneratedPreview? generatedPreview,
+    bool clearGeneratedPreview = false,
+    Map<String, dynamic>? creatorScorePreview,
+    bool clearCreatorScorePreview = false,
+    TippyInitialGrowthPlan? initialGrowthPlan,
+    bool clearInitialGrowthPlan = false,
+    String? growthOpportunity,
+    bool clearGrowthOpportunity = false,
+    String? growthFocus,
+    bool clearGrowthFocus = false,
+    String? conversationAct,
+    bool clearConversationAct = false,
+    List<TippyConversationCommit>? conversationTimeline,
+    List<String>? completedSteps,
+    int? conversationTurn,
+    String? lastTippyMessage,
+    bool clearLastTippyMessage = false,
+    bool? secondarySpeechDelivered,
+    bool? accountCreated,
+    String? claimedUid,
+    bool clearClaimedUid = false,
+    bool? emailVerified,
   }) {
     return TippyOnboardingGuestSession(
       schemaVersion: schemaVersion,
@@ -185,6 +236,36 @@ class TippyOnboardingGuestSession {
           ? null
           : (firstResultAt ?? this.firstResultAt),
       profileDraft: profileDraft ?? this.profileDraft,
+      generatedPreview: clearGeneratedPreview
+          ? null
+          : (generatedPreview ?? this.generatedPreview),
+      creatorScorePreview: clearCreatorScorePreview
+          ? null
+          : (creatorScorePreview ?? this.creatorScorePreview),
+      initialGrowthPlan: clearInitialGrowthPlan
+          ? null
+          : (initialGrowthPlan ?? this.initialGrowthPlan),
+      growthOpportunity: clearGrowthOpportunity
+          ? null
+          : (growthOpportunity ?? this.growthOpportunity),
+      growthFocus: clearGrowthFocus
+          ? null
+          : (growthFocus ?? this.growthFocus),
+      conversationAct: clearConversationAct
+          ? null
+          : (conversationAct ?? this.conversationAct),
+      conversationTimeline: conversationTimeline ?? this.conversationTimeline,
+      completedSteps: completedSteps ?? this.completedSteps,
+      conversationTurn: conversationTurn ?? this.conversationTurn,
+      lastTippyMessage: clearLastTippyMessage
+          ? null
+          : (lastTippyMessage ?? this.lastTippyMessage),
+      secondarySpeechDelivered: secondarySpeechDelivered ?? this.secondarySpeechDelivered,
+      accountCreated: accountCreated ?? this.accountCreated,
+      claimedUid: clearClaimedUid
+          ? null
+          : (claimedUid ?? this.claimedUid),
+      emailVerified: emailVerified ?? this.emailVerified,
     );
   }
 
@@ -218,6 +299,23 @@ class TippyOnboardingGuestSession {
       'startedAt': startedAt.toIso8601String(),
       'firstResultAt': firstResultAt?.toIso8601String(),
       'profileDraft': profileDraft.toJson(),
+      if (generatedPreview != null)
+        'generatedPreview': generatedPreview!.toJson(),
+      if (creatorScorePreview != null)
+        'creatorScorePreview': creatorScorePreview,
+      if (initialGrowthPlan != null)
+        'initialGrowthPlan': initialGrowthPlan!.toJson(),
+      if (growthOpportunity != null) 'growthOpportunity': growthOpportunity,
+      if (growthFocus != null) 'growthFocus': growthFocus,
+      if (conversationAct != null) 'conversationAct': conversationAct,
+      'conversationTimeline': conversationTimeline.map((e) => e.toJson()).toList(),
+      'completedSteps': completedSteps,
+      'conversationTurn': conversationTurn,
+      if (lastTippyMessage != null) 'lastTippyMessage': lastTippyMessage,
+      'secondarySpeechDelivered': secondarySpeechDelivered,
+      'accountCreated': accountCreated,
+      if (claimedUid != null) 'claimedUid': claimedUid,
+      'emailVerified': emailVerified,
     };
   }
 
@@ -267,6 +365,36 @@ class TippyOnboardingGuestSession {
       profileDraft: TippyProfileDraft.fromJson(
         (json['profileDraft'] as Map?)?.cast<String, dynamic>(),
       ),
+      generatedPreview: json['generatedPreview'] != null
+          ? TippyGeneratedPreview.fromJson(
+              (json['generatedPreview'] as Map?)?.cast<String, dynamic>(),
+            )
+          : null,
+      creatorScorePreview:
+          (json['creatorScorePreview'] as Map?)?.cast<String, dynamic>(),
+      initialGrowthPlan: json['initialGrowthPlan'] != null
+          ? TippyInitialGrowthPlan.fromJson(
+              (json['initialGrowthPlan'] as Map?)?.cast<String, dynamic>(),
+            )
+          : null,
+      growthOpportunity: json['growthOpportunity'] as String?,
+      growthFocus: json['growthFocus'] as String?,
+      conversationAct: json['conversationAct'] as String?,
+      conversationTimeline: (json['conversationTimeline'] as List?)
+              ?.map((e) => TippyConversationCommit.fromJson(
+                  (e as Map).cast<String, dynamic>()))
+              .toList() ??
+          const <TippyConversationCommit>[],
+      completedSteps: (json['completedSteps'] as List?)
+              ?.whereType<String>()
+              .toList() ??
+          const <String>[],
+      conversationTurn: (json['conversationTurn'] as num?)?.toInt() ?? 0,
+      lastTippyMessage: json['lastTippyMessage'] as String?,
+      secondarySpeechDelivered: json['secondarySpeechDelivered'] == true,
+      accountCreated: json['accountCreated'] == true,
+      claimedUid: json['claimedUid'] as String?,
+      emailVerified: json['emailVerified'] == true,
     );
   }
 

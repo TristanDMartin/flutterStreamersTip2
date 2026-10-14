@@ -15,6 +15,13 @@ analyzer:
     - "verify_*.dart"
     - "simple_*.dart"
     - "test_upload_debug.dart"
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
 linter:
   # The lint rules applied to this project can be customized in the
