@@ -65,6 +65,9 @@ class FakeTippyChatService extends TippyChatService {
   @override
   Future<TippyChatResult> sendMessage({
     required List<TippyChatMessage> messages,
+    String? chatId,
+    String? clientMessageId,
+    String platform = 'android',
   }) async {
     sendCount++;
     if (blocker != null) {

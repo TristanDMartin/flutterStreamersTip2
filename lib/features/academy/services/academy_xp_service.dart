@@ -34,7 +34,7 @@ class AcademyXpService {
       type: GamificationEventTypes.academyGuideViewed,
       entityType: 'guide',
       entityId: guideId,
-      eventId: 'academy_first_guide_day_${userId}_$todayKey',
+      eventId: 'academy_first_guide_day_$userId_$todayKey',
       metadata: <String, dynamic>{
         'xpHint': xp.openFirstGuideOfDay,
         'surface': 'academy',
@@ -98,7 +98,7 @@ class AcademyXpService {
     final AcademyXpRewards xp =
         rewards ?? await _repository.fetchXpRewards();
     final String eventId =
-        'academy_quiz_completed:${userId}:$lessonId';
+        'academy_quiz_completed:$userId:$lessonId';
     await createGamificationEvent(
       type: GamificationEventTypes.academyLessonCompleted,
       entityType: 'lesson',
@@ -125,7 +125,7 @@ class AcademyXpService {
       type: GamificationEventTypes.academyTrackCompleted,
       entityType: 'path',
       entityId: pathId,
-      eventId: 'academy_path_completed:${userId}:$pathId',
+      eventId: 'academy_path_completed:$userId:$pathId',
       metadata: <String, dynamic>{
         'xpHint': xp.finishLearningPath,
         'surface': 'academy',
@@ -144,7 +144,7 @@ class AcademyXpService {
       type: GamificationEventTypes.academyModuleCompleted,
       entityType: 'category',
       entityId: categoryId,
-      eventId: 'academy_category_completed:${userId}:$categoryId',
+      eventId: 'academy_category_completed:$userId:$categoryId',
       metadata: <String, dynamic>{
         'xpHint': xp.completeCategory,
         'surface': 'academy',
@@ -164,7 +164,7 @@ class AcademyXpService {
       type: GamificationEventTypes.contentPlanItemCreated,
       entityType: 'lesson',
       entityId: lessonId,
-      eventId: 'academy_planner_apply:${userId}:$lessonId',
+      eventId: 'academy_planner_apply:$userId:$lessonId',
       metadata: <String, dynamic>{
         'guideId': guideId,
         'sourceType': 'academy',
@@ -184,7 +184,7 @@ class AcademyXpService {
       type: GamificationEventTypes.academyGuideBookmarked,
       entityType: 'guide',
       entityId: guideId,
-      eventId: 'academy_guide_saved:${userId}:$guideId',
+      eventId: 'academy_guide_saved:$userId:$guideId',
       metadata: const <String, dynamic>{'surface': 'academy'},
     );
   }

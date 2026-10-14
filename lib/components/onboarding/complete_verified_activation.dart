@@ -2,7 +2,6 @@ import 'dart:convert';
 import '../../features/onboarding_tippy/tippy_onboarding_debug_log.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/app_check_http_headers.dart';
