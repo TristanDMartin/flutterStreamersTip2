@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/support_shell_style.dart';
 import '../../models/profile_video.dart';
 import '../../services/insights_firebase_service.dart';
-import '../../widgets/insights_view.dart';
+import '../../models/insights_data.dart';
+import 'modern_creator_insights_view.dart';
 
 /// Entry screen for per-video creator insights dashboard.
 class CreatorVideoInsightsView extends ConsumerStatefulWidget {
@@ -20,6 +21,7 @@ class _CreatorVideoInsightsViewState
   bool _isLoading = true;
   String? _errorMessage;
   ProfileVideo? _initialVideo;
+  InsightsData? _insights;
 
   @override
   void initState() {
@@ -37,11 +39,28 @@ class _CreatorVideoInsightsViewState
       if (!mounted) {
         return;
       }
-      setState(() {
-        _initialVideo = videos.isNotEmpty ? videos.first : null;
-        _isLoading = false;
-        _errorMessage = null;
-      });
+      
+      if (videos.isNotEmpty) {
+        final video = videos.first;
+        final snapshot = await service.getCreatorInsights(
+          videoId: video.id,
+          analyticsWindowDays: 7,
+        );
+        
+        setState(() {
+          _initialVideo = video;
+          _insights = snapshot?.insights;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+      } else {
+        setState(() {
+          _initialVideo = null;
+          _insights = null;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+      }
     } catch (e) {
       if (!mounted) {
         return;
@@ -57,17 +76,18 @@ class _CreatorVideoInsightsViewState
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
+        backgroundColor: Color(0xFF0A0A0F),
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    if (_initialVideo != null) {
-      return InsightsView(
-        videoId: _initialVideo!.id,
-        videoTitle: _initialVideo!.caption.isNotEmpty
-            ? _initialVideo!.caption
-            : 'Your video',
+    
+    if (_initialVideo != null && _insights != null) {
+      return ModernCreatorInsightsView(
+        video: _initialVideo!,
+        insights: _insights!,
       );
     }
+    
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
     return Scaffold(
       backgroundColor: shell.scaffold,
