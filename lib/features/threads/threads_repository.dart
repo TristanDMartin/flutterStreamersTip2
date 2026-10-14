@@ -873,7 +873,7 @@ class FirestoreThreadsRepository implements ThreadsRepository {
             )
             .toList(growable: false);
       }
-      return _filterThreadsByAudience(threads, viewerId);
+      return await _filterThreadsByAudience(threads, viewerId);
     } catch (_) {
       return const <ThreadDto>[];
     }

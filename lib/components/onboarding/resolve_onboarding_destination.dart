@@ -80,11 +80,6 @@ bool _isIdentityRecycled(Map<String, dynamic> userData) {
   return userData['identityRecycled'] == true;
 }
 
-bool _isFirstMissionResolved(Map<String, dynamic> onboarding) {
-  return onboarding['firstMissionChoice'] == 'accept' ||
-      onboarding['firstMissionChoice'] == 'skip';
-}
-
 /// Recycled Auth identities may only COMPLETE via Tippy on this UID.
 bool _hasTippyFunnelCompleteOnThisAccount(Map<String, dynamic> onboarding) {
   final bool tippyDone = onboarding['tippyFunnelCompleted'] == true;

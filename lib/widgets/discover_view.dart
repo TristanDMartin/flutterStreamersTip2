@@ -2665,7 +2665,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
         tag: 'DiscoverView',
       );
       if (isAllCategorySlug(categoryId)) {
-        return _loadAllVideosNoCategory(startAfter);
+        return await _loadAllVideosNoCategory(startAfter);
       }
       // Load recent videos (last 7 days)
       final recentVideos = await _loadRecentVideos(categoryId, startAfter);
@@ -2728,7 +2728,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
       } else if (fallbackVideos.isNotEmpty) {
         return fallbackVideos;
       } else {
-        return _loadCategoryVideosInMemoryFallback(categoryId, startAfter);
+        return await _loadCategoryVideosInMemoryFallback(categoryId, startAfter);
       }
 
       // Combine and deduplicate
