@@ -24,7 +24,7 @@ class AcademyWebLauncher {
           return true;
         }
       }
-      return launchUrl(uri, mode: LaunchMode.externalApplication);
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       debugPrint('AcademyWebLauncher: failed to open $trimmed ($e)');
       return false;

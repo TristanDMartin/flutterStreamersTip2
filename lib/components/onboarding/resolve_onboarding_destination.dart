@@ -85,11 +85,6 @@ bool _isFirstMissionResolved(Map<String, dynamic> onboarding) {
       onboarding['firstMissionChoice'] == 'skip';
 }
 
-bool _isFunnelChoiceComplete(Map<String, dynamic> onboarding) {
-  return onboarding['landingChoice'] != null ||
-      _isFirstMissionResolved(onboarding);
-}
-
 /// Recycled Auth identities may only COMPLETE via Tippy on this UID.
 bool _hasTippyFunnelCompleteOnThisAccount(Map<String, dynamic> onboarding) {
   final bool tippyDone = onboarding['tippyFunnelCompleted'] == true;

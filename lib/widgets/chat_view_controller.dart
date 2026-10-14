@@ -256,7 +256,7 @@ class ChatViewServiceAdapter implements ChatViewService {
     await file.writeAsBytes(bytes, flush: true);
     try {
       final String url = await R2MediaService.instance.uploadChatGif(file);
-      return _chatService.sendGifMessage(chatId, url);
+      return await _chatService.sendGifMessage(chatId, url);
     } catch (_) {
       return false;
     } finally {

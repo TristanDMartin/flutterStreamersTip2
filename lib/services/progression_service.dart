@@ -515,10 +515,10 @@ class ProgressionService {
       await _progressionCallable.call(<String, dynamic>{
         'action': 'refresh',
       });
-      return getUserProgress(uid);
+      return await getUserProgress(uid);
     } catch (e) {
       debugPrint('ProgressionService refreshUserProgress skipped: $e');
-      return getUserProgress(uid);
+      return await getUserProgress(uid);
     }
   }
 

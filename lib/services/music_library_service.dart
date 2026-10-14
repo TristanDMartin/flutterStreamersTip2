@@ -337,7 +337,7 @@ class MusicLibraryService {
         }).toList();
       } else {
         // appLog('Freesound API error: ${response.statusCode}');
-        return searchMusic(query: query, genre: genre, limit: limit);
+        return await searchMusic(query: query, genre: genre, limit: limit);
       }
     } catch (e) {
       // appLog('Freesound API error: $e');

@@ -52,7 +52,7 @@ class AppStoreReviewService {
     final Uri uri = Uri.parse(_storeListingUrl);
     try {
       if (await canLaunchUrl(uri)) {
-        return launchUrl(uri, mode: LaunchMode.externalApplication);
+        return await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
     } catch (error, stackTrace) {
       debugPrint('AppStoreReviewService.launchStoreUrl failed: $error');

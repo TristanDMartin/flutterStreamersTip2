@@ -269,27 +269,6 @@ class OnboardingService {
     };
   }
 
-  Map<String, dynamic> _newUserOnboardingPayload({required int step}) {
-    return newAccountDocumentFields(step: step);
-  }
-
-  Map<String, dynamic> _completedMigrationPayload() {
-    return <String, dynamic>{
-      'hasCompletedOnboarding': true,
-      'onboardingCompleted': true,
-      'onboarding': <String, dynamic>{
-        'version': OnboardingV1Constants.version,
-        'status': OnboardingStatus.completed,
-        'completed': true,
-        'currentStep': OnboardingV1Constants.completedStepMarker,
-        'hasSeenIntro': true,
-        'completedAt': FieldValue.serverTimestamp(),
-        'premiumOfferDismissed': true,
-        'lastSeenAt': FieldValue.serverTimestamp(),
-      },
-    };
-  }
-
   Future<void> advanceToStep(String userId, int step) {
     return _safeUserSet(
       userId,

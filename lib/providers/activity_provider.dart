@@ -1106,10 +1106,6 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     super.dispose();
   }
 
-  ActivityNotificationType _typeFromString(String s) {
-    return activityNotificationTypeFromString(s);
-  }
-
   String _groupKey(DateTime dt) {
     final now = DateTime.now();
     final d = DateTime(dt.year, dt.month, dt.day);
