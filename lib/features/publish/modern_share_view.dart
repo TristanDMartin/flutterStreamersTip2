@@ -6,6 +6,8 @@ import 'dart:io';
 import '../../core/theme/support_shell_style.dart';
 import '../../services/video_upload_service.dart';
 import '../../features/tippy/tippy_chat_service.dart';
+import '../../services/video_compression_service.dart';
+import '../../services/upload_queue_manager.dart';
 
 /// Modern share/publish screen matching TikTok-style UI
 class ModernShareView extends ConsumerStatefulWidget {
@@ -30,6 +32,8 @@ class _ModernShareViewState extends ConsumerState<ModernShareView> {
 
   final VideoUploadService _uploadService = VideoUploadService();
   final TippyChatService _tippyService = TippyChatService();
+  final VideoCompressionService _compressionService = VideoCompressionService();
+  final UploadQueueManager _queueManager = UploadQueueManager();
 
   @override
   void initState() {
@@ -115,51 +119,66 @@ class _ModernShareViewState extends ConsumerState<ModernShareView> {
     setState(() => _isUploading = true);
 
     try {
-      final videoFile = File(widget.videoPath);
+      File videoFile = File(widget.videoPath);
       
-      // Extract hashtags from selected tags and caption
+      // Step 1: Compress video
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Compressing video...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      final compressionResult = await _compressionService.compressVideo(
+        videoFile,
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              // Progress displayed in UI
+            });
+          }
+        },
+      );
+
+      if (compressionResult.success && compressionResult.compressedFile != null) {
+        videoFile = compressionResult.compressedFile!;
+        debugPrint('✅ Video compressed: ${(compressionResult.compressionRatio! * 100).toStringAsFixed(1)}% reduction');
+      }
+
+      // Step 2: Extract thumbnail
+      final thumbnailResult = await _compressionService.extractThumbnail(
+        videoFile,
+        timeMs: Duration.zero,
+      );
+
+      // Step 3: Extract hashtags
       final allHashtags = <String>[
         ..._selectedHashtags.map((tag) => tag.replaceFirst('#', '')),
         ...RegExp(r'#(\w+)').allMatches(_captionController.text)
             .map((m) => m.group(1)!)
       ].toSet().toList();
 
-      final result = await _uploadService.uploadVideo(
+      // Step 4: Upload with queue manager
+      _queueManager.enqueueUpload(
         videoFile: videoFile,
         caption: _captionController.text.trim(),
         hashtags: allHashtags,
-        privacy: _visibility.toLowerCase(),
-        allowComments: true,
-        onProgress: (progress) {
-          if (mounted) {
-            setState(() {
-              // Could update a progress indicator here
-            });
-          }
-        },
+        thumbnailFile: thumbnailResult.thumbnailFile,
       );
 
       if (mounted) {
         setState(() => _isUploading = false);
 
-        if (result.success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Video published successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          
-          // Navigate back to home
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Upload failed: ${result.error}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Video queued for upload! Processing in background.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        // Navigate back to home
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       if (mounted) {

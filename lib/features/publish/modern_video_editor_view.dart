@@ -4,6 +4,10 @@ import 'package:video_player/video_player.dart';
 import 'dart:io';
 
 import '../../core/theme/support_shell_style.dart';
+import 'models/video_text_overlay.dart';
+import 'widgets/text_overlay_editor.dart';
+import 'widgets/text_overlay_dialog.dart';
+import '../../services/auto_caption_service.dart';
 
 /// Modern video editor matching TikTok-style UI
 class ModernVideoEditorView extends ConsumerStatefulWidget {
@@ -29,6 +33,11 @@ class _ModernVideoEditorViewState
   int _rotationAngle = 0; // 0, 90, 180, 270
   bool _isFlippedHorizontally = false;
   String _selectedTool = ''; // trim, text, captions, etc.
+  List<VideoTextOverlay> _textOverlays = [];
+  List<CaptionSegment> _captionSegments = [];
+  bool _isGeneratingCaptions = false;
+
+  final AutoCaptionService _captionService = AutoCaptionService();
 
   @override
   void initState() {
@@ -202,20 +211,10 @@ class _ModernVideoEditorViewState
         _openTrimDialog();
         break;
       case 'text':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Text overlay coming soon'),
-            duration: Duration(seconds: 1),
-          ),
-        );
+        _openTextOverlayDialog();
         break;
       case 'captions':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Auto-captions coming soon'),
-            duration: Duration(seconds: 1),
-          ),
-        );
+        _generateAutoCaptions();
         break;
       case 'cover':
         ScaffoldMessenger.of(context).showSnackBar(
@@ -241,6 +240,65 @@ class _ModernVideoEditorViewState
           ),
         );
         break;
+    }
+  }
+
+  Future<void> _openTextOverlayDialog() async {
+    final overlay = await showDialog<VideoTextOverlay>(
+      context: context,
+      builder: (context) => const TextOverlayDialog(),
+    );
+
+    if (overlay != null && mounted) {
+      setState(() {
+        _textOverlays.add(overlay);
+      });
+    }
+  }
+
+  Future<void> _generateAutoCaptions() async {
+    setState(() => _isGeneratingCaptions = true);
+
+    try {
+      final videoFile = File(widget.videoPath);
+      final result = await _captionService.generateCaptions(
+        videoFile,
+        onProgress: (progress) {
+          // Could update UI with progress
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isGeneratingCaptions = false;
+          if (result.success) {
+            _captionSegments = result.segments;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Generated ${result.segments.length} captions'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Caption generation failed: ${result.error}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isGeneratingCaptions = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -322,7 +380,27 @@ class _ModernVideoEditorViewState
                             angle: _rotationAngle * 3.14159 / 180,
                             child: AspectRatio(
                               aspectRatio: _controller!.value.aspectRatio,
-                              child: VideoPlayer(_controller!),
+                              child: Stack(
+                                children: [
+                                  VideoPlayer(_controller!),
+                                  // Text overlays
+                                  if (_textOverlays.isNotEmpty)
+                                    TextOverlayEditor(
+                                      videoSize: Size(
+                                        MediaQuery.of(context).size.width,
+                                        MediaQuery.of(context).size.width /
+                                            _controller!.value.aspectRatio,
+                                      ),
+                                      overlays: _textOverlays,
+                                      onOverlaysChanged: (overlays) {
+                                        setState(() => _textOverlays = overlays);
+                                      },
+                                    ),
+                                  // Caption display
+                                  if (_captionSegments.isNotEmpty)
+                                    _buildCaptionOverlay(),
+                                ],
+                              ),
                             ),
                           ),
                         )
@@ -727,5 +805,49 @@ class _ModernVideoEditorViewState
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+
+  Widget _buildCaptionOverlay() {
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+
+    final currentPosition = _controller!.value.position;
+    final currentCaption = _captionSegments.firstWhere(
+      (segment) =>
+          currentPosition >= segment.startTime &&
+          currentPosition <= segment.endTime,
+      orElse: () => const CaptionSegment(
+        text: '',
+        startTime: Duration.zero,
+        endTime: Duration.zero,
+      ),
+    );
+
+    if (currentCaption.text.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      bottom: 60,
+      left: 20,
+      right: 20,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          currentCaption.text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
   }
 }
