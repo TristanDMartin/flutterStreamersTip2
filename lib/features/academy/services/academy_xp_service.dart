@@ -34,7 +34,7 @@ class AcademyXpService {
       type: GamificationEventTypes.academyGuideViewed,
       entityType: 'guide',
       entityId: guideId,
-      eventId: 'academy_first_guide_day_$userId_$todayKey',
+      eventId: 'academy_first_guide_day_${userId}_$todayKey',
       metadata: <String, dynamic>{
         'xpHint': xp.openFirstGuideOfDay,
         'surface': 'academy',
