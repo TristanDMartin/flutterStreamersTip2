@@ -541,7 +541,9 @@ class _LessonBlock extends StatelessWidget {
                     (MapEntry<int, String> entry) => RadioListTile<int>(
                       contentPadding: EdgeInsets.zero,
                       value: entry.key,
+                      // ignore: deprecated_member_use
                       groupValue: selectedQuizIndex,
+                      // ignore: deprecated_member_use
                       onChanged: onQuizSelect,
                       title: Text(entry.value),
                     ),
