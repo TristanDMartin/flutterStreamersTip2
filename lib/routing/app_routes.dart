@@ -35,6 +35,8 @@ import '../features/studio/studio_team_control_view.dart';
 import '../features/onboarding_tippy/tippy_onboarding_view.dart';
 import '../features/tippy/models/tippy_launch_context.dart';
 import '../features/tippy/tippy_chat_page.dart';
+import '../features/publish/modern_video_editor_view.dart';
+import '../features/publish/modern_share_view.dart';
 
 class AppRoutes {
   static const String root = '/';
@@ -78,6 +80,8 @@ class AppRoutes {
   static const String weeklyReport = '/weekly-report';
   static const String studioTeamControl = '/studio-team-control';
   static const String approvalReview = '/approval-review';
+  static const String modernVideoEditor = '/modern-video-editor';
+  static const String modernShare = '/modern-share';
 
   static Route<dynamic> onGenerateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
@@ -396,6 +400,32 @@ class AppRoutes {
             requestId: reviewArgs.requestId,
             workspaceId: reviewArgs.workspaceId,
           ),
+        );
+      case modernVideoEditor:
+        final String? videoPath = routeSettings.arguments as String?;
+        if (videoPath == null) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => const AppStartupWrapper(initialTabIndex: 0),
+          );
+        }
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => ModernVideoEditorView(videoPath: videoPath),
+          fullscreenDialog: true,
+        );
+      case modernShare:
+        final String? videoPath = routeSettings.arguments as String?;
+        if (videoPath == null) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => const AppStartupWrapper(initialTabIndex: 0),
+          );
+        }
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => ModernShareView(videoPath: videoPath),
+          fullscreenDialog: true,
         );
     }
 
