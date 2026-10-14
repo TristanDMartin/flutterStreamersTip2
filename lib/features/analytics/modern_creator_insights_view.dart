@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/support_shell_style.dart';
 import '../../models/insights_data.dart';
 import '../../models/profile_video.dart';
 
@@ -25,19 +26,23 @@ class _ModernCreatorInsightsViewState
 
   @override
   Widget build(BuildContext context) {
+    final shell = StSupportShellStyle.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: shell.scaffold,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            _buildAppBar(),
-            _buildVideoHeader(),
-            _buildAnalyticsBanner(),
-            _buildPeriodSelector(),
-            _buildStatsGrid(),
-            _buildAudienceRetention(),
-            _buildTrafficSources(),
-            _buildTopLocations(),
+            _buildAppBar(shell),
+            _buildVideoHeader(shell, isDark),
+            _buildAnalyticsBanner(shell, theme),
+            _buildPeriodSelector(shell, theme),
+            _buildStatsGrid(shell, theme, isDark),
+            _buildAudienceRetention(shell, theme),
+            _buildTrafficSources(shell, theme),
+            _buildTopLocations(shell, theme),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
@@ -45,22 +50,22 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildAppBar() {
+  Widget _buildAppBar(StSupportShellStyle shell) {
     return SliverAppBar(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: shell.scaffold,
       elevation: 0,
       pinned: true,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        icon: Icon(Icons.arrow_back, color: shell.onChrome),
         onPressed: () => Navigator.of(context).pop(),
       ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Creator Insights',
             style: TextStyle(
-              color: Colors.white,
+              color: shell.onChrome,
               fontSize: 20,
               fontWeight: FontWeight.w700,
             ),
@@ -69,8 +74,8 @@ class _ModernCreatorInsightsViewState
             widget.video.caption.isNotEmpty
                 ? widget.video.caption
                 : 'Your video',
-            style: const TextStyle(
-              color: Color(0xFF8E8E93),
+            style: TextStyle(
+              color: shell.muted,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -81,18 +86,18 @@ class _ModernCreatorInsightsViewState
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.file_download_outlined, color: Colors.white),
+          icon: Icon(Icons.file_download_outlined, color: shell.onChrome),
           onPressed: () {},
         ),
         IconButton(
-          icon: const Icon(Icons.ios_share, color: Colors.white),
+          icon: Icon(Icons.ios_share, color: shell.onChrome),
           onPressed: () {},
         ),
       ],
     );
   }
 
-  Widget _buildVideoHeader() {
+  Widget _buildVideoHeader(StSupportShellStyle shell, bool isDark) {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -103,21 +108,21 @@ class _ModernCreatorInsightsViewState
               child: Container(
                 width: 120,
                 height: 160,
-                color: const Color(0xFF1C1C1E),
+                color: shell.surfaceCard,
                 child: widget.video.thumbnailURL != null
                     ? Image.network(
                         widget.video.thumbnailURL!,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
-                          return const Center(
+                          return Center(
                             child: Icon(Icons.video_library,
-                                color: Color(0xFF8E8E93), size: 40),
+                                color: shell.muted, size: 40),
                           );
                         },
                       )
-                    : const Center(
+                    : Center(
                         child: Icon(Icons.video_library,
-                            color: Color(0xFF8E8E93), size: 40),
+                            color: shell.muted, size: 40),
                       ),
               ),
             ),
@@ -130,8 +135,8 @@ class _ModernCreatorInsightsViewState
                     widget.video.caption.isNotEmpty
                         ? widget.video.caption
                         : 'Untitled video',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: shell.onChrome,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -142,7 +147,7 @@ class _ModernCreatorInsightsViewState
                   Text(
                     'Jul 18, 2026 • Public',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: shell.muted,
                       fontSize: 13,
                     ),
                   ),
@@ -151,7 +156,7 @@ class _ModernCreatorInsightsViewState
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF34C759).withValues(alpha: 0.2),
+                      color: const Color(0xFF34C759).withValues(alpha: isDark ? 0.2 : 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
@@ -186,7 +191,10 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildAnalyticsBanner() {
+  Widget _buildAnalyticsBanner(StSupportShellStyle shell, ThemeData theme) {
+    final primaryColor = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -195,13 +203,13 @@ class _ModernCreatorInsightsViewState
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                const Color(0xFF7B3FF2).withValues(alpha: 0.2),
-                const Color(0xFF3D99F7).withValues(alpha: 0.2),
+                primaryColor.withValues(alpha: isDark ? 0.2 : 0.15),
+                primaryColor.withValues(alpha: isDark ? 0.15 : 0.1),
               ],
             ),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: const Color(0xFF7B3FF2).withValues(alpha: 0.3),
+              color: primaryColor.withValues(alpha: isDark ? 0.3 : 0.2),
               width: 1,
             ),
           ),
@@ -210,40 +218,40 @@ class _ModernCreatorInsightsViewState
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF7B3FF2).withValues(alpha: 0.3),
+                  color: primaryColor.withValues(alpha: isDark ? 0.3 : 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.analytics_outlined,
-                  color: Color(0xFF7B3FF2),
+                  color: primaryColor,
                   size: 24,
                 ),
               ),
               const SizedBox(width: 16),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Analytics are now available',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: shell.onChrome,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       'Your views, engagement and audience data have started to populate.',
                       style: TextStyle(
-                        color: Color(0xFF8E8E93),
+                        color: shell.muted,
                         fontSize: 13,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Color(0xFF8E8E93)),
+              Icon(Icons.chevron_right, color: shell.muted),
             ],
           ),
         ),
@@ -251,27 +259,29 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildPeriodSelector() {
+  Widget _buildPeriodSelector(StSupportShellStyle shell, ThemeData theme) {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
         child: Row(
           children: [
-            _buildPeriodChip('7D'),
+            _buildPeriodChip('7D', shell, theme),
             const SizedBox(width: 8),
-            _buildPeriodChip('28D'),
+            _buildPeriodChip('28D', shell, theme),
             const SizedBox(width: 8),
-            _buildPeriodChip('90D'),
+            _buildPeriodChip('90D', shell, theme),
             const SizedBox(width: 8),
-            _buildPeriodChip('All time'),
+            _buildPeriodChip('All time', shell, theme),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPeriodChip(String period) {
+  Widget _buildPeriodChip(String period, StSupportShellStyle shell, ThemeData theme) {
     final isSelected = _selectedPeriod == period;
+    final primaryColor = theme.colorScheme.primary;
+    
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _selectedPeriod = period),
@@ -279,18 +289,22 @@ class _ModernCreatorInsightsViewState
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             gradient: isSelected
-                ? const LinearGradient(
-                    colors: [Color(0xFF00D9FF), Color(0xFF007AFF)],
+                ? LinearGradient(
+                    colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
                   )
                 : null,
-            color: isSelected ? null : const Color(0xFF1C1C1E),
+            color: isSelected ? null : shell.surfaceCard,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? primaryColor : shell.surfaceCardBorder,
+              width: isSelected ? 0 : 1,
+            ),
           ),
           child: Text(
             period,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : const Color(0xFF8E8E93),
+              color: isSelected ? Colors.white : shell.muted,
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -300,8 +314,15 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildStatsGrid() {
+  Widget _buildStatsGrid(StSupportShellStyle shell, ThemeData theme, bool isDark) {
     final insights = widget.insights;
+    
+    // Define accent colors that work in both light and dark mode
+    final cyan = isDark ? const Color(0xFF00D9FF) : const Color(0xFF0099CC);
+    final pink = isDark ? const Color(0xFFFF2D55) : const Color(0xFFCC0033);
+    final purple = isDark ? const Color(0xFF7B3FF2) : const Color(0xFF5E3AB8);
+    final blue = isDark ? const Color(0xFF007AFF) : const Color(0xFF0055CC);
+    
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverGrid(
@@ -316,43 +337,49 @@ class _ModernCreatorInsightsViewState
             'Views',
             insights.overview.totalViews.toString(),
             '+42%',
-            const Color(0xFF00D9FF),
+            cyan,
             Icons.visibility_outlined,
+            shell,
           ),
           _buildStatCard(
             'Likes',
             insights.engagement.likes.toString(),
             '+36%',
-            const Color(0xFFFF2D55),
+            pink,
             Icons.favorite_outline,
+            shell,
           ),
           _buildStatCard(
             'Comments',
             insights.overview.comments.toString(),
             '+75%',
-            const Color(0xFF7B3FF2),
+            purple,
             Icons.chat_bubble_outline,
+            shell,
           ),
           _buildStatCard(
             'Shares',
             insights.overview.shares.toString(),
             '+91%',
-            const Color(0xFF007AFF),
+            blue,
             Icons.share_outlined,
+            shell,
           ),
           _buildStatCard(
             'Profile visits',
             '0',
             '+63%',
-            const Color(0xFF00D9FF),
+            cyan,
             Icons.person_outline,
+            shell,
           ),
           _buildStatCard(
             'Engagement rate',
             '${((insights.engagement.engagementRate) * 100).toStringAsFixed(1)}%',
             '+2.4%',
-            const Color(0xFF7B3FF2),
+            purple,
             Icons.trending_up,
+            shell,
           ),
         ]),
       ),
@@ -365,12 +392,14 @@ class _ModernCreatorInsightsViewState
     String change,
     Color color,
     IconData icon,
+    StSupportShellStyle shell,
   ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
+        color: shell.surfaceCard,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: shell.surfaceCardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,8 +410,8 @@ class _ModernCreatorInsightsViewState
               const SizedBox(width: 8),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF8E8E93),
+                style: TextStyle(
+                  color: shell.muted,
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
@@ -392,8 +421,8 @@ class _ModernCreatorInsightsViewState
           const Spacer(),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: shell.onChrome,
               fontSize: 24,
               fontWeight: FontWeight.w700,
             ),
@@ -418,15 +447,18 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildAudienceRetention() {
+  Widget _buildAudienceRetention(StSupportShellStyle shell, ThemeData theme) {
+    final primaryColor = theme.colorScheme.primary;
+    
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: shell.surfaceCardBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,26 +468,26 @@ class _ModernCreatorInsightsViewState
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.show_chart,
-                          color: Color(0xFF7B3FF2), size: 20),
+                      Icon(Icons.show_chart,
+                          color: primaryColor, size: 20),
                       const SizedBox(width: 8),
-                      const Text(
+                      Text(
                         'Audience Retention',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: shell.onChrome,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Icon(Icons.info_outline,
-                          color: Colors.white.withValues(alpha: 0.3), size: 16),
+                          color: shell.iconDim, size: 16),
                     ],
                   ),
-                  const Text(
+                  Text(
                     '0:03',
                     style: TextStyle(
-                      color: Color(0xFF8E8E93),
+                      color: shell.muted,
                       fontSize: 13,
                     ),
                   ),
@@ -466,21 +498,21 @@ class _ModernCreatorInsightsViewState
                 height: 120,
                 child: CustomPaint(
                   size: const Size(double.infinity, 120),
-                  painter: RetentionChartPainter(),
+                  painter: RetentionChartPainter(primaryColor),
                 ),
               ),
               const SizedBox(height: 8),
-              const Row(
+              Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('0:00',
-                      style: TextStyle(color: Color(0xFF8E8E93), fontSize: 11)),
+                      style: TextStyle(color: shell.muted, fontSize: 11)),
                   Text('0:01',
-                      style: TextStyle(color: Color(0xFF8E8E93), fontSize: 11)),
+                      style: TextStyle(color: shell.muted, fontSize: 11)),
                   Text('0:02',
-                      style: TextStyle(color: Color(0xFF8E8E93), fontSize: 11)),
+                      style: TextStyle(color: shell.muted, fontSize: 11)),
                   Text('0:03',
-                      style: TextStyle(color: Color(0xFF8E8E93), fontSize: 11)),
+                      style: TextStyle(color: shell.muted, fontSize: 11)),
                 ],
               ),
             ],
@@ -490,44 +522,50 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildTrafficSources() {
+  Widget _buildTrafficSources(StSupportShellStyle shell, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final blue = isDark ? const Color(0xFF007AFF) : const Color(0xFF0055CC);
+    final purple = isDark ? const Color(0xFF7B3FF2) : const Color(0xFF5E3AB8);
+    final cyan = isDark ? const Color(0xFF00D9FF) : const Color(0xFF0099CC);
+    
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: shell.surfaceCardBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.traffic, color: Color(0xFF007AFF), size: 20),
+                  Icon(Icons.traffic, color: blue, size: 20),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Traffic sources',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: shell.onChrome,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Icon(Icons.info_outline,
-                      color: Colors.white.withValues(alpha: 0.3), size: 16),
+                      color: shell.iconDim, size: 16),
                 ],
               ),
               const SizedBox(height: 20),
-              _buildTrafficBar('For You', 0.64, const Color(0xFF007AFF)),
+              _buildTrafficBar('For You', 0.64, blue, shell),
               const SizedBox(height: 12),
-              _buildTrafficBar('Followers', 0.18, const Color(0xFF7B3FF2)),
+              _buildTrafficBar('Followers', 0.18, purple, shell),
               const SizedBox(height: 12),
-              _buildTrafficBar('Profile', 0.09, const Color(0xFF00D9FF)),
+              _buildTrafficBar('Profile', 0.09, cyan, shell),
               const SizedBox(height: 12),
-              _buildTrafficBar('External', 0.09, const Color(0xFF8E8E93)),
+              _buildTrafficBar('External', 0.09, shell.muted, shell),
             ],
           ),
         ),
@@ -535,15 +573,15 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildTrafficBar(String label, double percentage, Color color) {
+  Widget _buildTrafficBar(String label, double percentage, Color color, StSupportShellStyle shell) {
     return Row(
       children: [
         SizedBox(
           width: 80,
           child: Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFF8E8E93),
+            style: TextStyle(
+              color: shell.muted,
               fontSize: 14,
             ),
           ),
@@ -554,7 +592,7 @@ class _ModernCreatorInsightsViewState
               Container(
                 height: 8,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2C2C2E),
+                  color: shell.skeletonLineDim,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -564,7 +602,7 @@ class _ModernCreatorInsightsViewState
                   height: 8,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                        colors: [color.withValues(alpha: 0.6), color],
+                      colors: [color.withValues(alpha: 0.6), color],
                     ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -579,8 +617,8 @@ class _ModernCreatorInsightsViewState
           child: Text(
             '${(percentage * 100).toInt()}%',
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: shell.onChrome,
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -590,15 +628,21 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildTopLocations() {
+  Widget _buildTopLocations(StSupportShellStyle shell, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final cyan = isDark ? const Color(0xFF00D9FF) : const Color(0xFF0099CC);
+    final blue = isDark ? const Color(0xFF007AFF) : const Color(0xFF0055CC);
+    final purple = isDark ? const Color(0xFF7B3FF2) : const Color(0xFF5E3AB8);
+    
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
+            color: shell.surfaceCard,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: shell.surfaceCardBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -608,26 +652,26 @@ class _ModernCreatorInsightsViewState
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined,
-                          color: Color(0xFF00D9FF), size: 20),
+                      Icon(Icons.location_on_outlined,
+                          color: cyan, size: 20),
                       const SizedBox(width: 8),
-                      const Text(
+                      Text(
                         'Top audience locations',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: shell.onChrome,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Icon(Icons.info_outline,
-                          color: Colors.white.withValues(alpha: 0.3), size: 16),
+                          color: shell.iconDim, size: 16),
                     ],
                   ),
-                  const Text(
+                  Text(
                     'See all',
                     style: TextStyle(
-                      color: Color(0xFF007AFF),
+                      color: theme.colorScheme.primary,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -635,14 +679,13 @@ class _ModernCreatorInsightsViewState
                 ],
               ),
               const SizedBox(height: 20),
-              _buildLocationBar('United States', 0.62, const Color(0xFF007AFF)),
+              _buildLocationBar('United States', 0.62, blue, shell),
               const SizedBox(height: 12),
-              _buildLocationBar('Canada', 0.12, const Color(0xFF7B3FF2)),
+              _buildLocationBar('Canada', 0.12, purple, shell),
               const SizedBox(height: 12),
-              _buildLocationBar(
-                  'United Kingdom', 0.08, const Color(0xFF00D9FF)),
+              _buildLocationBar('United Kingdom', 0.08, cyan, shell),
               const SizedBox(height: 12),
-              _buildLocationBar('Other', 0.18, const Color(0xFF8E8E93)),
+              _buildLocationBar('Other', 0.18, shell.muted, shell),
             ],
           ),
         ),
@@ -650,15 +693,15 @@ class _ModernCreatorInsightsViewState
     );
   }
 
-  Widget _buildLocationBar(String label, double percentage, Color color) {
+  Widget _buildLocationBar(String label, double percentage, Color color, StSupportShellStyle shell) {
     return Row(
       children: [
         SizedBox(
           width: 120,
           child: Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFF8E8E93),
+            style: TextStyle(
+              color: shell.muted,
               fontSize: 14,
             ),
           ),
@@ -669,7 +712,7 @@ class _ModernCreatorInsightsViewState
               Container(
                 height: 8,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2C2C2E),
+                  color: shell.skeletonLineDim,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -679,7 +722,7 @@ class _ModernCreatorInsightsViewState
                   height: 8,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                        colors: [color.withValues(alpha: 0.6), color],
+                      colors: [color.withValues(alpha: 0.6), color],
                     ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -694,8 +737,8 @@ class _ModernCreatorInsightsViewState
           child: Text(
             '${(percentage * 100).toInt()}%',
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: shell.onChrome,
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -707,6 +750,10 @@ class _ModernCreatorInsightsViewState
 }
 
 class RetentionChartPainter extends CustomPainter {
+  final Color primaryColor;
+  
+  RetentionChartPainter(this.primaryColor);
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
@@ -714,8 +761,8 @@ class RetentionChartPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          const Color(0xFF7B3FF2).withValues(alpha: 0.4),
-          const Color(0xFF7B3FF2).withValues(alpha: 0.0),
+          primaryColor.withValues(alpha: 0.4),
+          primaryColor.withValues(alpha: 0.0),
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
 
@@ -731,7 +778,7 @@ class RetentionChartPainter extends CustomPainter {
     canvas.drawPath(path, paint);
 
     final linePaint = Paint()
-      ..color = const Color(0xFF7B3FF2)
+      ..color = primaryColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5;
 
@@ -744,16 +791,16 @@ class RetentionChartPainter extends CustomPainter {
     canvas.drawPath(linePath, linePaint);
 
     final dotPaint = Paint()
-      ..color = const Color(0xFF7B3FF2)
+      ..color = primaryColor
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(Offset(size.width, size.height * 0.72), 5, dotPaint);
 
     final textPainter = TextPainter(
-      text: const TextSpan(
+      text: TextSpan(
         text: '28%',
         style: TextStyle(
-          color: Color(0xFF7B3FF2),
+          color: primaryColor,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),

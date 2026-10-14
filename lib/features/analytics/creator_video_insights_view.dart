@@ -75,9 +75,10 @@ class _CreatorVideoInsightsViewState
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF0A0A0F),
-        body: Center(child: CircularProgressIndicator()),
+      final shell = StSupportShellStyle.of(context);
+      return Scaffold(
+        backgroundColor: shell.scaffold,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
     
