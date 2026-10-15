@@ -169,9 +169,17 @@ Exclusive claim: `usernames/{normalized}` plus `users.username` / `usernameNorma
 
 ---
 
-## 4. Onboarding / account state
+## 4. Onboarding / account state (V3.1 — Product Education Layer)
+
+**Version:** 3.1 (Product Education Layer)  
+**Detailed Spec:** `docs/ONBOARDING_EXPERIENCE.md`  
+**Status:** Canonical for both Website (React) and Flutter
+
+### Core Principle
 
 Only the **server** decides lifecycle. Web and Flutter are renderers of the same machine.
+
+### Authority
 
 | Owner | Role |
 |---|---|
@@ -181,7 +189,7 @@ Only the **server** decides lifecycle. Web and Flutter are renderers of the same
 | Tippy UI | Presentation only |
 | Local/session cache | Resume UX — never overrides server |
 
-Activation:
+### Activation Lifecycle
 
 ```
 NEW → GUEST_PERSONALIZATION → ACCOUNT_REQUIRED → EMAIL_VERIFICATION_REQUIRED
@@ -194,18 +202,142 @@ NEW → GUEST_PERSONALIZATION → ACCOUNT_REQUIRED → EMAIL_VERIFICATION_REQUIR
 - After COMPLETE, missing photo/Twitch/bio/interests must not reopen Tippy
 - If local stage ≠ server `tippyStage`, **server wins**
 
-Resolvers: web `lib/onboarding/resolveOnboardingDestination.ts`; Flutter `lib/components/onboarding/resolve_onboarding_destination.dart`; golden `contracts/onboarding-lifecycle.golden.json`.
+### V3.1 Presentation Stages
 
-### Birthday gate (runs ahead of lifecycle)
+**Full stage flow:**
 
-- Every authenticated account needs a valid private DOB before anything else — email, Google, Apple, new or existing. Unverified password accounts verify email first.
-- Email signup (web and Flutter) collects the DOB in the form and sends it to `/api/account/pending`; under 13 is blocked before the Auth account exists.
-- `GET /api/account/status` adds `birthdayRequired`, `birthdayLocked`, `ageEligibility { hasDateOfBirth, meetsMinimumAge, isAdult }`. When gated: `activationState = BIRTHDAY_REQUIRED`, `tippyStageHint = birthday`, `allowApp = false`. Lifecycle is untouched, so COMPLETE accounts return to the app after saving.
-- Clients route `birthday` → web `/onboarding/birthday`, Flutter `BirthdayStepView` (in `OnboardingGate`).
-- Write: `POST /api/account/date-of-birth { dateOfBirth: 'YYYY-MM-DD' }` only (server, write-once). Stored on `users/{uid}` if provisioned, else `pendingAccounts/{uid}` (copied at provisioning): `dateOfBirth`, `dateOfBirthSetAt`, `dateOfBirthSource` (`signup_form | birthday_step`), `ageGate { status: passed | under_minimum_age }`.
-- Under 13 → `ageGate.status = under_minimum_age`; the step is locked (no retry) and the client signs out immediately, keeping the "not eligible" notice on screen.
-- DOB is never mirrored to `publicUsers` or any public API. Age-restricted features (e.g. VI Hub) read `ageEligibility`, never the date.
-- Golden: `contracts/birthday-gate.golden.json`.
+```
+welcome → questions → dna_reveal → value_map → signup → verify_email 
+  → account_secured → avatar → username → bio 
+  → platform_handles → profile_review → twitch_connect 
+  → notifications → first_growth_plan → creator_space_ready 
+  → first_mission → complete
+```
+
+**New in V3.1:**
+- `value_map` — Personalized product education after DNA reveal
+- `first_growth_plan` — Explicit first plan creation stage
+- Enhanced `creator_space_ready` — Meaningful activation summary
+- Enhanced `first_mission` — Meaningful activation action
+
+### What ACTIVATED Means (V3.1 Definition)
+
+**ACTIVATED requires:**
+
+1. ✅ Identity setup complete (avatar, username, bio, platforms)
+2. ✅ Tippy understands core creator DNA (7 questions answered)
+3. ✅ First growth focus exists (personalized plan created)
+4. ✅ Clear next action provided (meaningful first mission)
+5. ✅ Product education complete:
+   - Creator can answer: What is StreamersTip?
+   - Creator can answer: What can Tippy do for me?
+   - Creator can answer: Where do I manage my workflow?
+   - Creator can answer: What should I do first?
+
+**Technical state:**
+```json
+{
+  "activationState": "ACTIVATED",
+  "users/{uid}.onboarding": {
+    "lifecycle": "COMPLETE",
+    "tippyFunnelCompleted": true,
+    "essentialProfileComplete": true,
+    "valueEducationCompleted": true,
+    "firstGrowthPlanCreated": true,
+    "firstGrowthPlanId": "plan_001",
+    "firstActivationAction": "ask_tippy",
+    "completedAt": "2026-10-15T00:00:00Z"
+  }
+}
+```
+
+### V3.1 Storage Fields
+
+**New persisted fields in `users/{uid}.onboarding`:**
+- `valueEducationCompleted` (boolean) — Value map stage completed
+- `firstGrowthPlanCreated` (boolean) — First growth plan created
+- `firstGrowthPlanId` (string) — Reference to first plan
+- `firstActivationAction` (string) — Type of first mission assigned
+- `valueMapViewed` (boolean) — Value map viewed
+- `productMapViewed` (boolean) — Product orientation viewed
+
+### Golden Test Contracts
+
+Resolvers:
+- Web: `lib/onboarding/resolveOnboardingDestination.ts`
+- Flutter: `lib/components/onboarding/resolve_onboarding_destination.dart`
+- Golden: `contracts/onboarding-lifecycle.golden.json`
+
+**Required golden test (V3.1):**
+- `contracts/birthday-email-verification-order.golden.json` — Canonical order for each auth method
+
+### Birthday Gate (V3.1 Clarified)
+
+**Canonical Order by Auth Method:**
+
+**Email/Password:**
+1. Collect email + password + DOB in signup form
+2. Create Auth account
+3. Send verification email
+4. User verifies email ← BLOCKS HERE
+5. Check DOB (if valid ≥13, proceed; if <13, lock and sign out)
+
+**Google/Apple OAuth:**
+1. OAuth creates Auth account
+2. Check for DOB immediately
+3. If missing, show birthday gate ← BLOCKS HERE
+4. If valid ≥13, proceed; if <13, lock and sign out
+
+**Existing Account (Missing DOB):**
+1. Signs in successfully
+2. Server returns `birthdayRequired: true`
+3. Show birthday gate ← BLOCKS HERE
+4. After DOB submitted, return to previous lifecycle stage
+
+- Every authenticated account needs valid DOB before proceeding
+- Unverified password accounts verify email **first**, then DOB
+- `GET /api/account/status` adds `birthdayRequired`, `birthdayLocked`, `ageEligibility`
+- When gated: `activationState = BIRTHDAY_REQUIRED`, `tippyStageHint = birthday`, `allowApp = false`
+- Write: `POST /api/account/date-of-birth { dateOfBirth: 'YYYY-MM-DD' }` (write-once)
+- Under 13 → `ageGate.status = under_minimum_age`, locked, sign out immediately
+- DOB never mirrored to `publicUsers` or public API
+- Golden: `contracts/birthday-gate.golden.json`
+
+### Storage Durability (V3.1 Clarified)
+
+**Canonical storage hierarchy:**
+
+| Layer | Storage | Purpose | TTL |
+|-------|---------|---------|-----|
+| **Server** | `users/{uid}.onboarding` | Source of truth (authenticated) | Permanent |
+| **Durable guest** | `localStorage.tippy_onboarding_v3` | Cross-session resume | 24h |
+| **Session cache** | `sessionStorage` | Same-tab performance | Tab close |
+
+**Rules:**
+- `sessionStorage` is **tab-scoped** and cleared on browser close
+- Resume requirements include **browser close/reopen**
+- Therefore **durable storage required** = `localStorage` or server
+- Never use `sessionStorage` as the **only** storage for guests
+- Authenticated users: server is source of truth
+
+### V3.1 Implementation Strategy
+
+**Do NOT:**
+- ❌ Rewrite onboarding from scratch
+- ❌ Change server lifecycle authority
+- ❌ Redesign backend state machine
+- ❌ Break web/Flutter parity
+
+**DO:**
+- ✅ Audit current implementations against V3.0 contract first
+- ✅ Add product education layer on existing machine
+- ✅ Add value_map, first_growth_plan, product_map stages
+- ✅ Enhance creator_space_ready content (not structure)
+- ✅ Upgrade first mission assignment logic
+- ✅ Add new analytics events
+- ✅ Test product understanding with real users
+
+This is **V3.1 (Product Education Pass)**, not V4.0 (Complete Redesign).
 
 ---
 

@@ -199,6 +199,189 @@ Public profile investigation to understand the creator **before** they tell Tipp
 - Scrape platforms without official APIs
 - Claim analysis when status is `limited` or `unavailable`
 
+---
+
+### Stage: `value_map` (NEW in V3.1)
+
+**Purpose:** Translate creator DNA into personalized product value
+
+**Timing:** After DNA reveal, before account creation
+
+#### Why This Stage Exists
+
+New creators must understand **what StreamersTip does** and **why it's valuable for them specifically** before committing to sign up.
+
+Generic feature carousels fail. Personalized value based on their answers succeeds.
+
+#### Dynamic Value Translation
+
+**Based on their 7 DNA answers, show:**
+
+**Example 1: Twitch Gaming Creator Focused on Growth**
+```
+┌─────────────────────────────────────────┐
+│  How StreamersTip helps you            │
+│                                         │
+│  Based on what you told me:             │
+│                                         │
+│  🎮 You stream on Twitch               │
+│  🎯 Your goal is to grow your audience │
+│  📅 You publish a few times per week   │
+│                                         │
+│  Here's what Tippy can do:              │
+│                                         │
+│  → Turn your streams into clips        │
+│  → Build a posting plan that fits      │
+│     your schedule                       │
+│  → Track what content performs         │
+│  → Guide your next move based on       │
+│     what works                          │
+│                                         │
+│  [Create My Account]                    │
+└─────────────────────────────────────────┘
+```
+
+**Example 2: YouTube Tutorial Creator Focused on Monetization**
+```
+┌─────────────────────────────────────────┐
+│  How StreamersTip helps you            │
+│                                         │
+│  Based on what you told me:             │
+│                                         │
+│  📺 You create on YouTube              │
+│  💰 Your goal is to monetize           │
+│  🎓 You make educational content       │
+│                                         │
+│  Here's what Tippy can do:              │
+│                                         │
+│  → Plan content that attracts          │
+│     sponsors                            │
+│  → Track which topics get the most     │
+│     engagement                          │
+│  → Build a consistent upload schedule  │
+│  → Help you identify monetization      │
+│     opportunities                       │
+│                                         │
+│  [Create My Account]                    │
+└─────────────────────────────────────────┘
+```
+
+**Example 3: Multi-Platform IRL Creator Just Starting**
+```
+┌─────────────────────────────────────────┐
+│  How StreamersTip helps you            │
+│                                         │
+│  Based on what you told me:             │
+│                                         │
+│  📱 You're on TikTok and Instagram     │
+│  🌟 You're just getting started        │
+│  🎥 You make IRL lifestyle content     │
+│                                         │
+│  Here's what Tippy can do:              │
+│                                         │
+│  → Help you post consistently          │
+│  → Generate content ideas when         │
+│     you're stuck                        │
+│  → Show you what's working (and        │
+│     what's not)                         │
+│  → Guide you step by step as you       │
+│     learn                               │
+│                                         │
+│  [Create My Account]                    │
+└─────────────────────────────────────────┘
+```
+
+#### Translation Rules
+
+**Map DNA → Product Value:**
+
+| DNA Signals | Product Value Message |
+|-------------|----------------------|
+| **Twitch/YouTube Live** | Turn streams into clips, plan live schedule |
+| **Multi-platform** | Manage all platforms in one place, cross-post |
+| **Goal: Grow** | Track what performs, get discovered |
+| **Goal: Monetize** | Identify monetization opportunities, attract sponsors |
+| **Goal: Consistency** | Build a posting plan, stay on track |
+| **Just starting** | Step-by-step guidance, learn as you go |
+| **Established (3+ years)** | Optimize what's working, scale your system |
+| **No consistent schedule** | Create a realistic plan, track progress |
+| **Niche specified** | Personalize to their specific niche |
+
+#### Personalization Engine
+
+**Server generates `valueMapContent` based on:**
+```javascript
+{
+  platforms: ["twitch"],
+  goals: ["grow_audience"],
+  experience: "building",
+  cadence: "few_times_week"
+}
+
+↓
+
+{
+  intro: "Based on what you told me:",
+  signals: [
+    "You stream on Twitch",
+    "Your goal is to grow your audience",
+    "You publish a few times per week"
+  ],
+  capabilities: [
+    "Turn your streams into clips",
+    "Build a posting plan that fits your schedule",
+    "Track what content performs",
+    "Guide your next move based on what works"
+  ],
+  cta: "Create My Account"
+}
+```
+
+#### Storage
+
+**Persisted to session:**
+```json
+{
+  "onboarding": {
+    "valueMapViewed": true,
+    "valueMapContent": {
+      "signals": ["..."],
+      "capabilities": ["..."]
+    }
+  }
+}
+```
+
+#### Copy Guidelines
+
+**DO:**
+- ✅ Use their specific platforms
+- ✅ Echo their stated goals
+- ✅ Be concrete (not vague "grow your creator business")
+- ✅ Show 3-5 specific capabilities
+- ✅ Make it feel personalized to them
+
+**DON'T:**
+- ❌ Generic "StreamersTip is a creator platform"
+- ❌ Feature list ("Analytics, Planner, Editor")
+- ❌ Jargon ("Leverage AI-powered insights")
+- ❌ Over-promise ("Go viral in 30 days")
+
+#### Analytics Event
+
+`value_map_viewed` with payload:
+```json
+{
+  "platforms": ["twitch"],
+  "goals": ["grow_audience"],
+  "experience": "building",
+  "personalizedSignals": 3,
+  "personalizedCapabilities": 4
+}
+```
+
+---
+
 #### Checkup Intelligence
 
 **Observed Signals** (when `analyzed` only):
@@ -721,9 +904,10 @@ After all 7 questions answered:
    - Based on their answers
    - Example: "Your biggest opportunity is consistency - streaming on a predictable schedule will help you build a loyal audience."
 
-4. **Transition to Auth**
-   - "Ready to build your growth plan?"
-   - CTA: **"CREATE MY ACCOUNT"** or **"CONTINUE"**
+4. **Transition to Value Map**
+   - "Let me show you how StreamersTip can help"
+   - CTA: **"SHOW ME"** or **"SEE HOW IT WORKS"**
+   - Proceeds to new `value_map` stage (V3.1)
 
 ---
 
@@ -2034,7 +2218,8 @@ Canonical Tippy intelligence store.
 
 ### Onboarding Session (Guest)
 
-**Storage:** `sessionStorage.tippy_onboarding_v3` or `localStorage` fallback
+**Storage:** `localStorage.tippy_onboarding_v3` (durable)  
+**Session Cache:** `sessionStorage.tippy_onboarding_v3` (performance)
 
 ```json
 {
