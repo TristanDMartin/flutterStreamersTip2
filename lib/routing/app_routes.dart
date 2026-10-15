@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/chat.dart';
 import '../models/home_video.dart';
+import '../models/profile_video.dart';
+import '../models/insights_data.dart';
 import '../models/user.dart';
 import '../views/linked_platforms_view.dart';
 import '../views/manage_posts_view.dart';
@@ -18,6 +20,7 @@ import '../widgets/profile_view_optimized.dart';
 import '../widgets/tiktok_camera_view.dart';
 import '../features/analytics/creator_intelligence_view.dart';
 import '../features/analytics/creator_video_insights_view.dart';
+import '../features/analytics/modern_creator_insights_view.dart';
 import '../features/analytics/growth_analytics_view.dart';
 import '../features/content_planning/content_planner_view.dart';
 import '../features/content_scheduler/content_scheduler_view.dart';
@@ -363,6 +366,20 @@ class AppRoutes {
           builder: (_) => const GrowthAnalyticsView(),
         );
       case videoInsights:
+        // Use modern insights view with fallback to legacy if args missing
+        final args = routeSettings.arguments;
+        if (args is Map<String, dynamic> &&
+            args.containsKey('video') &&
+            args.containsKey('insights')) {
+          return _buildRoute(
+            settings: routeSettings,
+            builder: (_) => ModernCreatorInsightsView(
+              video: args['video'] as ProfileVideo,
+              insights: args['insights'] as InsightsData,
+            ),
+          );
+        }
+        // Fallback to legacy view if proper args not provided
         return _buildRoute(
           settings: routeSettings,
           builder: (_) => const CreatorVideoInsightsView(),

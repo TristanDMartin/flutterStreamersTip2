@@ -551,12 +551,10 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
         _isReleasingCamera = false;
       });
     }
-    // Push editor first so selection feels instant; release camera underneath.
-    final Future<Object?> opened = Navigator.of(context).push<Object?>(
-      MaterialPageRoute<Object?>(
-        settings: const RouteSettings(name: '/camera/preview'),
-        builder: (BuildContext context) => VideoRecordingPreview(draft: draft),
-      ),
+    // Push modern editor first so selection feels instant; release camera underneath.
+    final Future<Object?> opened = Navigator.of(context).pushNamed(
+      '/modern-video-editor',
+      arguments: draft.sourceFilePath,
     );
     unawaited(_cameraService.dispose());
     await opened;
