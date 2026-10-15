@@ -54,6 +54,22 @@ NEW → GUEST_PERSONALIZATION → ACCOUNT_REQUIRED
   → FIRST_GROWTH_PLAN → FIRST_MISSION → ACTIVATED
 ```
 
+### What ACTIVATED Really Means
+
+**ACTIVATED is NOT:**
+- ❌ All required fields filled out
+- ❌ Profile 100% complete
+- ❌ User clicked through all screens
+
+**ACTIVATED IS:**
+- ✅ Identity setup complete (avatar, username, bio, platforms)
+- ✅ Tippy understands core creator DNA (7 questions answered)
+- ✅ First growth focus exists (personalized plan)
+- ✅ Creator has been given a clear next action
+- ✅ Creator understands what StreamersTip is and does
+- ✅ Creator knows where to go (Mission Control)
+- ✅ Creator knows what to do first (meaningful activation action)
+
 ### Two Entry Paths
 
 | Path | Platform | Description |
@@ -316,9 +332,43 @@ When user clicks **"CONTINUE WITH TIPPY"**:
 
 ## Phase 2: Account Creation
 
-### Birthday Gate (Pre-Auth)
+### Birthday Gate vs Email Verification Order
 
-**Runs before everything else** - even Firebase Auth creation.
+**⚠️ Canonical Order (V3.1 Resolution):**
+
+```
+Email/Password Signup:
+1. Collect email + password + DOB in signup form
+2. Create Firebase Auth account
+3. Send verification email
+4. User verifies email ← BLOCKS HERE
+5. After verified, check DOB
+6. If DOB valid (≥13), proceed to Tippy questions
+7. If DOB invalid (<13), lock and sign out
+
+Google/Apple Signup:
+1. OAuth flow creates Auth account
+2. Check for DOB immediately
+3. If missing, show birthday gate ← BLOCKS HERE
+4. If DOB valid (≥13), proceed to Tippy questions
+5. If DOB invalid (<13), lock and sign out
+
+Existing Account (Missing DOB):
+1. User signs in successfully
+2. Server returns birthdayRequired: true
+3. Show birthday gate ← BLOCKS HERE
+4. After DOB submitted, return to previous lifecycle stage
+5. COMPLETE accounts return to app after DOB
+```
+
+**Golden Test Required:**
+`contracts/birthday-email-verification-order.golden.json` must specify exact ordering for each auth method to prevent web/Flutter parity bugs.
+
+---
+
+### Birthday Gate (Age Verification)
+
+**When it runs depends on auth method** (see canonical order above).
 
 #### When Shown
 - Every authenticated account needs valid DOB before proceeding
@@ -491,12 +541,25 @@ When user clicks **"CONTINUE WITH TIPPY"**:
 
 ### Tippy Stages (Presentation Layer)
 
+**V3.1 Updated Stage Flow:**
+
 ```
-welcome → questions → dna_reveal → signup → verify_email 
+welcome → questions → dna_reveal → value_map → signup → verify_email 
   → account_secured → avatar → username → bio 
   → platform_handles → profile_review → twitch_connect 
-  → notifications → creator_space_ready → first_mission → complete
+  → notifications → first_growth_plan → creator_space_ready 
+  → first_mission → complete
 ```
+
+**New Stages in V3.1:**
+- `value_map` - Product education (after DNA reveal)
+- `first_growth_plan` - Explicit plan creation stage
+- Enhanced `creator_space_ready` - Activation summary
+
+**Changed from V3.0:**
+- Added product value education before auth
+- Made first growth plan creation explicit (not hidden in background)
+- Transformed creator_space_ready from generic celebration to meaningful activation summary
 
 ### Stage Categories
 
@@ -664,6 +727,187 @@ After all 7 questions answered:
 
 ---
 
+### Stage: `value_map` (NEW in V3.1)
+
+**Purpose:** Translate creator DNA into personalized product value
+
+**Timing:** After DNA reveal, before account creation
+
+#### Why This Stage Exists
+
+New creators must understand **what StreamersTip does** and **why it's valuable for them specifically** before committing to sign up.
+
+Generic feature carousels fail. Personalized value based on their answers succeeds.
+
+#### Dynamic Value Translation
+
+**Based on their 7 DNA answers, show:**
+
+**Example 1: Twitch Gaming Creator Focused on Growth**
+```
+┌─────────────────────────────────────────┐
+│  How StreamersTip helps you            │
+│                                         │
+│  Based on what you told me:             │
+│                                         │
+│  🎮 You stream on Twitch               │
+│  🎯 Your goal is to grow your audience │
+│  📅 You publish a few times per week   │
+│                                         │
+│  Here's what Tippy can do:              │
+│                                         │
+│  → Turn your streams into clips        │
+│  → Build a posting plan that fits      │
+│     your schedule                       │
+│  → Track what content performs         │
+│  → Guide your next move based on       │
+│     what works                          │
+│                                         │
+│  [Create My Account]                    │
+└─────────────────────────────────────────┘
+```
+
+**Example 2: YouTube Tutorial Creator Focused on Monetization**
+```
+┌─────────────────────────────────────────┐
+│  How StreamersTip helps you            │
+│                                         │
+│  Based on what you told me:             │
+│                                         │
+│  📺 You create on YouTube              │
+│  💰 Your goal is to monetize           │
+│  🎓 You make educational content       │
+│                                         │
+│  Here's what Tippy can do:              │
+│                                         │
+│  → Plan content that attracts          │
+│     sponsors                            │
+│  → Track which topics get the most     │
+│     engagement                          │
+│  → Build a consistent upload schedule  │
+│  → Help you identify monetization      │
+│     opportunities                       │
+│                                         │
+│  [Create My Account]                    │
+└─────────────────────────────────────────┘
+```
+
+**Example 3: Multi-Platform IRL Creator Just Starting**
+```
+┌─────────────────────────────────────────┐
+│  How StreamersTip helps you            │
+│                                         │
+│  Based on what you told me:             │
+│                                         │
+│  📱 You're on TikTok and Instagram     │
+│  🌟 You're just getting started        │
+│  🎥 You make IRL lifestyle content     │
+│                                         │
+│  Here's what Tippy can do:              │
+│                                         │
+│  → Help you post consistently          │
+│  → Generate content ideas when         │
+│     you're stuck                        │
+│  → Show you what's working (and        │
+│     what's not)                         │
+│  → Guide you step by step as you       │
+│     learn                               │
+│                                         │
+│  [Create My Account]                    │
+└─────────────────────────────────────────┘
+```
+
+#### Translation Rules
+
+**Map DNA → Product Value:**
+
+| DNA Signals | Product Value Message |
+|-------------|----------------------|
+| **Twitch/YouTube Live** | Turn streams into clips, plan live schedule |
+| **Multi-platform** | Manage all platforms in one place, cross-post |
+| **Goal: Grow** | Track what performs, get discovered |
+| **Goal: Monetize** | Identify monetization opportunities, attract sponsors |
+| **Goal: Consistency** | Build a posting plan, stay on track |
+| **Just starting** | Step-by-step guidance, learn as you go |
+| **Established (3+ years)** | Optimize what's working, scale your system |
+| **No consistent schedule** | Create a realistic plan, track progress |
+| **Niche specified** | Personalize to their specific niche |
+
+#### Personalization Engine
+
+**Server generates `valueMapContent` based on:**
+```javascript
+{
+  platforms: ["twitch"],
+  goals: ["grow_audience"],
+  experience: "building",
+  cadence: "few_times_week"
+}
+
+↓
+
+{
+  intro: "Based on what you told me:",
+  signals: [
+    "You stream on Twitch",
+    "Your goal is to grow your audience",
+    "You publish a few times per week"
+  ],
+  capabilities: [
+    "Turn your streams into clips",
+    "Build a posting plan that fits your schedule",
+    "Track what content performs",
+    "Guide your next move based on what works"
+  ],
+  cta: "Create My Account"
+}
+```
+
+#### Storage
+
+**Persisted to session:**
+```json
+{
+  "onboarding": {
+    "valueMapViewed": true,
+    "valueMapContent": {
+      "signals": ["..."],
+      "capabilities": ["..."]
+    }
+  }
+}
+```
+
+#### Copy Guidelines
+
+**DO:**
+- ✅ Use their specific platforms
+- ✅ Echo their stated goals
+- ✅ Be concrete (not vague "grow your creator business")
+- ✅ Show 3-5 specific capabilities
+- ✅ Make it feel personalized to them
+
+**DON'T:**
+- ❌ Generic "StreamersTip is a creator platform"
+- ❌ Feature list ("Analytics, Planner, Editor")
+- ❌ Jargon ("Leverage AI-powered insights")
+- ❌ Over-promise ("Go viral in 30 days")
+
+#### Analytics Event
+
+`value_map_viewed` with payload:
+```json
+{
+  "platforms": ["twitch"],
+  "goals": ["grow_audience"],
+  "experience": "building",
+  "personalizedSignals": 3,
+  "personalizedCapabilities": 4
+}
+```
+
+---
+
 ### Checkup Context Integration
 
 **If user came from Path B (Creator Checkup):**
@@ -763,9 +1007,30 @@ After all 7 questions answered:
 
 ---
 
+## Phase 4: Creator Identity (Building Your Workspace)
+
+**Philosophy Change (V3.1):**
+
+Instead of: "Fill out your profile"  
+Frame as: **"Build your creator workspace"**
+
+Each field should explain **why StreamersTip needs it** and **what value it unlocks**.
+
+---
+
 ### Stage: `avatar`
 
 **Purpose:** Upload profile photo
+
+**V3.1 Enhanced Copy:**
+
+**Before (Generic):**
+- "Upload your profile photo"
+
+**After (Value-Driven):**
+- **"Set your creator avatar"**
+- Explanation: "This is how you'll appear to your audience on StreamersTip. A recognizable photo helps people discover and remember you."
+- Value unlock: "Profile photos get 3x more engagement"
 
 #### Options
 1. **Upload Photo**
@@ -803,6 +1068,16 @@ After all 7 questions answered:
 ### Stage: `username`
 
 **Purpose:** Claim unique username
+
+**V3.1 Enhanced Copy:**
+
+**Before (Generic):**
+- "Choose your username"
+
+**After (Value-Driven):**
+- **"Claim your creator handle"**
+- Explanation: "Your username is your identity across StreamersTip. Choose something memorable that matches your brand."
+- Value unlock: "This becomes your profile URL: streamerstip.com/@yourname"
 
 #### Rules
 - **Length:** 3-20 characters
@@ -854,6 +1129,16 @@ If desired username taken, suggest:
 
 **Purpose:** Short creator bio/description
 
+**V3.1 Enhanced Copy:**
+
+**Before (Generic):**
+- "Write your bio"
+
+**After (Value-Driven):**
+- **"Tell people what you create"**
+- Explanation: "Help your audience and potential collaborators understand what you're about at a glance."
+- Value unlock: "Creators with bios get 2x more followers"
+
 #### Requirements
 - **Max length:** 160 characters
 - **Optional:** Can skip
@@ -883,6 +1168,16 @@ If desired username taken, suggest:
 ### Stage: `platform_handles`
 
 **Purpose:** Connect external social profiles
+
+**V3.1 Enhanced Copy:**
+
+**Before (Generic):**
+- "Add your social links"
+
+**After (Value-Driven):**
+- **"Connect your platforms"**
+- Explanation: "Your platforms help Tippy understand where you create and personalize recommendations. This also helps your audience find you everywhere."
+- Value unlock: "Tippy uses this to give you platform-specific advice"
 
 #### Platforms Supported
 - YouTube
@@ -1133,26 +1428,217 @@ All required fields must be completed before "Looks Good" enables.
 
 ---
 
-### Stage: `creator_space_ready`
+### Stage: `first_growth_plan` (NEW in V3.1)
 
-**Purpose:** Welcome to full app
+**Purpose:** Create the creator's first personalized growth plan
 
-#### Display
+**Timing:** After Twitch/notifications, before creator_space_ready
 
-**Celebration Screen:**
+#### Why This Stage Exists
+
+ACTIVATED should mean the creator has a **clear next focus**, not just completed forms. The first growth plan gives them direction.
+
+#### Flow
+
+1. **Intro**
+   - "Based on what you told me, here's your first growth focus"
+   - Shows their primary goal
+   - Shows their current situation
+
+2. **Plan Generation**
+   - Tippy creates a personalized plan
+   - Based on: platforms, goals, experience, cadence, schedule
+   - 1-2 week starter plan (not overwhelming)
+
+3. **Plan Preview**
+   ```
+   ┌──────────────────────────────────────┐
+   │  Your First Growth Plan              │
+   │                                      │
+   │  Focus: Consistent Streaming         │
+   │                                      │
+   │  Week 1:                             │
+   │  □ Stream Monday 7pm                 │
+   │  □ Stream Wednesday 7pm              │
+   │  □ Create 2 clips from best moments  │
+   │  □ Post clips to YouTube             │
+   │                                      │
+   │  Why this plan:                      │
+   │  You told me you want to grow your   │
+   │  audience and you stream a few times │
+   │  per week. Consistency + discoverability│
+   │  is your best lever right now.       │
+   │                                      │
+   │  [Start This Plan]                   │
+   │  [Customize It]                      │
+   └──────────────────────────────────────┘
+   ```
+
+4. **Confirmation**
+   - User accepts or customizes
+   - Plan stored to `users/{uid}/contentPlans/{planId}`
+   - `firstGrowthPlanId` saved to onboarding doc
+
+#### Storage
+
+```json
+{
+  "onboarding": {
+    "firstGrowthPlanCreated": true,
+    "firstGrowthPlanId": "plan_001",
+    "growthFocus": "Consistency + discoverability"
+  },
+  "users/{uid}/contentPlans/plan_001": {
+    "id": "plan_001",
+    "title": "Consistent Streaming Plan",
+    "focus": "Consistency + discoverability",
+    "startDate": "2026-10-15",
+    "endDate": "2026-10-29",
+    "items": [
+      {
+        "id": "item_001",
+        "type": "stream",
+        "title": "Stream Monday 7pm",
+        "scheduledFor": "2026-10-15T19:00:00Z",
+        "status": "planned"
+      }
+    ],
+    "createdAt": "2026-10-15T00:00:00Z",
+    "source": "onboarding_tippy"
+  }
+}
+```
+
+#### Plan Types by Creator DNA
+
+| DNA | First Plan Focus |
+|-----|------------------|
+| **Twitch/YouTube Live + Goal: Grow** | Consistent streaming + clip repurposing |
+| **YouTube Video + Goal: Monetize** | High-value topic calendar |
+| **Multi-platform + Goal: Consistency** | Cross-posting workflow |
+| **Just starting + any goal** | Simple weekly posting schedule |
+| **Established + Goal: Grow** | Content optimization + discoverability |
+
+#### Analytics Event
+
+`first_growth_plan_created` with payload:
+```json
+{
+  "planId": "plan_001",
+  "focus": "Consistency + discoverability",
+  "itemCount": 4,
+  "weeksCovered": 2,
+  "primaryPlatform": "twitch",
+  "primaryGoal": "grow_audience"
+}
+```
+
+---
+
+### Stage: `creator_space_ready` (V3.1 ENHANCED)
+
+**Purpose:** Activation summary - not generic celebration
+
+**V3.1 Complete Redesign:**
+
+**Before (Generic):**
 ```
 🎉 Your Creator Space is Ready!
 
 You're all set to start building your creator journey.
 
-Here's what you can do now:
-✅ Create content plans
-✅ Get AI-powered recommendations
-✅ Track your growth
-✅ Complete missions & earn XP
-✅ Connect with the community
-
 [Start Creating]
+```
+
+**After (Meaningful Activation Summary):**
+```
+┌─────────────────────────────────────────┐
+│  Your creator system is ready.          │
+│                                         │
+│  ✅ Tippy knows your goals              │
+│     (Grow audience, be consistent)      │
+│                                         │
+│  ✅ Your creator profile is set         │
+│     (@coolgamer)                        │
+│                                         │
+│  ✅ Your platforms are mapped           │
+│     (Twitch, YouTube)                   │
+│                                         │
+│  ✅ Your first growth focus is ready    │
+│     (Consistency + discoverability)     │
+│                                         │
+│  ✅ Your first mission is waiting       │
+│     (Create your first clip)            │
+│                                         │
+│  [Go to Mission Control]                │
+└─────────────────────────────────────────┘
+```
+
+**Key Differences:**
+
+1. **Not generic celebration** - Specific to what they set up
+2. **Shows what was accomplished** - Echo their inputs
+3. **Shows what's ready** - First plan, first mission
+4. **Clear next action** - "Go to Mission Control" (not vague "Start Creating")
+5. **Ties onboarding to product** - Mission Control is their hub
+
+#### Copy Rules
+
+**DO:**
+- ✅ Echo their username
+- ✅ Echo their goals
+- ✅ Echo their platforms  
+- ✅ Show their growth focus
+- ✅ Name their first mission
+- ✅ Use "your creator system" language
+
+**DON'T:**
+- ❌ Generic "You're all set!"
+- ❌ Feature list of what's available
+- ❌ Confetti animations without substance
+- ❌ Unclear next step
+
+#### Optional Product Map (V3.1 NEW)
+
+**Before going to Mission Control, show 3-card product orientation:**
+
+```
+┌────────────────────────────────────────────────┐
+│  What you can do in StreamersTip               │
+│                                                │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
+│  │   Plan   │  │  Create  │  │   Grow   │    │
+│  │          │  │          │  │          │    │
+│  │ Turn     │  │ Record,  │  │ Use      │    │
+│  │ ideas    │  │ edit,    │  │ Tippy,   │    │
+│  │ into a   │  │ publish, │  │ analytics│    │
+│  │ creator  │  │ and      │  │ missions │    │
+│  │ plan.    │  │ repurpose│  │ and      │    │
+│  │          │  │ content. │  │ Creator  │    │
+│  │          │  │          │  │ Academy  │    │
+│  │          │  │          │  │ to       │    │
+│  │          │  │          │  │ improve. │    │
+│  └──────────┘  └──────────┘  └──────────┘    │
+│                                                │
+│  [Got it, let's go]                           │
+└────────────────────────────────────────────────┘
+```
+
+**Not 5 slides. Not a tutorial. Just 3 cards in one screen.**
+
+Answers: "What did I just sign up for?"
+
+#### Analytics Event
+
+`creator_space_ready_viewed` with payload:
+```json
+{
+  "username": "coolgamer",
+  "platforms": ["twitch", "youtube"],
+  "goals": ["grow_audience", "monetize"],
+  "firstPlanReady": true,
+  "firstMissionReady": true
+}
 ```
 
 #### Optional Quick Tour
@@ -1170,23 +1656,60 @@ Here's what you can do now:
 
 ---
 
-### Stage: `first_mission`
+### Stage: `first_mission` (V3.1 ENHANCED)
 
-**Purpose:** Assign initial gamification mission
+**Purpose:** Assign **meaningful** first activation action
 
-#### Mission Assignment
+**Philosophy Change:**
 
-**Server automatically assigns first mission based on:**
+Make the first mission a **real activation action** that creates value, not just gamification.
+
+#### V3.1 Mission Priority
+
+**High-Value Activation Actions (Prioritize These):**
+
+1. **"Ask Tippy for your first content idea"**
+   - Engages core product (Tippy AI)
+   - Immediately useful
+   - Teaches how to use Ask Tippy
+   - XP: 100
+
+2. **"Create your first plan in Content Planner"**
+   - Only if first_growth_plan was skipped/customized
+   - Engages planning workflow
+   - Drives retention
+   - XP: 150
+
+3. **"Upload your first video"**
+   - Core content creation action
+   - Populates their profile
+   - Tests upload flow
+   - XP: 200
+
+4. **"Connect your primary creator platform"**
+   - Only if Twitch/YouTube not connected in onboarding
+   - Unlocks authorized analytics
+   - Enables deeper Tippy insights
+   - XP: 100
+
+5. **"Create your first clip from a stream"**
+   - For live streamers specifically
+   - Teaches content repurposing
+   - Immediate output
+   - XP: 150
+
+**Low-Value Actions (Deprioritize):**
+
+- ❌ "Complete your profile" - Already done in onboarding
+- ❌ "Introduce yourself" - Low activation value
+- ❌ "Explore StreamersTip" - Not actionable
+
+#### Mission Assignment Logic
+
+**Server automatically assigns based on:**
 - Creator DNA (platforms, content type, goals)
-- Profile completion status
-- Experience level
-
-**Example First Missions:**
-- **"Upload Your First Video"** (if content creator)
-- **"Schedule Your First Stream"** (if live streamer)
-- **"Complete Your Profile"** (if any fields skipped)
-- **"Introduce Yourself"** (create welcome post)
-- **"Connect a Platform"** (if none connected)
+- What they've already done
+- Highest-value next action
 
 #### Mission Display
 
@@ -1302,20 +1825,26 @@ Here's what you can do now:
   "createdAt": "2026-10-14T22:00:00Z",
   "lastLoginAt": "2026-10-14T23:00:00Z",
   
-  // Onboarding
+  // Onboarding (V3.1 Enhanced)
   "onboarding": {
-    "version": 3,
+    "version": 3.1,
     "lifecycle": "COMPLETE", // NEW | TIPPY | VERIFY | CLASSIC | COMPLETE
     "tippyStage": "complete",
     "completed": true,
-    "completedAt": "2026-10-14T23:00:00Z",
+    "completedAt": "2026-10-15T00:00:00Z",
     "tippyFunnelCompleted": true,
     "essentialProfileComplete": true,
     "creatorCardCompleted": true,
+    "valueEducationCompleted": true, // NEW V3.1
+    "firstGrowthPlanCreated": true, // NEW V3.1
+    "firstGrowthPlanId": "plan_001", // NEW V3.1
+    "firstActivationAction": "ask_tippy", // NEW V3.1
     "slim7Completed": false,
     "hasSeenIntro": true,
     "startedFromCheckup": true,
     "photoStatus": "uploaded", // uploaded | skipped | not_started
+    "valueMapViewed": true, // NEW V3.1
+    "productMapViewed": true, // NEW V3.1
     "profileSetupProgress": {
       "avatar": "completed",
       "username": "completed",
@@ -2133,6 +2662,98 @@ if (userData.identityRecycled === true) {
 
 ---
 
+## Analytics & Instrumentation (V3.1 Enhanced)
+
+### Funnel Events
+
+**Complete event list for V3.1:**
+
+```javascript
+// Pre-Auth
+onboarding_started
+dna_question_completed (per question)
+dna_reveal_viewed
+value_map_viewed // NEW V3.1
+
+// Auth & Verification
+account_created
+email_verification_started
+email_verified
+
+// Identity
+identity_started
+avatar_uploaded
+avatar_skipped
+username_claimed
+bio_entered
+bio_skipped
+platforms_added
+platforms_skipped
+profile_completed
+
+// Growth Plan & Activation
+first_growth_plan_created // NEW V3.1
+first_growth_plan_customized // NEW V3.1
+product_map_viewed // NEW V3.1
+creator_space_ready_viewed // NEW V3.1
+first_mission_assigned // NEW V3.1
+activated // Main success metric
+
+// Post-Activation (Validates Onboarding Quality)
+first_tippy_prompt // NEW V3.1
+first_plan_opened // NEW V3.1
+first_video_uploaded // NEW V3.1
+first_platform_connected // NEW V3.1
+first_mission_completed // NEW V3.1
+```
+
+### Key Metrics to Track
+
+**Funnel Conversion:**
+- Started → DNA Questions Complete: __%
+- DNA Questions → Value Map Viewed: __%
+- Value Map → Account Created: __%
+- Account Created → Profile Complete: __%
+- Profile Complete → First Plan Created: __%
+- First Plan → Activated: __%
+
+**Activation Quality (Post-ACTIVATED):**
+- % who complete first mission within 24h
+- % who open Ask Tippy within 48h
+- % who open their first plan within 48h
+- % who upload first video within 7 days
+- % who return Day 7, Day 14, Day 30
+
+**Product Understanding Test:**
+- Survey after activation: "What is StreamersTip?" (open response)
+- Survey: "What can Tippy do for you?" (open response)
+- Measure: "Where did you go first after activation?"
+- Measure: "Did you complete your first mission?"
+
+### Acceptance Test (V3.1)
+
+**Every new creator who completes onboarding should be able to answer:**
+
+1. **What is StreamersTip?**
+   - ✅ Correct: "A platform to help me plan, create, and grow my content"
+   - ❌ Wrong: "I don't know" or "A social media app"
+
+2. **What can Tippy do for me?**
+   - ✅ Correct: "Give me content ideas, plan my schedule, track what works"
+   - ❌ Wrong: "I don't know" or "It's a chatbot"
+
+3. **Where do I manage my creator workflow?**
+   - ✅ Correct: "Mission Control" or "Content Planner"
+   - ❌ Wrong: "I don't know" or "The home feed"
+
+4. **What should I do first?**
+   - ✅ Correct: Names their first mission or "Check my growth plan"
+   - ❌ Wrong: "I don't know" or "Post something"
+
+**If >20% of new creators fail any question, onboarding is not finished.**
+
+---
+
 ## Testing Checklist
 
 ### Pre-Auth (Guest)
@@ -2226,6 +2847,21 @@ if (userData.identityRecycled === true) {
 - [ ] Compact confirmation works
 - [ ] No second "Hey I'm Tippy" after Checkup
 
+### Value Map (V3.1 NEW)
+
+- [ ] Value map shown after DNA reveal
+- [ ] Shows user's specific platforms
+- [ ] Shows user's specific goals
+- [ ] Shows 3-5 personalized capabilities
+- [ ] Not generic feature list
+- [ ] Twitch gaming creator sees stream-to-clip value
+- [ ] YouTube tutorial creator sees monetization value
+- [ ] Multi-platform creator sees management value
+- [ ] Beginner sees step-by-step guidance value
+- [ ] CTA is clear ("Create My Account")
+- [ ] Can proceed to signup
+- [ ] `value_map_viewed` event fires
+
 ---
 
 ### Creator Identity
@@ -2292,7 +2928,7 @@ if (userData.identityRecycled === true) {
 
 ---
 
-### Activation
+### Activation (V3.1 Enhanced)
 
 #### Twitch Connect
 - [ ] Only shown if Twitch mentioned
@@ -2314,37 +2950,98 @@ if (userData.identityRecycled === true) {
 - [ ] Web push token stored (web)
 - [ ] Notification preferences saved
 
-#### Creator Space Ready
-- [ ] Celebration screen shown
-- [ ] Optional tour available
-- [ ] Can skip tour
-- [ ] "Start Creating" proceeds to app
+#### First Growth Plan (V3.1 NEW)
+- [ ] Plan generation triggered
+- [ ] Shows user's growth focus
+- [ ] Shows user's goals
+- [ ] Plan is personalized (not generic)
+- [ ] 1-2 week starter plan
+- [ ] Twitch streamer gets consistency + clip plan
+- [ ] YouTube creator gets topic calendar
+- [ ] Multi-platform creator gets cross-post workflow
+- [ ] Can accept plan
+- [ ] Can customize plan
+- [ ] Plan stored to `contentPlans/{planId}`
+- [ ] `firstGrowthPlanId` saved
+- [ ] `first_growth_plan_created` event fires
 
-#### First Mission
-- [ ] Mission assigned automatically
+#### Product Map (V3.1 NEW)
+- [ ] 3-card product orientation shown
+- [ ] "Plan" card explains Content Planner
+- [ ] "Create" card explains creation workflow
+- [ ] "Grow" card explains Tippy/analytics/missions
+- [ ] Single screen (not 5-slide tutorial)
+- [ ] Can proceed to creator space
+- [ ] `product_map_viewed` event fires
+
+#### Creator Space Ready (V3.1 ENHANCED)
+- [ ] NOT generic "You're all set!" screen
+- [ ] Shows "Your creator system is ready"
+- [ ] Lists what was accomplished:
+  - [ ] "Tippy knows your goals" (with actual goals)
+  - [ ] "Your creator profile is set" (with username)
+  - [ ] "Your platforms are mapped" (with actual platforms)
+  - [ ] "Your first growth focus is ready" (with actual focus)
+  - [ ] "Your first mission is waiting" (with mission name)
+- [ ] CTA is "Go to Mission Control" (not "Start Creating")
+- [ ] Ties onboarding to product
+- [ ] `creator_space_ready_viewed` event fires
+
+#### First Mission (V3.1 ENHANCED)
+- [ ] Mission is meaningful (not just gamification)
+- [ ] Prioritizes high-value actions:
+  - [ ] "Ask Tippy for your first content idea"
+  - [ ] "Create your first plan"
+  - [ ] "Upload your first video"
+  - [ ] "Connect your primary platform"
+  - [ ] "Create your first clip"
+- [ ] NOT low-value actions like "Complete profile"
 - [ ] Mission relevant to creator type
 - [ ] Mission stored correctly
-- [ ] Can view mission
-- [ ] Can skip for now
-- [ ] Mission remains active after skip
+- [ ] `firstActivationAction` saved
+- [ ] Can view mission details
+- [ ] Mission shows in Mission Control
+- [ ] `first_mission_assigned` event fires
 
 ---
 
-### ACTIVATED State
+### ACTIVATED State (V3.1 Definition)
 
 - [ ] `lifecycle = COMPLETE` set
 - [ ] `tippyFunnelCompleted = true` set
 - [ ] `essentialProfileComplete = true` set
+- [ ] `valueEducationCompleted = true` set (V3.1 NEW)
+- [ ] `firstGrowthPlanCreated = true` set (V3.1 NEW)
+- [ ] `firstGrowthPlanId` populated (V3.1 NEW)
+- [ ] `firstActivationAction` recorded (V3.1 NEW)
 - [ ] `activationState = ACTIVATED` returned
 - [ ] Full app access granted
 - [ ] Can post content
 - [ ] Can upload videos
-- [ ] Can access Content Planner
+- [ ] Can access Content Planner (first plan ready)
 - [ ] Can use Ask Tippy
 - [ ] Can view Dashboard
-- [ ] Can access Mission Control
+- [ ] Can access Mission Control (first mission active)
 - [ ] Can edit profile
 - [ ] Can access Settings
+
+### Product Understanding Validation (V3.1 CRITICAL)
+
+**Test with actual users:**
+
+- [ ] User can answer: "What is StreamersTip?"
+- [ ] User can answer: "What can Tippy do for me?"
+- [ ] User can answer: "Where do I manage my workflow?"
+- [ ] User can answer: "What should I do first?"
+- [ ] <80% can answer all 4 = onboarding needs improvement
+
+**Post-Activation Behavior:**
+
+- [ ] User opens Mission Control within 5 minutes
+- [ ] User views their first growth plan
+- [ ] User interacts with first mission
+- [ ] User opens Ask Tippy within 24h
+- [ ] User completes first mission within 24-48h
 
 ---
 
@@ -2425,6 +3122,23 @@ if (userData.identityRecycled === true) {
 - [ ] Same Firebase project
 - [ ] Same lifecycle states
 - [ ] Web Checkup → Flutter onboarding transfers correctly
+- [ ] V3.1 value_map stage on both platforms
+- [ ] V3.1 first_growth_plan stage on both platforms
+- [ ] V3.1 product_map on both platforms
+- [ ] V3.1 enhanced creator_space_ready on both platforms
+- [ ] V3.1 meaningful first missions on both platforms
+- [ ] V3.1 analytics events on both platforms
+
+### V3.1 Storage Parity
+
+- [ ] `valueEducationCompleted` field on both
+- [ ] `firstGrowthPlanCreated` field on both
+- [ ] `firstGrowthPlanId` field on both
+- [ ] `firstActivationAction` field on both
+- [ ] `valueMapViewed` field on both
+- [ ] `productMapViewed` field on both
+- [ ] localStorage (not sessionStorage) for durable guest storage
+- [ ] Same storage hierarchy on both platforms
 
 ---
 
@@ -2442,6 +3156,12 @@ if (userData.identityRecycled === true) {
 - ✅ Data structures
 - ✅ Account enforcement
 - ✅ Navigation authority
+- ✅ **V3.1:** Product education stages
+- ✅ **V3.1:** Value map personalization
+- ✅ **V3.1:** First growth plan creation
+- ✅ **V3.1:** Product map (3 cards)
+- ✅ **V3.1:** Enhanced activation summary
+- ✅ **V3.1:** Meaningful first missions
 
 **What's Different:**
 - 🎨 UI design (Material vs Web)
@@ -2454,6 +3174,60 @@ if (userData.identityRecycled === true) {
 - Clients render state
 - Never invent logic
 - Always respect `allowApp: false`
+- **V3.1:** Every creator must understand the product before ACTIVATED
+
+---
+
+## V3.1 Change Summary
+
+### What Changed from V3.0
+
+**Added Stages:**
+1. `value_map` - Personalized product value after DNA reveal
+2. `first_growth_plan` - Explicit plan creation stage
+3. `product_map` - 3-card product orientation
+4. Enhanced `creator_space_ready` - Meaningful activation summary (not generic celebration)
+
+**Enhanced Requirements:**
+- ACTIVATED now requires product understanding, not just form completion
+- First missions must be meaningful activation actions
+- Identity setup must explain **why** each field is needed
+- Storage contract clarified (localStorage for durable, not sessionStorage)
+
+**Fixed Inconsistencies:**
+- Birthday gate vs email verification order now has canonical golden test
+- sessionStorage vs localStorage durability requirements clarified
+
+**New Analytics:**
+- `value_map_viewed`
+- `first_growth_plan_created`
+- `product_map_viewed`
+- `creator_space_ready_viewed`
+- `first_tippy_prompt`
+- `first_plan_opened`
+
+**New Acceptance Test:**
+- Creator must answer 4 product understanding questions
+- Post-activation behavior tracked (not just funnel completion)
+
+### Implementation Strategy
+
+**Do NOT:**
+- ❌ Rewrite onboarding from scratch
+- ❌ Change server lifecycle authority
+- ❌ Redesign backend state machine
+- ❌ Break web/Flutter parity
+
+**DO:**
+- ✅ Audit current implementations against V3.0 contract first
+- ✅ Add product education layer on top of existing machine
+- ✅ Add value_map, first_growth_plan, product_map stages
+- ✅ Enhance creator_space_ready content (not structure)
+- ✅ Upgrade first mission assignment logic
+- ✅ Add new analytics events
+- ✅ Test product understanding with real users
+
+**Version:** This is V3.1 (Product Education Pass), not V4.0 (Complete Redesign)
 
 ---
 
@@ -2480,6 +3254,82 @@ if (userData.identityRecycled === true) {
 
 ---
 
-**Last Updated:** October 14, 2026  
+## Outstanding Issues to Resolve
+
+### 1. Birthday Gate vs Email Verification Order
+
+**Status:** Conflicting requirements documented  
+**Action Required:** Create golden test contract
+
+**File needed:** `contracts/birthday-email-verification-order.golden.json`
+
+Must specify exact ordering for:
+- Email/password signup
+- Google OAuth signup
+- Apple OAuth signup
+- Existing account missing DOB
+
+**Test cases needed:**
+- Email signup with under-13 DOB
+- Email signup with valid DOB, then verify
+- Google signup (no verification), then DOB gate
+- Existing account signs in, missing DOB
+
+### 2. Storage Durability Contract
+
+**Status:** Clarified in V3.1, needs implementation audit  
+**Action Required:** Verify web and Flutter use correct storage
+
+**Requirement:**
+- Guest sessions: `localStorage` (durable), not `sessionStorage`
+- Authenticated: Server `users/{uid}` (source of truth)
+- Performance cache: `sessionStorage` OK for same-tab resume
+
+**Audit needed:**
+- [ ] Web implementation uses localStorage for guest
+- [ ] Flutter implementation persists guest sessions durably
+- [ ] Both platforms clear on auth state change
+- [ ] Both platforms survive browser close/reopen
+
+### 3. First Mission Assignment Logic
+
+**Status:** Requirements defined in V3.1, needs backend implementation  
+**Action Required:** Update mission assignment service
+
+**Current:** Likely assigns based on completion status  
+**Required:** Prioritize high-value activation actions
+
+**Server logic needed:**
+```javascript
+function assignFirstMission(creatorDNA, onboardingState) {
+  // Prioritize:
+  // 1. Ask Tippy (always high value)
+  // 2. Create plan (if not created)
+  // 3. Upload video (for video creators)
+  // 4. Connect platform (if not connected)
+  // 5. Create clip (for live streamers)
+  
+  // Deprioritize:
+  // - Complete profile (already done)
+  // - Introduce yourself (low value)
+}
+```
+
+### 4. Value Map Personalization Engine
+
+**Status:** Requirements defined in V3.1, needs implementation  
+**Action Required:** Build DNA → Product Value translation service
+
+**Server endpoint needed:** `POST /api/onboarding/generate-value-map`
+
+**Input:** 7 DNA question answers  
+**Output:** Personalized capabilities list
+
+**Translation rules documented** in Value Map section (Phase 3)
+
+---
+
+**Last Updated:** October 15, 2026  
+**Version:** 3.1 (Product Education Layer)  
 **Maintained By:** Product & Engineering  
-**Next Review:** When lifecycle changes are proposed
+**Next Review:** After V3.1 implementation audit
