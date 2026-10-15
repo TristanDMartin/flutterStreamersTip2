@@ -1,17 +1,30 @@
 # StreamersTip Onboarding Experience
 ## Complete Cross-Platform Guide (Mobile & Website)
 
-**Last Updated:** October 14, 2026  
-**Version:** 3.0  
-**Canonical Contract:** `docs/CANONICAL_CONTRACTS.md` Section 4
+**Last Updated:** October 15, 2026  
+**Version:** 3.1 (Product Education Layer)  
+**Canonical Contract:** `docs/CANONICAL_CONTRACTS.md` Section 4  
+**Status:** Canonical for both Website (React) and Mobile (Flutter)
 
 ---
 
-## 🎯 Core Principle
+## 🎯 Core Principles
 
+### **Technical Authority**
 > **Only the server decides lifecycle. Web and Flutter are renderers of the same state machine.**
 
 Both platforms implement the **same** backend/domain contracts. There is **one** activation machine, not separate web and mobile flows.
+
+### **Product Education Requirement**
+> **Every new creator must understand what StreamersTip is, what Tippy does, what value they get, and what action to take first before they become ACTIVATED.**
+
+Onboarding is not complete when forms are filled. It's complete when the creator understands:
+1. **What is StreamersTip?**
+2. **What can Tippy do for me?**
+3. **Where do I go to manage my creator workflow?**
+4. **What should I do first?**
+
+If any of these answers are unclear, onboarding is not finished.
 
 ---
 
