@@ -21,7 +21,7 @@ class CancelableHttpClient {
 
     try {
       final Future<http.Response> responseFuture = request(_client);
-      final Future<http.Response> result = await Future.any([
+      final http.Response result = await Future.any<http.Response>([
         responseFuture,
         cancelToken.future.then((_) => throw CanceledException()),
       ]);

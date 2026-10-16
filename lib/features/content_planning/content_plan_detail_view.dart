@@ -118,6 +118,10 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
     if (next == null || !mounted) {
       return;
     }
+    await _handleItemChange(index, next);
+  }
+
+  Future<void> _handleItemChange(int index, ContentPlanItem next) async {
     final String userId = widget.plan.userId;
     if (userId.isEmpty || widget.plan.id.isEmpty) {
       return;
