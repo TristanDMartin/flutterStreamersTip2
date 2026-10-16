@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'iap_billing_facade.dart';
+import 'verification_background_sync.dart';
 
 /// One shared [IapBillingFacade] for the whole app (purchase stream + products).
 class IapBillingCoordinator {
@@ -66,6 +67,18 @@ class IapBillingCoordinator {
     if (facade.storeAvailable) {
       await facade.loadProducts();
     }
+    
+    // Start background sync for pending verifications
+    VerificationBackgroundSync.instance.startPeriodicSync(
+      onSuccess: _entitlementsRefreshHandler,
+    );
+    
+    // Immediate sync check on startup
+    unawaited(
+      VerificationBackgroundSync.instance.syncPendingVerifications(
+        onSuccess: _entitlementsRefreshHandler,
+      ),
+    );
   }
 
   /// Reload store catalog (e.g. after returning to Upgrade).
@@ -79,5 +92,12 @@ class IapBillingCoordinator {
     if (facade.storeAvailable) {
       await facade.loadProducts();
     }
+    
+    // Also trigger pending verification sync
+    unawaited(
+      VerificationBackgroundSync.instance.syncPendingVerifications(
+        onSuccess: _entitlementsRefreshHandler,
+      ),
+    );
   }
 }

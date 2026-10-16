@@ -7,6 +7,7 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
 import 'mobile_purchase_verification_client.dart';
 import 'mobile_purchase_verification_payload.dart';
+import 'pending_verification_store.dart';
 import 'store_product_ids.dart';
 
 String billingStorePlatformForPayload() {
@@ -245,7 +246,12 @@ class IapBillingFacade {
       return;
     }
     final String transactionId = _readTransactionId(purchase);
-    const int maxAttempts = 3;
+    
+    // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+    const int maxAttempts = 5;
+    lastRecoverableHint = 'Verifying purchase with server…';
+    onUiChanged();
+    
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await _verificationClient.submitPurchase(
@@ -257,37 +263,105 @@ class IapBillingFacade {
             transactionId: transactionId,
           ),
         );
+        
+        // Success - complete purchase and clean up
         await _store.completePurchase(purchase);
         _verificationCompleteKeys.add(key);
+        await PendingVerificationStore.instance.removePendingVerification(key);
         purchaseBusy = false;
         lastError = null;
-        lastRecoverableHint = 'Purchase verified.';
+        lastRecoverableHint = 'Purchase verified successfully!';
         onUiChanged();
         onVerified?.call();
+        
+        // Refresh entitlements after successful verification
+        if (onEntitlementsRefresh != null) {
+          unawaited(onEntitlementsRefresh!());
+        }
         return;
       } on MobilePurchaseVerificationException catch (e) {
         final bool canRetry =
             _isRetryableVerificationMessage(e.message) && attempt < maxAttempts;
         if (!canRetry) {
+          // Non-retryable error or max attempts reached - store for later retry
+          await _storePendingVerification(
+            key: key,
+            uid: user.uid,
+            platform: billingStorePlatformForPayload(),
+            productId: purchase.productID,
+            token: token,
+            transactionId: transactionId,
+          );
           purchaseBusy = false;
-          lastError = e.message;
+          lastError = 'Verification failed. We\'ll retry automatically in the background.';
+          lastRecoverableHint = 'Your purchase is safe. Check back shortly or contact support if this persists.';
           onUiChanged();
           return;
         }
-        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
+        // Exponential backoff: 2^attempt seconds
+        final int backoffMs = (1 << attempt) * 1000;
+        lastRecoverableHint = 'Verifying… (retry ${attempt + 1}/$maxAttempts in ${backoffMs ~/ 1000}s)';
+        onUiChanged();
+        await Future<void>.delayed(Duration(milliseconds: backoffMs));
       } catch (e) {
         final String message = e.toString();
         final bool canRetry =
             _isRetryableVerificationMessage(message) && attempt < maxAttempts;
         if (!canRetry) {
+          // Store for background retry
+          await _storePendingVerification(
+            key: key,
+            uid: user.uid,
+            platform: billingStorePlatformForPayload(),
+            productId: purchase.productID,
+            token: token,
+            transactionId: transactionId,
+          );
           purchaseBusy = false;
-          lastError = message;
+          lastError = 'Verification pending. We\'ll keep trying automatically.';
+          lastRecoverableHint = 'Your purchase is recorded. Check your subscription status shortly.';
           onUiChanged();
           return;
         }
-        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
+        // Exponential backoff
+        final int backoffMs = (1 << attempt) * 1000;
+        lastRecoverableHint = 'Verifying… (retry ${attempt + 1}/$maxAttempts)';
+        onUiChanged();
+        await Future<void>.delayed(Duration(milliseconds: backoffMs));
       }
     }
+    
+    // Max attempts reached - store for background sync
+    await _storePendingVerification(
+      key: key,
+      uid: user.uid,
+      platform: billingStorePlatformForPayload(),
+      productId: purchase.productID,
+      token: token,
+      transactionId: transactionId,
+    );
+    purchaseBusy = false;
+    lastError = null;
+    lastRecoverableHint = 'Purchase recorded. Verification will continue in the background.';
+    onUiChanged();
+  }
+  
+  Future<void> _storePendingVerification({
+    required String key,
+    required String uid,
+    required String platform,
+    required String productId,
+    required String token,
+    required String transactionId,
+  }) async {
+    await PendingVerificationStore.instance.addPendingVerification(
+      uid: uid,
+      platform: platform,
+      productId: productId,
+      purchaseToken: token,
+      transactionId: transactionId,
+      dedupeKey: key,
+    );
   }
 
   bool _isRetryableVerificationMessage(String message) {
