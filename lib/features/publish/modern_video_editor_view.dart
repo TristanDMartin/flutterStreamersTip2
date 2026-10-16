@@ -107,6 +107,13 @@ class _ModernVideoEditorViewState
       _controller!.setLooping(true);
     }
     
+    // Add listener to update UI during playback
+    _controller!.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+    
     if (mounted) setState(() {});
   }
 
@@ -559,176 +566,223 @@ class _ModernVideoEditorViewState
             ),
           ),
 
-          // Timeline
-          Container(
-            height: 100,
-            color: shell.surfaceCard,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              children: [
-                // Playback progress
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Icon(Icons.play_arrow, color: shell.muted, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderThemeData(
-                            trackHeight: 2,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 6,
-                            ),
-                            overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 12,
-                            ),
+          // Bottom controls in scrollable area
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Timeline
+                  Container(
+                    height: 100,
+                    color: shell.surfaceCard,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      children: [
+                        // Playback progress
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            children: [
+                              Icon(Icons.play_arrow, color: shell.muted, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderThemeData(
+                                    trackHeight: 2,
+                                    thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 6,
+                                    ),
+                                    overlayShape: const RoundSliderOverlayShape(
+                                      overlayRadius: 12,
+                                    ),
+                                  ),
+                                  child: Slider(
+                                    value: _controller?.value.position.inMilliseconds
+                                            .toDouble() ??
+                                        0,
+                                    max: _controller?.value.duration.inMilliseconds
+                                            .toDouble() ??
+                                        1,
+                                    onChanged: (value) {
+                                      _controller?.seekTo(
+                                        Duration(milliseconds: value.toInt()),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                _formatDuration(
+                                  _controller?.value.position ?? Duration.zero,
+                                ),
+                                style: TextStyle(color: shell.muted, fontSize: 12),
+                              ),
+                              Text(
+                                ' / ${_formatDuration(_controller?.value.duration ?? Duration.zero)}',
+                                style: TextStyle(color: shell.muted, fontSize: 12),
+                              ),
+                            ],
                           ),
-                          child: Slider(
-                            value: _controller?.value.position.inMilliseconds
-                                    .toDouble() ??
-                                0,
-                            max: _controller?.value.duration.inMilliseconds
-                                    .toDouble() ??
-                                1,
-                            onChanged: (value) {
-                              _controller?.seekTo(
-                                Duration(milliseconds: value.toInt()),
-                              );
-                            },
-                          ),
                         ),
-                      ),
-                      Text(
-                        _formatDuration(
-                          _controller?.value.position ?? Duration.zero,
+                        // Frame thumbnails (placeholder with visual indicator)
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 40,
+                          child: _controller != null && _controller!.value.isInitialized
+                              ? ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: 10,
+                                  itemBuilder: (context, index) {
+                                    final duration = _controller!.value.duration;
+                                    final currentPosition = _controller!.value.position;
+                                    final frameDuration = duration.inMilliseconds / 10;
+                                    final frameStart = Duration(milliseconds: (index * frameDuration).toInt());
+                                    final isCurrentFrame = currentPosition >= frameStart &&
+                                        currentPosition < Duration(milliseconds: ((index + 1) * frameDuration).toInt());
+                                    
+                                    return GestureDetector(
+                                      onTap: () {
+                                        _controller!.seekTo(frameStart);
+                                      },
+                                      child: Container(
+                                        width: 60,
+                                        margin: const EdgeInsets.only(right: 4),
+                                        decoration: BoxDecoration(
+                                          color: shell.skeletonFill,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: isCurrentFrame
+                                              ? Border.all(color: const Color(0xFF7B3FF2), width: 2)
+                                              : null,
+                                        ),
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.videocam,
+                                            color: shell.muted.withValues(alpha: 0.3),
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                )
+                              : ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: 10,
+                                  itemBuilder: (context, index) {
+                                    return Container(
+                                      width: 60,
+                                      margin: const EdgeInsets.only(right: 4),
+                                      decoration: BoxDecoration(
+                                        color: shell.skeletonFill,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                    );
+                                  },
+                                ),
                         ),
-                        style: TextStyle(color: shell.muted, fontSize: 12),
-                      ),
-                      Text(
-                        ' / ${_formatDuration(_controller?.value.duration ?? Duration.zero)}',
-                        style: TextStyle(color: shell.muted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                // Frame thumbnails (placeholder)
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 40,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: 10,
-                    itemBuilder: (context, index) {
-                      return Container(
-                        width: 60,
-                        margin: const EdgeInsets.only(right: 4),
-                        decoration: BoxDecoration(
-                          color: shell.skeletonFill,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Bottom toolbar
-          Container(
-            color: shell.scaffold,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildBottomTool(
-                  Icons.content_cut,
-                  'Trim',
-                  true,
-                  shell,
-                  isDark,
-                ),
-                _buildBottomTool(Icons.text_fields, 'Text', false, shell, isDark),
-                _buildBottomTool(Icons.closed_caption, 'Captions', false, shell, isDark),
-                _buildBottomTool(Icons.image, 'Cover', false, shell, isDark),
-                _buildBottomTool(Icons.filter, 'Filters', false, shell, isDark),
-                _buildBottomTool(Icons.tune, 'Adjust', false, shell, isDark),
-              ],
-            ),
-          ),
-
-          // Additional options
-          Container(
-            color: shell.scaffold,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
-              children: [
-                _buildOption(
-                  Icons.audiotrack,
-                  'Add sound',
-                  'Music, voiceover, or sounds',
-                  shell,
-                ),
-                const SizedBox(height: 12),
-                _buildOption(
-                  Icons.mic,
-                  'Voiceover',
-                  'Record audio',
-                  shell,
-                ),
-              ],
-            ),
-          ),
-
-          // Next button
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF7B3FF2),
-                      const Color(0xFF00D9FF),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(25),
-                ),
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushNamed(
-                      context,
-                      '/modern-share',
-                      arguments: widget.videoPath,
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        'Next',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+
+                  // Bottom toolbar
+                  Container(
+                    color: shell.scaffold,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildBottomTool(
+                          Icons.content_cut,
+                          'Trim',
+                          true,
+                          shell,
+                          isDark,
+                        ),
+                        _buildBottomTool(Icons.text_fields, 'Text', false, shell, isDark),
+                        _buildBottomTool(Icons.closed_caption, 'Captions', false, shell, isDark),
+                        _buildBottomTool(Icons.image, 'Cover', false, shell, isDark),
+                        _buildBottomTool(Icons.filter, 'Filters', false, shell, isDark),
+                        _buildBottomTool(Icons.tune, 'Adjust', false, shell, isDark),
+                      ],
+                    ),
+                  ),
+
+                  // Additional options
+                  Container(
+                    color: shell.scaffold,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Column(
+                      children: [
+                        _buildOption(
+                          Icons.audiotrack,
+                          'Add sound',
+                          'Music, voiceover, or sounds',
+                          shell,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildOption(
+                          Icons.mic,
+                          'Voiceover',
+                          'Record audio',
+                          shell,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Next button
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFF7B3FF2),
+                              const Color(0xFF00D9FF),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pushNamed(
+                              context,
+                              '/modern-share',
+                              arguments: widget.videoPath,
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Next',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.arrow_forward, color: Colors.white),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward, color: Colors.white),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
@@ -738,28 +792,51 @@ class _ModernVideoEditorViewState
   }
 
   Widget _buildEditTool(IconData icon, String label, StSupportShellStyle shell) {
-    return Column(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.5),
-            shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: () {
+        switch (label) {
+          case 'Rotate':
+            _rotateVideo();
+            break;
+          case 'Flip':
+            _flipVideo();
+            break;
+          case '1x\nSpeed':
+            _changeSpeed();
+            break;
+          case 'Enhance':
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Enhance coming soon'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+            break;
+        }
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.5),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
-          child: Icon(icon, color: Colors.white, size: 24),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
