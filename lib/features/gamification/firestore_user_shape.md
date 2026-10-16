@@ -14,6 +14,7 @@ Backend owns writes; the app reads via `GamificationMapper` / `DailyMissionModel
 |--------|---------------------------------------------|
 | Level | `level`, `creatorLevel` |
 | Total XP | `totalXp`, `total_xp`, `xp` |
+| Weekly XP | `weeklyXp`, `weekly_xp`, `xpThisWeek` |
 | Streak | `streakDays`, `streak_days` |
 | Score | `creatorScore`, `creator_score` |
 | Rank label | `rankTitle`, `rank_title` |

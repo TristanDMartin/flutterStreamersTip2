@@ -39,6 +39,7 @@ Recommended structure:
 {
   "uid": "string",
   "xp": 1240,
+  "weeklyXp": 350,
   "level": 7,
   "rank": "Rising Creator",
   "currentLevelXp": 1000,
@@ -88,6 +89,12 @@ Collection: `gamification_events/{eventId}`
 ```
 
 Clients emit events via `createGamificationEvent()` (Flutter) or the same HTTP contract (website). See `docs/gamification-web.md`.
+
+### Weekly XP Calculation
+
+**Weekly XP is server-calculated ONLY.** The backend tracks XP earned within the current week and writes it to `users/{uid}/gamification/state.weeklyXp`. Clients must **never** compute weekly XP by filtering events or summing recent activity. This ensures website and Flutter show identical leaderboard values.
+
+The server resets weekly XP at the start of each week (UTC Sunday 00:00) and increments it as XP events are processed.
 
 ## 5. Backend Processing Flow
 

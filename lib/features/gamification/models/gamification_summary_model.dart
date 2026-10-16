@@ -20,6 +20,9 @@ class GamificationSummaryModel {
   final int? serverXpToNextLevel;
   final int? serverLevelProgressPct;
 
+  /// Weekly XP (server-calculated for leaderboards)
+  final int? weeklyXp;
+
   const GamificationSummaryModel({
     required this.level,
     required this.totalXp,
@@ -34,6 +37,7 @@ class GamificationSummaryModel {
     this.serverXpInCurrentLevel,
     this.serverXpToNextLevel,
     this.serverLevelProgressPct,
+    this.weeklyXp,
   });
 
   factory GamificationSummaryModel.fromFirestoreMap(Map<String, dynamic>? raw) {
@@ -104,6 +108,11 @@ class GamificationSummaryModel {
         'levelProgressPct',
         'levelProgressPercent',
         'progressPercent',
+      ]),
+      weeklyXp: _readInt(raw, <String>[
+        'weeklyXp',
+        'weekly_xp',
+        'xpThisWeek',
       ]),
     );
   }

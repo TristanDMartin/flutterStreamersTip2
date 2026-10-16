@@ -117,6 +117,10 @@ class GamificationMapper {
     if (xp != null) {
       out['totalXp'] = xp;
     }
+    final int? weeklyXp = _readInt(state, <String>['weeklyXp', 'weekly_xp', 'xpThisWeek']);
+    if (weeklyXp != null) {
+      out['weeklyXp'] = weeklyXp;
+    }
     final int? level = _readInt(state, <String>['level', 'currentLevel']);
     if (level != null) {
       out['level'] = level;
@@ -294,6 +298,7 @@ class GamificationMapper {
       serverXpInCurrentLevel: historical.serverXpInCurrentLevel,
       serverXpToNextLevel: historical.serverXpToNextLevel,
       serverLevelProgressPct: historical.serverLevelProgressPct,
+      weeklyXp: historical.weeklyXp,
     );
   }
 
