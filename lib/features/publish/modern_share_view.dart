@@ -695,8 +695,8 @@ class _ModernShareViewState extends ConsumerState<ModernShareView> {
               shell: shell,
             ),
             _buildOptionTile(
-              icon: Icons.location_on_outlined,
-              title: 'Add location',
+              icon: Icons.category_outlined,
+              title: 'Categories',
               subtitle: 'Help people discover your content.',
               trailing: Icon(Icons.chevron_right, color: shell.muted),
               onTap: () {},
