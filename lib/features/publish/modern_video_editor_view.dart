@@ -2,12 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import '../../core/theme/support_shell_style.dart';
 import 'models/video_text_overlay.dart';
 import 'widgets/text_overlay_editor.dart';
 import 'widgets/text_overlay_dialog.dart';
 import '../../services/auto_caption_service.dart';
+
+/// Device performance tier for optimizing editor features
+enum DevicePerformanceTier {
+  high,    // Modern devices (< 2 years old)
+  medium,  // Mid-range devices (2-3 years old)
+  low,     // Older devices (> 3 years old)
+}
 
 /// Modern video editor matching TikTok-style UI
 class ModernVideoEditorView extends ConsumerStatefulWidget {
@@ -36,19 +44,69 @@ class _ModernVideoEditorViewState
   List<VideoTextOverlay> _textOverlays = [];
   List<CaptionSegment> _captionSegments = [];
   bool _isGeneratingCaptions = false;
+  DevicePerformanceTier _performanceTier = DevicePerformanceTier.high;
+  bool _isDetectingDevice = true;
 
   final AutoCaptionService _captionService = AutoCaptionService();
 
   @override
   void initState() {
     super.initState();
+    _detectDeviceCapability();
     _initializeVideo();
+  }
+
+  Future<void> _detectDeviceCapability() async {
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        final sdkInt = androidInfo.version.sdkInt;
+        
+        // Detect performance tier based on Android SDK version and year
+        if (sdkInt >= 31) { // Android 12+ (2021+)
+          _performanceTier = DevicePerformanceTier.high;
+        } else if (sdkInt >= 28) { // Android 9-11 (2018-2020)
+          _performanceTier = DevicePerformanceTier.medium;
+        } else { // Android 8 or older
+          _performanceTier = DevicePerformanceTier.low;
+        }
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        // Parse iOS version (e.g., "15.0" -> 15)
+        final version = int.tryParse(iosInfo.systemVersion.split('.').first) ?? 0;
+        
+        if (version >= 15) { // iOS 15+ (2021+)
+          _performanceTier = DevicePerformanceTier.high;
+        } else if (version >= 13) { // iOS 13-14 (2019-2020)
+          _performanceTier = DevicePerformanceTier.medium;
+        } else { // iOS 12 or older
+          _performanceTier = DevicePerformanceTier.low;
+        }
+      }
+      
+      debugPrint('📱 Device performance tier: $_performanceTier');
+    } catch (e) {
+      debugPrint('⚠️ Device detection failed, assuming medium tier: $e');
+      _performanceTier = DevicePerformanceTier.medium;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDetectingDevice = false;
+        });
+      }
+    }
   }
 
   Future<void> _initializeVideo() async {
     _controller = VideoPlayerController.file(File(widget.videoPath));
     await _controller!.initialize();
-    _controller!.setLooping(true);
+    
+    // Only loop on high-performance devices to reduce CPU load
+    if (_performanceTier == DevicePerformanceTier.high) {
+      _controller!.setLooping(true);
+    }
+    
     if (mounted) setState(() {});
   }
 
@@ -204,6 +262,18 @@ class _ModernVideoEditorViewState
   }
 
   void _handleToolTap(String tool) {
+    // Disable complex effects on low-end devices
+    if (_performanceTier == DevicePerformanceTier.low && 
+        (tool == 'filters' || tool == 'captions')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This feature is not available on older devices for performance reasons'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     setState(() => _selectedTool = tool);
 
     switch (tool) {

@@ -20,9 +20,12 @@ class VideoDraftStore {
 
   static const String _prefsKey = 'video_drafts_v1';
   static const Duration _debounce = Duration(milliseconds: 450);
+  static const int _maxSaveRetries = 3;
 
   final Map<String, Timer> _debounceTimers = <String, Timer>{};
   final Map<String, VideoDraft> _memory = <String, VideoDraft>{};
+  final Map<String, bool> _saveStatus = <String, bool>{}; // Track save success
+  final Map<String, int> _saveRetryCount = <String, int>{}; // Track retry attempts
 
   String generateDraftId() {
     final int ts = DateTime.now().millisecondsSinceEpoch;
@@ -131,21 +134,76 @@ class VideoDraftStore {
   Future<void> saveDebounced(VideoDraft draft) async {
     _memory[draft.draftId] = draft;
     _debounceTimers[draft.draftId]?.cancel();
-    _debounceTimers[draft.draftId] = Timer(_debounce, () {
-      unawaited(saveNow(draft));
+    _debounceTimers[draft.draftId] = Timer(_debounce, () async {
+      await saveNow(draft);
     });
   }
+  
+  /// Flush all pending debounced saves immediately
+  Future<void> flushPendingSaves() async {
+    final pendingDrafts = <VideoDraft>[];
+    
+    // Cancel all timers and collect drafts
+    for (final entry in _debounceTimers.entries) {
+      entry.value.cancel();
+      final draft = _memory[entry.key];
+      if (draft != null) {
+        pendingDrafts.add(draft);
+      }
+    }
+    _debounceTimers.clear();
+    
+    // Save all pending drafts
+    for (final draft in pendingDrafts) {
+      await saveNow(draft);
+    }
+    
+    debugPrint('💾 Flushed ${pendingDrafts.length} pending draft saves');
+  }
 
-  Future<void> saveNow(VideoDraft draft) async {
+  Future<bool> saveNow(VideoDraft draft, {int retryAttempt = 0}) async {
     _memory[draft.draftId] = draft;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final Map<String, dynamic> all = await _loadRaw(prefs);
       all[draft.draftId] = draft.toJson();
       await prefs.setString(_prefsKey, jsonEncode(all));
+      
+      // Mark save as successful
+      _saveStatus[draft.draftId] = true;
+      _saveRetryCount[draft.draftId] = 0;
+      
+      debugPrint('✅ Draft saved successfully: ${draft.draftId}');
+      return true;
     } catch (e) {
-      secureLog('VideoDraftStore: save failed: $e');
+      secureLog('VideoDraftStore: save failed (attempt ${retryAttempt + 1}): $e');
+      _saveStatus[draft.draftId] = false;
+      
+      // Retry logic with exponential backoff
+      if (retryAttempt < _maxSaveRetries) {
+        _saveRetryCount[draft.draftId] = retryAttempt + 1;
+        final delayMs = 100 * (1 << retryAttempt); // 100ms, 200ms, 400ms
+        
+        debugPrint('⏳ Retrying draft save in ${delayMs}ms...');
+        await Future.delayed(Duration(milliseconds: delayMs));
+        return saveNow(draft, retryAttempt: retryAttempt + 1);
+      }
+      
+      // All retries exhausted
+      debugPrint('❌ Draft save failed after $_maxSaveRetries attempts: ${draft.draftId}');
+      return false;
     }
+  }
+  
+  /// Get save status for a draft
+  bool getSaveStatus(String draftId) {
+    return _saveStatus[draftId] ?? false;
+  }
+  
+  /// Check if a draft is currently being retried
+  bool isRetrying(String draftId) {
+    final retryCount = _saveRetryCount[draftId] ?? 0;
+    return retryCount > 0 && retryCount < _maxSaveRetries;
   }
 
   Future<VideoDraft?> load(String draftId) async {
