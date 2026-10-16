@@ -28,26 +28,50 @@ class ChatServiceOptimized {
   // Cache for better performance
   final Map<String, app_chat.Chat> _chatCache = {};
   final Map<String, List<app_message.Message>> _messagesCache = {};
+  final Map<String, DateTime> _messagesFetchTime = {};
+  
+  // Cache management constants
+  static const int _maxCachedChats = 50;
+  static const int _maxCachedMessageLists = 20;
 
-  /// Get messages for a chat
-  Future<List<app_message.Message>> getMessages(String chatId) async {
+  /// Get messages for a chat with deduplication and pagination
+  Future<List<app_message.Message>> getMessages(String chatId, {int limit = 50}) async {
     try {
+      // Check cache first (with 10 second freshness)
+      if (_messagesCache.containsKey(chatId) && _messagesFetchTime[chatId] != null) {
+        final age = DateTime.now().difference(_messagesFetchTime[chatId]!);
+        if (age.inSeconds < 10) {
+          return _messagesCache[chatId]!;
+        }
+      }
+
       final query = await _firestore
           .collection('chats')
           .doc(chatId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
-          .limit(50)
+          .limit(limit)
           .get();
 
       final messages = <app_message.Message>[];
+      final seenMessageIds = <String>{}; // Deduplication tracker
+      
       for (final doc in query.docs) {
+        // Skip duplicates
+        if (seenMessageIds.contains(doc.id)) {
+          continue;
+        }
+        seenMessageIds.add(doc.id);
+        
         final message = _mapMessage(doc.id, chatId, doc.data());
         messages.add(message);
       }
 
-      _messagesCache[chatId] = messages;
-      return messages.reversed.toList();
+      final sortedMessages = messages.reversed.toList();
+      _messagesCache[chatId] = sortedMessages;
+      _messagesFetchTime[chatId] = DateTime.now();
+      _pruneCache(); // Prevent memory bloat
+      return sortedMessages;
     } catch (e) {
       return [];
     }
@@ -484,9 +508,37 @@ class ChatServiceOptimized {
     }
   }
 
+  /// Prune old cache entries to prevent memory bloat
+  void _pruneCache() {
+    // Remove oldest message caches if we exceed the limit
+    if (_messagesCache.length > _maxCachedMessageLists) {
+      final sortedByTime = _messagesFetchTime.entries.toList()
+        ..sort((a, b) => a.value.compareTo(b.value));
+      
+      final toRemove = sortedByTime.length - _maxCachedMessageLists;
+      for (int i = 0; i < toRemove; i++) {
+        final chatId = sortedByTime[i].key;
+        _messagesCache.remove(chatId);
+        _messagesFetchTime.remove(chatId);
+      }
+    }
+    
+    // Remove oldest chats if we exceed the limit
+    if (_chatCache.length > _maxCachedChats) {
+      final sortedChats = _chatCache.values.toList()
+        ..sort((a, b) => a.lastTimestamp.compareTo(b.lastTimestamp));
+      
+      final toRemove = _chatCache.length - _maxCachedChats;
+      for (int i = 0; i < toRemove; i++) {
+        _chatCache.remove(sortedChats[i].id);
+      }
+    }
+  }
+
   /// Clear cache
   void clearCache() {
     _chatCache.clear();
     _messagesCache.clear();
+    _messagesFetchTime.clear();
   }
 }

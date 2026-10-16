@@ -28,21 +28,32 @@ class InboxServiceOptimized {
   final Map<String, SharedDraft> _draftCache = {};
   final Map<String, app_user.User> _userCache = {};
   final Map<String, int> _unreadCounts = {};
+  DateTime? _lastChatFetchTime;
 
   // Real-time listeners
   StreamSubscription<List<app_chat.Chat>>? _chatsSubscription;
   StreamSubscription<List<SharedDraft>>? _draftsSubscription;
 
-  /// Get user's chats
-  Future<List<app_chat.Chat>> getChats() async {
+  /// Get user's chats with pagination and caching
+  Future<List<app_chat.Chat>> getChats({int limit = 30}) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return [];
 
     try {
-      // Match website: no orderBy (avoids composite-index failures); sort client-side.
+      // Return cached results if available and fresh (within 30 seconds)
+      if (_chatCache.isNotEmpty && _lastChatFetchTime != null) {
+        final age = DateTime.now().difference(_lastChatFetchTime!);
+        if (age.inSeconds < 30) {
+          return _chatCache.values.toList()
+            ..sort((a, b) => b.lastTimestamp.compareTo(a.lastTimestamp));
+        }
+      }
+
+      // Fetch with pagination - limit results for faster initial load
       final query = await _firestore
           .collection('chats')
           .where('participants', arrayContains: currentUser.uid)
+          .limit(limit)
           .get();
 
       final chats = <app_chat.Chat>[];
@@ -66,10 +77,14 @@ class InboxServiceOptimized {
           LoggingService.instance.error('Skip bad chat ${doc.id}: $e');
         }
       }
+      
+      // Sort in-memory (faster than Firestore orderBy which needs composite index)
       chats.sort(
         (app_chat.Chat a, app_chat.Chat b) =>
             b.lastTimestamp.compareTo(a.lastTimestamp),
       );
+      
+      _lastChatFetchTime = DateTime.now();
       return chats;
     } catch (e) {
       LoggingService.instance.error('Error getting chats: $e');

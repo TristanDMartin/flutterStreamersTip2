@@ -348,7 +348,23 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       _userProfileSubscriptions.remove(userId);
     }
 
-    for (final String otherUserId in orderedUserIds) {
+    // Batch process new profiles instead of subscribing to each individually
+    final newUserIds = orderedUserIds
+        .where((id) => !_userProfileSubscriptions.containsKey(id))
+        .toList();
+    
+    if (newUserIds.isEmpty) return;
+    
+    // Load profiles in batches of 5 for better performance
+    const batchSize = 5;
+    for (int i = 0; i < newUserIds.length; i += batchSize) {
+      final batch = newUserIds.skip(i).take(batchSize).toList();
+      _loadProfileBatch(batch);
+    }
+  }
+  
+  Future<void> _loadProfileBatch(List<String> userIds) async {
+    for (final otherUserId in userIds) {
       if (_userProfileSubscriptions.containsKey(otherUserId)) continue;
 
       // Listen to peer profile changes (publicUsers)

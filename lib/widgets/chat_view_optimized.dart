@@ -153,11 +153,12 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
     int attempt = 0,
   }) {
     if (!mounted || !_scrollController.hasClients) {
-      if (attempt >= 8) {
+      // Reduced max attempts from 8 to 4 for better performance
+      if (attempt >= 4) {
         return;
       }
       Future<void>.delayed(
-        const Duration(milliseconds: 32),
+        const Duration(milliseconds: 50), // Increased delay from 32ms to 50ms
         () => _scrollToBottomWithRetries(
           forceJump: forceJump,
           attempt: attempt + 1,
@@ -167,11 +168,12 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
     }
     final ScrollPosition position = _scrollController.position;
     if (!position.hasContentDimensions) {
-      if (attempt >= 8) {
+      // Reduced max attempts from 8 to 4 for better performance
+      if (attempt >= 4) {
         return;
       }
       Future<void>.delayed(
-        const Duration(milliseconds: 32),
+        const Duration(milliseconds: 50), // Increased delay from 32ms to 50ms
         () => _scrollToBottomWithRetries(
           forceJump: forceJump,
           attempt: attempt + 1,
@@ -182,8 +184,9 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
     final double targetOffset = position.maxScrollExtent;
     if (forceJump) {
       _scrollController.jumpTo(targetOffset);
+      // Single follow-up jump after reduced delay
       Future<void>.delayed(
-        const Duration(milliseconds: 180),
+        const Duration(milliseconds: 150), // Reduced from 180ms
         () {
           if (!mounted || !_scrollController.hasClients) {
             return;
@@ -195,7 +198,7 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
     }
     _scrollController.animateTo(
       targetOffset,
-      duration: const Duration(milliseconds: 220),
+      duration: const Duration(milliseconds: 200), // Reduced from 220ms
       curve: Curves.easeOutCubic,
     );
   }
