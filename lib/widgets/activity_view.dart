@@ -966,17 +966,43 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       return;
     }
 
+    // Validate user object before navigation
+    if (user.id.isEmpty) {
+      debugPrint('⚠️ ActivityView: Cannot navigate - user.id is empty');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open profile'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
     debugPrint(
         '👆 ActivityView: Profile tap - userId: ${user.id}, username: ${user.username}');
 
-    // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
-    AppNavigator.openStreamerCard(
-      context,
-      userId: user.id,
-      initialCreator: CreatorProfileSnapshot.fromUser(user),
-      currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
-      onDismiss: () => Navigator.of(context).pop(),
-    );
+    try {
+      // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
+      AppNavigator.openStreamerCard(
+        context,
+        userId: user.id,
+        initialCreator: CreatorProfileSnapshot.fromUser(user),
+        currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+        onDismiss: () => Navigator.of(context).pop(),
+      );
+    } catch (e) {
+      debugPrint('❌ ActivityView: Error navigating to profile: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open profile'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   void _handlePostTap(ActivityNotification notification) {

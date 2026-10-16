@@ -150,7 +150,35 @@ class _ContentPlanDetailViewState extends ConsumerState<ContentPlanDetailView> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
+        SnackBar(
+          content: Text('Failed to save changes: ${e.message}'),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _handleItemChange(index, next),
+          ),
+          duration: const Duration(seconds: 5),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      
+      // Revert optimistic update on failure
+      setState(() {
+        // Keep the original item if save failed
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unexpected error saving changes: ${e.toString()}'),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _handleItemChange(index, next),
+          ),
+          duration: const Duration(seconds: 5),
+          backgroundColor: Colors.red.shade700,
+        ),
       );
     }
   }

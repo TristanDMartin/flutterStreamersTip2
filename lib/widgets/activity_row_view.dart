@@ -105,19 +105,30 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   }
 
   bool get _canOpenActorProfile {
-    final id = widget.notification.user.id.toLowerCase().trim();
+    final id = widget.notification.user.id.trim();
     final username = widget.notification.user.username.toLowerCase().trim();
-    return id.isNotEmpty &&
-        !id.contains('system') &&
+    
+    // Validate user has required fields
+    if (id.isEmpty) {
+      debugPrint('⚠️ ActivityRowView: Cannot open profile - user.id is empty');
+      return false;
+    }
+    
+    // Filter out system accounts
+    return !id.toLowerCase().contains('system') &&
         username != 'streamerstip' &&
         username != 'system';
   }
 
   void _handleActorTap() {
     HapticFeedback.lightImpact();
+    
+    debugPrint('👆 ActivityRowView: Actor tap - userId: ${widget.notification.user.id}, canOpen: $_canOpenActorProfile');
+    
     if (_canOpenActorProfile) {
       widget.onProfileTap(widget.notification.user);
     } else {
+      // Fallback to card tap if profile can't be opened
       widget.onCardTap?.call(widget.notification);
     }
   }
