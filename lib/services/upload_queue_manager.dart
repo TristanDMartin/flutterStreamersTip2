@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:collection';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'video_upload_service.dart';
+import 'video_compression_service.dart';
 
 enum UploadStatus {
   queued,
@@ -61,6 +64,7 @@ class UploadQueueManager {
   UploadTask? _currentTask;
   bool _isProcessing = false;
 
+  final VideoUploadService _uploadService = VideoUploadService();
   final _statusController = StreamController<List<UploadTask>>.broadcast();
   Stream<List<UploadTask>> get statusStream => _statusController.stream;
 
@@ -132,36 +136,52 @@ class UploadQueueManager {
     _notifyListeners();
   }
 
-  /// Process individual upload task
+  /// Process individual upload task with real Mux upload
   Future<void> _processUploadTask(UploadTask task) async {
-    // Step 1: Compress video
-    task.status = UploadStatus.compressing;
-    task.progress = 0.0;
-    _notifyListeners();
-
-    // Simulate compression
-    for (double i = 0; i <= 1.0; i += 0.1) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      task.progress = i * 0.3; // 30% for compression
-      _notifyListeners();
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw StateError('User not authenticated');
     }
 
-    // Step 2: Upload
-    task.status = UploadStatus.uploading;
-    _notifyListeners();
-
-    // Simulate upload
-    for (double i = 0; i <= 1.0; i += 0.05) {
-      await Future.delayed(const Duration(milliseconds: 200));
-      task.progress = 0.3 + (i * 0.7); // 70% for upload
+    try {
+      // Step 1: Update status to uploading
+      task.status = UploadStatus.uploading;
+      task.progress = 0.1;
       _notifyListeners();
-    }
 
-    // Step 3: Complete
-    task.status = UploadStatus.completed;
-    task.progress = 1.0;
-    task.videoUrl = 'https://example.com/video/${task.id}';
-    debugPrint('✅ Upload completed: ${task.id}');
+      // Step 2: Call real video upload service
+      debugPrint('📤 Starting real Mux upload for task: ${task.id}');
+      
+      final result = await _uploadService.uploadVideo(
+        videoFile: task.videoFile,
+        caption: task.caption,
+        hashtags: task.hashtags,
+        privacy: 'public',
+        allowComments: true,
+        isDraft: false,
+      );
+
+      // Step 3: Handle result
+      if (result.success) {
+        task.status = UploadStatus.completed;
+        task.progress = 1.0;
+        task.videoUrl = result.videoUrl;
+        debugPrint('✅ Upload completed successfully: ${task.id}');
+        debugPrint('   Video URL: ${result.videoUrl}');
+      } else {
+        throw StateError(result.error ?? 'Upload failed without error message');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Upload task failed: ${task.id}');
+      debugPrint('   Error: $e');
+      debugPrint('   Stack: $stackTrace');
+      
+      task.status = UploadStatus.failed;
+      task.error = e.toString();
+      task.progress = 0.0;
+      
+      rethrow;
+    }
   }
 
   /// Cancel specific upload

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
+import 'dart:async';
 
 import '../../core/theme/support_shell_style.dart';
 import '../../services/video_upload_service.dart';
@@ -121,13 +122,27 @@ class _ModernShareViewState extends ConsumerState<ModernShareView> {
     try {
       File videoFile = File(widget.videoPath);
       
-      // Step 1: Compress video
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Compressing video...'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // Step 1: Validate video file
+      if (!await videoFile.exists()) {
+        throw StateError('Video file not found. Please try recording again.');
+      }
+
+      final int fileSize = await videoFile.length();
+      if (fileSize == 0) {
+        throw StateError('Video file is empty. Please try recording again.');
+      }
+
+      debugPrint('📹 Starting upload: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)} MB');
+      
+      // Step 2: Compress video
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Compressing video...'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
 
       final compressionResult = await _compressionService.compressVideo(
         videoFile,
@@ -138,59 +153,165 @@ class _ModernShareViewState extends ConsumerState<ModernShareView> {
             });
           }
         },
+      ).timeout(
+        const Duration(minutes: 5),
+        onTimeout: () => throw TimeoutException('Video compression timed out after 5 minutes'),
       );
 
-      if (compressionResult.success && compressionResult.compressedFile != null) {
-        videoFile = compressionResult.compressedFile!;
-        debugPrint('✅ Video compressed: ${(compressionResult.compressionRatio! * 100).toStringAsFixed(1)}% reduction');
+      if (!compressionResult.success) {
+        throw StateError('Video compression failed: ${compressionResult.error ?? "Unknown error"}');
       }
 
-      // Step 2: Extract thumbnail
+      if (compressionResult.compressedFile != null) {
+        videoFile = compressionResult.compressedFile!;
+        final int compressedSize = await videoFile.length();
+        debugPrint('✅ Video compressed: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)} MB → ${(compressedSize / (1024 * 1024)).toStringAsFixed(2)} MB');
+      }
+
+      // Step 3: Extract thumbnail
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Preparing upload...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
       final thumbnailResult = await _compressionService.extractThumbnail(
         videoFile,
         timeMs: Duration.zero,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException('Thumbnail extraction timed out'),
       );
 
-      // Step 3: Extract hashtags
+      // Step 4: Extract hashtags
       final allHashtags = <String>[
         ..._selectedHashtags.map((tag) => tag.replaceFirst('#', '')),
         ...RegExp(r'#(\w+)').allMatches(_captionController.text)
             .map((m) => m.group(1)!)
       ].toSet().toList();
 
-      // Step 4: Upload with queue manager
-      _queueManager.enqueueUpload(
+      // Step 5: Upload with comprehensive error handling
+      debugPrint('🚀 Initiating Mux upload...');
+      
+      final uploadId = _queueManager.enqueueUpload(
         videoFile: videoFile,
         caption: _captionController.text.trim(),
         hashtags: allHashtags,
         thumbnailFile: thumbnailResult.thumbnailFile,
       );
 
+      // Step 6: Monitor upload status
+      final uploadCompleter = Completer<bool>();
+      StreamSubscription? statusSubscription;
+      
+      statusSubscription = _queueManager.statusStream.listen((tasks) {
+        final task = tasks.firstWhere(
+          (t) => t.id == uploadId,
+          orElse: () => throw StateError('Upload task not found'),
+        );
+
+        if (task.status == UploadStatus.completed) {
+          uploadCompleter.complete(true);
+          statusSubscription?.cancel();
+        } else if (task.status == UploadStatus.failed) {
+          uploadCompleter.completeError(
+            StateError('Upload failed: ${task.error ?? "Unknown error"}'),
+          );
+          statusSubscription?.cancel();
+        }
+      });
+
+      // Wait for upload to complete or fail (with timeout)
+      final uploadSuccess = await uploadCompleter.future.timeout(
+        const Duration(minutes: 10),
+        onTimeout: () {
+          statusSubscription?.cancel();
+          throw TimeoutException('Upload timed out after 10 minutes. Check your network connection.');
+        },
+      );
+
+      if (!uploadSuccess) {
+        throw StateError('Upload verification failed');
+      }
+
       if (mounted) {
         setState(() => _isUploading = false);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Video queued for upload! Processing in background.'),
+            content: Text('✅ Video uploaded successfully! Processing will complete shortly.'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: Duration(seconds: 4),
           ),
         );
         
         // Navigate back to home
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
-    } catch (e) {
+    } on TimeoutException catch (e) {
+      debugPrint('❌ Upload timeout: $e');
       if (mounted) {
         setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Upload error: $e'),
-            backgroundColor: Colors.red,
-          ),
+        _showErrorDialog(
+          'Upload Timeout',
+          'Your upload took too long. This usually happens with poor network connection. Please check your internet and try again.',
+          showRetry: true,
+        );
+      }
+    } on StateError catch (e) {
+      debugPrint('❌ Upload state error: $e');
+      if (mounted) {
+        setState(() => _isUploading = false);
+        _showErrorDialog(
+          'Upload Failed',
+          e.message,
+          showRetry: true,
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Upload error: $e\n$stackTrace');
+      if (mounted) {
+        setState(() => _isUploading = false);
+        _showErrorDialog(
+          'Upload Error',
+          'An unexpected error occurred: ${e.toString()}',
+          showRetry: true,
         );
       }
     }
+  }
+
+  void _showErrorDialog(String title, String message, {bool showRetry = false}) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Go back to camera
+              },
+              child: const Text('Cancel'),
+            ),
+            if (showRetry)
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _handleShare(); // Retry upload
+                },
+                child: const Text('Retry'),
+              ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _saveDraft() async {

@@ -17,7 +17,8 @@ class VideoPrefetchService {
   final NetworkPolicyService _networkPolicy = NetworkPolicyService();
 
   // Prefetch configuration
-  static const int _prefetchWindowSize = 3; // Prefetch next 3 videos
+  static const int _prefetchWindowSize = 4; // Increased from 3 - prefetch next 4 videos for smoother transitions
+  static const int _minBufferSegments = 2; // Ensure at least 2 segments are loaded
 
   // Current prefetch state
   final Set<String> _prefetchingVideos = {};
@@ -164,20 +165,20 @@ class VideoPrefetchService {
     try {
       if (videoUrl.isEmpty) return;
 
-      // For HLS, prefetch the first segment
+      // For HLS, prefetch multiple initial segments for smoother startup
       if (videoUrl.contains('.m3u8')) {
-        await _prefetchHLSFirstSegment(videoUrl);
+        await _prefetchHLSFirstSegment(videoUrl, segmentCount: _minBufferSegments);
       } else {
-        // For other formats, prefetch first chunk
-        await _prefetchVideoChunk(videoUrl, 0, 1024 * 1024); // 1MB chunk
+        // For other formats, prefetch larger initial chunk
+        await _prefetchVideoChunk(videoUrl, 0, 2 * 1024 * 1024); // 2MB chunk (increased from 1MB)
       }
     } catch (e) {
       secureLog('❌ Error prefetching first segment: $e');
     }
   }
 
-  /// Prefetch HLS first segment
-  Future<void> _prefetchHLSFirstSegment(String hlsUrl) async {
+  /// Prefetch HLS first segment(s)
+  Future<void> _prefetchHLSFirstSegment(String hlsUrl, {int segmentCount = 2}) async {
     try {
       // Fetch master playlist
       final playlistResponse = await http.get(Uri.parse(hlsUrl));
@@ -185,13 +186,12 @@ class VideoPrefetchService {
 
       final playlist = playlistResponse.body;
 
-      // Find the lowest quality stream
+      // Find the lowest quality stream for initial buffering
       final lines = playlist.split('\n');
       String? segmentUrl;
 
       for (int i = 0; i < lines.length; i++) {
         if (lines[i].startsWith('#EXT-X-STREAM-INF:')) {
-          // This is a stream info line, next line should be the URL
           if (i + 1 < lines.length && !lines[i + 1].startsWith('#')) {
             final baseUrl = hlsUrl.substring(0, hlsUrl.lastIndexOf('/') + 1);
             segmentUrl = baseUrl + lines[i + 1];
@@ -201,9 +201,30 @@ class VideoPrefetchService {
       }
 
       if (segmentUrl != null) {
-        // Fetch the first segment
-        await _prefetchVideoChunk(segmentUrl, 0, 2 * 1024 * 1024); // 2MB
-        secureLog('🎬 HLS first segment cached: ${segmentUrl.split('/').last}');
+        // Fetch media playlist
+        final mediaPlaylistResponse = await http.get(Uri.parse(segmentUrl));
+        if (mediaPlaylistResponse.statusCode == 200) {
+          final mediaPlaylist = mediaPlaylistResponse.body;
+          final mediaLines = mediaPlaylist.split('\n');
+          
+          // Find and prefetch the first N segments
+          final List<String> segmentsToFetch = [];
+          final baseUrl = segmentUrl.substring(0, segmentUrl.lastIndexOf('/') + 1);
+          
+          for (final line in mediaLines) {
+            if (!line.startsWith('#') && line.trim().isNotEmpty && line.endsWith('.ts')) {
+              segmentsToFetch.add(baseUrl + line.trim());
+              if (segmentsToFetch.length >= segmentCount) break;
+            }
+          }
+          
+          // Prefetch multiple segments for smooth startup
+          for (final segment in segmentsToFetch) {
+            await _prefetchVideoChunk(segment, 0, 2 * 1024 * 1024); // 2MB per segment
+          }
+          
+          secureLog('🎬 HLS prefetched ${segmentsToFetch.length} segments for smooth startup');
+        }
       }
     } catch (e) {
       secureLog('❌ Error prefetching HLS segment: $e');

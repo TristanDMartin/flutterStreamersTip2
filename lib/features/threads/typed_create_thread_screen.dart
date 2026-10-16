@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'threads_contract.dart';
@@ -60,28 +61,44 @@ class _TypedCreateThreadScreenState extends State<TypedCreateThreadScreen> {
   Future<void> _submit() async {
     final String title = _titleController.text.trim();
     final String body = _bodyController.text.trim();
-    final String? uid =
-        firebase_auth.FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    
+    if (user == null) {
       setState(() => _errorMessage = 'Please sign in to start a thread.');
       return;
     }
+
+    // Verify email is verified
+    await user.reload();
+    final firebase_auth.User? refreshedUser =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+    if (refreshedUser != null && !refreshedUser.emailVerified) {
+      setState(() => _errorMessage =
+          'Please verify your email before creating threads. Check your inbox for a verification link.');
+      return;
+    }
+
     if (title.isEmpty || body.isEmpty) {
       setState(() => _errorMessage = 'Title and body are required.');
       return;
     }
+
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
+
     try {
+      debugPrint('📝 Creating typed thread: title="$title", type=$_type, category=$_categoryId');
+      
       final String id = await widget.repository.createThread(
         CreateThreadRequest(
           type: _type,
           title: title,
           body: body,
           categoryId: _categoryId,
-          authorId: uid,
+          authorId: user.uid,
           visibility: _visibility,
           tippyStarterId: _tippyStarterId,
           payload: <String, dynamic>{
@@ -89,14 +106,48 @@ class _TypedCreateThreadScreenState extends State<TypedCreateThreadScreen> {
           },
         ),
       );
+
+      debugPrint('✅ Typed thread created successfully: $id');
+
       if (!mounted) {
         return;
       }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thread created successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
       Navigator.of(context).pop(id);
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      debugPrint('❌ Auth error creating thread: ${e.code} - ${e.message}');
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = switch (e.code) {
+          'requires-recent-login' => 'Please sign in again to create threads.',
+          'user-disabled' => 'Your account has been disabled.',
+          'user-not-found' => 'Your account was not found. Please sign in again.',
+          _ => 'Authentication error: ${e.message ?? e.code}',
+        };
+        _isSubmitting = false;
+      });
+    } on FirebaseException catch (e) {
+      debugPrint('❌ Firestore error creating thread: ${e.code} - ${e.message}');
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = switch (e.code) {
+          'permission-denied' => 'You don\'t have permission to create threads. Please complete your account setup or verify your email.',
+          'unavailable' => 'Server is temporarily unavailable. Please try again in a moment.',
+          'deadline-exceeded' => 'Request timed out. Check your connection and try again.',
+          _ => 'Error creating thread: ${e.message ?? e.code}',
+        };
+        _isSubmitting = false;
+      });
     } catch (e) {
-      if (!mounted) {
-        return;
-      }
+      debugPrint('❌ Unexpected error creating thread: $e');
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.toString();
         _isSubmitting = false;

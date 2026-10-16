@@ -739,7 +739,28 @@ class _ThreadsListViewState extends ConsumerState<ThreadsListView> {
       MaterialPageRoute(
         builder: (context) => ThreadDetailScreen(postId: post.id),
       ),
-    ).then((_) => _loadThreads());
+    ).then((result) {
+      // Handle thread deletion
+      if (result is Map && result['deleted'] == true) {
+        final String? deletedThreadId = result['threadId'] as String?;
+        if (deletedThreadId != null && mounted) {
+          // Optimistically remove from list immediately
+          setState(() {
+            _threads.removeWhere((thread) => thread.id == deletedThreadId);
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Thread deleted'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Normal navigation back - refresh list
+        _loadThreads();
+      }
+    });
   }
 
   void _navigateToCreateThread() {

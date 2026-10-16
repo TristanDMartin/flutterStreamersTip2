@@ -131,6 +131,10 @@ class PlaybackControllerFactory {
             mixWithOthers: false,
             allowBackgroundPlayback: false,
           ),
+          httpHeaders: const <String, String>{
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache',
+          },
         );
       }
       pool.controllers[videoId] = created;

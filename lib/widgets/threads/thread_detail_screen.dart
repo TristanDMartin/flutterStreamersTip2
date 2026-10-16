@@ -442,6 +442,104 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
     }
   }
 
+  Future<void> _showThreadMenu() async {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    final isAuthor = currentUser?.uid == _post?.author.uid;
+
+    if (!isAuthor) {
+      // Non-authors only see report
+      await _reportThread();
+      return;
+    }
+
+    // Show menu for thread author
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text(
+                  'Delete Thread',
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteThread();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteThread() async {
+    final post = _post;
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    
+    if (post == null || currentUser == null || currentUser.uid != post.author.uid) {
+      return;
+    }
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Thread'),
+        content: const Text(
+          'Are you sure you want to delete this thread? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      debugPrint('🗑️ Deleting thread: ${post.id}');
+      
+      // Optimistically close the screen first (immediate UI feedback)
+      if (mounted) {
+        Navigator.pop(context, {'deleted': true, 'threadId': post.id});
+      }
+
+      // Then delete on backend
+      await _forumService.deletePost(post.id, currentUser.uid);
+      
+      debugPrint('✅ Thread deleted successfully: ${post.id}');
+    } catch (e) {
+      debugPrint('❌ Error deleting thread: $e');
+      
+      // If deletion failed and we already closed the screen, 
+      // the user will see it back in the list on refresh
+      // which is acceptable behavior
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting thread: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final StSupportShellStyle shell = StSupportShellStyle.of(context);
@@ -586,6 +684,12 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                         onPressed: _toggleLike,
                         isActive: _post!.likedBy.contains(firebase_auth
                             .FirebaseAuth.instance.currentUser?.uid),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildHeaderIconButton(
+                        context,
+                        icon: Icons.more_vert,
+                        onPressed: _showThreadMenu,
                       ),
                     ],
                   ),

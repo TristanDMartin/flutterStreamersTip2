@@ -19,8 +19,8 @@ abstract final class HomeStartupPlaybackCoordinator {
   static VoidCallback? onStartupFeedReady;
 
   static const Duration dedupeWindow = Duration(milliseconds: 750);
-  static const Duration startupClaimTtl = Duration(milliseconds: 1500);
-  static const Duration scrollFailOpenDelay = Duration(milliseconds: 1000);
+  static const Duration startupClaimTtl = Duration(milliseconds: 2000); // Increased from 1500ms
+  static const Duration scrollFailOpenDelay = Duration(milliseconds: 800); // Reduced from 1000ms for faster scroll unlock
 
   static bool get hasStartupClaimed => _sessionStartupClaimed;
   static String? get claimedVideoId => _lastVideoId;

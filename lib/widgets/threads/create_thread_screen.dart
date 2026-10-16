@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/forum_service.dart';
 import '../../utils/user_facing_error.dart';
 import '../../models/forum_author.dart';
@@ -86,15 +87,32 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
     try {
       final user = firebase_auth.FirebaseAuth.instance.currentUser;
       if (user == null) {
-        throw 'User not authenticated.';
+        throw 'You must be signed in to create a thread.';
+      }
+
+      // Verify email is verified
+      await user.reload();
+      final refreshedUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (refreshedUser != null && !refreshedUser.emailVerified) {
+        throw 'Please verify your email before creating threads. Check your inbox for a verification link.';
+      }
+
+      // Ensure user has required profile fields
+      final displayName = user.displayName?.trim() ?? '';
+      final username = user.displayName?.trim().toLowerCase().replaceAll(' ', '_') ?? 'user_${user.uid.substring(0, 8)}';
+      
+      if (displayName.isEmpty) {
+        throw 'Please complete your profile setup before creating threads. Go to Profile > Edit Profile to set your display name.';
       }
 
       final author = ForumAuthor(
         uid: user.uid,
-        username: user.displayName ?? 'user',
-        displayName: user.displayName ?? 'User',
+        username: username,
+        displayName: displayName,
         avatarUrl: user.photoURL,
       );
+
+      debugPrint('📝 Creating thread: title="$title", category=$_selectedCategory, author=${author.uid}');
 
       await _forumService.createPost(
         title: title,
@@ -108,12 +126,43 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
         linkedVideoId: widget.attachedVideoId,
       );
 
+      debugPrint('✅ Thread created successfully');
+
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thread created successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
         Navigator.pop(context);
       }
-    } catch (e) {
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      debugPrint('❌ Auth error creating thread: ${e.code} - ${e.message}');
       setState(() {
-        _errorMessage = UserFacingError.message(e);
+        _errorMessage = switch (e.code) {
+          'requires-recent-login' => 'Please sign in again to create threads.',
+          'user-disabled' => 'Your account has been disabled.',
+          'user-not-found' => 'Your account was not found. Please sign in again.',
+          _ => 'Authentication error: ${e.message ?? e.code}',
+        };
+        _isLoading = false;
+      });
+    } on FirebaseException catch (e) {
+      debugPrint('❌ Firestore error creating thread: ${e.code} - ${e.message}');
+      setState(() {
+        _errorMessage = switch (e.code) {
+          'permission-denied' => 'You don\'t have permission to create threads. Please complete your account setup or verify your email.',
+          'unavailable' => 'Server is temporarily unavailable. Please try again in a moment.',
+          'deadline-exceeded' => 'Request timed out. Check your connection and try again.',
+          _ => 'Error creating thread: ${e.message ?? e.code}',
+        };
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Unexpected error creating thread: $e');
+      setState(() {
+        _errorMessage = e is String ? e : UserFacingError.message(e);
         _isLoading = false;
       });
     }
