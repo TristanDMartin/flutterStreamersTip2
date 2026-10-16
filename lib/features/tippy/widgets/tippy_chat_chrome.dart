@@ -460,6 +460,7 @@ class TippyComposerShell extends StatefulWidget {
     required this.controller,
     required this.onSend,
     required this.enabled,
+    this.onCancel,
     this.hintText = 'Ask Tippy anything…',
     this.chips,
   });
@@ -467,6 +468,7 @@ class TippyComposerShell extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final bool enabled;
+  final VoidCallback? onCancel;
   final String hintText;
   final Widget? chips;
 
@@ -589,51 +591,80 @@ class _TippyComposerShellState extends State<TippyComposerShell> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                IconButton(
-                  key: const Key('tippy-send'),
-                  onPressed: canSend ? widget.onSend : null,
-                  tooltip: 'Send message',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 36,
-                    height: 36,
-                  ),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    disabledBackgroundColor:
-                        Colors.white.withValues(alpha: 0.08),
-                    foregroundColor: Colors.white,
-                    disabledForegroundColor:
-                        Colors.white.withValues(alpha: 0.35),
-                  ),
-                  icon: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: canSend
-                          ? const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: <Color>[
-                                TippyChatTokens.accent,
-                                TippyChatTokens.accent2,
-                              ],
-                            )
-                          : null,
-                      color: canSend
-                          ? null
-                          : Colors.white.withValues(alpha: 0.08),
-                    ),
-                    child: const SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: Icon(
-                        Icons.arrow_upward_rounded,
-                        size: 18,
-                        color: Colors.white,
+                // Show stop button when busy (!enabled), otherwise show send button
+                widget.enabled
+                    ? IconButton(
+                        key: const Key('tippy-send'),
+                        onPressed: canSend ? widget.onSend : null,
+                        tooltip: 'Send message',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 36,
+                          height: 36,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          disabledBackgroundColor:
+                              Colors.white.withValues(alpha: 0.08),
+                          foregroundColor: Colors.white,
+                          disabledForegroundColor:
+                              Colors.white.withValues(alpha: 0.35),
+                        ),
+                        icon: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: canSend
+                                ? const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: <Color>[
+                                      TippyChatTokens.accent,
+                                      TippyChatTokens.accent2,
+                                    ],
+                                  )
+                                : null,
+                            color: canSend
+                                ? null
+                                : Colors.white.withValues(alpha: 0.08),
+                          ),
+                          child: const SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: Icon(
+                              Icons.arrow_upward_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      )
+                    : IconButton(
+                        key: const Key('tippy-stop'),
+                        onPressed: widget.onCancel,
+                        tooltip: 'Stop generation',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 36,
+                          height: 36,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFFEF4444).withValues(alpha: 0.85),
+                          ),
+                          child: const Icon(
+                            Icons.stop_rounded,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),

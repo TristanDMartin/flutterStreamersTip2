@@ -11,6 +11,7 @@ import '../../core/backend/firebase_https_function_url.dart';
 import '../../core/backend/site_api_base.dart';
 import '../../services/production_monitoring_service.dart';
 import '../../services/performance_monitoring_service.dart';
+import 'cancelable_http_client.dart';
 import 'models/tippy_ui_payload.dart';
 
 typedef TippyTokenProvider = Future<String?> Function();
@@ -28,6 +29,7 @@ class TippyChatService {
           region: _functionsRegion,
         ),
         _client = httpClient ?? http.Client(),
+        _cancelableClient = CancelableHttpClient(client: httpClient),
         _tokenProvider = tokenProvider,
         _requestTimeout = requestTimeout {
     _validateConfiguration();
@@ -61,9 +63,11 @@ class TippyChatService {
 
   final String _apiBase;
   final http.Client _client;
+  final CancelableHttpClient _cancelableClient;
   final TippyTokenProvider? _tokenProvider;
   final Duration _requestTimeout;
   TippyCreditsInfo? _creditsCache;
+  String? _activeRequestId;
 
   bool get hasApiBase => _apiBase.trim().isNotEmpty;
   bool get isStagingMode => _apiBase.toLowerCase().contains('staging');
@@ -137,6 +141,9 @@ class TippyChatService {
   }) async {
     final Stopwatch stopwatch = Stopwatch()..start();
     secureLog('frontend_send_persisted_click', name: 'TippyLatency');
+    
+    _activeRequestId = clientMessageId;
+    
     final Uri uri = Uri.parse(siteTippyChatUrl());
     final Map<String, String> headers = await _buildHeaders();
     final Map<String, dynamic> payload = <String, dynamic>{
@@ -145,38 +152,60 @@ class TippyChatService {
       'platform': platform,
       if (chatId != null && chatId.trim().isNotEmpty) 'chatId': chatId.trim(),
     };
-    final http.Response response = await _executeRequest(
-      () => _client.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(payload),
-      ),
-    );
-    PerformanceMonitoringService().trackNetworkRequest(
-      '/api/tippy/chat',
-      stopwatch.elapsed,
-      statusCode: response.statusCode,
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final Map<String, dynamic>? errBody = _tryDecodeMap(response.body);
-      final String? errMsg = _readString(errBody?['error']);
-      final String? errCode = _readString(errBody?['code']);
-      final String? errDetail = _readString(errBody?['detail']);
-      final String? errName = _readString(errBody?['errorName']);
-      final String? requestId = _readString(errBody?['requestId']);
-      secureLog(
-        'frontend_send_persisted_failed status=${response.statusCode} '
-        'code=${errCode ?? 'none'} error=${errMsg ?? 'none'} '
-        'detail=${errDetail ?? 'none'} errorName=${errName ?? 'none'} '
-        'requestId=${requestId ?? 'none'}',
-        name: 'TippyLatency',
+    
+    try {
+      final http.Response response = await _cancelableClient.execute(
+        requestId: clientMessageId,
+        request: (http.Client client) => client.post(
+          uri,
+          headers: headers,
+          body: jsonEncode(payload),
+        ).timeout(_requestTimeout),
       );
+      
+      PerformanceMonitoringService().trackNetworkRequest(
+        '/api/tippy/chat',
+        stopwatch.elapsed,
+        statusCode: response.statusCode,
+      );
+      
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final Map<String, dynamic>? errBody = _tryDecodeMap(response.body);
+        final String? errMsg = _readString(errBody?['error']);
+        final String? errCode = _readString(errBody?['code']);
+        final String? errDetail = _readString(errBody?['detail']);
+        final String? errName = _readString(errBody?['errorName']);
+        final String? requestId = _readString(errBody?['requestId']);
+        secureLog(
+          'frontend_send_persisted_failed status=${response.statusCode} '
+          'code=${errCode ?? 'none'} error=${errMsg ?? 'none'} '
+          'detail=${errDetail ?? 'none'} errorName=${errName ?? 'none'} '
+          'requestId=${requestId ?? 'none'}',
+          name: 'TippyLatency',
+        );
+      }
+      
+      final TippyChatResult result = _parseSiteChatResponse(response);
+      _creditsCache = _creditsCache?.copyWith(
+        creditsRemaining: result.creditsRemaining,
+      );
+      return result;
+    } on CanceledException {
+      throw const TippyChatException(
+        'Request was canceled',
+        code: 'REQUEST_CANCELED',
+        status: 499,
+      );
+    } finally {
+      _activeRequestId = null;
     }
-    final TippyChatResult result = _parseSiteChatResponse(response);
-    _creditsCache = _creditsCache?.copyWith(
-      creditsRemaining: result.creditsRemaining,
-    );
-    return result;
+  }
+  
+  /// Cancel the active request if one is in progress.
+  void cancelActiveRequest() {
+    if (_activeRequestId != null) {
+      _cancelableClient.cancel(_activeRequestId!);
+    }
   }
 
   Future<String> createChat({
@@ -613,6 +642,7 @@ class TippyChatService {
   }
 
   void dispose() {
+    _cancelableClient.dispose();
     _client.close();
   }
 

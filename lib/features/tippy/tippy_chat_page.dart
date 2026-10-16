@@ -750,13 +750,16 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       }
       setState(() {
         _lines.removeWhere((_ChatLine line) => line.isThinking);
-        _lines.add(
-          _ChatLine(
-            user: false,
-            text: 'Something went wrong: $e',
-            isError: true,
-          ),
-        );
+        // Don't show error for canceled requests
+        if (!e.toString().contains('canceled')) {
+          _lines.add(
+            _ChatLine(
+              user: false,
+              text: 'Something went wrong: $e',
+              isError: true,
+            ),
+          );
+        }
       });
     } finally {
       if (mounted) {
@@ -766,6 +769,25 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
       }
       _scrollToEnd();
     }
+  }
+
+  void _cancelRequest() {
+    if (!_busy) {
+      return;
+    }
+    _service.cancelActiveRequest();
+    setState(() {
+      _lines.removeWhere((_ChatLine line) => line.isThinking);
+      _lines.add(
+        const _ChatLine(
+          user: false,
+          text: 'Request canceled.',
+          isError: true,
+        ),
+      );
+      _busy = false;
+    });
+    _scrollToEnd();
   }
 
   Future<void> _handleTippyError({
@@ -1323,6 +1345,7 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
               TippyComposerShell(
                 controller: _input,
                 onSend: _send,
+                onCancel: _cancelRequest,
                 enabled: !_busy,
                 hintText: hasConversation
                     ? 'Message Tippy…'
