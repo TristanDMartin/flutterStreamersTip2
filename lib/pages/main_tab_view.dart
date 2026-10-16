@@ -8,7 +8,7 @@ import '../components/onboarding/contextual_tips_service.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/inbox_view_optimized.dart';
 import '../widgets/profile_view_optimized.dart';
-import '../widgets/custom_bottom_nav.dart';
+import '../widgets/adaptive_bottom_navigation.dart';
 import '../views/network_view.dart';
 import 'home_view.dart';
 import '../models/user.dart';
@@ -427,7 +427,7 @@ class _MainTabViewState extends ConsumerState<MainTabView>
           ),
         ],
       ),
-      bottomNavigationBar: CustomBottomNav(
+      bottomNavigationBar: AdaptiveBottomNavigation(
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
       ),
