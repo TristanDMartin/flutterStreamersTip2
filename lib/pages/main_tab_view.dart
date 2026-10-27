@@ -20,6 +20,7 @@ import '../services/clean_relationship_service.dart';
 import '../providers/feed_state_provider.dart';
 import '../providers/main_tab_provider.dart';
 import '../providers/unread_messages_provider.dart';
+import '../providers/adaptive_nav_provider.dart';
 import '../providers/home_provider.dart' as hp;
 import '../features/billing/subscription_provider.dart';
 import '../features/main_tabs/application/main_tab_background_refresh.dart';
@@ -372,6 +373,15 @@ class _MainTabViewState extends ConsumerState<MainTabView>
     ref.watch(unreadMessagesProvider);
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final Color on = colorScheme.onSurface;
+    final bool keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref
+          .read(adaptiveNavProvider.notifier)
+          .setKeyboardVisible(keyboardVisible);
+    });
+    
     final Widget shell = Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody:
