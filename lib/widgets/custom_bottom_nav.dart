@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import '../providers/current_user_provider.dart';
 import '../providers/unread_messages_provider.dart';
+import '../providers/adaptive_nav_provider.dart';
 import '../qa/qa_keys.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../utils/performance_utils.dart';
@@ -18,23 +19,28 @@ class CustomBottomNav extends ConsumerStatefulWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.forceShow = false,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final bool forceShow;
 
   @override
   ConsumerState<CustomBottomNav> createState() => _CustomBottomNavState();
 }
 
 class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const int _slotCount = 5;
   static const int _createIndex = 2;
 
   late final AnimationController _indicatorController;
+  late final AnimationController _visibilityController;
   late Animation<double> _indicatorCenterAnimation;
+  late Animation<Offset> _slideAnimation;
   double _indicatorCenter = 0.5;
+  bool _respectReducedMotion = false;
 
   @override
   void initState() {
@@ -44,10 +50,29 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
       vsync: this,
       duration: LiquidGlassDockTokens.orbDuration,
     );
+    _visibilityController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+      value: 1.0,
+    );
     _indicatorCenterAnimation = AlwaysStoppedAnimation<double>(
       _indicatorCenter,
     );
+    _slideAnimation = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(0, 1),
+    ).animate(CurvedAnimation(
+      parent: _visibilityController,
+      curve: Curves.easeInOut,
+    ));
     _indicatorController.value = 1;
+    _checkReducedMotionPreference();
+  }
+
+  void _checkReducedMotionPreference() {
+    final bool disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _respectReducedMotion = disableAnimations;
   }
 
   @override
@@ -59,8 +84,15 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkReducedMotionPreference();
+  }
+
+  @override
   void dispose() {
     _indicatorController.dispose();
+    _visibilityController.dispose();
     super.dispose();
   }
 
@@ -99,6 +131,24 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
   Widget build(BuildContext context) {
     final AppResponsive responsive = context.responsive;
     final double viewBottom = MediaQuery.viewPaddingOf(context).bottom;
+    final adaptiveNavState = ref.watch(adaptiveNavProvider);
+    final bool shouldShow = widget.forceShow || adaptiveNavState.isVisible;
+
+    if (_respectReducedMotion) {
+      if (!shouldShow) {
+        return const SizedBox.shrink();
+      }
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (shouldShow && _visibilityController.value != 1.0) {
+          _visibilityController.forward();
+        } else if (!shouldShow && _visibilityController.value != 0.0) {
+          _visibilityController.reverse();
+        }
+      });
+    }
+
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final ColorScheme colorScheme = Theme.of(context).colorScheme;
@@ -141,10 +191,14 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
             .clamp(metrics.indicatorMinWidth, metrics.indicatorMaxWidth)
             .toDouble();
         return RepaintBoundary(
-          child: SafeArea(
-            bottom: true,
-            minimum: EdgeInsets.zero,
-            child: Padding(
+          child: SlideTransition(
+            position: _respectReducedMotion
+                ? const AlwaysStoppedAnimation(Offset.zero)
+                : _slideAnimation,
+            child: SafeArea(
+              bottom: true,
+              minimum: EdgeInsets.zero,
+              child: Padding(
               padding: EdgeInsets.only(
                 left: metrics.horizontalMargin,
                 right: metrics.horizontalMargin,
@@ -308,6 +362,7 @@ class _CustomBottomNavState extends ConsumerState<CustomBottomNav>
               ),
             ),
           ),
+            ),
         );
       },
     );

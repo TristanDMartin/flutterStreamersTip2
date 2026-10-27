@@ -8,6 +8,7 @@ import '../constants/app_colors.dart';
 import '../services/report_service.dart';
 import 'status_aware_avatar.dart';
 import 'streamer_card_sections.dart';
+import 'comments/gif_comment_display.dart';
 
 class OptimizedCommentTile extends ConsumerStatefulWidget {
   final Comment comment;
@@ -298,15 +299,27 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile>
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      widget.comment.text,
-                      style: TextStyle(
-                        color: primaryText,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        height: 1.35,
+                    if (widget.comment.text.isNotEmpty &&
+                        widget.comment.text != '[deleted]')
+                      Text(
+                        widget.comment.text,
+                        style: TextStyle(
+                          color: primaryText,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          height: 1.35,
+                        ),
                       ),
-                    ),
+                    if (widget.comment.gifUrl != null &&
+                        widget.comment.gifUrl!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      GifCommentDisplay(
+                        gifUrl: widget.comment.gifUrl!,
+                        gifMetadata: widget.comment.gifMetadata,
+                        gifProvider: widget.comment.gifProvider,
+                        maxHeight: 180,
+                      ),
+                    ],
                     if (showActionRow) ...[
                       const SizedBox(height: 8),
                       Row(

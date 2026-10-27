@@ -43,6 +43,7 @@ import '../utils/category_schema.dart';
 import '../utils/discover_category_rules.dart';
 import '../utils/video_document_rules.dart';
 import '../utils/video_url_resolver.dart';
+import '../features/games/game_library_view.dart';
 // import 'video_thumbnail_view.dart'; // Removed - unused
 
 class STDiscoverTokens {
@@ -825,6 +826,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView>
     try {
       HapticFeedback.lightImpact();
       final String categoryId = category.id;
+      
+      if (categoryId == 'gaming') {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const GameLibraryView(),
+          ),
+        );
+        return;
+      }
+      
       final String? previousSelectedCategory = _selectedCategory;
       if (_selectedCategory == categoryId) {
         if (kDebugMode) {
