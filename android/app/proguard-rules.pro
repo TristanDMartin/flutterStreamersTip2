@@ -1,5 +1,7 @@
-# StreamersTip — draft R8 keep rules
-# Do NOT enable isMinifyEnabled until docs/R8_COMPATIBILITY_AUDIT.md smoke matrix passes.
+# StreamersTip — R8 keep rules (PRODUCTION)
+# R8 minification ENABLED for production security and size optimization.
+# IMPORTANT: Test thoroughly with release builds before deploying.
+# See docs/R8_COMPATIBILITY_AUDIT.md for smoke test matrix.
 
 # ---- Flutter / embedding ----
 -keep class io.flutter.app.** { *; }

@@ -1,3 +1,4 @@
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 
 class LoggingService {
@@ -46,7 +47,23 @@ class LoggingService {
       debugPrint(logMessage);
     }
 
-    // In production, you might want to send logs to a service like Crashlytics
-    // FirebaseCrashlytics.instance.log(logMessage);
+    // Forward all logs to Crashlytics for production monitoring
+    try {
+      FirebaseCrashlytics.instance.log(logMessage);
+      // Record errors with stack traces to Crashlytics
+      if (level == _levelError && error != null) {
+        FirebaseCrashlytics.instance.recordError(
+          error,
+          stackTrace,
+          reason: message,
+          fatal: false,
+        );
+      }
+    } catch (e) {
+      // Fail silently if Crashlytics is not initialized
+      if (kDebugMode) {
+        debugPrint('Failed to log to Crashlytics: $e');
+      }
+    }
   }
 }

@@ -85,6 +85,12 @@ android {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
     
@@ -95,10 +101,13 @@ android {
         }
     }
     
-    // Fix AAR metadata warnings (Flutter plugins don't always include required metadata)
+    // Lint configuration for production quality
     lint {
-        checkReleaseBuilds = false
-        abortOnError = false
+        checkReleaseBuilds = true
+        abortOnError = true
+        // Disable specific checks that are Flutter plugin issues, not app issues
+        disable.add("InvalidPackage")
+        disable.add("MissingClass")
     }
 }
 

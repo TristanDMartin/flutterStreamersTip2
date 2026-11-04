@@ -517,10 +517,10 @@ service cloud.firestore {
     match /users/{userId} {
       // Private account doc — billing, email, bans, entitlements. Others use publicUsers.
       allow read: if isOwner(userId);
-      // TRANSITIONAL (expires 2026-08-31): owner create until /api/account/provision.
-      // Target: allow create: if false;
-      // createWithStarterOnly() also blocks username/displayName on create.
-      allow create: if hasVerifiedEmail() && isOwner(userId) && createWithStarterOnly();
+      // PRODUCTION: Client-side user creation disabled (expired 2026-08-31).
+      // All user accounts must be provisioned via /api/account/provision server endpoint.
+      // This ensures proper validation, username locking, and server-side initialization.
+      allow create: if false;
       allow update: if hasVerifiedEmail() && isOwner(userId) && isValidUser(userId) && serverControlledFieldsUnchanged() &&
                        clientSecretUserFieldsUnchanged() &&
                        (!('isArtist' in request.resource.data) || request.resource.data.isArtist is bool) &&
@@ -1544,9 +1544,10 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
-    // DUAL BOOKMARKS (bridge through 2026-08-31):
+    // DUAL BOOKMARKS (bridge extended past 2026-08-31):
     // Canonical Flutter: videos/{videoId}/bookmarks/{uid} + users/{uid}/favorites
     // Website: this top-level bookmarks + users/{uid}/bookmarkedVideos
+    // TODO: Complete migration to video-scoped bookmarks, then restrict this to read-only.
     // After migration, prefer video-scoped edges; keep top-level read for legacy.
     match /bookmarks/{bookmarkId} {
       allow read: if isAuthenticated() && 

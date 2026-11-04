@@ -13,12 +13,11 @@ class AdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  static const String kFallbackAdminUid = 'bU0RxyZ2L4ULAv1Co5L4f825yV73';
-  static const String kFallbackAdminEmail = 'technqs@gmail.com';
-  static const Set<String> kFallbackAdminUsernames = <String>{
-    'technqs',
-    'buzzz',
-  };
+  // REMOVED: Client-side admin allowlist (security risk).
+  // Admin access now determined solely by server-controlled Firestore fields:
+  // - isAdmin, role='admin', or (adminAccess=true + adminStatus='active')
+  // - Custom claims verified by Firebase rules
+  // - Never trust client-side allowlists in production
 
   static const Duration adminRemoteResolveTimeout = Duration(seconds: 1);
 
@@ -69,43 +68,48 @@ class AdminService {
     final bool adminAccess = _readAdminAccess(userData);
     final String? adminStatus = _readAdminStatus(userData);
 
-    debugPrint('ADMIN_USERNAME=$username');
-    debugPrint('ADMIN_IS_ADMIN=$isAdmin');
-    debugPrint('ADMIN_ROLE=${role ?? ''}');
-    debugPrint('ADMIN_ACCESS=$adminAccess');
-    debugPrint('ADMIN_STATUS=${adminStatus ?? ''}');
+    if (kDebugMode) {
+      debugPrint('ADMIN_USERNAME=$username');
+      debugPrint('ADMIN_IS_ADMIN=$isAdmin');
+      debugPrint('ADMIN_ROLE=${role ?? ''}');
+      debugPrint('ADMIN_ACCESS=$adminAccess');
+      debugPrint('ADMIN_STATUS=${adminStatus ?? ''}');
+    }
 
     if (isAdmin) {
-      debugPrint(
-          'ADMIN_FINAL_DECISION=granted source=$logSource reason=isAdmin');
+      if (kDebugMode) {
+        debugPrint(
+            'ADMIN_FINAL_DECISION=granted source=$logSource reason=isAdmin');
+      }
       return true;
     }
     if (role == 'admin') {
-      debugPrint('ADMIN_FINAL_DECISION=granted source=$logSource reason=role');
+      if (kDebugMode) {
+        debugPrint(
+            'ADMIN_FINAL_DECISION=granted source=$logSource reason=role');
+      }
       return true;
     }
     if (adminAccess && adminStatus == 'active') {
-      debugPrint(
-        'ADMIN_FINAL_DECISION=granted source=$logSource reason=adminAccess_active',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          'ADMIN_FINAL_DECISION=granted source=$logSource reason=adminAccess_active',
+        );
+      }
       return true;
     }
     final Object? adminMap = userData?['admin'];
     if (adminMap is Map && adminMap['isAdmin'] == true) {
-      debugPrint(
-        'ADMIN_FINAL_DECISION=granted source=$logSource reason=admin_nested',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          'ADMIN_FINAL_DECISION=granted source=$logSource reason=admin_nested',
+        );
+      }
       return true;
     }
-    if (matchesFallbackAdminAllowlist(
-      cachedUserMap: userData,
-      authUser: authUser,
-    )) {
-      debugPrint(
-          'ADMIN_FINAL_DECISION=granted source=$logSource reason=fallback');
-      return true;
+    if (kDebugMode) {
+      debugPrint('ADMIN_FINAL_DECISION=denied source=$logSource');
     }
-    debugPrint('ADMIN_FINAL_DECISION=denied source=$logSource');
     return false;
   }
 
@@ -119,31 +123,14 @@ class AdminService {
     return hasImmediateAdminAccess(cachedUserMap: userData);
   }
 
+  /// DEPRECATED: Client-side allowlist removed for production security.
+  /// Always returns false. Admin access must come from server-controlled
+  /// Firestore fields (isAdmin, role, adminAccess+adminStatus) and custom claims.
+  @Deprecated('Client-side admin allowlist removed. Use server fields only.')
   static bool matchesFallbackAdminAllowlist({
     Map<String, dynamic>? cachedUserMap,
     User? authUser,
   }) {
-    final User? user = authUser ??
-        (Firebase.apps.isNotEmpty ? FirebaseAuth.instance.currentUser : null);
-    final String uid =
-        (cachedUserMap?['id'] ?? cachedUserMap?['uid'] ?? user?.uid ?? '')
-            .toString()
-            .trim();
-    if (uid == kFallbackAdminUid) {
-      return true;
-    }
-    final String email = (cachedUserMap?['email'] ?? user?.email ?? '')
-        .toString()
-        .toLowerCase()
-        .trim();
-    if (email == kFallbackAdminEmail) {
-      return true;
-    }
-    final String username =
-        (cachedUserMap?['username'] ?? '').toString().toLowerCase().trim();
-    if (username.isNotEmpty && kFallbackAdminUsernames.contains(username)) {
-      return true;
-    }
     return false;
   }
 
@@ -170,16 +157,21 @@ class AdminService {
     bool? fallback,
     bool? granted,
   }) {
-    final User? user = _auth.currentUser;
-    debugPrint(
-      'ADMIN_SYNC_STATE phase=$phase '
-      'uid=${user?.uid ?? cachedUserMap?['id'] ?? cachedUserMap?['uid']} '
-      'username=${cachedUserMap?['username']} '
-      'immediate=$immediate remote=$remote fallback=$fallback granted=$granted',
-    );
+    if (kDebugMode) {
+      final User? user = _auth.currentUser;
+      debugPrint(
+        'ADMIN_SYNC_STATE phase=$phase '
+        'uid=${user?.uid ?? cachedUserMap?['id'] ?? cachedUserMap?['uid']} '
+        'username=${cachedUserMap?['username']} '
+        'immediate=$immediate remote=$remote fallback=$fallback granted=$granted',
+      );
+    }
   }
 
-  /// Owner accounts may self-merge client-writable admin activation fields.
+  /// DEPRECATED: Self-activation removed for production security.
+  /// Admin fields must be set server-side only (Cloud Functions, Admin SDK).
+  /// Client-side activation creates a security vulnerability.
+  @Deprecated('Admin activation must be server-side only.')
   Future<void> ensureOwnerAdminActivation({
     Map<String, dynamic>? cachedUserMap,
   }) async {
@@ -187,37 +179,8 @@ class AdminService {
     if (authUser == null) {
       return;
     }
-    if (!matchesFallbackAdminAllowlist(
-      cachedUserMap: cachedUserMap,
-      authUser: authUser,
-    )) {
-      return;
-    }
-    try {
-      final DocumentSnapshot<Map<String, dynamic>> doc =
-          await _firestore.collection('users').doc(authUser.uid).get();
-      final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
-      if (_readIsAdmin(data) || _readRole(data) == 'admin') {
-        return;
-      }
-      if (_readAdminAccess(data) && _readAdminStatus(data) == 'active') {
-        return;
-      }
-      await _firestore.collection('users').doc(authUser.uid).set(
-        <String, dynamic>{
-          'adminAccess': true,
-          'adminStatus': 'active',
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-      debugPrint(
-        'ADMIN_FINAL_DECISION=granted source=ensure_owner_document '
-        'uid=${authUser.uid}',
-      );
-    } catch (e) {
-      debugPrint('⚠️ ensureOwnerAdminActivation failed: $e');
-    }
+    // SECURITY: No longer allow client-side admin self-activation
+    return;
   }
 
   /// Resolves admin within [adminRemoteResolveTimeout]; never hangs.
@@ -245,7 +208,9 @@ class AdminService {
           await _resolveRemoteAdminAccess(cachedUserMap: cachedUserMap)
               .timeout(remoteTimeout, onTimeout: () => false);
     } catch (e) {
-      debugPrint('⚠️ resolveAdminAccess remote failed: $e');
+      if (kDebugMode) {
+        debugPrint('⚠️ resolveAdminAccess remote failed: $e');
+      }
     }
     if (remoteGranted) {
       _logAdminSyncState(
@@ -254,7 +219,9 @@ class AdminService {
         remote: true,
         granted: true,
       );
-      debugPrint('ADMIN_FINAL_DECISION=granted source=remote');
+      if (kDebugMode) {
+        debugPrint('ADMIN_FINAL_DECISION=granted source=remote');
+      }
       return true;
     }
     final bool fallback = matchesFallbackAdminAllowlist(
@@ -262,7 +229,9 @@ class AdminService {
       authUser: authUser,
     );
     if (fallback) {
-      debugPrint('ADMIN_FINAL_DECISION=granted source=fallback_timeout');
+      if (kDebugMode) {
+        debugPrint('ADMIN_FINAL_DECISION=granted source=fallback_timeout');
+      }
       return true;
     }
     _logAdminSyncState(
@@ -272,7 +241,9 @@ class AdminService {
       fallback: false,
       granted: false,
     );
-    debugPrint('ADMIN_FINAL_DECISION=denied source=resolve');
+    if (kDebugMode) {
+      debugPrint('ADMIN_FINAL_DECISION=denied source=resolve');
+    }
     return false;
   }
 
@@ -280,7 +251,9 @@ class AdminService {
     Map<String, dynamic>? cachedUserMap,
   }) async {
     if (await hasAdminCustomClaim()) {
-      debugPrint('ADMIN_FINAL_DECISION=granted source=jwt_claim');
+      if (kDebugMode) {
+        debugPrint('ADMIN_FINAL_DECISION=granted source=jwt_claim');
+      }
       return true;
     }
     return hasFirestoreRulesAdminAccess(cachedUserMap: cachedUserMap);
@@ -296,22 +269,28 @@ class AdminService {
       }
       final User? currentUser = _auth.currentUser;
       if (currentUser == null) {
-        debugPrint(
-            'ADMIN_FINAL_DECISION=denied source=firestore reason=no_auth');
+        if (kDebugMode) {
+          debugPrint(
+              'ADMIN_FINAL_DECISION=denied source=firestore reason=no_auth');
+        }
         return false;
       }
       if (matchesFallbackAdminAllowlist(
         cachedUserMap: cachedUserMap,
         authUser: currentUser,
       )) {
-        debugPrint('ADMIN_FINAL_DECISION=granted source=firestore_fallback');
+        if (kDebugMode) {
+          debugPrint('ADMIN_FINAL_DECISION=granted source=firestore_fallback');
+        }
         return true;
       }
       final DocumentSnapshot<Map<String, dynamic>> userDoc =
           await _firestore.collection('users').doc(currentUser.uid).get();
       if (!userDoc.exists) {
-        debugPrint(
-            'ADMIN_FINAL_DECISION=denied source=firestore reason=no_doc');
+        if (kDebugMode) {
+          debugPrint(
+              'ADMIN_FINAL_DECISION=denied source=firestore reason=no_doc');
+        }
         return false;
       }
       return userDocGrantsAdminAccess(
@@ -320,7 +299,9 @@ class AdminService {
         logSource: 'firestore_remote',
       );
     } catch (e) {
-      debugPrint('❌ hasFirestoreRulesAdminAccess: $e');
+      if (kDebugMode) {
+        debugPrint('❌ hasFirestoreRulesAdminAccess: $e');
+      }
       return matchesFallbackAdminAllowlist(
         cachedUserMap: cachedUserMap,
         authUser: _auth.currentUser,
@@ -365,14 +346,18 @@ class AdminService {
         return false;
       }
       if (_hasAdminRole(userDoc.data())) {
-        debugPrint(
-          '✅ Admin check: User ${currentUser.uid} has Firestore admin fields',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            '✅ Admin check: User ${currentUser.uid} has Firestore admin fields',
+          );
+        }
         return true;
       }
       return false;
     } catch (e) {
-      debugPrint('❌ Error checking admin status: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error checking admin status: $e');
+      }
       return false;
     }
   }
@@ -398,9 +383,13 @@ class AdminService {
         'isAdmin': true,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('✅ Granted admin role to user: $userId');
+      if (kDebugMode) {
+        debugPrint('✅ Granted admin role to user: $userId');
+      }
     } catch (e) {
-      debugPrint('❌ Error granting admin role: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error granting admin role: $e');
+      }
       rethrow;
     }
   }
@@ -412,9 +401,13 @@ class AdminService {
         'isAdmin': false,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('✅ Revoked admin role from user: $userId');
+      if (kDebugMode) {
+        debugPrint('✅ Revoked admin role from user: $userId');
+      }
     } catch (e) {
-      debugPrint('❌ Error revoking admin role: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error revoking admin role: $e');
+      }
       rethrow;
     }
   }
@@ -436,9 +429,13 @@ class AdminService {
         'timestamp': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('📝 Admin action logged: $action');
+      if (kDebugMode) {
+        debugPrint('📝 Admin action logged: $action');
+      }
     } catch (e) {
-      debugPrint('❌ Error logging admin action: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error logging admin action: $e');
+      }
     }
   }
 }
