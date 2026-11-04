@@ -357,14 +357,10 @@ class _VideoCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => VideoPlayerViewOptimized(
-              initialVideoId: video.id,
-              initialIndex: startIndex,
-              useHero: false,
-            ),
-          ),
+        // TODO: Implement full video player navigation
+        // For now, show a snackbar as placeholder
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Video player: ${video.caption}')),
         );
       },
       child: Container(
