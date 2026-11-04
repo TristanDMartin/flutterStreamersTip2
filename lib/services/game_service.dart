@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import '../models/game.dart';
 import '../models/home_video.dart';
-import '../utils/video_document_rules.dart';
+import '../models/user.dart';
 
 class GameService {
   static final GameService _instance = GameService._internal();
@@ -10,7 +10,7 @@ class GameService {
   GameService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final auth.FirebaseAuth _auth = auth.FirebaseAuth.instance;
 
   Future<List<Game>> getPopularGames({int limit = 20}) async {
     try {
@@ -104,17 +104,52 @@ class GameService {
 
       final snapshot = await query.get();
 
-      return snapshot.docs
-          .map((doc) {
-            try {
-              return HomeVideo.fromFirestore(doc);
-            } catch (e) {
-              return null;
-            }
-          })
-          .whereType<HomeVideo>()
-          .where((video) => isVideoFeedEligible(doc: null, data: video.toJson()))
-          .toList();
+      final videos = <HomeVideo>[];
+      
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data();
+          
+          if (data['isDeleted'] == true) continue;
+          if (data['status'] != 'published' && data['status'] != 'ready') continue;
+          
+          final userDoc = await _firestore
+              .collection('users')
+              .doc(data['userId'] as String?)
+              .get();
+          
+          if (!userDoc.exists) continue;
+          
+          final userData = userDoc.data()!;
+          final user = User(
+            id: userDoc.id,
+            username: userData['username'] as String? ?? '',
+            displayName: userData['displayName'] as String? ?? '',
+            bio: userData['bio'] as String? ?? '',
+            avatarURL: userData['avatarURL'] as String? ?? '',
+          );
+          
+          videos.add(HomeVideo(
+            id: doc.id,
+            creator: user,
+            videoURL: data['videoUrl'] as String? ?? data['videoURL'] as String? ?? '',
+            thumbnailURL: data['thumbnailUrl'] as String? ?? data['thumbnailURL'] as String?,
+            likes: data['likes'] as int? ?? data['likeCount'] as int? ?? 0,
+            comments: data['comments'] as int? ?? data['commentCount'] as int? ?? 0,
+            views: data['views'] as int? ?? data['viewCount'] as int? ?? 0,
+            caption: data['caption'] as String? ?? '',
+            isLiked: false,
+            duration: (data['duration'] as num?)?.toDouble(),
+            createdAt: data['createdAt'] as Timestamp?,
+            status: data['status'] as String? ?? 'published',
+            categoryId: data['categoryId'] as String? ?? '',
+          ));
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      return videos;
     } catch (e) {
       return [];
     }

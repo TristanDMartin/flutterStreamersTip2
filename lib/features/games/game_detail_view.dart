@@ -205,9 +205,7 @@ class _GameDetailViewState extends ConsumerState<GameDetailView> {
                   final sortedVideos = _selectedFeed == 'recent'
                       ? videos
                       : [...videos]..sort((a, b) {
-                          final aLikes = a.likeCount ?? 0;
-                          final bLikes = b.likeCount ?? 0;
-                          return bLikes.compareTo(aLikes);
+                          return b.likes.compareTo(a.likes);
                         });
 
                   return SliverGrid(
@@ -362,7 +360,7 @@ class _VideoCard extends StatelessWidget {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => VideoPlayerViewOptimized(
-              videos: allVideos,
+              initialVideoId: video.id,
               initialIndex: startIndex,
               useHero: false,
             ),
@@ -413,7 +411,7 @@ class _VideoCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        _formatDuration(video.duration ?? 0),
+                        _formatDuration((video.duration ?? 0.0).toInt()),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12,
@@ -449,7 +447,7 @@ class _VideoCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _formatCount(video.likeCount ?? 0),
+                        _formatCount(video.likes),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.textTheme.bodySmall?.color
                               ?.withValues(alpha: 0.6),
