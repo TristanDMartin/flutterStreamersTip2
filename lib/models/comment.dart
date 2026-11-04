@@ -16,6 +16,10 @@ sealed class Comment with _$Comment {
     @Default(0) int likeCount,
     @Default(false) bool isLiked,
     List<Comment>? replies,
+    String? gifUrl,
+    String? gifId,
+    String? gifProvider,
+    Map<String, dynamic>? gifMetadata,
   }) = _Comment;
 
   factory Comment.fromJson(Map<String, dynamic> json) =>

@@ -46,6 +46,8 @@ import '../features/gamification/gamification_providers.dart';
 import '../features/gamification/models/user_progress_bundle.dart';
 import '../routing/app_routes.dart';
 import '../features/publish/category_picker_sheet.dart';
+import '../features/publish/game_picker_sheet.dart';
+import '../models/game.dart';
 import '../features/publish/pending_post.dart';
 import '../features/publish/preview_trim_playback.dart';
 import '../features/publish/preview_video_frame.dart';
@@ -227,6 +229,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   List<String> _hashtags = [];
   String _selectedPrivacy = 'Everyone';
   String _selectedCategory = kDefaultCategoryId;
+  Game? _selectedGame;
   bool _allowComments = true;
   bool _isUploading = false;
   bool _publishHandedOff = false;
@@ -1142,6 +1145,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   const SizedBox(height: 16),
                   _buildCategorySection(),
                   const SizedBox(height: 16),
+                  if (_selectedCategory == 'gaming') ...[
+                    _buildGameSection(),
+                    const SizedBox(height: 16),
+                  ],
                   _buildPostQualitySection(),
                   const SizedBox(height: 12),
                   _buildCompactSettingRow(
@@ -1374,7 +1381,22 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       selectedCategoryId: _selectedCategory,
     );
     if (picked != null && mounted) {
-      setState(() => _selectedCategory = picked);
+      setState(() {
+        _selectedCategory = picked;
+        if (picked != 'gaming') {
+          _selectedGame = null;
+        }
+      });
+    }
+  }
+
+  Future<void> _openGamePicker() async {
+    final Game? picked = await showGamePickerSheet(
+      context: context,
+      selectedGame: _selectedGame,
+    );
+    if (mounted) {
+      setState(() => _selectedGame = picked);
     }
   }
 
@@ -2003,6 +2025,75 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     ),
                     Text(
                       'Change',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGameSection() {
+    final StSupportShellStyle shell = StSupportShellStyle.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Game (Optional)',
+            style: TextStyle(
+              color: shell.onChrome,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _openGamePicker,
+              borderRadius: BorderRadius.circular(14),
+              child: Ink(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: shell.surfaceCard,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: shell.surfaceCardBorder),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.videogame_asset,
+                      color: shell.onChrome.withValues(alpha: 0.7),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _selectedGame?.title ?? 'Select a game',
+                        style: TextStyle(
+                          color: _selectedGame != null
+                              ? shell.onChrome
+                              : shell.onChrome.withValues(alpha: 0.6),
+                          fontSize: 15,
+                          fontWeight: _selectedGame != null
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      _selectedGame != null ? 'Change' : 'Select',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.primary,
                         fontSize: 14,
@@ -3558,6 +3649,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               'allowComments': _allowComments,
               'category': canonicalCategory,
               'publishRequestId': publishRequestId,
+              if (_selectedGame != null) 'gameId': _selectedGame!.id,
             },
             publishController: publishController,
             request: PublishNowRequest(
@@ -4343,6 +4435,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         'visibility': _selectedPrivacy,
         'allowComments': _allowComments,
         ...categoryFields,
+        if (_selectedGame != null) 'gameId': _selectedGame!.id,
         'status':
             'scheduled', // NOT 'published' - will be updated when scheduled time arrives
         'visible': false,

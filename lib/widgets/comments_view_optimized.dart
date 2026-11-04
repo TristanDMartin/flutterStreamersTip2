@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:giphy_picker/giphy_picker.dart';
 import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import '../services/comments_service.dart';
 import '../services/auth_service.dart';
+import '../services/gif_comment_service.dart';
 import '../utils/user_facing_error.dart';
 import 'optimized_comment_tile.dart';
 
@@ -30,6 +32,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   String? _errorMessage;
+  GiphyGif? _selectedGif;
 
   // Simplified emoji reactions
   static const List<String> _emojiReactions = <String>[
@@ -106,7 +109,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
 
   Future<void> _addComment() async {
     final String text = _textController.text.trim();
-    if (text.isEmpty) return;
+    final GiphyGif? gif = _selectedGif;
+    
+    if (text.isEmpty && gif == null) return;
 
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
@@ -120,6 +125,11 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     });
 
     final app_user.User me = _currentUserOrSample();
+    final String? gifUrl =
+        gif != null ? GifCommentService.getGifUrl(gif) : null;
+    final Map<String, dynamic>? gifMetadata =
+        gif != null ? GifCommentService.getGifMetadata(gif) : null;
+    
     final Comment optimistic = Comment(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       user: me,
@@ -128,11 +138,16 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       likeCount: 0,
       isLiked: false,
       replies: <Comment>[],
+      gifUrl: gifUrl,
+      gifId: gif?.id,
+      gifProvider: gif != null ? 'GIPHY' : null,
+      gifMetadata: gifMetadata,
     );
 
     setState(() {
       _comments.insert(0, optimistic);
       _textController.clear();
+      _selectedGif = null;
     });
 
     try {
@@ -141,13 +156,10 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
         text: text,
         author: me,
       );
-      // Success - optimistic update stays
     } catch (e) {
-      // Revert optimistic update on failure
       if (mounted) {
         String errorMessage = 'Failed to add comment. Please try again.';
 
-        // Provide more specific error messages
         if (e.toString().contains('permission-denied')) {
           errorMessage = 'Permission denied. Please sign in to add comments.';
         } else if (e.toString().contains('network')) {
@@ -164,6 +176,21 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _selectGif() async {
+    final gif = await GifCommentService.selectGif(context);
+    if (gif != null && mounted) {
+      setState(() {
+        _selectedGif = gif;
+      });
+    }
+  }
+
+  void _clearGif() {
+    setState(() {
+      _selectedGif = null;
+    });
   }
 
   Future<void> _sendReply(Comment parent, String text) async {
@@ -491,38 +518,118 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           ),
           const SizedBox(width: 12),
 
+          // GIF button
+          IconButton(
+            onPressed: _selectGif,
+            icon: Icon(
+              Icons.gif_box_outlined,
+              color: _selectedGif != null
+                  ? scheme.primary
+                  : scheme.onSurface.withValues(alpha: 0.6),
+            ),
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(
+              minWidth: 40,
+              minHeight: 40,
+            ),
+          ),
+
           // Text field
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: scheme.outline.withValues(alpha: 0.35),
-                  width: 1,
-                ),
-              ),
-              child: TextField(
-                controller: _textController,
-                focusNode: _inputFocusNode,
-                style: TextStyle(color: scheme.onSurface),
-                decoration: InputDecoration(
-                  hintText: 'What do you think of this?',
-                  hintStyle: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: 0.55),
+            child: Column(
+              children: [
+                if (_selectedGif != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: scheme.outline.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(
+                            GifCommentService.getGifPreviewUrl(_selectedGif!),
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 60,
+                                height: 60,
+                                color: scheme.surfaceContainerHighest,
+                                child: const Icon(Icons.gif_box, size: 32),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _selectedGif!.title ?? 'GIF selected',
+                            style: TextStyle(
+                              color: scheme.onSurface,
+                              fontSize: 12,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.close,
+                            color: scheme.onSurface.withValues(alpha: 0.6),
+                            size: 20,
+                          ),
+                          onPressed: _clearGif,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                Container(
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: scheme.outline.withValues(alpha: 0.35),
+                      width: 1,
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _inputFocusNode,
+                    style: TextStyle(color: scheme.onSurface),
+                    decoration: InputDecoration(
+                      hintText: _selectedGif != null
+                          ? 'Add a message (optional)'
+                          : 'What do you think of this?',
+                      hintStyle: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                    textInputAction: TextInputAction.send,
+                    keyboardType: TextInputType.text,
+                    enableInteractiveSelection: true,
+                    onSubmitted: (_) => _addComment(),
+                    onTapOutside: (_) => _inputFocusNode.unfocus(),
                   ),
                 ),
-                textInputAction: TextInputAction.send,
-                keyboardType: TextInputType.text,
-                enableInteractiveSelection: true,
-                onSubmitted: (_) => _addComment(),
-                onTapOutside: (_) => _inputFocusNode.unfocus(),
-              ),
+              ],
             ),
           ),
 
