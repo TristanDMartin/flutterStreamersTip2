@@ -445,7 +445,7 @@ class AppRoutes {
           trimEnd = args['trimEnd'] as Duration?;
         }
         
-        if (videoPath == null) {
+        if (videoPath == null || videoPath.isEmpty) {
           return _buildRoute(
             settings: routeSettings,
             builder: (_) => const AppStartupWrapper(initialTabIndex: 0),

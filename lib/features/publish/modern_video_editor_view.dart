@@ -675,18 +675,17 @@ class _ModernVideoEditorViewState
                                                 color: shell.skeletonFill,
                                                 borderRadius: BorderRadius.circular(4),
                                                 border: isInTrimRange
-                                              ? Border.all(color: const Color(0xFF7B3FF2), width: 2)
-                                              : null,
-                                        ),
-                                        child: Center(
-                                          child: Icon(
-                                            Icons.videocam,
-                                            color: shell.muted.withValues(alpha: 0.3),
-                                            size: 20,
-                                          ),
-                                        ),
-                                      ),
-                                    );
+                                                    ? Border.all(color: const Color(0xFF7B3FF2), width: 2)
+                                                    : null,
+                                              ),
+                                              child: Center(
+                                                child: Icon(
+                                                  Icons.videocam,
+                                                  color: shell.muted.withValues(alpha: 0.3),
+                                                  size: 20,
+                                                ),
+                                              ),
+                                            );
                                   },
                                 ),
                                       ),
