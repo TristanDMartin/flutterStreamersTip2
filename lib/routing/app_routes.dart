@@ -454,7 +454,7 @@ class AppRoutes {
         return _buildRoute(
           settings: routeSettings,
           builder: (_) => ModernShareView(
-            videoPath: videoPath,
+            videoPath: videoPath!,
             trimStart: trimStart,
             trimEnd: trimEnd,
           ),
