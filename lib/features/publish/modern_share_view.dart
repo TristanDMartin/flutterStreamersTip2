@@ -15,9 +15,13 @@ class ModernShareView extends ConsumerStatefulWidget {
   const ModernShareView({
     super.key,
     required this.videoPath,
+    this.trimStart,
+    this.trimEnd,
   });
 
   final String videoPath;
+  final Duration? trimStart;
+  final Duration? trimEnd;
 
   @override
   ConsumerState<ModernShareView> createState() => _ModernShareViewState();

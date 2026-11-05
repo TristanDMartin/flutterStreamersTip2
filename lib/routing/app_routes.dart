@@ -432,7 +432,19 @@ class AppRoutes {
           fullscreenDialog: true,
         );
       case modernShare:
-        final String? videoPath = routeSettings.arguments as String?;
+        final args = routeSettings.arguments;
+        String? videoPath;
+        Duration? trimStart;
+        Duration? trimEnd;
+        
+        if (args is String) {
+          videoPath = args;
+        } else if (args is Map<String, dynamic>) {
+          videoPath = args['videoPath'] as String?;
+          trimStart = args['trimStart'] as Duration?;
+          trimEnd = args['trimEnd'] as Duration?;
+        }
+        
         if (videoPath == null) {
           return _buildRoute(
             settings: routeSettings,
@@ -441,7 +453,11 @@ class AppRoutes {
         }
         return _buildRoute(
           settings: routeSettings,
-          builder: (_) => ModernShareView(videoPath: videoPath),
+          builder: (_) => ModernShareView(
+            videoPath: videoPath,
+            trimStart: trimStart,
+            trimEnd: trimEnd,
+          ),
           fullscreenDialog: true,
         );
     }

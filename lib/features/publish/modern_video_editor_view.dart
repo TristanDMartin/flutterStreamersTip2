@@ -107,10 +107,21 @@ class _ModernVideoEditorViewState
       _controller!.setLooping(true);
     }
     
-    // Add listener to update UI during playback
+    // Add listener to update UI during playback and enforce trim bounds
     _controller!.addListener(() {
       if (mounted) {
         setState(() {});
+        
+        // Clamp playback to trim range
+        final position = _controller!.value.position;
+        final duration = _controller!.value.duration;
+        final trimStartPos = Duration(milliseconds: (_trimStart * duration.inMilliseconds).toInt());
+        final trimEndPos = Duration(milliseconds: (_trimEnd * duration.inMilliseconds).toInt());
+        
+        // If playing beyond trim end, loop back to trim start
+        if (position >= trimEndPos && _isPlaying) {
+          _controller!.seekTo(trimStartPos);
+        }
       }
     });
     
@@ -128,6 +139,10 @@ class _ModernVideoEditorViewState
       if (_isPlaying) {
         _controller?.pause();
       } else {
+        // Seek to trim start before playing
+        final duration = _controller!.value.duration;
+        final trimStartPos = Duration(milliseconds: (_trimStart * duration.inMilliseconds).toInt());
+        _controller?.seekTo(trimStartPos);
         _controller?.play();
       }
       _isPlaying = !_isPlaying;
@@ -503,13 +518,20 @@ class _ModernVideoEditorViewState
                         color: Colors.black.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text(
-                        _formatDuration(_controller!.value.duration),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.content_cut, color: Colors.white, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatDuration(_getTrimmedDuration()),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -624,34 +646,35 @@ class _ModernVideoEditorViewState
                             ],
                           ),
                         ),
-                        // Frame thumbnails (placeholder with visual indicator)
+                        // Frame thumbnails with trim handles
                         const SizedBox(height: 8),
                         SizedBox(
-                          height: 40,
+                          height: 60,
                           child: _controller != null && _controller!.value.isInitialized
-                              ? ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  itemCount: 10,
-                                  itemBuilder: (context, index) {
-                                    final duration = _controller!.value.duration;
-                                    final currentPosition = _controller!.value.position;
-                                    final frameDuration = duration.inMilliseconds / 10;
-                                    final frameStart = Duration(milliseconds: (index * frameDuration).toInt());
-                                    final isCurrentFrame = currentPosition >= frameStart &&
-                                        currentPosition < Duration(milliseconds: ((index + 1) * frameDuration).toInt());
-                                    
-                                    return GestureDetector(
-                                      onTap: () {
-                                        _controller!.seekTo(frameStart);
-                                      },
-                                      child: Container(
-                                        width: 60,
-                                        margin: const EdgeInsets.only(right: 4),
-                                        decoration: BoxDecoration(
-                                          color: shell.skeletonFill,
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: isCurrentFrame
+                              ? Stack(
+                                  children: [
+                                    // Thumbnail filmstrip
+                                    Positioned.fill(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                                        child: ListView.builder(
+                                          scrollDirection: Axis.horizontal,
+                                          physics: const NeverScrollableScrollPhysics(),
+                                          itemCount: 10,
+                                          itemBuilder: (context, index) {
+                                            final duration = _controller!.value.duration;
+                                            final frameDuration = duration.inMilliseconds / 10;
+                                            final frameStart = Duration(milliseconds: (index * frameDuration).toInt());
+                                            final normalizedIndex = index / 10;
+                                            final isInTrimRange = normalizedIndex >= _trimStart && normalizedIndex <= _trimEnd;
+                                            
+                                            return Container(
+                                              width: 60,
+                                              margin: const EdgeInsets.only(right: 2),
+                                              decoration: BoxDecoration(
+                                                color: shell.skeletonFill,
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: isInTrimRange
                                               ? Border.all(color: const Color(0xFF7B3FF2), width: 2)
                                               : null,
                                         ),
@@ -665,22 +688,74 @@ class _ModernVideoEditorViewState
                                       ),
                                     );
                                   },
-                                )
-                              : ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  itemCount: 10,
-                                  itemBuilder: (context, index) {
-                                    return Container(
-                                      width: 60,
-                                      margin: const EdgeInsets.only(right: 4),
-                                      decoration: BoxDecoration(
-                                        color: shell.skeletonFill,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                    );
-                                  },
                                 ),
+                                      ),
+                                    ),
+                                    
+                                    // Left trim handle
+                                    Positioned(
+                                      left: 16 + (_trimStart * 620),
+                                      child: GestureDetector(
+                                        onHorizontalDragUpdate: (details) {
+                                          setState(() {
+                                            final totalWidth = 620.0;
+                                            _trimStart = ((_trimStart * totalWidth) + details.delta.dx) / totalWidth;
+                                            _trimStart = _trimStart.clamp(0.0, _trimEnd - 0.05);
+                                          });
+                                        },
+                                        child: Container(
+                                          width: 8,
+                                          height: 60,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(4),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(alpha: 0.3),
+                                                blurRadius: 4,
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Center(
+                                            child: Icon(Icons.drag_handle, size: 12, color: Colors.black54),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    
+                                    // Right trim handle
+                                    Positioned(
+                                      left: 16 + (_trimEnd * 620),
+                                      child: GestureDetector(
+                                        onHorizontalDragUpdate: (details) {
+                                          setState(() {
+                                            final totalWidth = 620.0;
+                                            _trimEnd = ((_trimEnd * totalWidth) + details.delta.dx) / totalWidth;
+                                            _trimEnd = _trimEnd.clamp(_trimStart + 0.05, 1.0);
+                                          });
+                                        },
+                                        child: Container(
+                                          width: 8,
+                                          height: 60,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(4),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(alpha: 0.3),
+                                                blurRadius: 4,
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Center(
+                                            child: Icon(Icons.drag_handle, size: 12, color: Colors.black54),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : const SizedBox.shrink(),
                         ),
                       ],
                     ),
@@ -700,37 +775,13 @@ class _ModernVideoEditorViewState
                           shell,
                           isDark,
                         ),
-                        _buildBottomTool(Icons.text_fields, 'Text', false, shell, isDark),
-                        _buildBottomTool(Icons.closed_caption, 'Captions', false, shell, isDark),
-                        _buildBottomTool(Icons.image, 'Cover', false, shell, isDark),
-                        _buildBottomTool(Icons.filter, 'Filters', false, shell, isDark),
-                        _buildBottomTool(Icons.tune, 'Adjust', false, shell, isDark),
+                        // TODO: Re-enable other features later: Text, Captions, Cover, Filters, Adjust
                       ],
                     ),
                   ),
 
-                  // Additional options
-                  Container(
-                    color: shell.scaffold,
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: Column(
-                      children: [
-                        _buildOption(
-                          Icons.audiotrack,
-                          'Add sound',
-                          'Music, voiceover, or sounds',
-                          shell,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildOption(
-                          Icons.mic,
-                          'Voiceover',
-                          'Record audio',
-                          shell,
-                        ),
-                      ],
-                    ),
-                  ),
+                  // TODO: Re-enable additional options later: Add sound, Voiceover
+                  const SizedBox(height: 8),
 
                   // Next button
                   Padding(
@@ -750,10 +801,16 @@ class _ModernVideoEditorViewState
                         ),
                         child: ElevatedButton(
                           onPressed: () {
+                            final duration = _controller?.value.duration ?? Duration.zero;
+                            final trimData = {
+                              'videoPath': widget.videoPath,
+                              'trimStart': Duration(milliseconds: (_trimStart * duration.inMilliseconds).toInt()),
+                              'trimEnd': Duration(milliseconds: (_trimEnd * duration.inMilliseconds).toInt()),
+                            };
                             Navigator.pushNamed(
                               context,
                               '/modern-share',
-                              arguments: widget.videoPath,
+                              arguments: trimData,
                             );
                           },
                           style: ElevatedButton.styleFrom(
@@ -952,6 +1009,16 @@ class _ModernVideoEditorViewState
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+  
+  Duration _getTrimmedDuration() {
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return Duration.zero;
+    }
+    final duration = _controller!.value.duration;
+    final trimStartMs = (_trimStart * duration.inMilliseconds).toInt();
+    final trimEndMs = (_trimEnd * duration.inMilliseconds).toInt();
+    return Duration(milliseconds: trimEndMs - trimStartMs);
   }
 
   Widget _buildCaptionOverlay() {
