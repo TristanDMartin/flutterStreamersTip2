@@ -74,26 +74,29 @@ service cloud.firestore {
     }
 
     function ageGateStatusOf(uid) {
-      let gate = accountDoc(uid).get('ageGate', {});
-      return gate is map ? stringOrEmpty(gate.get('status', '')).lower() : '';
+      let gate = accountDoc(uid).get('ageGate', {'status': 'none'});
+      return gate is map ? stringOrEmpty(gate.get('status', 'none')).lower() : 'none';
     }
 
-    // matches() is only called for a 10-character string. An empty or
-    // non-string dateOfBirth must be a normal deny, not an evaluation error.
+    // matches() throws on a non-string. Bind a stand-in before matching so an
+    // empty dateOfBirth cannot be the receiver.
     function birthdateHasIsoShape(uid) {
-      let dob = stringOrEmpty(accountDoc(uid).get('dateOfBirth', ''));
-      return dob.size() == 10
-        ? dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-        : false;
+      let dob = stringOrEmpty(accountDoc(uid).get('dateOfBirth', 'none'));
+      let sample = dob.size() == 10 ? dob : 'not-a-date';
+      return dob.size() == 10 &&
+        sample.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
     }
 
+    // A denied age check reads the user document. This emulator reports that
+    // false result as an evaluation error and still denies the write.
+    // passed, or a 10-character ISO birthdate that is not under_minimum_age,
+    // stays allowed.
     function accountHasAgeClearance(uid) {
       let status = exists(/databases/$(database)/documents/users/$(uid))
         ? ageGateStatusOf(uid)
-        : '';
-      return status == 'under_minimum_age'
-        ? false
-        : (status == 'passed' || birthdateHasIsoShape(uid));
+        : 'none';
+      return status != 'under_minimum_age' &&
+        (status == 'passed' || birthdateHasIsoShape(uid));
     }
 
     function actorMayCreateContent() {
@@ -382,12 +385,21 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
       allow write: if false;
     }
-    
+    // Shoutout/alert events for the OBS Browser Source overlay — that page
+    // always loads logged out, so (unlike the owner-only collections above)
+    // this must be publicly readable. Bot writes via Admin SDK, which
+    // bypasses rules entirely, so client writes stay locked down.
+    match /tippyEvents/{eventId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Server-controlled fields — only Stripe webhook, Admin SDK, or migrations may write these
     function serverControlledFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys()
         .hasAny([
           'subscriptionTier', 'subscriptionStatus', 'subscriptionPeriodEnd',
+          'subscriptionStartedAt', 'subscriptionBillingInterval',
           'subscriptionProvider', 'stripeCustomerId', 'stripeSubscriptionId',
           'subscriptionCancelAtPeriodEnd', 'subscriptionPauseResumesAt',
           'canceledDuringTrial', 'hasUsedTrial', 'trialConsumedAt',
@@ -439,7 +451,8 @@ service cloud.firestore {
              !request.resource.data.keys().hasAny([
                'role', 'isAdmin', 'admin', 'adminAccess', 'adminStatus',
                'entitlementOverride', 'entitlements',
-               'subscriptionPeriodEnd', 'subscriptionProvider',
+               'subscriptionPeriodEnd', 'subscriptionStartedAt',
+               'subscriptionBillingInterval', 'subscriptionProvider',
                'stripeCustomerId', 'stripeSubscriptionId',
                'hasUsedTrial', 'trialConsumedAt', 'canceledDuringTrial',
                'isPro', 'tier',
@@ -491,6 +504,8 @@ service cloud.firestore {
         'creatorReferrals',
         'growthReports',
         'growthShareArtifacts',
+        // Private eligibility (DOB / residence) — owner read, Admin API writes only
+        'private',
         // 2FA secret + hashed backup codes — /api/two-factor/* only
         'security',
       ];
@@ -506,7 +521,9 @@ service cloud.firestore {
               'videoCount', 'videosCount', 'totalViews', 'totalLikes', 'likesCount',
               'isVerified', 'verified', 'verifiedBadge', 'badges', 'accountStatus',
               'role', 'roles', 'isAdmin', 'isFounder', 'isStaff', 'tier', 'subscriptionTier',
-              'plan', 'creatorScore', 'isBanned', 'banned', 'ownerActive'];
+              'plan', 'creatorScore', 'isBanned', 'banned', 'ownerActive',
+              // Tombstone / visibility — Admin SDK / delete cascade only
+              'isDeleted', 'deleted', 'deletedAt', 'deletedBy', 'publicProfileEnabled'];
     }
 
     function authorFieldsMatchAuthOnCreate(fields) {
@@ -536,9 +553,7 @@ service cloud.firestore {
     match /users/{userId} {
       // Private account doc — billing, email, bans, entitlements. Others use publicUsers.
       allow read: if isOwner(userId);
-      // PRODUCTION: Client-side user creation disabled (expired 2026-08-31).
-      // All user accounts must be provisioned via /api/account/provision server endpoint.
-      // This ensures proper validation, username locking, and server-side initialization.
+      // Provisioning is Admin SDK only (`/api/account/provision`). Client create closed.
       allow create: if false;
       allow update: if hasVerifiedEmail() && isOwner(userId) && isValidUser(userId) && serverControlledFieldsUnchanged() &&
                        clientSecretUserFieldsUnchanged() &&
@@ -1570,10 +1585,9 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
-    // DUAL BOOKMARKS (bridge extended past 2026-08-31):
+    // DUAL BOOKMARKS (bridge through 2026-08-31):
     // Canonical Flutter: videos/{videoId}/bookmarks/{uid} + users/{uid}/favorites
     // Website: this top-level bookmarks + users/{uid}/bookmarkedVideos
-    // TODO: Complete migration to video-scoped bookmarks, then restrict this to read-only.
     // After migration, prefer video-scoped edges; keep top-level read for legacy.
     match /bookmarks/{bookmarkId} {
       allow read: if isAuthenticated() && 
@@ -1902,7 +1916,8 @@ service cloud.firestore {
 
     // Cross-post jobs — Admin SDK / API / Workers only (no client creates)
     match /crossPostJobs/{jobId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isPlatformAdmin());
       allow create, update, delete: if false;
     }
 
@@ -2707,6 +2722,42 @@ service cloud.firestore {
 
     match /videoDeletionLogs/{logId} {
       allow read, write: if false;
+    }
+
+    // Time-boxed campaigns (e.g. road_to_vi_2026). All writes via Admin API.
+    // Config + member badges are public; giveaway entries are owner-read only;
+    // winners are never client-readable.
+    match /campaigns/{campaignId} {
+      allow read: if true;
+      allow write: if false;
+
+      match /members/{memberUid} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      match /entries/{entryUid} {
+        allow read: if isOwner(entryUid);
+        allow write: if false;
+      }
+
+      match /entrySignals/{entryUid} {
+        allow read, write: if false;
+      }
+
+      match /bonusAwards/{awardId} {
+        allow read: if request.auth != null &&
+          resource.data.uid == request.auth.uid;
+        allow write: if false;
+      }
+
+      match /socialClicks/{clickId} {
+        allow read, write: if false;
+      }
+
+      match /winners/{winnerUid} {
+        allow read, write: if false;
+      }
     }
 
     // Default deny all other collections
