@@ -7,6 +7,12 @@ const {
 } = require('@firebase/rules-unit-testing');
 const {serverTimestamp} = require('firebase/firestore');
 
+const VERIFIED = {email_verified: true};
+const ACTIVE_ADULT = {
+  accountStatus: 'active',
+  ageGate: {status: 'passed'},
+};
+
 async function run() {
   const projectId = 'demo-follows-tests';
   const rulesPath = path.join(__dirname, '..', 'firestore.rules');
@@ -18,9 +24,20 @@ async function run() {
   });
 
   try {
-    const alice = env.authenticatedContext('alice');
-    const bob = env.authenticatedContext('bob');
-    const charlie = env.authenticatedContext('charlie');
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      for (const uid of ['alice', 'bob', 'charlie']) {
+        await db.collection('users').doc(uid).set({
+          id: uid,
+          ...ACTIVE_ADULT,
+        });
+      }
+    });
+
+    const alice = env.authenticatedContext('alice', VERIFIED);
+    const bob = env.authenticatedContext('bob', VERIFIED);
+    const charlie = env.authenticatedContext('charlie', VERIFIED);
+    const unverifiedAlice = env.authenticatedContext('alice');
 
     const aliceDb = alice.firestore();
     const bobDb = bob.firestore();
@@ -49,6 +66,16 @@ async function run() {
 
     console.log('✅ should allow UID-first create with matching doc id');
     await assertSucceeds(follows(aliceDb, 'alice_bob').set(validPayload));
+
+    console.log('❌ should deny create without a verified email claim');
+    await assertFails(
+      follows(unverifiedAlice.firestore(), 'alice_charlie').set({
+        ...validPayload,
+        targetUserId: 'charlie',
+        followingId: 'charlie',
+        followedId: 'charlie',
+      }),
+    );
 
     console.log('❌ should deny create when doc id does not match follower_target');
     await assertFails(follows(aliceDb, 'alice_bob_extra').set(uidFirstOnly));

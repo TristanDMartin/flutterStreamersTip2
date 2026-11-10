@@ -26,10 +26,13 @@ async function run() {
         id: userId,
         username: 'creator',
         accountStatus: 'active',
+        ageGate: {status: 'passed'},
       });
     });
 
-    const creatorDb = env.authenticatedContext(userId).firestore();
+    const creatorDb = env.authenticatedContext(userId, {
+      email_verified: true,
+    }).firestore();
 
     console.log('✅ owner can create processing video placeholder');
     await assertSucceeds(
