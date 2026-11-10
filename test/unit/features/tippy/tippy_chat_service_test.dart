@@ -240,22 +240,30 @@ void main() {
       }
     });
 
-    test('createPlan does not call legacy /tippy/create-plan', () async {
-      var called = false;
+    test('createPlan posts createPlanNow to chat and not create-plan',
+        () async {
+      Uri? sent;
+      String? body;
       final MockClient client = MockClient((http.Request request) async {
-        called = true;
-        return http.Response('{}', 200);
+        sent = request.url;
+        body = request.body;
+        return http.Response(
+          '{"success":true,"message":"Created a custom content plan.","planId":"plan_123","credits":{"remaining":8}}',
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
       });
       final TippyChatService service = buildService(client);
-      await expectLater(
-        service.createPlan(
-          messages: const <TippyChatMessage>[
-            TippyChatMessage(role: 'user', content: 'plan'),
-          ],
-        ),
-        throwsA(isA<TippyChatException>()),
+      final TippyPlanResult actual = await service.createPlan(
+        messages: const <TippyChatMessage>[
+          TippyChatMessage(role: 'user', content: 'plan'),
+        ],
       );
-      expect(called, isFalse);
+      expect(actual.planId, 'plan_123');
+      expect(actual.message, 'Created a custom content plan.');
+      expect(sent?.path, '/api/tippy/chat');
+      expect(body, contains('"createPlanNow":true'));
+      expect(sent?.path, isNot(contains('create-plan')));
     });
 
     test('proposeSchedule and approveScheduleProposal do not call legacy paths',

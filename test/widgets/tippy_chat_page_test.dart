@@ -16,6 +16,7 @@ import 'package:streamers_tip/features/tippy/tippy_chat_page.dart';
 import 'package:streamers_tip/features/tippy/tippy_chat_service.dart';
 import 'package:streamers_tip/features/tippy/tippy_legal_service.dart';
 import 'package:streamers_tip/features/tippy/models/tippy_ui_payload.dart';
+import 'package:streamers_tip/features/tippy/widgets/tippy_chat_chrome.dart';
 import 'package:streamers_tip/services/creator_intelligence_analytics_service.dart';
 
 import '../test_support/fake_firebase_auth.dart';
@@ -87,6 +88,7 @@ class FakeTippyChatService extends TippyChatService {
   Future<TippyPlanResult> createPlan({
     required List<TippyChatMessage> messages,
     String? prompt,
+    String? chatId,
   }) async {
     planCount++;
     planMessages = messages;
@@ -193,7 +195,10 @@ void main() {
     await tester.tap(find.byKey(const Key('tippy-send')));
     await tester.pump();
     expect(service.sendCount, 1);
-    await tester.tap(find.byKey(const Key('tippy-send')));
+    expect(find.byType(TippyThinkingDots), findsOneWidget);
+    expect(find.byKey(const Key('tippy-send')), findsNothing);
+    expect(find.byKey(const Key('tippy-stop')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('tippy-stop')));
     await tester.pump();
     expect(service.sendCount, 1);
     blocker.complete();
@@ -232,7 +237,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(service.sendCount, 1);
+    expect(find.text('hello'), findsOneWidget);
     expect(find.text('assistant reply'), findsOneWidget);
+    expect(find.byType(TippyThinkingDots), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('hello')).dy,
+      lessThan(tester.getTopLeft(find.text('assistant reply')).dy),
+    );
+    expect(find.textContaining('Pro ·'), findsOneWidget);
   });
 
   testWidgets('create plan sends current conversation context',

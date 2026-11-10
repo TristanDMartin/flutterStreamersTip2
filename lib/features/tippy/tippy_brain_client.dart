@@ -20,7 +20,12 @@ class TippyBrainClient {
   final String _base;
 
   Future<TippyBrainLayers?> fetchBrain() async {
-    final User? user = FirebaseAuth.instance.currentUser;
+    final User? user;
+    try {
+      user = FirebaseAuth.instance.currentUser;
+    } on FirebaseException {
+      return null;
+    }
     final String? token = await user?.getIdToken();
     if (token == null || token.isEmpty) {
       return null;

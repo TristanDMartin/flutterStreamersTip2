@@ -494,9 +494,67 @@ class TippyChatService {
   Future<TippyPlanResult> createPlan({
     required List<TippyChatMessage> messages,
     String? prompt,
+    String? chatId,
   }) async {
-    throw const TippyChatException(
-      'Plan creation from this screen is disabled. Ask Tippy in chat instead.',
+    final List<Map<String, String>> conversation = <Map<String, String>>[
+      for (final TippyChatMessage message in messages)
+        if ((message.role == 'user' || message.role == 'assistant') &&
+            message.content.trim().isNotEmpty)
+          <String, String>{
+            'role': message.role,
+            'content': message.content.trim(),
+          },
+    ];
+    final String trimmedPrompt = (prompt ?? '').trim();
+    if (conversation.isEmpty && trimmedPrompt.isNotEmpty) {
+      conversation.add(<String, String>{
+        'role': 'user',
+        'content': trimmedPrompt,
+      });
+    }
+    if (conversation.isEmpty) {
+      throw const TippyChatException('Message is required.');
+    }
+    final Map<String, String> headers = await _buildHeaders();
+    final String? trimmedChatId = chatId?.trim();
+    final http.Response response = await _executeRequest(
+      () => _client.post(
+        Uri.parse(siteTippyChatUrl()),
+        headers: headers,
+        body: jsonEncode(<String, dynamic>{
+          'createPlanNow': true,
+          'messages': conversation,
+          'contextMode': 'planner',
+          'platform': 'android',
+          if (trimmedChatId != null && trimmedChatId.isNotEmpty)
+            'chatId': trimmedChatId,
+        }),
+      ),
+    );
+    final TippyChatResult parsed = _parseSiteChatResponse(response);
+    final Map<String, dynamic> raw =
+        _tryDecodeMap(response.body) ?? <String, dynamic>{};
+    final Map<String, dynamic> data = raw['data'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(raw['data'] as Map)
+        : raw;
+    final RegExp planLink = RegExp(
+      r'streamerstip://content-plan/([A-Za-z0-9_-]+)',
+      caseSensitive: false,
+    );
+    final String? planId = _readString(data['planId']) ??
+        _readString(data['relatedPlanId']) ??
+        _readString(raw['planId']) ??
+        planLink.firstMatch(parsed.message)?.group(1);
+    if (planId == null || planId.isEmpty) {
+      throw const TippyChatException(
+        'Plan created but no plan id was returned.',
+      );
+    }
+    return TippyPlanResult(
+      planId: planId,
+      message: parsed.message,
+      creditsRemaining: parsed.creditsRemaining,
+      ui: parsed.ui,
     );
   }
 
