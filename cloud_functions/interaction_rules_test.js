@@ -18,8 +18,10 @@ async function run() {
   });
 
   try {
-    const aliceDb = env.authenticatedContext('alice').firestore();
-    const bobDb = env.authenticatedContext('bob').firestore();
+    const verified = {email_verified: true};
+    const aliceDb = env.authenticatedContext('alice', verified).firestore();
+    const bobDb = env.authenticatedContext('bob', verified).firestore();
+    const unverifiedAliceDb = env.authenticatedContext('alice').firestore();
 
     console.log('✅ signed-in user can create their own interaction event');
     await assertSucceeds(
@@ -44,7 +46,22 @@ async function run() {
       }),
     );
 
-    console.log('✅ signed-in user can register their own FCM device token');
+    console.log('✅ missing email_verified cannot register a device token');
+    await assertFails(
+      unverifiedAliceDb
+        .collection('users')
+        .doc('alice')
+        .collection('deviceTokens')
+        .doc('token_unverified')
+        .set({
+          token: 'token_unverified',
+          platform: 'ios',
+          updatedAt: serverTimestamp(),
+          source: 'test',
+        }),
+    );
+
+    console.log('✅ verified user can register their own FCM device token');
     await assertSucceeds(
       aliceDb
         .collection('users')
@@ -87,24 +104,25 @@ async function run() {
         }),
     );
 
-    console.log('✅ signed-in user can write and query their own bookmark edge');
-    await assertSucceeds(
-      aliceDb
+    console.log('✅ signed-in user can write and read their own bookmark edge');
+    const aliceBookmark = aliceDb
         .collection('videos')
         .doc('video_1')
         .collection('bookmarks')
-        .doc('alice')
-        .set({
-          userId: 'alice',
-          videoId: 'video_1',
-          bookmarkedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          source: 'rules_test',
-        }),
-    );
+        .doc('alice');
     await assertSucceeds(
-      aliceDb.collectionGroup('bookmarks').where('userId', '==', 'alice').get(),
+      aliceBookmark.set({
+        userId: 'alice',
+        videoId: 'video_1',
+        bookmarkedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        source: 'rules_test',
+      }),
     );
+    // Collection-group list is rejected: top-level /bookmarks requires uid,
+    // while video bookmarks are keyed by userId. Reading the owned edge
+    // checks the video-scoped rule without opening the other collection.
+    await assertSucceeds(aliceBookmark.get());
 
     console.log('✅ signed-in user cannot spoof bookmark ownership');
     await assertFails(

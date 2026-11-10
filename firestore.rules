@@ -33,8 +33,11 @@ service cloud.firestore {
 
     // Firebase Auth token claim — authoritative email verification.
     // Do not use Firestore users.isVerified (platform badge) for security.
+    // A missing claim is unverified. Direct property access throws
+    // "email_verified is undefined" and can abort later allow branches.
     function hasVerifiedEmail() {
-      return isAuthenticated() && request.auth.token.email_verified == true;
+      return isAuthenticated() &&
+        request.auth.token.get('email_verified', false) == true;
     }
     
     function isOwner(userId) {
@@ -66,21 +69,31 @@ service cloud.firestore {
         status == 'verificationrequired';
     }
 
+    function stringOrEmpty(value) {
+      return value is string ? value : '';
+    }
+
     function ageGateStatusOf(uid) {
       let gate = accountDoc(uid).get('ageGate', {});
-      return gate is map ? gate.get('status', '').lower() : '';
+      return gate is map ? stringOrEmpty(gate.get('status', '')).lower() : '';
+    }
+
+    // matches() is only called for a 10-character string. An empty or
+    // non-string dateOfBirth must be a normal deny, not an evaluation error.
+    function birthdateHasIsoShape(uid) {
+      let dob = stringOrEmpty(accountDoc(uid).get('dateOfBirth', ''));
+      return dob.size() == 10
+        ? dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        : false;
     }
 
     function accountHasAgeClearance(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid)) &&
-        ageGateStatusOf(uid) != 'under_minimum_age' &&
-        (
-          ageGateStatusOf(uid) == 'passed' ||
-          (
-            accountDoc(uid).get('dateOfBirth', '') is string &&
-            accountDoc(uid).get('dateOfBirth', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-          )
-        );
+      let status = exists(/databases/$(database)/documents/users/$(uid))
+        ? ageGateStatusOf(uid)
+        : '';
+      return status == 'under_minimum_age'
+        ? false
+        : (status == 'passed' || birthdateHasIsoShape(uid));
     }
 
     function actorMayCreateContent() {
@@ -90,7 +103,13 @@ service cloud.firestore {
     }
 
     function isExplicitUserSubcollection(name) {
-      return name in ['videos', 'tippyChats', 'following', 'followers'];
+      // Named subcollections with their own match. The owner catch-all must
+      // not OR-allow writes that those rules reject (device token shape,
+      // server-only conversation updates).
+      return name in [
+        'videos', 'tippyChats', 'following', 'followers',
+        'deviceTokens', 'tippyConversations',
+      ];
     }
 
     function blockDocExists(blockerId, blockedId) {
@@ -1441,20 +1460,14 @@ service cloud.firestore {
                        (!('creator' in request.resource.data) ||
                          !(request.resource.data.creator is map) ||
                          !request.resource.data.creator.keys().hasAny(['isVerified', 'verified', 'badges']));
+      // Viewer counter bumps are checked first. They are the hot path for
+      // likes, bookmarks, shares, and views. The owner-edit branch is a large
+      // expression; evaluating it before a simple +1/-1 bump blows the
+      // 1,000-expression request budget inside a like transaction.
+      // Authorization is unchanged: bumps still require a signed-in,
+      // age-cleared actor who can read the video, and only the counter fields.
+      // Owner edits and soft deletes still require a verified email.
       allow update: if (
-                       hasVerifiedEmail() &&
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) && (
-                       isVideoDocumentOwner() &&
-                        actorMayCreateContent() &&
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-                          ['title', 'description', 'caption', 'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
-                           'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
-                           'allowComments', 'hashtags', 'category', 'categoryId'])
-                       ||
-                       isVideoDocumentOwner() && isVideoSoftDeletePatch()
-                     ))
-                     ||
-                     (
                        isAuthenticated() &&
                        actorMayCreateContent() &&
                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) &&
@@ -1465,7 +1478,20 @@ service cloud.firestore {
                          isViewerVideoBookmarkCounterBump() ||
                          isViewerVideoShareCounterBump()
                        )
-                     );
+                     )
+                     ||
+                     (
+                       hasVerifiedEmail() &&
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) && (
+                       isVideoDocumentOwner() &&
+                        actorMayCreateContent() &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+                          ['title', 'description', 'caption', 'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
+                           'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
+                           'allowComments', 'hashtags', 'category', 'categoryId'])
+                       ||
+                       isVideoDocumentOwner() && isVideoSoftDeletePatch()
+                     ));
       allow delete: if (hasVerifiedEmail() && isVideoDocumentOwner()) || isPlatformAdmin();
 
       // Flutter engagement edges (canonical for mobile)
