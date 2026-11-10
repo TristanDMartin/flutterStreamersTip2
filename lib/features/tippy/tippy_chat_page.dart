@@ -249,11 +249,91 @@ class _TippyChatPageState extends ConsumerState<TippyChatPage> {
     if (_busy) {
       return;
     }
-    final String prompt = _input.text.trim().isEmpty
-        ? 'Create a content plan from this conversation and add it to my planner.'
-        : _input.text.trim();
-    _input.text = prompt;
-    await _send();
+    final List<TippyChatMessage> history = <TippyChatMessage>[
+      for (final _ChatLine line in _lines)
+        if (!line.isThinking && !line.isError && line.text.trim().isNotEmpty)
+          TippyChatMessage(
+            role: line.user ? 'user' : 'assistant',
+            content: line.text.trim(),
+          ),
+    ];
+    final String draft = _input.text.trim();
+    if (draft.isNotEmpty) {
+      history.add(TippyChatMessage(role: 'user', content: draft));
+    }
+    if (history.isEmpty) {
+      history.add(
+        const TippyChatMessage(
+          role: 'user',
+          content:
+              'Create a content plan from this conversation and add it to my planner.',
+        ),
+      );
+    }
+    setState(() {
+      _busy = true;
+      _lines.add(
+        const _ChatLine(
+          user: false,
+          text: 'Tippy is thinking...',
+          isThinking: true,
+        ),
+      );
+    });
+    _scrollToEnd();
+    try {
+      final TippyPlanResult result = await _service.createPlan(
+        messages: history,
+        prompt: draft.isEmpty ? null : draft,
+        chatId: _conversationId,
+      );
+      if (!mounted) {
+        return;
+      }
+      final String planId = (result.planId ?? '').trim();
+      final String base =
+          (result.message ?? 'Created a custom content plan.').trim();
+      final String text = planId.isEmpty ||
+              base.toLowerCase().contains('streamerstip://content-plan/')
+          ? base
+          : '$base\nstreamerstip://content-plan/$planId';
+      setState(() {
+        final int thinkingIndex = _lines.lastIndexWhere(
+          (_ChatLine line) => line.isThinking,
+        );
+        final _ChatLine reply = _ChatLine(
+          user: false,
+          text: text,
+          cards: result.ui.cards,
+        );
+        if (thinkingIndex >= 0) {
+          _lines[thinkingIndex] = reply;
+        } else {
+          _lines.add(reply);
+        }
+        _creditsRemaining = result.creditsRemaining ?? _creditsRemaining;
+        _pendingRetryAction = null;
+        _input.clear();
+      });
+      await _persistConversation();
+      await _refreshCreditsSnapshot();
+    } on TippyChatException catch (error) {
+      await _handleTippyError(
+        error: error,
+        previousInput: draft,
+        retryAction: _RetryAction(
+          _RetryActionType.createPlan,
+          prompt: draft,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+      _scrollToEnd();
+    }
   }
 
   Future<void> _openContentPlanById(String planId) async {

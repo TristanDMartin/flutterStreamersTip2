@@ -717,7 +717,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         userCredential.user!.uid,
       );
 
-      return _completeSuccessfulAuth(
+      return await _completeSuccessfulAuth(
         requestId: requestId,
         firebaseUser: userCredential.user!,
         provider: provider,
@@ -772,7 +772,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
 
-      return _signInWithEmailAndPassword(
+      return await _signInWithEmailAndPassword(
         email: resolvedEmail.trim(),
         password: password,
         requestId: requestId,
@@ -849,7 +849,7 @@ class RobustAuthenticationService extends ChangeNotifier {
               authProvider: 'google',
             ),
           );
-          return _completeSuccessfulAuth(
+          return await _completeSuccessfulAuth(
             requestId: requestId,
             firebaseUser: hydratedUser,
             provider: 'google',
@@ -965,7 +965,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           authProvider: 'apple',
         ),
       );
-      return _completeSuccessfulAuth(
+      return await _completeSuccessfulAuth(
         requestId: requestId,
         firebaseUser: hydratedUser,
         provider: 'apple',
@@ -1491,6 +1491,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     return downloadUrl;
   }
 
+  // ignore: unused_element
   Future<void> _syncPublicUserAvatar(String uid, String avatarUrl) async {
     try {
       final String? displayName =
@@ -2068,6 +2069,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   /// Generate unique username
+  // ignore: unused_element
   Future<String> _generateUniqueUsername(String baseUsername) async {
     String username = baseUsername;
     int counter = 1;
@@ -2088,6 +2090,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   /// Save user to Firestore
+  // ignore: unused_element
   Future<void> _saveUserToFirestore(User user, {String? email}) async {
     try {
       final String? avatarUrl = normalizeAvatarPhotoUrl(user.avatarURL);

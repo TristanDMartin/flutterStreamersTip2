@@ -1,7 +1,8 @@
 /**
  * Emulator tests: users/{uid} is owner-private; publicUsers is publicly readable.
  *
- * Uses the authoritative streamerstipReact firestore.rules contract.
+ * Uses this repository's firestore.rules. That file is the reviewed
+ * copy under test. Do not fall back to a sibling checkout.
  *
  * Run from flutterST/cloud_functions (has @firebase/rules-unit-testing):
  *   node users_privacy_rules_test.js
@@ -18,19 +19,11 @@ const {
   assertFails,
 } = require('@firebase/rules-unit-testing');
 
-const WEB_RULES = path.resolve(
-  __dirname,
-  '..',
-  '..',
-  'streamerstipReact',
-  'firestore.rules',
-);
 const LOCAL_RULES = path.resolve(__dirname, '..', 'firestore.rules');
 
 async function run() {
-  const rulesPath = fs.existsSync(WEB_RULES) ? WEB_RULES : LOCAL_RULES;
-  const rules = fs.readFileSync(rulesPath, 'utf8');
-  console.log(`Using rules: ${rulesPath}`);
+  const rules = fs.readFileSync(LOCAL_RULES, 'utf8');
+  console.log(`Using rules: ${LOCAL_RULES}`);
 
   const projectId = 'demo-users-privacy';
   const env = await initializeTestEnvironment({

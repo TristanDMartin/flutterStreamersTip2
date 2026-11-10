@@ -1,6 +1,7 @@
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/services/follows_service.dart';
+import 'package:streamers_tip/services/public_profile_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 Future<void> _seedUser(
@@ -17,6 +18,12 @@ Future<void> _seedUser(
     'hashtags': [],
     'calendarEvents': [],
   });
+  await firestore.collection('publicUsers').doc(id).set({
+    'id': id,
+    'uid': id,
+    'username': id,
+    'displayName': id,
+  });
 }
 
 void main() {
@@ -31,6 +38,10 @@ void main() {
       firestore: firestore,
       auth: auth,
     );
+    PublicProfileFirestore.debugSetOverrides(
+      firestore: firestore,
+      auth: auth,
+    );
     service = FollowsService();
 
     await _seedUser(firestore, 'userA');
@@ -42,6 +53,7 @@ void main() {
 
   tearDown(() {
     FollowsService.debugSetOverrides(firestore: null, auth: null);
+    PublicProfileFirestore.debugSetOverrides(firestore: null, auth: null);
   });
 
   test('connections tab includes mutual follows (primary + legacy)', () async {

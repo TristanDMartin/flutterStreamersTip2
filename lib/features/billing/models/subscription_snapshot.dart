@@ -397,7 +397,7 @@ class SubscriptionSnapshot {
         lastResetDate: usage.lastResetDate ?? _readDate(root['resetAt']),
       );
     }
-    final Map<String, dynamic>? levelsMap =
+    final Map<String, dynamic> levelsMap =
         root['levels'] is Map<String, dynamic>
             ? root['levels'] as Map<String, dynamic>
             : root;

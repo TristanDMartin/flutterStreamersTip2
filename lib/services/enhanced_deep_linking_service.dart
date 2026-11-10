@@ -90,6 +90,9 @@ class EnhancedDeepLinkingService {
           'Unknown deep link pattern: $path',
           tag: 'EnhancedDeepLinkingService',
         );
+        if (!context.mounted) {
+          return;
+        }
         await _handleUnknownLink(link, context);
       }
     } catch (e, stackTrace) {

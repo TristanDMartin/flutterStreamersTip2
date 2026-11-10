@@ -40,11 +40,14 @@ class _ModernVideoEditorViewState
   double _playbackSpeed = 1.0;
   int _rotationAngle = 0; // 0, 90, 180, 270
   bool _isFlippedHorizontally = false;
+  // ignore: unused_field
   String _selectedTool = ''; // trim, text, captions, etc.
   List<VideoTextOverlay> _textOverlays = [];
   List<CaptionSegment> _captionSegments = [];
+  // ignore: unused_field
   bool _isGeneratingCaptions = false;
   DevicePerformanceTier _performanceTier = DevicePerformanceTier.high;
+  // ignore: unused_field
   bool _isDetectingDevice = true;
 
   final AutoCaptionService _captionService = AutoCaptionService();
@@ -662,9 +665,6 @@ class _ModernVideoEditorViewState
                                           physics: const NeverScrollableScrollPhysics(),
                                           itemCount: 10,
                                           itemBuilder: (context, index) {
-                                            final duration = _controller!.value.duration;
-                                            final frameDuration = duration.inMilliseconds / 10;
-                                            final frameStart = Duration(milliseconds: (index * frameDuration).toInt());
                                             final normalizedIndex = index / 10;
                                             final isInTrimRange = normalizedIndex >= _trimStart && normalizedIndex <= _trimEnd;
                                             
@@ -940,6 +940,7 @@ class _ModernVideoEditorViewState
     );
   }
 
+  // ignore: unused_element
   Widget _buildOption(
     IconData icon,
     String title,

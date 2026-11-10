@@ -18,9 +18,21 @@ async function run() {
   });
 
   try {
-    const userA = env.authenticatedContext('userA');
-    const userB = env.authenticatedContext('userB');
-    const userC = env.authenticatedContext('userC'); // attacker/non-owner
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      for (const uid of ['userA', 'userB', 'userC']) {
+        await db.collection('users').doc(uid).set({
+          id: uid,
+          accountStatus: 'active',
+          ageGate: {status: 'passed'},
+        });
+      }
+    });
+
+    const verified = {email_verified: true};
+    const userA = env.authenticatedContext('userA', verified);
+    const userB = env.authenticatedContext('userB', verified);
+    const userC = env.authenticatedContext('userC', verified);
 
     const dbA = userA.firestore();
     const dbB = userB.firestore();

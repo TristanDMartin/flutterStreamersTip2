@@ -1,5 +1,7 @@
 import 'dart:io';
 
+// ignore_for_file: depend_on_referenced_packages
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';

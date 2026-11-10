@@ -952,6 +952,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     );
   }
 
+  // ignore: unused_element
   Widget _buildTabBar() {
     final responsive = context.responsive;
 
@@ -1782,6 +1783,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     });
   }
 
+  // ignore: unused_element
   void _selectAll() {
     setState(() {
       if (_tabController.index == 0) {
@@ -2002,6 +2004,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     return draft.id;
   }
 
+  // ignore: unused_element
   void _markAsRead() async {
     if (_selectedItems.isEmpty) return;
     final int markedCount = _selectedItems.length;

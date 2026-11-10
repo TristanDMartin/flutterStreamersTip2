@@ -67,8 +67,10 @@ void main() {
 
     expect(find.text('TechnQs • Level 7'), findsOneWidget);
     expect(find.text('Tippy'), findsOneWidget);
-    expect(find.text('Consistency 82%'), findsOneWidget);
-    expect(find.text('Due alerts'), findsOneWidget);
+    expect(find.text('Consistency'), findsOneWidget);
+    expect(find.text('82'), findsOneWidget);
+    expect(find.text('Alerts'), findsOneWidget);
+    expect(find.text('2'), findsWidgets);
     expect(find.text('2 scheduled'), findsOneWidget);
   });
 

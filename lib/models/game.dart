@@ -5,9 +5,9 @@ part 'game.freezed.dart';
 part 'game.g.dart';
 
 @freezed
-class Game with _$Game {
+sealed class Game with _$Game {
   const Game._();
-  
+
   const factory Game({
     required String id,
     required String title,
@@ -28,7 +28,7 @@ class Game with _$Game {
     if (data == null) {
       throw Exception('Game document ${doc.id} has no data');
     }
-    
+
     return Game(
       id: doc.id,
       title: data['title'] as String? ?? 'Unknown Game',
@@ -60,55 +60,60 @@ class Game with _$Game {
 
 extension GameExtension on Game {
   static List<Game> get samples => [
-    const Game(
-      id: 'fortnite',
-      title: 'Fortnite',
-      artworkUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co2ekt.jpg',
-      provider: 'igdb',
-      providerGameId: '1905',
-      slug: 'fortnite',
-      clipCount: 150,
-      followerCount: 1200,
-    ),
-    const Game(
-      id: 'minecraft',
-      title: 'Minecraft',
-      artworkUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co49x5.jpg',
-      provider: 'igdb',
-      providerGameId: '121',
-      slug: 'minecraft',
-      clipCount: 280,
-      followerCount: 2100,
-    ),
-    const Game(
-      id: 'valorant',
-      title: 'VALORANT',
-      artworkUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co2mvt.jpg',
-      provider: 'igdb',
-      providerGameId: '119171',
-      slug: 'valorant',
-      clipCount: 95,
-      followerCount: 850,
-    ),
-    const Game(
-      id: 'league-of-legends',
-      title: 'League of Legends',
-      artworkUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co49wj.jpg',
-      provider: 'igdb',
-      providerGameId: '115',
-      slug: 'league-of-legends',
-      clipCount: 210,
-      followerCount: 1500,
-    ),
-    const Game(
-      id: 'call-of-duty-warzone',
-      title: 'Call of Duty: Warzone',
-      artworkUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co2eus.jpg',
-      provider: 'igdb',
-      providerGameId: '136521',
-      slug: 'call-of-duty-warzone',
-      clipCount: 120,
-      followerCount: 950,
-    ),
-  ];
+        const Game(
+          id: 'fortnite',
+          title: 'Fortnite',
+          artworkUrl:
+              'https://images.igdb.com/igdb/image/upload/t_cover_big/co2ekt.jpg',
+          provider: 'igdb',
+          providerGameId: '1905',
+          slug: 'fortnite',
+          clipCount: 150,
+          followerCount: 1200,
+        ),
+        const Game(
+          id: 'minecraft',
+          title: 'Minecraft',
+          artworkUrl:
+              'https://images.igdb.com/igdb/image/upload/t_cover_big/co49x5.jpg',
+          provider: 'igdb',
+          providerGameId: '121',
+          slug: 'minecraft',
+          clipCount: 280,
+          followerCount: 2100,
+        ),
+        const Game(
+          id: 'valorant',
+          title: 'VALORANT',
+          artworkUrl:
+              'https://images.igdb.com/igdb/image/upload/t_cover_big/co2mvt.jpg',
+          provider: 'igdb',
+          providerGameId: '119171',
+          slug: 'valorant',
+          clipCount: 95,
+          followerCount: 850,
+        ),
+        const Game(
+          id: 'league-of-legends',
+          title: 'League of Legends',
+          artworkUrl:
+              'https://images.igdb.com/igdb/image/upload/t_cover_big/co49wj.jpg',
+          provider: 'igdb',
+          providerGameId: '115',
+          slug: 'league-of-legends',
+          clipCount: 210,
+          followerCount: 1500,
+        ),
+        const Game(
+          id: 'call-of-duty-warzone',
+          title: 'Call of Duty: Warzone',
+          artworkUrl:
+              'https://images.igdb.com/igdb/image/upload/t_cover_big/co2eus.jpg',
+          provider: 'igdb',
+          providerGameId: '136521',
+          slug: 'call-of-duty-warzone',
+          clipCount: 120,
+          followerCount: 950,
+        ),
+      ];
 }

@@ -1,4 +1,5 @@
 enum AchievementFamily {
+  // ignore: constant_identifier_names
   getting_started,
   publishing,
   consistency,

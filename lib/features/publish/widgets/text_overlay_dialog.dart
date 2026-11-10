@@ -71,7 +71,7 @@ class _TextOverlayDialogState extends State<TextOverlayDialog> {
                 labelText: 'Text',
                 labelStyle: TextStyle(color: shell.muted),
                 hintText: 'Enter your text...',
-                hintStyle: TextStyle(color: shell.muted.withOpacity(0.5)),
+                hintStyle: TextStyle(color: shell.muted.withValues(alpha: 0.5)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(color: shell.surfaceCardBorder),
@@ -176,7 +176,7 @@ class _TextOverlayDialogState extends State<TextOverlayDialog> {
                 const Spacer(),
                 Switch(
                   value: _backgroundColor != null,
-                  activeColor: const Color(0xFF7B3FF2),
+                  activeThumbColor: const Color(0xFF7B3FF2),
                   onChanged: (value) {
                     setState(() {
                       _backgroundColor = value

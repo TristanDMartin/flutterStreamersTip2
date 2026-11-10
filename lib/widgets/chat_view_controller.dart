@@ -5,8 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-
-import '../features/messaging/data/messaging_repository.dart';
+import 'package:uuid/uuid.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
 import '../services/chat_service.dart';
@@ -369,7 +368,7 @@ class ChatViewController extends ChangeNotifier {
   ];
 
   final ChatViewService _chatService;
-  final MessagingRepository _messaging = MessagingRepository.instance;
+  final Uuid _clientIds = const Uuid();
   StreamSubscription<List<app_message.Message>>? _messagesSubscription;
   StreamSubscription<bool>? _typingSubscription;
   final List<app_message.Message> _pendingOptimistic = <app_message.Message>[];
@@ -438,7 +437,7 @@ class ChatViewController extends ChangeNotifier {
     }
 
     final bool isGif = shouldSendComposerInputAsRemoteGifUrl(trimmed);
-    final String clientId = _messaging.createClientId();
+    final String clientId = _clientIds.v4();
     if (!isGif && _state.replyingTo == null) {
       final app_message.Message optimistic = app_message.Message(
         id: clientId,

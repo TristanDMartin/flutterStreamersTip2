@@ -125,9 +125,10 @@ class TippyChatService {
     return sendPersistedMessage(
       message: text,
       chatId: chatId,
-      clientMessageId: (clientMessageId != null && clientMessageId.trim().isNotEmpty)
-          ? clientMessageId.trim()
-          : 'flt_${DateTime.now().millisecondsSinceEpoch}_${text.hashCode}',
+      clientMessageId:
+          (clientMessageId != null && clientMessageId.trim().isNotEmpty)
+              ? clientMessageId.trim()
+              : 'flt_${DateTime.now().millisecondsSinceEpoch}_${text.hashCode}',
       platform: platform,
     );
   }
@@ -141,9 +142,9 @@ class TippyChatService {
   }) async {
     final Stopwatch stopwatch = Stopwatch()..start();
     secureLog('frontend_send_persisted_click', name: 'TippyLatency');
-    
+
     _activeRequestId = clientMessageId;
-    
+
     final Uri uri = Uri.parse(siteTippyChatUrl());
     final Map<String, String> headers = await _buildHeaders();
     final Map<String, dynamic> payload = <String, dynamic>{
@@ -152,23 +153,25 @@ class TippyChatService {
       'platform': platform,
       if (chatId != null && chatId.trim().isNotEmpty) 'chatId': chatId.trim(),
     };
-    
+
     try {
       final http.Response response = await _cancelableClient.execute(
         requestId: clientMessageId,
-        request: (http.Client client) => client.post(
-          uri,
-          headers: headers,
-          body: jsonEncode(payload),
-        ).timeout(_requestTimeout),
+        request: (http.Client client) => client
+            .post(
+              uri,
+              headers: headers,
+              body: jsonEncode(payload),
+            )
+            .timeout(_requestTimeout),
       );
-      
+
       PerformanceMonitoringService().trackNetworkRequest(
         '/api/tippy/chat',
         stopwatch.elapsed,
         statusCode: response.statusCode,
       );
-      
+
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final Map<String, dynamic>? errBody = _tryDecodeMap(response.body);
         final String? errMsg = _readString(errBody?['error']);
@@ -184,7 +187,7 @@ class TippyChatService {
           name: 'TippyLatency',
         );
       }
-      
+
       final TippyChatResult result = _parseSiteChatResponse(response);
       _creditsCache = _creditsCache?.copyWith(
         creditsRemaining: result.creditsRemaining,
@@ -196,11 +199,17 @@ class TippyChatService {
         code: 'REQUEST_CANCELED',
         status: 499,
       );
+    } on TimeoutException {
+      throw const TippyNetworkException(message: 'Request timed out.');
+    } on SocketException {
+      throw const TippyNetworkException();
+    } on http.ClientException {
+      throw const TippyNetworkException();
     } finally {
       _activeRequestId = null;
     }
   }
-  
+
   /// Cancel the active request if one is in progress.
   void cancelActiveRequest() {
     if (_activeRequestId != null) {
@@ -225,7 +234,9 @@ class TippyChatService {
       ),
     );
     final Map<String, dynamic>? body = _tryDecodeMap(response.body);
-    if (body == null || response.statusCode < 200 || response.statusCode >= 300) {
+    if (body == null ||
+        response.statusCode < 200 ||
+        response.statusCode >= 300) {
       throw TippyChatException(
         _readString(body?['error']) ?? 'Failed to create chat.',
         status: response.statusCode,
@@ -302,9 +313,8 @@ class TippyChatService {
     final bool failed = raw['success'] == false ||
         response.statusCode < 200 ||
         response.statusCode >= 300;
-    final String requestId = _readString(raw['requestId']) ??
-        _readString(data['requestId']) ??
-        '';
+    final String requestId =
+        _readString(raw['requestId']) ?? _readString(data['requestId']) ?? '';
     if (failed) {
       if (response.statusCode == 401) {
         throw TippyAuthException(
@@ -484,9 +494,67 @@ class TippyChatService {
   Future<TippyPlanResult> createPlan({
     required List<TippyChatMessage> messages,
     String? prompt,
+    String? chatId,
   }) async {
-    throw const TippyChatException(
-      'Plan creation from this screen is disabled. Ask Tippy in chat instead.',
+    final List<Map<String, String>> conversation = <Map<String, String>>[
+      for (final TippyChatMessage message in messages)
+        if ((message.role == 'user' || message.role == 'assistant') &&
+            message.content.trim().isNotEmpty)
+          <String, String>{
+            'role': message.role,
+            'content': message.content.trim(),
+          },
+    ];
+    final String trimmedPrompt = (prompt ?? '').trim();
+    if (conversation.isEmpty && trimmedPrompt.isNotEmpty) {
+      conversation.add(<String, String>{
+        'role': 'user',
+        'content': trimmedPrompt,
+      });
+    }
+    if (conversation.isEmpty) {
+      throw const TippyChatException('Message is required.');
+    }
+    final Map<String, String> headers = await _buildHeaders();
+    final String? trimmedChatId = chatId?.trim();
+    final http.Response response = await _executeRequest(
+      () => _client.post(
+        Uri.parse(siteTippyChatUrl()),
+        headers: headers,
+        body: jsonEncode(<String, dynamic>{
+          'createPlanNow': true,
+          'messages': conversation,
+          'contextMode': 'planner',
+          'platform': 'android',
+          if (trimmedChatId != null && trimmedChatId.isNotEmpty)
+            'chatId': trimmedChatId,
+        }),
+      ),
+    );
+    final TippyChatResult parsed = _parseSiteChatResponse(response);
+    final Map<String, dynamic> raw =
+        _tryDecodeMap(response.body) ?? <String, dynamic>{};
+    final Map<String, dynamic> data = raw['data'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(raw['data'] as Map)
+        : raw;
+    final RegExp planLink = RegExp(
+      r'streamerstip://content-plan/([A-Za-z0-9_-]+)',
+      caseSensitive: false,
+    );
+    final String? planId = _readString(data['planId']) ??
+        _readString(data['relatedPlanId']) ??
+        _readString(raw['planId']) ??
+        planLink.firstMatch(parsed.message)?.group(1);
+    if (planId == null || planId.isEmpty) {
+      throw const TippyChatException(
+        'Plan created but no plan id was returned.',
+      );
+    }
+    return TippyPlanResult(
+      planId: planId,
+      message: parsed.message,
+      creditsRemaining: parsed.creditsRemaining,
+      ui: parsed.ui,
     );
   }
 
@@ -613,7 +681,8 @@ class TippyChatService {
     }
     if (status == 401) {
       if (code == 'APP_CHECK_REQUIRED' || code == 'APP_CHECK_INVALID') {
-        ProductionMonitoringService.instance.recordAppCheckBlocked('tippy_http');
+        ProductionMonitoringService.instance
+            .recordAppCheckBlocked('tippy_http');
       }
       throw TippyAuthException(
         message,
@@ -676,8 +745,7 @@ class TippyChatService {
     while (true) {
       attempt++;
       try {
-        final http.Response response =
-            await request().timeout(_requestTimeout);
+        final http.Response response = await request().timeout(_requestTimeout);
         final bool isRetryableStatus =
             response.statusCode == 502 || response.statusCode == 503;
         if (isRetryableStatus && attempt < maxAttempts) {

@@ -4,8 +4,8 @@ const baseURL = process.env.E2E_BASE_URL?.trim() ?? '';
 
 /**
  * Playwright targets the StreamersTip Next.js deployment (or local dev).
- * Set E2E_BASE_URL (e.g. https://your-app.vercel.app). If unset, the smoke
- * spec skips network assertions so CI stays green until the URL is configured.
+ * CI starts this job only when E2E_BASE_URL is set. An empty URL skips the
+ * GitHub job and must not be reported as a successful Playwright run.
  */
 export default defineConfig({
   testDir: './specs',

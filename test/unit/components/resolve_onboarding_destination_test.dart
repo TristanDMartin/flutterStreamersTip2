@@ -101,13 +101,14 @@ void main() {
             'slim7Completed': true,
             'tippyFunnelCompleted': false,
             'essentialProfileComplete': false,
+            'tippyStage': 'username',
             'ignoreLocalResume': false,
             'forceWelcome': false,
           },
         },
         emailVerified: true,
         isPasswordProvider: false,
-        localTippyStage: 'username',
+        localTippyStage: 'welcome',
       );
       expect(actual.lifecycle, 'TIPPY');
       expect(actual.reason, 'tippy_in_progress');
@@ -240,7 +241,7 @@ void main() {
       expect(actual.tippyStageHint, 'creator_space_ready');
     });
 
-    test('first mission accept is COMPLETE even without tippyFunnelCompleted', () {
+    test('first mission accept alone is not COMPLETE', () {
       final OnboardingDestination actual = resolveOnboardingDestination(
         userData: <String, dynamic>{
           'username': 'doneuser',
@@ -250,15 +251,16 @@ void main() {
             'tippyFunnelCompleted': false,
             'essentialProfileComplete': true,
             'firstMissionChoice': 'accept',
+            'tippyStage': 'first_mission',
           },
         },
         emailVerified: true,
         isPasswordProvider: true,
-        localTippyStage: 'first_mission',
+        localTippyStage: 'welcome',
       );
-      expect(actual.lifecycle, 'COMPLETE');
-      expect(actual.allowApp, isTrue);
-      expect(actual.tippyStageHint, isNull);
+      expect(actual.lifecycle, 'TIPPY');
+      expect(actual.allowApp, isFalse);
+      expect(actual.tippyStageHint, 'first_mission');
     });
   });
 }

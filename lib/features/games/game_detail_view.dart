@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/game.dart';
 import '../../models/home_video.dart';
 import '../../services/game_service.dart';
-import '../../widgets/video_player_view_optimized.dart';
 
 final gameDetailProvider = FutureProvider.family<Game?, String>((ref, gameId) async {
   return GameService().getGame(gameId);
@@ -425,7 +424,7 @@ class _VideoCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    video.caption ?? 'Untitled',
+                    video.caption,
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w500,
                     ),
@@ -463,7 +462,7 @@ class _VideoCard extends StatelessWidget {
   String _formatDuration(int seconds) {
     final minutes = seconds ~/ 60;
     final remainingSeconds = seconds % 60;
-    return '${minutes}:${remainingSeconds.toString().padLeft(2, '0')}';
+    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   String _formatCount(int count) {

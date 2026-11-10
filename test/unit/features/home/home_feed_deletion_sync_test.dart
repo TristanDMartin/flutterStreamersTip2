@@ -51,6 +51,7 @@ void main() {
             'status': 'ready',
             'isDeleted': false,
             'isReadyForFeed': true,
+            'ownerId': 'creator_1',
             'visible': true,
             'hlsUrl': 'https://stream.mux.com/x.m3u8',
           },

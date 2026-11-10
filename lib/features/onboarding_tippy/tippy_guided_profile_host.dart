@@ -1178,6 +1178,7 @@ class TippyGuidedProfileHostState
     );
   }
 
+  // ignore: unused_element
   Widget _buildUsername() {
     return _scene(
       TippyOnboardingCopy.usernamePrompt,
@@ -1686,6 +1687,7 @@ class TippyGuidedProfileHostState
     return value.trim();
   }
 
+  // ignore: unused_element
   Widget _buildCategories() {
     return _scene(
       TippyOnboardingCopy.categoriesPrompt,

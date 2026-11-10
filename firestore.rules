@@ -33,8 +33,11 @@ service cloud.firestore {
 
     // Firebase Auth token claim — authoritative email verification.
     // Do not use Firestore users.isVerified (platform badge) for security.
+    // A missing claim is unverified. Direct property access throws
+    // "email_verified is undefined" and can abort later allow branches.
     function hasVerifiedEmail() {
-      return isAuthenticated() && request.auth.token.email_verified == true;
+      return isAuthenticated() &&
+        request.auth.token.get('email_verified', false) == true;
     }
     
     function isOwner(userId) {
@@ -66,21 +69,41 @@ service cloud.firestore {
         status == 'verificationrequired';
     }
 
-    function ageGateStatusOf(uid) {
-      let gate = accountDoc(uid).get('ageGate', {});
-      return gate is map ? gate.get('status', '').lower() : '';
+    function stringOrEmpty(value) {
+      return value is string ? value : '';
     }
 
+    function ageGateStatusOf(uid) {
+      let gate = accountDoc(uid).get('ageGate', {'status': 'none'});
+      return gate is map ? stringOrEmpty(gate.get('status', 'none')).lower() : 'none';
+    }
+
+    // matches() throws on a non-string. Bind a stand-in before matching so an
+    // empty dateOfBirth cannot be the receiver.
+    function birthdateHasIsoShape(uid) {
+      let dob = stringOrEmpty(accountDoc(uid).get('dateOfBirth', 'none'));
+      let sample = dob.size() == 10 ? dob : 'not-a-date';
+      return dob.size() == 10 &&
+        sample.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    // The emulator logs a false field comparison as an evaluation error and
+    // still denies the write. passed is tested first, so an adult allow is a
+    // true comparison and does not log. An under_minimum_age account fails
+    // status == 'passed' before the literal deny, which is the likes
+    // byUser create/update log.
+    // Checking under_minimum_age first would move that false comparison onto
+    // every adult allow. Other statuses still need a 10-character ISO
+    // birthdate. A missing birthdate stays denied.
     function accountHasAgeClearance(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid)) &&
-        ageGateStatusOf(uid) != 'under_minimum_age' &&
-        (
-          ageGateStatusOf(uid) == 'passed' ||
-          (
-            accountDoc(uid).get('dateOfBirth', '') is string &&
-            accountDoc(uid).get('dateOfBirth', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-          )
-        );
+      let status = exists(/databases/$(database)/documents/users/$(uid))
+        ? ageGateStatusOf(uid)
+        : 'none';
+      return status == 'passed'
+        ? true
+        : status == 'under_minimum_age'
+          ? false
+          : birthdateHasIsoShape(uid);
     }
 
     function actorMayCreateContent() {
@@ -90,7 +113,13 @@ service cloud.firestore {
     }
 
     function isExplicitUserSubcollection(name) {
-      return name in ['videos', 'tippyChats', 'following', 'followers'];
+      // Named subcollections with their own match. The owner catch-all must
+      // not OR-allow writes that those rules reject (device token shape,
+      // server-only conversation updates).
+      return name in [
+        'videos', 'tippyChats', 'following', 'followers',
+        'deviceTokens', 'tippyConversations',
+      ];
     }
 
     function blockDocExists(blockerId, blockedId) {
@@ -308,6 +337,53 @@ service cloud.firestore {
       request.resource.data.isDeleted == true;
     }
 
+    // Feed readiness and playback identity are server-written. A client patch
+    // that touches them is denied before the counter or owner-edit rules run.
+    function videoClientTouchesServerFields() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'isReadyForFeed', 'feedEligible', 'ownerActive',
+        'muxPlaybackId', 'muxAssetId', 'canonicalPlaybackUrl', 'publishedAt'
+      ]);
+    }
+
+    function videoUpdateIsViewerCounterKeyset() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'views', 'updatedAt',
+        'likes', 'likeCount',
+        'bookmarks', 'bookmarkCount', 'favorites', 'favoriteCount',
+        'shares', 'shareCount'
+      ]);
+    }
+
+    function viewerMayApplyVideoCounterBump() {
+      return isAuthenticated() &&
+        actorMayCreateContent() &&
+        canReadVideo() &&
+        (
+          isViewerVideoViewsBump() ||
+          isViewerVideoLikeCounterBump() ||
+          isViewerVideoBookmarkCounterBump() ||
+          isViewerVideoShareCounterBump()
+        );
+    }
+
+    function ownerMayApplyVideoEdit() {
+      return hasVerifiedEmail() &&
+        isVideoDocumentOwner() &&
+        (
+          (
+            actorMayCreateContent() &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'description', 'caption',
+              'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
+              'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
+              'allowComments', 'hashtags', 'category', 'categoryId'
+            ])
+          ) ||
+          isVideoSoftDeletePatch()
+        );
+    }
+
     // publicUsers collection - canonical public profile
     match /publicUsers/{uid} {
       // TikTok-style: public can view streamer pages / threads / videos (including avatars/names),
@@ -363,12 +439,21 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
       allow write: if false;
     }
-    
+    // Shoutout/alert events for the OBS Browser Source overlay — that page
+    // always loads logged out, so (unlike the owner-only collections above)
+    // this must be publicly readable. Bot writes via Admin SDK, which
+    // bypasses rules entirely, so client writes stay locked down.
+    match /tippyEvents/{eventId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Server-controlled fields — only Stripe webhook, Admin SDK, or migrations may write these
     function serverControlledFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys()
         .hasAny([
           'subscriptionTier', 'subscriptionStatus', 'subscriptionPeriodEnd',
+          'subscriptionStartedAt', 'subscriptionBillingInterval',
           'subscriptionProvider', 'stripeCustomerId', 'stripeSubscriptionId',
           'subscriptionCancelAtPeriodEnd', 'subscriptionPauseResumesAt',
           'canceledDuringTrial', 'hasUsedTrial', 'trialConsumedAt',
@@ -420,7 +505,8 @@ service cloud.firestore {
              !request.resource.data.keys().hasAny([
                'role', 'isAdmin', 'admin', 'adminAccess', 'adminStatus',
                'entitlementOverride', 'entitlements',
-               'subscriptionPeriodEnd', 'subscriptionProvider',
+               'subscriptionPeriodEnd', 'subscriptionStartedAt',
+               'subscriptionBillingInterval', 'subscriptionProvider',
                'stripeCustomerId', 'stripeSubscriptionId',
                'hasUsedTrial', 'trialConsumedAt', 'canceledDuringTrial',
                'isPro', 'tier',
@@ -472,6 +558,8 @@ service cloud.firestore {
         'creatorReferrals',
         'growthReports',
         'growthShareArtifacts',
+        // Private eligibility (DOB / residence) — owner read, Admin API writes only
+        'private',
         // 2FA secret + hashed backup codes — /api/two-factor/* only
         'security',
       ];
@@ -487,7 +575,9 @@ service cloud.firestore {
               'videoCount', 'videosCount', 'totalViews', 'totalLikes', 'likesCount',
               'isVerified', 'verified', 'verifiedBadge', 'badges', 'accountStatus',
               'role', 'roles', 'isAdmin', 'isFounder', 'isStaff', 'tier', 'subscriptionTier',
-              'plan', 'creatorScore', 'isBanned', 'banned', 'ownerActive'];
+              'plan', 'creatorScore', 'isBanned', 'banned', 'ownerActive',
+              // Tombstone / visibility — Admin SDK / delete cascade only
+              'isDeleted', 'deleted', 'deletedAt', 'deletedBy', 'publicProfileEnabled'];
     }
 
     function authorFieldsMatchAuthOnCreate(fields) {
@@ -517,9 +607,7 @@ service cloud.firestore {
     match /users/{userId} {
       // Private account doc — billing, email, bans, entitlements. Others use publicUsers.
       allow read: if isOwner(userId);
-      // PRODUCTION: Client-side user creation disabled (expired 2026-08-31).
-      // All user accounts must be provisioned via /api/account/provision server endpoint.
-      // This ensures proper validation, username locking, and server-side initialization.
+      // Provisioning is Admin SDK only (`/api/account/provision`). Client create closed.
       allow create: if false;
       allow update: if hasVerifiedEmail() && isOwner(userId) && isValidUser(userId) && serverControlledFieldsUnchanged() &&
                        clientSecretUserFieldsUnchanged() &&
@@ -1441,31 +1529,17 @@ service cloud.firestore {
                        (!('creator' in request.resource.data) ||
                          !(request.resource.data.creator is map) ||
                          !request.resource.data.creator.keys().hasAny(['isVerified', 'verified', 'badges']));
-      allow update: if (
-                       hasVerifiedEmail() &&
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) && (
-                       isVideoDocumentOwner() &&
-                        actorMayCreateContent() &&
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-                          ['title', 'description', 'caption', 'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
-                           'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
-                           'allowComments', 'hashtags', 'category', 'categoryId'])
-                       ||
-                       isVideoDocumentOwner() && isVideoSoftDeletePatch()
-                     ))
-                     ||
-                     (
-                       isAuthenticated() &&
-                       actorMayCreateContent() &&
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) &&
-                       canReadVideo() &&
-                       (
-                         isViewerVideoViewsBump() ||
-                         isViewerVideoLikeCounterBump() ||
-                         isViewerVideoBookmarkCounterBump() ||
-                         isViewerVideoShareCounterBump()
-                       )
-                     );
+      // Ternary selects one branch. A server-field write, a counter bump, and
+      // an owner edit are not evaluated together, which keeps each request
+      // under the 1,000-expression limit. Who may write does not change:
+      // clients cannot touch feed or playback identity, bumps stay limited to
+      // counter fields, and owner edits stay on the metadata allowlist or a
+      // soft-delete tombstone.
+      allow update: if videoClientTouchesServerFields()
+        ? false
+        : videoUpdateIsViewerCounterKeyset()
+          ? viewerMayApplyVideoCounterBump()
+          : ownerMayApplyVideoEdit();
       allow delete: if (hasVerifiedEmail() && isVideoDocumentOwner()) || isPlatformAdmin();
 
       // Flutter engagement edges (canonical for mobile)
@@ -1544,10 +1618,9 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
-    // DUAL BOOKMARKS (bridge extended past 2026-08-31):
+    // DUAL BOOKMARKS (bridge through 2026-08-31):
     // Canonical Flutter: videos/{videoId}/bookmarks/{uid} + users/{uid}/favorites
     // Website: this top-level bookmarks + users/{uid}/bookmarkedVideos
-    // TODO: Complete migration to video-scoped bookmarks, then restrict this to read-only.
     // After migration, prefer video-scoped edges; keep top-level read for legacy.
     match /bookmarks/{bookmarkId} {
       allow read: if isAuthenticated() && 
@@ -1876,7 +1949,8 @@ service cloud.firestore {
 
     // Cross-post jobs — Admin SDK / API / Workers only (no client creates)
     match /crossPostJobs/{jobId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isPlatformAdmin());
       allow create, update, delete: if false;
     }
 
@@ -2681,6 +2755,42 @@ service cloud.firestore {
 
     match /videoDeletionLogs/{logId} {
       allow read, write: if false;
+    }
+
+    // Time-boxed campaigns (e.g. road_to_vi_2026). All writes via Admin API.
+    // Config + member badges are public; giveaway entries are owner-read only;
+    // winners are never client-readable.
+    match /campaigns/{campaignId} {
+      allow read: if true;
+      allow write: if false;
+
+      match /members/{memberUid} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      match /entries/{entryUid} {
+        allow read: if isOwner(entryUid);
+        allow write: if false;
+      }
+
+      match /entrySignals/{entryUid} {
+        allow read, write: if false;
+      }
+
+      match /bonusAwards/{awardId} {
+        allow read: if request.auth != null &&
+          resource.data.uid == request.auth.uid;
+        allow write: if false;
+      }
+
+      match /socialClicks/{clickId} {
+        allow read, write: if false;
+      }
+
+      match /winners/{winnerUid} {
+        allow read, write: if false;
+      }
     }
 
     // Default deny all other collections

@@ -107,13 +107,6 @@ class VideoCompressionService {
         position: timeMs?.inMilliseconds ?? 0,
       );
 
-      if (thumbnailFile == null) {
-        return const ThumbnailExtractionResult(
-          success: false,
-          error: 'Failed to extract thumbnail',
-        );
-      }
-
       debugPrint('✅ Thumbnail extracted: ${thumbnailFile.path}');
 
       return ThumbnailExtractionResult(
