@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/game.dart';
 import '../../services/game_service.dart';
-import '../../core/theme/st_theme_tokens.dart';
 import 'game_detail_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 

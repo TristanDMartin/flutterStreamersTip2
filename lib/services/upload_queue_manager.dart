@@ -4,7 +4,6 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'video_upload_service.dart';
-import 'video_compression_service.dart';
 
 enum UploadStatus {
   queued,

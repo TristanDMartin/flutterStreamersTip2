@@ -2065,6 +2065,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView>
     );
   }
 
+  // ignore: unused_element
   Widget _buildTrial(TippyOnboardingGuestSession session) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2487,6 +2488,7 @@ class _TippyOnboardingViewState extends ConsumerState<TippyOnboardingView>
     );
   }
 
+  // ignore: unused_element
   Widget _buildFindFriends() {
     return _tippyScene(
       speech: TippyOnboardingCopy.findFriends,

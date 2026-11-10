@@ -191,11 +191,11 @@ class _ModernShareViewState extends ConsumerState<ModernShareView> {
       );
 
       // Step 4: Extract hashtags
-      final allHashtags = <String>[
+      final allHashtags = <String>{
         ..._selectedHashtags.map((tag) => tag.replaceFirst('#', '')),
         ...RegExp(r'#(\w+)').allMatches(_captionController.text)
             .map((m) => m.group(1)!)
-      ].toSet().toList();
+      }.toList();
 
       // Step 5: Upload with comprehensive error handling
       debugPrint('🚀 Initiating Mux upload...');

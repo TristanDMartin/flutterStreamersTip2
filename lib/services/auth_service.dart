@@ -742,6 +742,7 @@ class AuthenticationService extends ChangeNotifier {
     }
   }
 
+  // ignore: unused_element
   Future<void> _syncPublicUserAvatar(String uid, String avatarUrl) async {
     try {
       final displayName =

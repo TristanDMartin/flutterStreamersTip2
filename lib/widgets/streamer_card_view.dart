@@ -2036,6 +2036,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
+  // ignore: unused_element
   Widget _buildVideoFeed() {
     return ProfileVideoFeedView(
       userId: _effectiveUserId,
