@@ -85,6 +85,15 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_feed_e2e == 'true' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Block production Firebase
+        run: |
+          echo "android-feed-e2e BLOCKED" >> "$GITHUB_STEP_SUMMARY"
+          echo "The app is compiled against Firebase project streamerstip-6cfdb." >> "$GITHUB_STEP_SUMMARY"
+          echo "This job signs in and plays the live home feed. Playback can write view counters on real creator videos." >> "$GITHUB_STEP_SUMMARY"
+          echo "There is no staging Auth, Firestore, Storage, Functions, or Mux worker in this build." >> "$GITHUB_STEP_SUMMARY"
+          echo "android-feed-e2e BLOCKED: refusing to sign into production."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: subosito/flutter-action@v2
@@ -116,6 +125,15 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_feed_e2e == 'true' }}
     runs-on: macos-15
     steps:
+      - name: Block production Firebase
+        run: |
+          echo "ios-feed-e2e BLOCKED" >> "$GITHUB_STEP_SUMMARY"
+          echo "The app is compiled against Firebase project streamerstip-6cfdb." >> "$GITHUB_STEP_SUMMARY"
+          echo "This job signs in and plays the live home feed. Playback can write view counters on real creator videos." >> "$GITHUB_STEP_SUMMARY"
+          echo "There is no staging Auth, Firestore, Storage, Functions, or Mux worker in this build." >> "$GITHUB_STEP_SUMMARY"
+          echo "ios-feed-e2e BLOCKED: refusing to sign into production."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: subosito/flutter-action@v2
@@ -143,38 +161,70 @@ jobs:
           QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
         run: ./scripts/run_flutter_integration_tests.sh
 
-  # Next.js only; skipped unless E2E_BASE_URL is configured (Flutter-only QA
-  # does not need this job).
+  # Reports whether Playwright is configured. A success here means the
+  # configuration was checked. It does not mean Playwright ran.
+  web-e2e-config:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Classify Playwright configuration
+        id: check
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+        run: |
+          if [ -n "$E2E_BASE_URL" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "web-e2e configured. Playwright will run in the web-e2e job." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "web-e2e BLOCKED" >> "$GITHUB_STEP_SUMMARY"
+            echo "E2E_BASE_URL is empty. Playwright did not run. This is not a pass." >> "$GITHUB_STEP_SUMMARY"
+            echo "web-e2e BLOCKED: E2E_BASE_URL is not configured. Playwright did not run."
+          fi
+
   web-e2e:
+    needs: web-e2e-config
+    if: needs.web-e2e-config.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     env:
       E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Skip web e2e when no base URL is configured
-        if: ${{ env.E2E_BASE_URL == '' }}
-        run: echo "E2E_BASE_URL is not configured; skipping web e2e."
-
       - uses: actions/setup-node@v4
-        if: ${{ env.E2E_BASE_URL != '' }}
         with:
           node-version: "22"
 
       - name: Install Playwright deps
-        if: ${{ env.E2E_BASE_URL != '' }}
         run: npm ci
         working-directory: tests/e2e
 
       - name: Install Chromium
-        if: ${{ env.E2E_BASE_URL != '' }}
         run: npx playwright install --with-deps chromium
         working-directory: tests/e2e
 
       - name: Run Playwright
-        if: ${{ env.E2E_BASE_URL != '' }}
         working-directory: tests/e2e
-        run: npm test
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-results.json
+        run: npx playwright test --reporter=line --reporter=json
+
+      - name: Require an executed pass
+        working-directory: tests/e2e
+        run: |
+          node -e '
+            const fs = require("fs");
+            const stats = JSON.parse(fs.readFileSync("playwright-results.json", "utf8")).stats;
+            const passed = stats && stats.expected ? stats.expected : 0;
+            const failed = stats && stats.unexpected ? stats.unexpected : 0;
+            const skipped = stats && stats.skipped ? stats.skipped : 0;
+            console.log(`Playwright passed=${passed} failed=${failed} skipped=${skipped}`);
+            if (failed > 0 || passed < 1) {
+              console.error("Playwright did not record an executed pass.");
+              process.exit(1);
+            }
+          '
 
       - name: Upload Playwright report
         if: failure()
