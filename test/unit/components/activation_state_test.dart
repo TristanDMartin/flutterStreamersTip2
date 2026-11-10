@@ -81,7 +81,7 @@ void main() {
       expect(actual.state, 'CREATOR_IDENTITY');
     });
 
-    test('does not skip TIPPY_INITIAL_ANALYSIS before the first plan exists', () {
+    test('signed-in analysis is FIRST_GROWTH_PLAN before the plan exists', () {
       final ActivationDecision actual = resolveActivationState(
         isAuthenticated: true,
         destination: destination(
@@ -91,8 +91,9 @@ void main() {
         ),
         hasFirstGrowthPlan: false,
       );
-      expect(actual.state, 'TIPPY_INITIAL_ANALYSIS');
+      expect(actual.state, 'FIRST_GROWTH_PLAN');
       expect(actual.state, kSignedInAnalysisBeginsAt);
+      expect(actual.allowApp, isFalse);
     });
 
     test('moves to FIRST_GROWTH_PLAN once the canonical plan exists', () {
@@ -151,7 +152,7 @@ void main() {
       expect(actual.allowApp, isFalse);
     });
 
-    test('first mission accept is ACTIVATED even with a leftover first_mission hint', () {
+    test('first mission accept alone stays FIRST_MISSION', () {
       final ActivationDecision actual = resolveActivationState(
         isAuthenticated: true,
         destination: destination(
@@ -161,11 +162,12 @@ void main() {
         ),
         firstMissionChoice: 'accept',
       );
-      expect(actual.state, 'ACTIVATED');
-      expect(actual.allowApp, isTrue);
+      expect(actual.state, 'FIRST_MISSION');
+      expect(actual.allowApp, isFalse);
     });
 
-    test('leftover first mission choice does not activate a recycled identity', () {
+    test('leftover first mission choice does not activate a recycled identity',
+        () {
       final ActivationDecision actual = resolveActivationState(
         isAuthenticated: true,
         destination: destination(
@@ -179,7 +181,7 @@ void main() {
       expect(actual.allowApp, isFalse);
     });
 
-    test('first mission persist can enter the app when attach omitted activation', () {
+    test('first mission choice does not activate when attach omitted it', () {
       expect(
         canCommitFirstMissionActivation(
           attachActivated: false,
@@ -188,7 +190,7 @@ void main() {
           statusReason: 'new_account_starts_tippy',
           firstMissionChoice: 'accept',
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         canCommitFirstMissionActivation(
@@ -200,9 +202,21 @@ void main() {
         ),
         isFalse,
       );
+      expect(
+        canCommitFirstMissionActivation(
+          attachActivated: true,
+          statusAllowApp: false,
+          statusActivationState: 'ACTIVATED',
+          statusReason: 'sticky_complete',
+          firstMissionChoice: 'accept',
+        ),
+        isTrue,
+      );
     });
 
-    test('never maps a verified account to Meet Tippy from a stale welcome hint', () {
+    test(
+        'never maps a verified account to Meet Tippy from a stale welcome hint',
+        () {
       final ActivationDecision actual = resolveActivationState(
         isAuthenticated: true,
         destination: destination(

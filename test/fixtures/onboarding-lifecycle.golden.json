@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "notes": "Same vectors for TS and Dart. Clients must not re-resolve lifecycle; these outputs are what /api/account/status must return.",
+  "version": 2,
+  "notes": "Same vectors for TS and Dart. Clients must not re-resolve lifecycle; these outputs are what /api/account/status must return. Resume stage lives on users/{uid}.onboarding.tippyStage \u2014 never localTippyStage.",
   "vectors": [
     {
       "id": "sticky_complete_ignores_local_stage",
@@ -57,7 +57,8 @@
             "slim7Completed": true,
             "tippyFunnelCompleted": false,
             "essentialProfileComplete": false,
-            "photoStatus": "skipped"
+            "photoStatus": "skipped",
+            "tippyStage": "username"
           }
         },
         "emailVerified": true,
@@ -117,7 +118,8 @@
             "tippyFunnelCompleted": false,
             "essentialProfileComplete": false,
             "ignoreLocalResume": true,
-            "forceWelcome": true
+            "forceWelcome": true,
+            "tippyStage": "bio"
           }
         },
         "emailVerified": false,
@@ -143,7 +145,8 @@
             "tippyOnboardingV1Attached": true,
             "slim7Completed": true,
             "tippyFunnelCompleted": false,
-            "essentialProfileComplete": false
+            "essentialProfileComplete": false,
+            "tippyStage": "username"
           }
         },
         "emailVerified": false,
@@ -169,7 +172,8 @@
             "tippyOnboardingV1Attached": true,
             "slim7Completed": true,
             "tippyFunnelCompleted": false,
-            "essentialProfileComplete": false
+            "essentialProfileComplete": false,
+            "tippyStage": "username"
           }
         },
         "emailVerified": true,
@@ -195,7 +199,8 @@
             "tippyOnboardingV1Attached": true,
             "slim7Completed": true,
             "tippyFunnelCompleted": false,
-            "essentialProfileComplete": false
+            "essentialProfileComplete": false,
+            "tippyStage": "username"
           }
         },
         "emailVerified": true,
@@ -268,7 +273,8 @@
             "tippyFunnelCompleted": false,
             "essentialProfileComplete": false,
             "ignoreLocalResume": true,
-            "forceWelcome": true
+            "forceWelcome": true,
+            "tippyStage": "verify_email"
           }
         },
         "emailVerified": true,
@@ -358,7 +364,8 @@
             "tippyOnboardingV1Attached": true,
             "slim7Completed": true,
             "tippyFunnelCompleted": false,
-            "essentialProfileComplete": false
+            "essentialProfileComplete": false,
+            "tippyStage": "username"
           }
         },
         "emailVerified": true,
@@ -403,6 +410,89 @@
         "allowApp": false,
         "reason": "identity_recycled_restart",
         "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "server_tippy_stage_beats_poisoned_local_welcome",
+      "input": {
+        "userData": {
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": false,
+            "tippyStage": "bio"
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "welcome",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": false,
+        "firstMissionChoice": null
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "bio",
+        "allowApp": false,
+        "reason": "tippy_in_progress",
+        "activationState": "CREATOR_IDENTITY"
+      }
+    },
+    {
+      "id": "complete_lifecycle_beats_missing_avatar",
+      "input": {
+        "userData": {
+          "onboarding": {
+            "lifecycle": "COMPLETE",
+            "tippyFunnelCompleted": true,
+            "essentialProfileComplete": true,
+            "completed": true,
+            "tippyStage": "avatar",
+            "photoStatus": "not_started"
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": false,
+        "localTippyStage": "avatar",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": true,
+        "firstMissionChoice": "accept"
+      },
+      "expected": {
+        "lifecycle": "COMPLETE",
+        "tippyStageHint": null,
+        "allowApp": true,
+        "reason": "sticky_complete",
+        "activationState": "ACTIVATED"
+      }
+    },
+    {
+      "id": "first_mission_choice_alone_not_activated",
+      "input": {
+        "userData": {
+          "onboarding": {
+            "tippyOnboardingV1Attached": true,
+            "slim7Completed": true,
+            "tippyFunnelCompleted": false,
+            "essentialProfileComplete": true,
+            "tippyStage": "first_mission",
+            "firstMissionChoice": "accept"
+          }
+        },
+        "emailVerified": true,
+        "isPasswordProvider": true,
+        "localTippyStage": "first_mission",
+        "isAuthenticated": true,
+        "hasFirstGrowthPlan": true,
+        "firstMissionChoice": "accept"
+      },
+      "expected": {
+        "lifecycle": "TIPPY",
+        "tippyStageHint": "first_mission",
+        "allowApp": false,
+        "reason": "tippy_in_progress",
+        "activationState": "FIRST_MISSION"
       }
     }
   ]
