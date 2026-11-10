@@ -17,6 +17,10 @@ _Comment _$CommentFromJson(Map<String, dynamic> json) => _Comment(
       replies: (json['replies'] as List<dynamic>?)
           ?.map((e) => Comment.fromJson(e as Map<String, dynamic>))
           .toList(),
+      gifUrl: json['gifUrl'] as String?,
+      gifId: json['gifId'] as String?,
+      gifProvider: json['gifProvider'] as String?,
+      gifMetadata: json['gifMetadata'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$CommentToJson(_Comment instance) => <String, dynamic>{
@@ -27,4 +31,8 @@ Map<String, dynamic> _$CommentToJson(_Comment instance) => <String, dynamic>{
       'likeCount': instance.likeCount,
       'isLiked': instance.isLiked,
       'replies': instance.replies,
+      'gifUrl': instance.gifUrl,
+      'gifId': instance.gifId,
+      'gifProvider': instance.gifProvider,
+      'gifMetadata': instance.gifMetadata,
     };
