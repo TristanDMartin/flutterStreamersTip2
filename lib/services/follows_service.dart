@@ -111,6 +111,16 @@ class FollowsService {
       _firestoreOverride ?? FirebaseFirestore.instance;
   FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
 
+  /// A missing default app is signed-out. NetworkView paints before Firebase
+  /// is ready, and that read must not throw.
+  String? _signedInUidOrNull() {
+    try {
+      return _auth.currentUser?.uid;
+    } on FirebaseException {
+      return null;
+    }
+  }
+
   _FollowIdSets? _cachedIdSets;
   String? _cachedIdSetsUserId;
   DateTime? _cachedIdSetsAt;
@@ -160,7 +170,7 @@ class FollowsService {
 
   /// Synchronous memory peek for instant NetworkView paint.
   NetworkTabUsers? peekCachedNetworkTabUsers({String? userId}) {
-    final String? uid = userId ?? _auth.currentUser?.uid;
+    final String? uid = userId ?? _signedInUidOrNull();
     if (uid == null ||
         uid.isEmpty ||
         _cachedNetworkTabUsers == null ||
@@ -174,7 +184,7 @@ class FollowsService {
   Future<NetworkTabUsers?> loadCachedNetworkTabUsersFromDisk({
     String? userId,
   }) async {
-    final String? uid = userId ?? _auth.currentUser?.uid;
+    final String? uid = userId ?? _signedInUidOrNull();
     if (uid == null || uid.isEmpty) {
       return null;
     }

@@ -87,16 +87,23 @@ service cloud.firestore {
         sample.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
     }
 
-    // A denied age check reads the user document. This emulator reports that
-    // false result as an evaluation error and still denies the write.
-    // passed, or a 10-character ISO birthdate that is not under_minimum_age,
-    // stays allowed.
+    // The emulator logs a false field comparison as an evaluation error and
+    // still denies the write. passed is tested first, so an adult allow is a
+    // true comparison and does not log. An under_minimum_age account fails
+    // status == 'passed' before the literal deny, which is the likes
+    // byUser create/update log.
+    // Checking under_minimum_age first would move that false comparison onto
+    // every adult allow. Other statuses still need a 10-character ISO
+    // birthdate. A missing birthdate stays denied.
     function accountHasAgeClearance(uid) {
       let status = exists(/databases/$(database)/documents/users/$(uid))
         ? ageGateStatusOf(uid)
         : 'none';
-      return status != 'under_minimum_age' &&
-        (status == 'passed' || birthdateHasIsoShape(uid));
+      return status == 'passed'
+        ? true
+        : status == 'under_minimum_age'
+          ? false
+          : birthdateHasIsoShape(uid);
     }
 
     function actorMayCreateContent() {
@@ -328,6 +335,53 @@ service cloud.firestore {
       ) &&
       request.resource.data.status == 'deleted' &&
       request.resource.data.isDeleted == true;
+    }
+
+    // Feed readiness and playback identity are server-written. A client patch
+    // that touches them is denied before the counter or owner-edit rules run.
+    function videoClientTouchesServerFields() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'isReadyForFeed', 'feedEligible', 'ownerActive',
+        'muxPlaybackId', 'muxAssetId', 'canonicalPlaybackUrl', 'publishedAt'
+      ]);
+    }
+
+    function videoUpdateIsViewerCounterKeyset() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'views', 'updatedAt',
+        'likes', 'likeCount',
+        'bookmarks', 'bookmarkCount', 'favorites', 'favoriteCount',
+        'shares', 'shareCount'
+      ]);
+    }
+
+    function viewerMayApplyVideoCounterBump() {
+      return isAuthenticated() &&
+        actorMayCreateContent() &&
+        canReadVideo() &&
+        (
+          isViewerVideoViewsBump() ||
+          isViewerVideoLikeCounterBump() ||
+          isViewerVideoBookmarkCounterBump() ||
+          isViewerVideoShareCounterBump()
+        );
+    }
+
+    function ownerMayApplyVideoEdit() {
+      return hasVerifiedEmail() &&
+        isVideoDocumentOwner() &&
+        (
+          (
+            actorMayCreateContent() &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'description', 'caption',
+              'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
+              'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
+              'allowComments', 'hashtags', 'category', 'categoryId'
+            ])
+          ) ||
+          isVideoSoftDeletePatch()
+        );
     }
 
     // publicUsers collection - canonical public profile
@@ -1475,38 +1529,17 @@ service cloud.firestore {
                        (!('creator' in request.resource.data) ||
                          !(request.resource.data.creator is map) ||
                          !request.resource.data.creator.keys().hasAny(['isVerified', 'verified', 'badges']));
-      // Viewer counter bumps are checked first. They are the hot path for
-      // likes, bookmarks, shares, and views. The owner-edit branch is a large
-      // expression; evaluating it before a simple +1/-1 bump blows the
-      // 1,000-expression request budget inside a like transaction.
-      // Authorization is unchanged: bumps still require a signed-in,
-      // age-cleared actor who can read the video, and only the counter fields.
-      // Owner edits and soft deletes still require a verified email.
-      allow update: if (
-                       isAuthenticated() &&
-                       actorMayCreateContent() &&
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) &&
-                       canReadVideo() &&
-                       (
-                         isViewerVideoViewsBump() ||
-                         isViewerVideoLikeCounterBump() ||
-                         isViewerVideoBookmarkCounterBump() ||
-                         isViewerVideoShareCounterBump()
-                       )
-                     )
-                     ||
-                     (
-                       hasVerifiedEmail() &&
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isReadyForFeed']) && (
-                       isVideoDocumentOwner() &&
-                        actorMayCreateContent() &&
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-                          ['title', 'description', 'caption', 'thumbnailUrl', 'thumbnailURL', 'thumbnail_url',
-                           'updatedAt', 'privacy', 'isPublic', 'isConnectionsOnly',
-                           'allowComments', 'hashtags', 'category', 'categoryId'])
-                       ||
-                       isVideoDocumentOwner() && isVideoSoftDeletePatch()
-                     ));
+      // Ternary selects one branch. A server-field write, a counter bump, and
+      // an owner edit are not evaluated together, which keeps each request
+      // under the 1,000-expression limit. Who may write does not change:
+      // clients cannot touch feed or playback identity, bumps stay limited to
+      // counter fields, and owner edits stay on the metadata allowlist or a
+      // soft-delete tombstone.
+      allow update: if videoClientTouchesServerFields()
+        ? false
+        : videoUpdateIsViewerCounterKeyset()
+          ? viewerMayApplyVideoCounterBump()
+          : ownerMayApplyVideoEdit();
       allow delete: if (hasVerifiedEmail() && isVideoDocumentOwner()) || isPlatformAdmin();
 
       // Flutter engagement edges (canonical for mobile)

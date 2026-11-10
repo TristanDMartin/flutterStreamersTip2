@@ -118,6 +118,8 @@ dev_dependencies:
   fake_cloud_firestore: ^4.0.0
 
 flutter:
+  config:
+    enable-swift-package-manager: false
   uses-material-design: true
   
   assets:

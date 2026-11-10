@@ -11,10 +11,29 @@ class PublicProfileFirestore {
   PublicProfileFirestore._();
 
   static final PublicProfileFirestore instance = PublicProfileFirestore._();
+  static FirebaseFirestore? _firestoreOverride;
+  static FirebaseAuth? _authOverride;
 
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  /// Test seam. Production leaves both null and uses the default app.
+  static void debugSetOverrides({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+  }) {
+    _firestoreOverride = firestore;
+    _authOverride = auth;
+  }
 
-  String? get _currentUid => FirebaseAuth.instance.currentUser?.uid;
+  FirebaseFirestore get _db =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
+
+  String? get _currentUid {
+    final FirebaseAuth auth = _authOverride ?? FirebaseAuth.instance;
+    try {
+      return auth.currentUser?.uid;
+    } on FirebaseException {
+      return null;
+    }
+  }
 
   CollectionReference<Map<String, dynamic>> get _publicUsers =>
       _db.collection('publicUsers');

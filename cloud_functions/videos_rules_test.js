@@ -121,60 +121,40 @@ async function run() {
       });
     });
 
-    console.log('✅ owner can update after optimistic + mux callable merge');
+    console.log('✅ owner can edit allowlisted metadata after mux callable');
     await assertSucceeds(
       creatorDb.collection('videos').doc(muxFlowVideoId).update({
         caption: 'hello world',
+        description: 'hello world',
+        title: 'Launch clip',
         hashtags: ['gaming'],
         privacy: 'Everyone',
-        visibility: 'public',
+        isPublic: true,
         allowComments: true,
         category: 'gaming',
         categoryId: 'gaming',
-        category_id: 'gaming',
-        categories: ['gaming'],
-        updatedAt: serverTimestamp(),
         thumbnailUrl: 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-        thumbnails: {
-          urls: {
-            '360': 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-            '540': 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-            '720': 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-          },
-          generatedAt: serverTimestamp(),
-        },
-        status: 'processing',
-        visible: false,
-        isReadyForFeed: false,
-        sourcePlatform: 'app',
-        isMux: true,
-        muxStatus: 'processing',
-        muxUploadId: 'mux_after_callable',
-        views: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-        moderation: {
-          approved: true,
-          checkedAt: serverTimestamp(),
-          confidence: 1.0,
-          violations: [],
-        },
-        metadata: {
-          fileSize: 2086084,
-          duration: 11,
-          resolution: '1080x1920',
-          format: 'mp4',
-          uploadedAt: serverTimestamp(),
-          categoryOriginal: 'gaming',
-          categoryCanonical: 'gaming',
-        },
-        cross_platform_sharing: [],
-        watermark_applied: false,
-        moderation_confidence: 1.0,
-        moderation_checked_at: '2026-05-21T00:03:43.589700',
-        duration: 11,
-        fileSize: 2086084,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+
+    console.log('❌ owner cannot change isReadyForFeed');
+    await assertFails(
+      creatorDb.collection('videos').doc(muxFlowVideoId).update({
+        isReadyForFeed: true,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+
+    console.log('❌ owner cannot spoof playback or counter fields');
+    await assertFails(
+      creatorDb.collection('videos').doc(muxFlowVideoId).update({
+        muxPlaybackId: 'spoofed',
+        canonicalPlaybackUrl: 'https://stream.mux.com/spoofed.m3u8',
+        publishedAt: serverTimestamp(),
+        views: 100,
+        likes: 100,
+        updatedAt: serverTimestamp(),
       }),
     );
 
@@ -199,19 +179,25 @@ async function run() {
       });
     });
 
-    console.log('✅ owner can update after mux webhook activated doc');
+    console.log('✅ owner can edit caption after the webhook marks the video ready');
     await assertSucceeds(
       creatorDb.collection('videos').doc(webhookActiveVideoId).update({
         caption: 'final caption',
         updatedAt: serverTimestamp(),
-        status: 'processing',
-        visible: false,
-        isReadyForFeed: false,
       }),
     );
 
-    console.log('✅ owner can mark upload failed via merge (includes owner ids)');
-    await assertSucceeds(
+    console.log('❌ owner cannot clear isReadyForFeed after the webhook');
+    await assertFails(
+      creatorDb.collection('videos').doc(webhookActiveVideoId).update({
+        caption: 'final caption',
+        isReadyForFeed: false,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+
+    console.log('❌ client cannot mark the canonical video failed');
+    await assertFails(
       creatorDb.collection('videos').doc(muxFlowVideoId).set(
         {
           userId,
@@ -221,135 +207,67 @@ async function run() {
           visible: false,
           isReadyForFeed: false,
           uploadError: 'test failure',
-          errorMessage: 'test failure',
-          muxStatus: 'failed',
           updatedAt: serverTimestamp(),
         },
         {merge: true},
       ),
     );
 
-    console.log('✅ owner can merge worker placeholder (full client metadata)');
-    await assertSucceeds(
+    console.log('❌ client cannot merge server-owned processing fields');
+    await assertFails(
       creatorDb.collection('videos').doc(workerVideoId).set(
         {
-          userId,
-          creatorId: userId,
-          creator_id: userId,
           caption: 'hello world',
-          hashtags: ['gaming'],
-          privacy: 'Everyone',
-          visibility: 'public',
-          allowComments: true,
-          category: 'gaming',
-          categoryId: 'gaming',
-          category_id: 'gaming',
-          categories: ['gaming'],
-          updatedAt: serverTimestamp(),
-          thumbnailUrl:
-            'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-          thumbnails: {
-            urls: {
-              '360':
-                'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-              '540':
-                'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-              '720':
-                'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-            },
-            generatedAt: serverTimestamp(),
-          },
           status: 'processing',
-          visible: false,
           isReadyForFeed: false,
-          sourcePlatform: 'app',
-          isMux: true,
-          muxStatus: 'processing',
           muxUploadId: 'mux_upload_test',
           views: 0,
           likes: 0,
-          comments: 0,
-          shares: 0,
-          moderation: {
-            approved: true,
-            checkedAt: serverTimestamp(),
-            confidence: 1.0,
-            violations: [],
-          },
-          metadata: {
-            fileSize: 4884475,
-            duration: 18,
-            resolution: '1080x1920',
-            format: 'mp4',
-            uploadedAt: serverTimestamp(),
-            categoryOriginal: 'gaming',
-            categoryCanonical: 'gaming',
-          },
-          cross_platform_sharing: [],
-          watermark_applied: false,
-          moderation_confidence: 1.0,
-          moderation_checked_at: '2026-05-20T22:24:44.058299',
-          duration: 18,
-          fileSize: 4884475,
+          updatedAt: serverTimestamp(),
         },
         {merge: true},
       ),
     );
 
-    console.log('✅ owner can update worker placeholder (full client metadata)');
-    await assertSucceeds(
-      creatorDb.collection('videos').doc(workerVideoId).update({
-        caption: 'hello world',
-        hashtags: ['gaming'],
-        privacy: 'Everyone',
-        visibility: 'public',
-        allowComments: true,
-        category: 'gaming',
-        categoryId: 'gaming',
-        category_id: 'gaming',
-        categories: ['gaming'],
+    const strangerDb = env.authenticatedContext('stranger_uid', {
+      email_verified: true,
+    }).firestore();
+    console.log('❌ another creator cannot edit the video');
+    await assertFails(
+      strangerDb.collection('videos').doc(webhookActiveVideoId).update({
+        caption: 'stolen',
         updatedAt: serverTimestamp(),
-        thumbnailUrl: 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-        thumbnails: {
-          urls: {
-            '360': 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-            '540': 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-            '720': 'https://placehold.co/720x1280/1a1a2e/ffffff?text=Processing',
-          },
-          generatedAt: serverTimestamp(),
-        },
-        status: 'processing',
-        visible: false,
+      }),
+    );
+
+    console.log('✅ owner can tombstone with the soft-delete patch');
+    await assertSucceeds(
+      creatorDb.collection('videos').doc(webhookActiveVideoId).update({
+        status: 'deleted',
+        isDeleted: true,
+        deletedAt: serverTimestamp(),
+        deletedBy: userId,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+
+    const readyVideoId = 'video_ready_tombstone_gate';
+    await env.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().collection('videos').doc(readyVideoId).set({
+        userId,
+        creatorId: userId,
+        status: 'ready',
+        isReadyForFeed: true,
+        caption: 'live',
+      });
+    });
+    console.log('❌ tombstone cannot also change isReadyForFeed');
+    await assertFails(
+      creatorDb.collection('videos').doc(readyVideoId).update({
+        status: 'deleted',
+        isDeleted: true,
         isReadyForFeed: false,
-        sourcePlatform: 'app',
-        isMux: true,
-        muxStatus: 'processing',
-        muxUploadId: 'mux_upload_test',
-        views: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-        moderation: {
-          approved: true,
-          checkedAt: serverTimestamp(),
-          confidence: 1.0,
-          violations: [],
-        },
-        metadata: {
-          fileSize: 4884475,
-          duration: 18,
-          resolution: '1080x1920',
-          format: 'mp4',
-          uploadedAt: serverTimestamp(),
-          categoryOriginal: 'gaming',
-          categoryCanonical: 'gaming',
-        },
-        cross_platform_sharing: [],
-        watermark_applied: false,
-        moderation_confidence: 1.0,
-        moderation_checked_at: '2026-05-20T22:24:44.058299',
-        duration: 18,
-        fileSize: 4884475,
+        updatedAt: serverTimestamp(),
       }),
     );
 
