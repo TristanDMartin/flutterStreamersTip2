@@ -37,20 +37,44 @@ jobs:
       - name: Unit tests (release gate)
         run: flutter test test/unit
 
-      - name: Decode Android keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      - name: Detect signing and release defines
+        id: release
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          MOBILE_BILLING_VERIFY_URL: ${{ secrets.MOBILE_BILLING_VERIFY_URL }}
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$FIREBASE_ANDROID_APP_ID" ] && [ -n "$FIREBASE_TOKEN" ]; then
+            echo "crashlytics=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "crashlytics=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decode Android keystore
+        if: steps.release.outputs.signed == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
           cat > android/key.properties <<EOF
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
           storeFile=upload-keystore.jks
           EOF
 
       - name: Write release dart-defines
+        if: steps.release.outputs.signed == 'true'
         env:
           GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
           MOBILE_BILLING_VERIFY_URL: ${{ secrets.MOBILE_BILLING_VERIFY_URL }}
@@ -65,7 +89,7 @@ jobs:
           EOF
 
       - name: Build obfuscated store artifact
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: steps.release.outputs.signed == 'true'
         run: bash scripts/build_store_release.sh ${{ inputs.target }}
 
       - name: Resolve version
@@ -73,7 +97,7 @@ jobs:
         run: echo "version=$(bash scripts/release_version.sh)" >> "$GITHUB_OUTPUT"
 
       - name: Upload AAB/APK
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: steps.release.outputs.signed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: store-android-${{ steps.version.outputs.version }}
@@ -83,7 +107,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload Dart symbols
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: steps.release.outputs.signed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: dart-symbols-${{ steps.version.outputs.version }}
@@ -91,7 +115,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Crashlytics Dart symbols
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.FIREBASE_ANDROID_APP_ID != '' && secrets.FIREBASE_TOKEN != '' }}
+        if: steps.release.outputs.signed == 'true' && steps.release.outputs.crashlytics == 'true'
         env:
           FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
@@ -100,7 +124,7 @@ jobs:
           bash scripts/upload_crashlytics_symbols.sh "${{ steps.version.outputs.version }}"
 
       - name: Skip note when signing secrets missing
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' }}
+        if: steps.release.outputs.signed != 'true'
         run: |
           echo "ANDROID_KEYSTORE_BASE64 not configured — preflight/tests ran; store build skipped."
           echo "Add keystore + dart-define secrets to enable full store artifact production."
