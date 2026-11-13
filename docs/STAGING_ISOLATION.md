@@ -31,3 +31,17 @@ configs. The feed E2E test also fails before `app.main()` if the
 compiled project or the live Firebase app is not `streamerstip-stg`.
 
 This is not evidence that staging exists or that a device run passed.
+
+## Connection status on 2026-11-13
+
+The checkout is not connected to staging.
+
+- Packaged Android and iOS Firebase configs still report `streamerstip-6cfdb`.
+- `staging.streamerstip.com` has no DNS record, so the Cloudflare/site API is not reachable.
+- `streamerstip-stg.firebasestorage.app` has no DNS record.
+- `streamerstip-stg.firebaseapp.com` resolves to the same Google address as the production Firebase host. That does not show a staging project, bucket, or app.
+- No staging client config was available to install. The committed production files were left in place.
+
+`scripts/prove_staging_isolation_guard.sh` checks two things: this repo's packaged configs fail the guard, and a temporary tree whose project id is `streamerstip-stg` passes it. A pass on the temporary tree is not a staging environment.
+
+Device playback, physical iOS attach, and the disposable account-deletion smoke stay stopped until the packaged configs and the staging host exist.
