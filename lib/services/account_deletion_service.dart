@@ -82,6 +82,17 @@ bool isCanonicalAccountDeleteSuccess({
   return data['ok'] == true || data['alreadyDeleted'] == true;
 }
 
+/// Local Auth can disappear after a failed server delete. That is not success.
+bool accountDeleteCloudSucceeded({
+  required bool canonicalHttpSucceeded,
+  required bool authUserAlreadyGone,
+}) {
+  if (authUserAlreadyGone && !canonicalHttpSucceeded) {
+    return false;
+  }
+  return canonicalHttpSucceeded;
+}
+
 String accountDeleteErrorMessage({
   required int statusCode,
   required Map<String, dynamic> body,
@@ -133,21 +144,25 @@ class AccountDeletionService {
     bool cloudDeleteSucceeded = false;
     try {
       await _postCanonicalDelete(user, twoFactorCode);
-      cloudDeleteSucceeded = true;
+      cloudDeleteSucceeded = accountDeleteCloudSucceeded(
+        canonicalHttpSucceeded: true,
+        authUserAlreadyGone:
+            firebase_auth.FirebaseAuth.instance.currentUser == null,
+      );
     } catch (e) {
       debugPrint('❌ AccountDeletionService cloud delete failed: $e');
       final bool authAlreadyGone =
           firebase_auth.FirebaseAuth.instance.currentUser == null;
-      if (!authAlreadyGone) {
+      cloudDeleteSucceeded = accountDeleteCloudSucceeded(
+        canonicalHttpSucceeded: false,
+        authUserAlreadyGone: authAlreadyGone,
+      );
+      if (!cloudDeleteSucceeded) {
         return AccountDeletionResult(
           outcome: AccountDeletionOutcome.failed,
           message: UserFacingError.message(e),
         );
       }
-      cloudDeleteSucceeded = true;
-      debugPrint(
-        '⚠️ AccountDeletionService: treating as success — Auth user already gone',
-      );
     }
     if (!cloudDeleteSucceeded) {
       return const AccountDeletionResult(
