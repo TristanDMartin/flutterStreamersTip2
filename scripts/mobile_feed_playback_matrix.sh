@@ -26,14 +26,18 @@ set -euo pipefail
 #   STRICT_CODEC_GATE=1  — also fail on MAX_BAD_INDEX / MAX_SURFACE_BAD_INDEX
 #   MAX_BAD_INDEX=0 MAX_SURFACE_BAD_INDEX=0  — only when STRICT_CODEC_GATE=1
 #
-# iOS physical devices often hang on VM Service / Xcode install during the first
-# `flutter test` attach. IOS_PREINSTALL=1 (default for iOS) runs `flutter install`
-# first so the test runner reuses an on-device build.
+# iOS physical devices often hang on VM Service discovery during `flutter test`.
+# Info.plist advertises `_dartVmService._tcp` so the debug build can be found.
+# IOS_PREINSTALL=1 (default for iOS) runs `flutter install` first.
+# A discovered VM failure sets vm_service_attach=failed and fails the gate.
 #
 # Artifacts are written to build/mobile_feed_matrix/.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# shellcheck source=scripts/classify_vm_service_attach.sh
+source "$ROOT/scripts/classify_vm_service_attach.sh"
 
 # shellcheck source=scripts/_load_qa_credentials.sh
 source "$ROOT/scripts/_load_qa_credentials.sh"
@@ -234,8 +238,13 @@ run_device() {
   unrecovered_surface_playback_failures="$(count_unrecovered_surface_playback_failures "$flutter_log" "$platform_log")"
   video_errors="$(count_matches 'Video player error|VideoPlayer: Video .* unplayable|missing_playback_url' "$platform_log" "$flutter_log")"
   test_failures="$(count_matches '\[E\]|Failed assertion|Timed out waiting|Some tests failed|Test failed' "$flutter_log")"
+  local vm_service_attach
+  vm_service_attach="$(classify_vm_service_attach "$flutter_log")"
 
   local gate_status=0
+  if [[ "$vm_service_attach" == "failed" ]]; then
+    gate_status=1
+  fi
   if [[ "$status" -ne 0 ]]; then
     gate_status=1
   fi
@@ -267,6 +276,7 @@ run_device() {
     echo "device=$device"
     echo "status=$status"
     echo "gate_status=$gate_status"
+    echo "vm_service_attach=$vm_service_attach"
     echo "# informational (not gated by default):"
     echo "bad_index_count=$bad_index_count"
     echo "codec_bad_index_count=$codec_bad_index_count"

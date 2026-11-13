@@ -50,6 +50,13 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>StreamersTip uses the local network so a debug build can attach the Dart VM during development tests.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dartVmService._tcp</string>
+		<string>_dartobservatory._tcp</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>StreamersTip uses the camera to record videos and capture profile media.</string>
 	<key>NSContactsUsageDescription</key>
