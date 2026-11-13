@@ -6,12 +6,16 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/backend/cloudflare_worker_base.dart';
 import 'creator_score.dart';
 
-const String _creatorScoreWorkerBaseUrl = String.fromEnvironment(
+const String _creatorScoreOverride = String.fromEnvironment(
   'CREATOR_SCORE_API_BASE',
-  defaultValue: 'https://streamerstip-mux-api.streamerstip.workers.dev',
 );
+
+const String kCreatorScoreApiBase = _creatorScoreOverride == ''
+    ? kCloudflareWorkerBaseUrl
+    : _creatorScoreOverride;
 
 class CreatorScoreService {
   CreatorScoreService({
@@ -59,7 +63,7 @@ class CreatorScoreService {
         return;
       }
       final Uri uri = Uri.parse(
-        '${_creatorScoreWorkerBaseUrl.replaceAll(RegExp(r'/$'), '')}'
+        '${kCreatorScoreApiBase.replaceAll(RegExp(r'/$'), '')}'
         '/creator-score/sync',
       );
       final http.Response response = await _httpClient.post(

@@ -9,6 +9,12 @@ import '../core/backend/site_api_base.dart';
 import '../shared/retention/retention_event_constants.dart';
 import 'product_event_tracking_service.dart';
 
+/// Cloud Function fallback after the website `POST /api/track`.
+///
+/// This repo does not export `apiRetentionTrack`. Production builds keep the
+/// historical URL. A staging build must set `RETENTION_TRACK_URL` to a host
+/// that exists on `streamerstip-stg`, usually
+/// `https://staging.streamerstip.com/api/track`.
 const String kRetentionTrackUrl = String.fromEnvironment(
   'RETENTION_TRACK_URL',
   defaultValue:
@@ -27,9 +33,8 @@ class RetentionTrackingService {
   })  : _auth = auth ?? FirebaseAuth.instance,
         _client = httpClient ?? http.Client(),
         _siteApiBase = resolveSiteApiBase(explicitOverride: siteApiBase),
-        _cloudFunctionTrackUrl = (cloudFunctionTrackUrl ??
-                _defaultCloudFunctionTrackUrl)
-            .trim(),
+        _cloudFunctionTrackUrl =
+            (cloudFunctionTrackUrl ?? _defaultCloudFunctionTrackUrl).trim(),
         _timeout = timeout;
 
   static const String _defaultCloudFunctionTrackUrl = kRetentionTrackUrl;
@@ -184,8 +189,7 @@ class RetentionTrackingService {
             body: jsonEncode(body),
           )
           .timeout(_timeout);
-      final String contentType =
-          response.headers['content-type'] ?? '';
+      final String contentType = response.headers['content-type'] ?? '';
       if (contentType.contains('text/html')) {
         return false;
       }

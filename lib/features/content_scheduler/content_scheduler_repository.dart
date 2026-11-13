@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../core/backend/http_api_base_url.dart';
+import '../../core/backend/site_api_base.dart';
 import 'content_scheduler_models.dart';
 
 class ContentSchedulerException implements Exception {
@@ -29,6 +30,7 @@ class HttpContentSchedulerRepository implements ContentSchedulerRepository {
   })  : _apiBase = resolveHttpApiBaseUrl(
           explicitOverride: apiBase,
           envDefineValue: _envApiBase,
+          productionDefault: kSiteApiBase,
         ),
         _client = client ?? http.Client();
 

@@ -2,7 +2,7 @@
 ///
 /// Production remains the default. A staging build must name
 /// `streamerstip-stg` and must not fall back to production hosts.
-library;
+import 'package:streamers_tip/core/backend/cloudflare_worker_base.dart';
 
 const String kProductionFirebaseProjectId = 'streamerstip-6cfdb';
 const String kStagingFirebaseProjectId = 'streamerstip-stg';
@@ -109,6 +109,7 @@ void assertBackendTargets({
   required String billingVerifyUrl,
   required String retentionTrackUrl,
   required bool hasStagingFirebaseOptions,
+  required List<String> cloudflareWriteUrls,
 }) {
   final bool isProduction = firebaseProjectId == kProductionFirebaseProjectId;
   final bool isStaging = firebaseProjectId == kStagingFirebaseProjectId;
@@ -143,6 +144,27 @@ void assertBackendTargets({
       'Refusing to fall back to production.',
     );
   }
+  if (isStaging && _stagingWriteUrlsHitProduction(cloudflareWriteUrls)) {
+    throw const BackendIsolationException(
+      'Staging Firebase cannot call the production Cloudflare worker.',
+    );
+  }
+}
+
+bool _stagingWriteUrlsHitProduction(List<String> urls) {
+  if (urls.isEmpty) {
+    return true;
+  }
+  for (final String url in urls) {
+    final String trimmed = url.trim();
+    if (trimmed.isEmpty ||
+        isProductionCloudflareWorker(trimmed) ||
+        containsProductionProject(trimmed) ||
+        isProductionSiteApi(trimmed)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 String? feedE2eIsolationFailure({
@@ -152,6 +174,7 @@ String? feedE2eIsolationFailure({
   required String billingVerifyUrl,
   required String retentionTrackUrl,
   required bool hasStagingFirebaseOptions,
+  required List<String> cloudflareWriteUrls,
 }) {
   if (!enabled) return null;
   if (firebaseProjectId != kStagingFirebaseProjectId) {
@@ -170,6 +193,10 @@ String? feedE2eIsolationFailure({
   if (!hasStagingFirebaseOptions) {
     return 'Refusing feed E2E because staging Firebase options '
         'are incomplete.';
+  }
+  if (_stagingWriteUrlsHitProduction(cloudflareWriteUrls)) {
+    return 'Refusing feed E2E because a write URL still targets '
+        'the production Cloudflare worker.';
   }
   return null;
 }

@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:streamers_tip/core/backend/backend_isolation.dart';
 import 'package:streamers_tip/core/backend/site_api_base.dart';
+import 'package:streamers_tip/core/backend/write_endpoint_urls.dart';
 import 'package:streamers_tip/features/billing/billing_backend_config.dart';
 import 'package:streamers_tip/services/retention_tracking_service.dart';
 
@@ -48,6 +49,7 @@ class FirebaseBootstrap {
       billingVerifyUrl: kMobileBillingVerifyUrl,
       retentionTrackUrl: kRetentionTrackUrl,
       hasStagingFirebaseOptions: hasCompleteStagingFirebaseOptions,
+      cloudflareWriteUrls: kCompileTimeCloudflareWriteUrls,
     );
     _assertLiveProjectMatchesCompileTime();
     if (isReady) {

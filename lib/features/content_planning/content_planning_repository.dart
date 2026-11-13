@@ -50,15 +50,10 @@ class HttpContentPlanningRepository implements ContentPlanningRepository {
     http.Client? client,
   })  : _apiBase = resolveHttpApiBaseUrl(
           explicitOverride: apiBase,
-          envDefineValue: _envApiBase,
+          envDefineValue: kContentPlanningWorkerBase,
           productionDefault: kContentPlanningWorkerBase,
         ),
         _client = client ?? http.Client();
-
-  static const String _envApiBase = String.fromEnvironment(
-    'CONTENT_PLANNING_API_BASE',
-    defaultValue: '',
-  );
 
   final String _apiBase;
   final http.Client _client;

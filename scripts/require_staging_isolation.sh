@@ -9,6 +9,7 @@ require_staging_isolation() {
   local site="${SITE_API_BASE:-}"
   local billing="${MOBILE_BILLING_VERIFY_URL:-}"
   local retention="${RETENTION_TRACK_URL:-}"
+  local worker="${CLOUDFLARE_WORKER_BASE_URL:-}"
 
   if [[ "$project" != "streamerstip-stg" ]]; then
     echo "REFUSING device matrix: FIREBASE_PROJECT_ID must be streamerstip-stg." >&2
@@ -25,6 +26,10 @@ require_staging_isolation() {
   fi
   if [[ -z "$retention" || "$retention" == *streamerstip-6cfdb* ]]; then
     echo "REFUSING device matrix: RETENTION_TRACK_URL must target streamerstip-stg." >&2
+    return 2
+  fi
+  if [[ -z "$worker" || "$worker" == *streamerstip-mux-api.streamerstip.workers.dev* || "$worker" == *streamerstip-6cfdb* || "$worker" == *"://streamerstip.com"* || "$worker" == *"://www.streamerstip.com"* ]]; then
+    echo "REFUSING device matrix: CLOUDFLARE_WORKER_BASE_URL must be a staging worker, not the production Mux worker." >&2
     return 2
   fi
 
