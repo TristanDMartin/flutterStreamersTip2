@@ -1,8 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-const String _workerBaseUrl =
-    'https://streamerstip-mux-api.streamerstip.workers.dev';
+import '../core/backend/cloudflare_worker_base.dart';
+
+const String _workerBaseUrl = kCloudflareWorkerBaseUrl;
 
 enum CrossPostResultStatus { success, failed }
 

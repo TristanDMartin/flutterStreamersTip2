@@ -1,5 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/core/backend/backend_isolation.dart';
+import 'package:streamers_tip/core/backend/cloudflare_worker_base.dart';
+import 'package:streamers_tip/core/backend/write_endpoint_urls.dart';
+import 'package:streamers_tip/features/content_planning/content_planning_api_client.dart';
+import 'package:streamers_tip/features/creator_score/creator_score_service.dart';
+import 'package:streamers_tip/features/gamification/gamification_backend_config.dart';
+import 'package:streamers_tip/services/mux_upload_service.dart';
 
 void main() {
   const String stagingBilling =
@@ -10,6 +16,12 @@ void main() {
       'https://us-central1-streamerstip-6cfdb.cloudfunctions.net/verifyMobilePurchase';
   const String productionRetention =
       'https://us-central1-streamerstip-6cfdb.cloudfunctions.net/apiRetentionTrack';
+  const List<String> productionWrites = <String>[
+    kProductionCloudflareWorkerBase,
+  ];
+  const List<String> stagingWrites = <String>[
+    'https://staging-worker.invalid',
+  ];
 
   test('production defaults stay paired', () {
     expect(
@@ -19,6 +31,7 @@ void main() {
         billingVerifyUrl: productionBilling,
         retentionTrackUrl: productionRetention,
         hasStagingFirebaseOptions: false,
+        cloudflareWriteUrls: productionWrites,
       ),
       returnsNormally,
     );
@@ -32,6 +45,7 @@ void main() {
         billingVerifyUrl: stagingBilling,
         retentionTrackUrl: stagingRetention,
         hasStagingFirebaseOptions: true,
+        cloudflareWriteUrls: stagingWrites,
       ),
       returnsNormally,
     );
@@ -51,6 +65,7 @@ void main() {
         billingVerifyUrl: stagingBilling,
         retentionTrackUrl: stagingRetention,
         hasStagingFirebaseOptions: true,
+        cloudflareWriteUrls: productionWrites,
       ),
       throwsA(isA<BackendIsolationException>()),
     );
@@ -64,6 +79,7 @@ void main() {
         billingVerifyUrl: productionBilling,
         retentionTrackUrl: productionRetention,
         hasStagingFirebaseOptions: false,
+        cloudflareWriteUrls: productionWrites,
       ),
       throwsA(isA<BackendIsolationException>()),
     );
@@ -77,6 +93,7 @@ void main() {
         billingVerifyUrl: productionBilling,
         retentionTrackUrl: productionRetention,
         hasStagingFirebaseOptions: false,
+        cloudflareWriteUrls: productionWrites,
       ),
       throwsA(isA<BackendIsolationException>()),
     );
@@ -90,6 +107,7 @@ void main() {
         billingVerifyUrl: productionBilling,
         retentionTrackUrl: stagingRetention,
         hasStagingFirebaseOptions: true,
+        cloudflareWriteUrls: productionWrites,
       ),
       throwsA(isA<BackendIsolationException>()),
     );
@@ -103,6 +121,7 @@ void main() {
         billingVerifyUrl: stagingBilling,
         retentionTrackUrl: stagingRetention,
         hasStagingFirebaseOptions: false,
+        cloudflareWriteUrls: productionWrites,
       ),
       throwsA(isA<BackendIsolationException>()),
     );
@@ -117,6 +136,7 @@ void main() {
         billingVerifyUrl: productionBilling,
         retentionTrackUrl: productionRetention,
         hasStagingFirebaseOptions: false,
+        cloudflareWriteUrls: productionWrites,
       ),
       isNull,
     );
@@ -130,6 +150,7 @@ void main() {
       billingVerifyUrl: productionBilling,
       retentionTrackUrl: productionRetention,
       hasStagingFirebaseOptions: false,
+      cloudflareWriteUrls: productionWrites,
     );
     expect(actual, contains('streamerstip-stg'));
   });
@@ -142,6 +163,7 @@ void main() {
       billingVerifyUrl: stagingBilling,
       retentionTrackUrl: stagingRetention,
       hasStagingFirebaseOptions: true,
+      cloudflareWriteUrls: productionWrites,
     );
     expect(actual, contains('staging.streamerstip.com'));
   });
@@ -154,7 +176,47 @@ void main() {
       billingVerifyUrl: stagingBilling,
       retentionTrackUrl: stagingRetention,
       hasStagingFirebaseOptions: false,
+      cloudflareWriteUrls: productionWrites,
     );
     expect(actual, contains('incomplete'));
+  });
+
+  test('staging refuses the production Cloudflare worker', () {
+    expect(
+      () => assertBackendTargets(
+        firebaseProjectId: kStagingFirebaseProjectId,
+        siteApiBase: kStagingSiteApiBase,
+        billingVerifyUrl: stagingBilling,
+        retentionTrackUrl: stagingRetention,
+        hasStagingFirebaseOptions: true,
+        cloudflareWriteUrls: productionWrites,
+      ),
+      throwsA(isA<BackendIsolationException>()),
+    );
+  });
+
+  test('enabled feed E2E refuses the production Cloudflare worker', () {
+    final String? actual = feedE2eIsolationFailure(
+      enabled: true,
+      firebaseProjectId: kStagingFirebaseProjectId,
+      siteApiBase: kStagingSiteApiBase,
+      billingVerifyUrl: stagingBilling,
+      retentionTrackUrl: stagingRetention,
+      hasStagingFirebaseOptions: true,
+      cloudflareWriteUrls: productionWrites,
+    );
+    expect(actual, contains('production Cloudflare worker'));
+  });
+
+  test('release defaults still name the production worker', () {
+    expect(kCloudflareWorkerBaseUrl, kProductionCloudflareWorkerBase);
+    expect(muxWorkerBaseUrl, kProductionCloudflareWorkerBase);
+    expect(kGamificationEventsBaseUrl, kProductionCloudflareWorkerBase);
+    expect(kContentPlanningWorkerBase, kProductionCloudflareWorkerBase);
+    expect(kCreatorScoreApiBase, kProductionCloudflareWorkerBase);
+    expect(
+      kCompileTimeCloudflareWriteUrls,
+      everyElement(kProductionCloudflareWorkerBase),
+    );
   });
 }

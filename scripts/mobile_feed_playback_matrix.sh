@@ -8,7 +8,8 @@ set -euo pipefail
 #   FIREBASE_PROJECT_ID=streamerstip-stg \
 #   SITE_API_BASE=https://staging.streamerstip.com \
 #   MOBILE_BILLING_VERIFY_URL=https://us-central1-streamerstip-stg.cloudfunctions.net/verifyMobilePurchase \
-#   RETENTION_TRACK_URL=https://us-central1-streamerstip-stg.cloudfunctions.net/apiRetentionTrack \
+#   RETENTION_TRACK_URL=https://staging.streamerstip.com/api/track \
+#   CLOUDFLARE_WORKER_BASE_URL=https://staging-worker.example \
 #   STAGING_FIREBASE_API_KEY=... STAGING_FIREBASE_APP_ID=... \
 #   STAGING_FIREBASE_MESSAGING_SENDER_ID=... \
 #   QA_EMAIL_OR_USERNAME=... QA_PASSWORD=... \
@@ -53,6 +54,7 @@ STAGING_DART_DEFINES=(
   --dart-define=STAGING_FIREBASE_MESSAGING_SENDER_ID="${STAGING_FIREBASE_MESSAGING_SENDER_ID}"
   --dart-define=MOBILE_BILLING_VERIFY_URL="${MOBILE_BILLING_VERIFY_URL}"
   --dart-define=RETENTION_TRACK_URL="${RETENTION_TRACK_URL}"
+  --dart-define=CLOUDFLARE_WORKER_BASE_URL="${CLOUDFLARE_WORKER_BASE_URL}"
 )
 if [[ -n "${STAGING_FIREBASE_IOS_BUNDLE_ID:-}" ]]; then
   STAGING_DART_DEFINES+=(

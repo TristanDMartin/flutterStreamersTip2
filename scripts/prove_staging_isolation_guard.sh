@@ -13,10 +13,12 @@ run_guard() {
   local site="$3"
   local billing="$4"
   local retention="$5"
+  local worker="$6"
   FIREBASE_PROJECT_ID="$project" \
     SITE_API_BASE="$site" \
     MOBILE_BILLING_VERIFY_URL="$billing" \
     RETENTION_TRACK_URL="$retention" \
+    CLOUDFLARE_WORKER_BASE_URL="$worker" \
     STAGING_FIREBASE_API_KEY="staging-placeholder" \
     STAGING_FIREBASE_APP_ID="staging-placeholder" \
     STAGING_FIREBASE_MESSAGING_SENDER_ID="staging-placeholder" \
@@ -29,7 +31,8 @@ run_guard \
   "streamerstip-stg" \
   "https://staging.streamerstip.com" \
   "https://us-central1-streamerstip-stg.cloudfunctions.net/verifyMobilePurchase" \
-  "https://us-central1-streamerstip-stg.cloudfunctions.net/apiRetentionTrack" \
+  "https://staging.streamerstip.com/api/track" \
+  "https://staging-worker.invalid" \
   >/tmp/staging-guard-repo.out 2>/tmp/staging-guard-repo.err
 repo_status="$?"
 set -e
@@ -60,8 +63,31 @@ run_guard \
   "streamerstip-stg" \
   "https://staging.streamerstip.com" \
   "https://us-central1-streamerstip-stg.cloudfunctions.net/verifyMobilePurchase" \
-  "https://us-central1-streamerstip-stg.cloudfunctions.net/apiRetentionTrack" \
+  "https://staging.streamerstip.com/api/track" \
+  "https://staging-worker.invalid" \
   >/tmp/staging-guard-temp.out 2>/tmp/staging-guard-temp.err
+
+set +e
+run_guard \
+  "$tmp" \
+  "streamerstip-stg" \
+  "https://staging.streamerstip.com" \
+  "https://us-central1-streamerstip-stg.cloudfunctions.net/verifyMobilePurchase" \
+  "https://staging.streamerstip.com/api/track" \
+  "https://streamerstip-mux-api.streamerstip.workers.dev" \
+  >/tmp/staging-guard-worker.out 2>/tmp/staging-guard-worker.err
+worker_status="$?"
+set -e
+if [[ "$worker_status" -eq 0 ]]; then
+  echo "REFUSING: production Cloudflare worker was accepted." >&2
+  exit 1
+fi
+if ! grep -q "CLOUDFLARE_WORKER_BASE_URL must be a staging worker" /tmp/staging-guard-worker.err; then
+  echo "REFUSING: production worker guard failed for an unexpected reason." >&2
+  cat /tmp/staging-guard-worker.err >&2
+  exit 1
+fi
 
 echo "packaged-repo-guard=refused"
 echo "temporary-staging-tree-guard=passed"
+echo "production-worker-guard=refused"

@@ -3,10 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../core/backend/cloudflare_worker_base.dart';
 import '../core/firebase_app_check_startup.dart';
 
-const String _workerBaseUrl =
-    'https://streamerstip-mux-api.streamerstip.workers.dev';
+const String _workerBaseUrl = kCloudflareWorkerBaseUrl;
 
 /// Uploads avatars and chat media to Cloudflare R2 via Worker.
 class R2MediaService {

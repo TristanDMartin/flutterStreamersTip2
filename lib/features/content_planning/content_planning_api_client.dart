@@ -5,11 +5,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/app_check_http_headers.dart';
+import '../../core/backend/cloudflare_worker_base.dart';
 import '../../core/backend/http_api_base_url.dart';
 
-/// Content planning APIs live on the Mux Worker in production (not Hosting).
-const String kContentPlanningWorkerBase =
-    'https://streamerstip-mux-api.streamerstip.workers.dev';
+/// Content planning APIs live on the Cloudflare Worker.
+/// An empty `CONTENT_PLANNING_API_BASE` follows `CLOUDFLARE_WORKER_BASE_URL`.
+const String _contentPlanningOverride = String.fromEnvironment(
+  'CONTENT_PLANNING_API_BASE',
+);
+
+const String kContentPlanningWorkerBase = _contentPlanningOverride == ''
+    ? kCloudflareWorkerBaseUrl
+    : _contentPlanningOverride;
 
 class ContentPlanningApiException implements Exception {
   const ContentPlanningApiException(
@@ -22,8 +29,7 @@ class ContentPlanningApiException implements Exception {
   final int? statusCode;
   final String? code;
 
-  bool get isVersionConflict =>
-      statusCode == 409 || code == 'VERSION_CONFLICT';
+  bool get isVersionConflict => statusCode == 409 || code == 'VERSION_CONFLICT';
 
   @override
   String toString() => message;
@@ -54,14 +60,9 @@ class ContentPlanningApiClient {
   })  : _client = httpClient ?? http.Client(),
         _base = resolveHttpApiBaseUrl(
           explicitOverride: apiBase,
-          envDefineValue: _envApiBase,
+          envDefineValue: kContentPlanningWorkerBase,
           productionDefault: kContentPlanningWorkerBase,
         );
-
-  static const String _envApiBase = String.fromEnvironment(
-    'CONTENT_PLANNING_API_BASE',
-    defaultValue: '',
-  );
 
   final http.Client _client;
   final String _base;
@@ -111,8 +112,7 @@ class ContentPlanningApiClient {
     int statusCode,
     String fallback,
   ) {
-    final String code =
-        (body['code'] ?? body['error'] ?? '').toString().trim();
+    final String code = (body['code'] ?? body['error'] ?? '').toString().trim();
     if (statusCode == 409 || code == 'VERSION_CONFLICT') {
       throw ContentPlanningVersionConflictException(
         expectedVersion: _readInt(body['expectedVersion']),
@@ -445,12 +445,13 @@ class ContentPlanningApiClient {
     }
   }
 
-  Future<({
-    String planId,
-    String itemId,
-    String publishJobId,
-    String idempotencyKey,
-  })> syncScheduledPost({
+  Future<
+      ({
+        String planId,
+        String itemId,
+        String publishJobId,
+        String idempotencyKey,
+      })> syncScheduledPost({
     required String userId,
     required String scheduledPostId,
     required String title,

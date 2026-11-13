@@ -5,6 +5,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:streamers_tip/constants/playback_owners.dart';
 import 'package:streamers_tip/core/backend/backend_isolation.dart';
 import 'package:streamers_tip/core/backend/site_api_base.dart';
+import 'package:streamers_tip/core/backend/write_endpoint_urls.dart';
 import 'package:streamers_tip/core/firebase_bootstrap.dart';
 import 'package:streamers_tip/features/billing/billing_backend_config.dart';
 import 'package:streamers_tip/main.dart' as app;
@@ -30,6 +31,7 @@ void main() {
         billingVerifyUrl: kMobileBillingVerifyUrl,
         retentionTrackUrl: kRetentionTrackUrl,
         hasStagingFirebaseOptions: hasCompleteStagingFirebaseOptions,
+        cloudflareWriteUrls: kCompileTimeCloudflareWriteUrls,
       );
       if (isolationFailure != null) {
         fail(isolationFailure);

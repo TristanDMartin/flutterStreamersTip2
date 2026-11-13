@@ -5,14 +5,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 
 import '../core/app_check_http_headers.dart';
+import '../core/backend/cloudflare_worker_base.dart';
 import '../core/firebase_app_check_startup.dart';
 import '../debug/agent_debug_log.dart';
 import '../utils/video_ready_contract.dart';
 import 'publish_transaction_trace.dart';
 
 /// Cloudflare Worker base URL for Mux upload + webhooks (no Cloud Functions).
-const String muxWorkerBaseUrl =
-    'https://streamerstip-mux-api.streamerstip.workers.dev';
+const String muxWorkerBaseUrl = kCloudflareWorkerBaseUrl;
 
 /// Thrown when the Mux Cloudflare Worker rejects or fails a direct-upload request.
 class WorkerMuxUploadException implements Exception {
@@ -67,8 +67,7 @@ class MuxUploadService {
           'Content-Type': 'application/json',
         },
       );
-      final bool hasAppCheck =
-          headers.containsKey('X-Firebase-AppCheck');
+      final bool hasAppCheck = headers.containsKey('X-Firebase-AppCheck');
       if (!isAppCheckEnabledForBuild()) {
         trace?.event('APP_CHECK_TOKEN_READY', detail: 'disabled for build');
       } else if (hasAppCheck) {
@@ -147,7 +146,8 @@ class MuxUploadService {
         message: 'direct_upload_response',
         data: <String, Object?>{
           'statusCode': res.statusCode,
-          'hasUploadUrl': (res.data?['uploadUrl'] as String?)?.isNotEmpty == true,
+          'hasUploadUrl':
+              (res.data?['uploadUrl'] as String?)?.isNotEmpty == true,
           'hasVideoId': (res.data?['videoId'] as String?)?.isNotEmpty == true,
         },
       );

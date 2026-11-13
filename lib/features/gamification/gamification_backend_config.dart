@@ -1,3 +1,5 @@
+import '../../core/backend/cloudflare_worker_base.dart';
+
 /// Base URL for trusted gamification events (**POST** `/gamification/events`).
 ///
 /// **Prefer the Cloudflare Worker** (default below): fewer Cloud Functions, predictable
@@ -11,7 +13,12 @@
 ///
 /// Override at build time:
 /// `--dart-define=GAMIFICATION_EVENTS_BASE_URL=https://us-central1-PROJECT.cloudfunctions.net/gamificationEvents`
-const String kGamificationEventsBaseUrl = String.fromEnvironment(
+///
+/// An empty override follows `CLOUDFLARE_WORKER_BASE_URL`.
+const String _gamificationEventsOverride = String.fromEnvironment(
   'GAMIFICATION_EVENTS_BASE_URL',
-  defaultValue: 'https://streamerstip-mux-api.streamerstip.workers.dev',
 );
+
+const String kGamificationEventsBaseUrl = _gamificationEventsOverride == ''
+    ? kCloudflareWorkerBaseUrl
+    : _gamificationEventsOverride;

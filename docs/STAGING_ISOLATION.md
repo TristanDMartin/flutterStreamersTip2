@@ -16,7 +16,8 @@ Required dart-defines for staging:
 - `STAGING_FIREBASE_APP_ID`
 - `STAGING_FIREBASE_MESSAGING_SENDER_ID`
 - `MOBILE_BILLING_VERIFY_URL` (must not contain `streamerstip-6cfdb`)
-- `RETENTION_TRACK_URL` (must not contain `streamerstip-6cfdb`)
+- `RETENTION_TRACK_URL` (must not contain `streamerstip-6cfdb`). This repo does not export `apiRetentionTrack`. Point staging at `https://staging.streamerstip.com/api/track` unless that function is deployed on `streamerstip-stg`.
+- `CLOUDFLARE_WORKER_BASE_URL` (must not be `https://streamerstip-mux-api.streamerstip.workers.dev`). Mux upload, R2, cross-post, content planning, creator score, and gamification follow this value unless a more specific dart-define is set.
 
 `scripts/mobile_feed_playback_matrix.sh` exits before credentials,
 install, or `flutter test` unless those variables are set and both
@@ -42,6 +43,6 @@ The checkout is not connected to staging.
 - `streamerstip-stg.firebaseapp.com` resolves to the same Google address as the production Firebase host. That does not show a staging project, bucket, or app.
 - No staging client config was available to install. The committed production files were left in place.
 
-`scripts/prove_staging_isolation_guard.sh` checks two things: this repo's packaged configs fail the guard, and a temporary tree whose project id is `streamerstip-stg` passes it. A pass on the temporary tree is not a staging environment.
+`scripts/prove_staging_isolation_guard.sh` checks three things: this repo's packaged configs fail the guard, a temporary tree whose project id is `streamerstip-stg` passes it, and that same tree is refused when `CLOUDFLARE_WORKER_BASE_URL` is the production Mux worker. A pass on the temporary tree is not a staging environment.
 
 Device playback, physical iOS attach, and the disposable account-deletion smoke stay stopped until the packaged configs and the staging host exist.
