@@ -1,6 +1,45 @@
 # Production Launch Checklist
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-11-13 (America/New_York)
+
+**Decision: NO-GO.** PR #16 cleanup is green at `86e13ce` (8/8 checks, 784 tests) and can merge after human diff review. That does not authorize a store build. The sections below from 2026-06-01 stay as the historical gate list. This section is the current evidence.
+
+## Current blockers
+
+| ID | Sev | Work | Evidence now | Acceptance | Depends on |
+|---|---|---|---|---|---|
+| B1 | P0 | Staging isolation | About 1:15 AM ET on Nov 13, 2026 there was still no Firebase or Google Cloud login, so `streamerstip-stg` was not authenticated and no project was created. Packaged configs remain `streamerstip-6cfdb`. `staging.streamerstip.com` has no DNS record. PR #25 routes worker writes through `CLOUDFLARE_WORKER_BASE_URL` and refuses the production worker during a staging run. CI for that pull request passed around 1:23 AM ET on Nov 13, 2026. The release default is still that production worker. Device testing is NO-GO. See `docs/STAGING_READINESS.md`. | Authenticated access to the existing `streamerstip-stg` project, staging Auth, Firestore, Storage, Functions, a staging-only worker and site, and a guard pass on the real packaged staging configs. | Firebase console access, Cloudflare, DNS, and Mux credentials. Do not create a duplicate project. |
+| B2 | P0 | Android playback | Pixel 6 scorecard still has MediaCodec `BAD_INDEX`. No new device log. | Staging matrix: `first_frame_failures=0`, `video_errors=0`, `unrecovered_surface_playback_failures=0`, with `bad_index_count` recorded. | B1. See `docs/PLAYBACK_BLOCKERS.md` (PR #20). |
+| B3 | P0 | iOS automated attach | Physical `flutter test` hung on Dart VM discovery. Plist had no Bonjour keys. | One physical iOS debug attach finishes with `vm_service_attach=ok`. | A device. PR #20 adds the keys and the log classifier. Not device-proven. |
+| B4 | P0 | Account deletion | Client posts `POST /api/account/delete`. PR #22 no longer treats a thrown delete as success when Auth is already null. Unit tests cover that. GATE 1 is unchecked. No disposable staging account was deleted. | Disposable staging account: a failed server delete stays failed; a confirmed delete removes Auth and user data, and recreate lands on Meet Tippy. Do not use the primary account. | B1 and website delete route. |
+| B5 | P0 | R8 / signing | Release `isMinifyEnabled` and `isShrinkResources` are true. The hardening checklist says R8 stays disabled until GATE 1 and GATE 2. No signed AAB or symbol bundle was produced here. `android/key.properties` and `.env.release` are gitignored. | GATE 2 AAB from `build_store_release.sh` installs, smokes, and records whether R8 was on. Then an explicit decision keeps or removes minify. | Signing keystore outside git. Do not print secrets. |
+| B6 | P0 | Rules deploy | Source rules block client writes to `feedEligible`, `ownerActive`, Mux ids, and `canonicalPlaybackUrl`. On 2026-11-13 the likes, interactions, follows, videos, and users-privacy suites passed in the local Firestore emulator (`demo-rules-audit` only). Production rules were not deployed. | An approved `firebase deploy` of the already tested rules, then a staging client read of a feed video. | Human approval. Do not deploy from this audit. |
+| B7 | P0 | Device E2E | Matrix below is not executed. | Android and iOS rows pass on staging builds. | B1, devices. |
+| B8 | P0 | Crashlytics | No crash-free session number. | ≥99.5% crash-free sessions on Android and iOS from production or a production-like beta. | Released or beta builds with symbols. |
+| B9 | P1 | Screen errors and editor | SnackBars remain on home, editor, messaging, profile, and settings. Editor cover, filters, adjust, and enhance still say coming soon. | Those failures render inline on device, and editor controls either work or are removed from the release UI. | Product decision on editor scope. |
+| B10 | P1 | Store readiness | Android has no `streamerstip.com` app link. iOS URL types are Google sign-in only. No associated domains. Store privacy forms are not evidenced. In-app privacy opens the website privacy URL. | Deep links open the app, and Play Data safety plus App Store privacy labels are filed. | Website universal-link files and store consoles. |
+
+## Device matrix
+
+Run only after B1 is true. Do not point these rows at production Firebase, Cloudflare Workers, Mux, or billing.
+
+| Scenario | Android | iOS | Pass when |
+|---|---|---|---|
+| Feed playback | Not run | Not run | First frame, no user-visible video error, audio follows the active cell |
+| Audio isolation | Not run | Not run | Leaving the feed or opening an overlay silences the previous video |
+| Navigation | Not run | Not run | Home, Network, and back keep one owner |
+| Resume | Not run | Not run | Background and return continues the same video |
+| Authentication | Not run | Not run | Sign in, sign out, and cold start restore the session |
+| Publishing | Not run | Not run | Upload reaches a playable video owned by that user |
+| Messaging | Not run | Not run | Send and receive one thread without a false failure |
+| Drafts | Not run | Not run | Save a draft, kill the app, and restore it |
+| Notifications | Not run | Not run | A foreground or tap path opens the intended screen |
+
+## What is not a pass
+
+Green unit tests, green CI, or a merged cleanup PR do not close B1–B8.
+
+Historical gate list (2026-06-01):
 
 This checklist tracks the practical production bar for StreamersTip based on the production readiness scorecard, Pixel 6 playback testing, and the recent Home feed hardening work.
 

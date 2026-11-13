@@ -1,5 +1,27 @@
 # StreamersTip Release Tracker
 
+**2026-11-13 (America/New_York): NO-GO.**
+
+PR #16 (`86e13ce`) is cleanup only: 8/8 CI checks and 784 Flutter tests. Review found no broken imports of deleted Dart files and no `pubspec.lock` change. It can merge after human diff review. It is not a store release.
+
+Follow-ups, each still short of a device or deploy pass:
+
+- PR #17 pins Flutter 3.50.0 at `dfdeb633`. On Nov 13, 2026 around 12:35 AM ET the pull-request jobs passed: flutter, tests, cloud-functions lint, and web-e2e-config. android-feed-e2e, ios-feed-e2e, and web-e2e were skipped. `--no-fatal-infos` stays only because 3.50 deprecates `package:flutter/material.dart` and `material_ui` is not in that SDK.
+- PR #19 refuses device runs that are not `streamerstip-stg`. CI is green. Packaged configs are still production.
+- PR #20 adds iOS Dart VM Bonjour keys and an attach-failure classifier. CI is green. No physical attach has been run. Android `BAD_INDEX` is documented, not cleared.
+- PR #21 is this tracker. At about 1:12 AM ET on Nov 13, 2026 CI for `1769e25d` passed flutter, tests, cloud-functions lint, and web-e2e-config. android-feed-e2e, ios-feed-e2e, and web-e2e were skipped. That does not close a blocker.
+- PR #25 makes Mux, R2, cross-post, content planning, creator score, and gamification follow `CLOUDFLARE_WORKER_BASE_URL`. Release builds still use the production worker. At about 1:23 AM ET on Nov 13, 2026 CI for `90568b72` passed flutter, tests, cloud-functions lint, and web-e2e-config. android-feed-e2e, ios-feed-e2e, and web-e2e were skipped. This does not create a worker or verify `streamerstip-stg`.
+- PR #22 CI passed the same pull-request jobs, including tests, at `5dbfee0d`. A disposable staging account has not been deleted.
+- PR #23 CI passed the same pull-request jobs, including tests, at `4331cbc5`. The guard still only passes on a temporary tree.
+
+Staging access check, about 1:05 AM ET: no Firebase CLI login and no Google Cloud credentials, so `streamerstip-stg` was not verified. No project was created. Requirements and the device-test decision are in `docs/STAGING_READINESS.md`. Device testing is NO-GO.
+
+R8, signing, and production rules deployment stay behind their written approval gates.
+
+Blockers, owners, and acceptance criteria: `docs/PRODUCTION_LAUNCH_CHECKLIST.md`.
+
+Do not deploy Firebase rules, rotate secrets, enable production R8 by policy change, or submit store builds from this tracker update.
+
 Use this tracker during beta prep and final submission review.
 
 **Automation (Phase 2):**
