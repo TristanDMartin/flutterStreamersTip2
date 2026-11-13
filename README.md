@@ -60,7 +60,7 @@ flutter run --dart-define=SITE_API_BASE=https://staging.streamerstip.com
 
 ### Tech Stack
 
-- **Framework:** Flutter 3.x
+- **Framework:** Flutter 3.50.0 (pinned in `.fvmrc` and CI)
 - **State Management:** Riverpod (with ChangeNotifier migration in progress)
 - **Backend:** Firebase (Auth, Firestore, Storage, Functions, Crashlytics, Analytics)
 - **Video:** Mux (transcoding, playback), FFmpeg Kit (processing)
