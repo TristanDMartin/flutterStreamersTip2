@@ -62,12 +62,12 @@ Other functions in `cloud_functions/index.js` (video transcode, bookmarks, messa
 
 ### Cloudflare
 
-The app currently hardcodes the production worker `https://streamerstip-mux-api.streamerstip.workers.dev` for:
+On this branch the app still hardcodes the production worker `https://streamerstip-mux-api.streamerstip.workers.dev` for:
 
 - `POST /mux/direct-upload` (`lib/services/mux_upload_service.dart`)
 - R2 media, cross-post, content planning, creator score, and the default gamification events URL
 
-A staging phone would upload and write through that production worker even if Firebase were `streamerstip-stg`. Staging needs its own worker and its own Mux credentials. The production worker URL has to be replaced only in the staging build.
+A staging phone would upload and write through that production worker even if Firebase were `streamerstip-stg`. Staging needs its own worker and its own Mux credentials. PR #25, which is not merged here, keeps the production worker as the release default and requires `CLOUDFLARE_WORKER_BASE_URL` for a staging build. The guard on that pull request refuses the production worker. That is not a provisioned worker.
 
 `https://staging.streamerstip.com` must serve the same `/api/*` routes the app already calls, including:
 
