@@ -67,7 +67,7 @@ On this branch the app still hardcodes the production worker `https://streamerst
 - `POST /mux/direct-upload` (`lib/services/mux_upload_service.dart`)
 - R2 media, cross-post, content planning, creator score, and the default gamification events URL
 
-A staging phone would upload and write through that production worker even if Firebase were `streamerstip-stg`. Staging needs its own worker and its own Mux credentials. PR #25, which is not merged here, keeps the production worker as the release default and requires `CLOUDFLARE_WORKER_BASE_URL` for a staging build. The guard on that pull request refuses the production worker. That is not a provisioned worker.
+A staging phone would upload and write through that production worker even if Firebase were `streamerstip-stg`. Staging needs its own worker and its own Mux credentials. PR #25, which is not merged here, keeps the production worker as the release default and requires `CLOUDFLARE_WORKER_BASE_URL` for a staging build. The guard on that pull request refuses the production worker. CI for `90568b72` passed the pull-request jobs around 1:23 AM ET on Nov 13, 2026. Device and web end-to-end jobs were skipped. That is not a provisioned worker.
 
 `https://staging.streamerstip.com` must serve the same `/api/*` routes the app already calls, including:
 

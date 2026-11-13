@@ -10,7 +10,7 @@ Follow-ups, each still short of a device or deploy pass:
 - PR #19 refuses device runs that are not `streamerstip-stg`. CI is green. Packaged configs are still production.
 - PR #20 adds iOS Dart VM Bonjour keys and an attach-failure classifier. CI is green. No physical attach has been run. Android `BAD_INDEX` is documented, not cleared.
 - PR #21 is this tracker. At about 1:12 AM ET on Nov 13, 2026 CI for `1769e25d` passed flutter, tests, cloud-functions lint, and web-e2e-config. android-feed-e2e, ios-feed-e2e, and web-e2e were skipped. That does not close a blocker.
-- PR #25 makes Mux, R2, cross-post, content planning, creator score, and gamification follow `CLOUDFLARE_WORKER_BASE_URL`. Release builds still use the production worker. The guard refuses that host for a staging run. CI was not confirmed at this note. This does not create a worker or verify `streamerstip-stg`.
+- PR #25 makes Mux, R2, cross-post, content planning, creator score, and gamification follow `CLOUDFLARE_WORKER_BASE_URL`. Release builds still use the production worker. At about 1:23 AM ET on Nov 13, 2026 CI for `90568b72` passed flutter, tests, cloud-functions lint, and web-e2e-config. android-feed-e2e, ios-feed-e2e, and web-e2e were skipped. This does not create a worker or verify `streamerstip-stg`.
 - PR #22 CI passed the same pull-request jobs, including tests, at `5dbfee0d`. A disposable staging account has not been deleted.
 - PR #23 CI passed the same pull-request jobs, including tests, at `4331cbc5`. The guard still only passes on a temporary tree.
 
