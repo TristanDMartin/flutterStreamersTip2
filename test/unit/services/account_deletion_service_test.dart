@@ -42,6 +42,40 @@ void main() {
       );
     });
 
+    test('a failed server delete stays failed when Auth is already gone', () {
+      expect(
+        accountDeleteCloudSucceeded(
+          canonicalHttpSucceeded: false,
+          authUserAlreadyGone: true,
+        ),
+        isFalse,
+      );
+      expect(
+        accountDeleteCloudSucceeded(
+          canonicalHttpSucceeded: false,
+          authUserAlreadyGone: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('canonical HTTP success may finish local teardown', () {
+      expect(
+        accountDeleteCloudSucceeded(
+          canonicalHttpSucceeded: true,
+          authUserAlreadyGone: false,
+        ),
+        isTrue,
+      );
+      expect(
+        accountDeleteCloudSucceeded(
+          canonicalHttpSucceeded: true,
+          authUserAlreadyGone: true,
+        ),
+        isTrue,
+      );
+    });
+
     test('retries the same statuses as web account POST', () {
       expect(isRetryableAccountDeleteStatus(404), isTrue);
       expect(isRetryableAccountDeleteStatus(502), isTrue);
