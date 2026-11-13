@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:streamers_tip/core/backend/backend_isolation.dart';
 
 class FirebaseIOSService {
   static bool _isInitialized = false;
@@ -12,6 +13,32 @@ class FirebaseIOSService {
 
     if (_isInitialized) {
       debugPrint('✅ Firebase already initialized');
+      return;
+    }
+
+    if (kCompileTimeFirebaseProjectId == kStagingFirebaseProjectId) {
+      final StagingFirebaseFields staging = requireStagingFirebaseFields();
+      if (Firebase.apps.isNotEmpty &&
+          Firebase.app().options.projectId != kStagingFirebaseProjectId) {
+        throw BackendIsolationException(
+          'Native Firebase is ${Firebase.app().options.projectId}. '
+          'Refusing to continue a staging run.',
+        );
+      }
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: FirebaseOptions(
+            apiKey: staging.apiKey,
+            appId: staging.appId,
+            messagingSenderId: staging.messagingSenderId,
+            projectId: kStagingFirebaseProjectId,
+            storageBucket: staging.storageBucket,
+            authDomain: staging.authDomain,
+            iosBundleId: staging.iosBundleId,
+          ),
+        );
+      }
+      _isInitialized = Firebase.apps.isNotEmpty;
       return;
     }
 

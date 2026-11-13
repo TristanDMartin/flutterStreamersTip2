@@ -50,8 +50,10 @@ flutter run -d ios
 # Android
 flutter run -d android
 
-# With environment overrides
-flutter run --dart-define=SITE_API_BASE=https://staging.streamerstip.com
+# Staging requires streamerstip-stg Firebase, site, billing, and retention
+# together. A production Firebase app will not call staging.streamerstip.com.
+# Device feed tests refuse to run until the packaged configs are staging.
+# See docs/STAGING_ISOLATION.md.
 ```
 
 ---
