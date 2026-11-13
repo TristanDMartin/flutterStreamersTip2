@@ -1,5 +1,19 @@
 # StreamersTip Release Tracker
 
+**2026-11-13 (America/New_York): NO-GO.**
+
+PR #16 (`86e13ce`) is cleanup only: 8/8 CI checks and 784 Flutter tests. Review found no broken imports of deleted Dart files and no `pubspec.lock` change. It can merge after human diff review. It is not a store release.
+
+Follow-ups, each still short of a device or deploy pass:
+
+- PR #17 pins Flutter 3.50.0. `--no-fatal-infos` stays only because 3.50 deprecates `package:flutter/material.dart` and `material_ui` is not in that SDK. See `docs/FLUTTER_SDK.md`.
+- PR #19 refuses device runs that are not `streamerstip-stg`. Current packaged configs are production, so the matrix stays stopped.
+- PR #20 adds iOS Dart VM Bonjour keys and an attach-failure classifier. Android `BAD_INDEX` is documented, not cleared.
+
+Blockers, owners, and acceptance criteria: `docs/PRODUCTION_LAUNCH_CHECKLIST.md`.
+
+Do not deploy Firebase rules, rotate secrets, enable production R8 by policy change, or submit store builds from this tracker update.
+
 Use this tracker during beta prep and final submission review.
 
 **Automation (Phase 2):**
