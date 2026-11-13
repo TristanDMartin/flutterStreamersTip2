@@ -9,6 +9,12 @@ import '../core/backend/site_api_base.dart';
 import '../shared/retention/retention_event_constants.dart';
 import 'product_event_tracking_service.dart';
 
+const String kRetentionTrackUrl = String.fromEnvironment(
+  'RETENTION_TRACK_URL',
+  defaultValue:
+      'https://us-central1-streamerstip-6cfdb.cloudfunctions.net/apiRetentionTrack',
+);
+
 /// Posts shared retention events to the website `/api/track` endpoint.
 /// Best-effort only — failures are logged and never block UI flows.
 class RetentionTrackingService {
@@ -26,8 +32,7 @@ class RetentionTrackingService {
             .trim(),
         _timeout = timeout;
 
-  static const String _defaultCloudFunctionTrackUrl =
-      'https://us-central1-streamerstip-6cfdb.cloudfunctions.net/apiRetentionTrack';
+  static const String _defaultCloudFunctionTrackUrl = kRetentionTrackUrl;
 
   static final RetentionTrackingService instance = RetentionTrackingService();
 

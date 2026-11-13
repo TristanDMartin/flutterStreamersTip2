@@ -1,10 +1,16 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:streamers_tip/constants/playback_owners.dart';
+import 'package:streamers_tip/core/backend/backend_isolation.dart';
+import 'package:streamers_tip/core/backend/site_api_base.dart';
+import 'package:streamers_tip/core/firebase_bootstrap.dart';
+import 'package:streamers_tip/features/billing/billing_backend_config.dart';
 import 'package:streamers_tip/main.dart' as app;
 import 'package:streamers_tip/qa/qa_keys.dart';
 import 'package:streamers_tip/services/global_playback_manager.dart';
+import 'package:streamers_tip/services/retention_tracking_service.dart';
 
 const bool _runMobileFeedE2e = bool.fromEnvironment('RUN_MOBILE_FEED_E2E');
 const String _qaEmailOrUsername =
@@ -17,6 +23,32 @@ void main() {
   testWidgets(
     'home feed cold start, swipes, overlay, tab away, and resume',
     (WidgetTester tester) async {
+      final String? isolationFailure = feedE2eIsolationFailure(
+        enabled: _runMobileFeedE2e,
+        firebaseProjectId: kCompileTimeFirebaseProjectId,
+        siteApiBase: kSiteApiBase,
+        billingVerifyUrl: kMobileBillingVerifyUrl,
+        retentionTrackUrl: kRetentionTrackUrl,
+        hasStagingFirebaseOptions: hasCompleteStagingFirebaseOptions,
+      );
+      if (isolationFailure != null) {
+        fail(isolationFailure);
+      }
+      try {
+        await FirebaseBootstrap.ensureInitialized();
+      } on BackendIsolationException catch (error) {
+        fail(error.message);
+      }
+      if (Firebase.apps.isEmpty) {
+        fail('Firebase did not initialize for streamerstip-stg.');
+      }
+      final String liveProject = Firebase.app().options.projectId;
+      if (liveProject != kStagingFirebaseProjectId) {
+        fail(
+          'Packaged Firebase project is $liveProject. '
+          'Refusing feed E2E.',
+        );
+      }
       app.main();
       await _signInAndOpenHomeFeedIfNeeded(tester);
       await _pumpFor(tester, const Duration(seconds: 3));

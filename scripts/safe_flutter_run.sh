@@ -33,5 +33,20 @@ fi
 
 # Run Flutter with all passed arguments
 echo "🚀 Starting Flutter build..."
-MOBILE_BILLING_VERIFY_URL="${MOBILE_BILLING_VERIFY_URL:-https://us-central1-streamerstip-6cfdb.cloudfunctions.net/verifyMobilePurchase}"
-exec flutter run --dart-define="MOBILE_BILLING_VERIFY_URL=$MOBILE_BILLING_VERIFY_URL" "$@"
+if [[ "${FIREBASE_PROJECT_ID:-}" == "streamerstip-stg" ]]; then
+  if [[ -z "${MOBILE_BILLING_VERIFY_URL:-}" || "$MOBILE_BILLING_VERIFY_URL" == *streamerstip-6cfdb* ]]; then
+    echo "REFUSING: a staging run cannot use the production billing function." >&2
+    exit 2
+  fi
+  if [[ "${SITE_API_BASE:-}" != "https://staging.streamerstip.com" ]]; then
+    echo "REFUSING: a staging run requires SITE_API_BASE=https://staging.streamerstip.com." >&2
+    exit 2
+  fi
+else
+  MOBILE_BILLING_VERIFY_URL="${MOBILE_BILLING_VERIFY_URL:-https://us-central1-streamerstip-6cfdb.cloudfunctions.net/verifyMobilePurchase}"
+fi
+exec flutter run \
+  --dart-define="MOBILE_BILLING_VERIFY_URL=$MOBILE_BILLING_VERIFY_URL" \
+  --dart-define="FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-streamerstip-6cfdb}" \
+  --dart-define="SITE_API_BASE=${SITE_API_BASE:-https://streamerstip.com}" \
+  "$@"

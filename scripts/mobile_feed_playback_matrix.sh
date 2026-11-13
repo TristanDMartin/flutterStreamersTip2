@@ -4,7 +4,13 @@ set -euo pipefail
 # Runs the Home feed production-gate integration test on one or more attached
 # mobile devices and writes Flutter/platform logs plus a concise summary.
 #
-# Usage:
+# Usage (refuses production Firebase, site, billing, and retention):
+#   FIREBASE_PROJECT_ID=streamerstip-stg \
+#   SITE_API_BASE=https://staging.streamerstip.com \
+#   MOBILE_BILLING_VERIFY_URL=https://us-central1-streamerstip-stg.cloudfunctions.net/verifyMobilePurchase \
+#   RETENTION_TRACK_URL=https://us-central1-streamerstip-stg.cloudfunctions.net/apiRetentionTrack \
+#   STAGING_FIREBASE_API_KEY=... STAGING_FIREBASE_APP_ID=... \
+#   STAGING_FIREBASE_MESSAGING_SENDER_ID=... \
 #   QA_EMAIL_OR_USERNAME=... QA_PASSWORD=... \
 #     ./scripts/mobile_feed_playback_matrix.sh
 #
@@ -34,6 +40,30 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# shellcheck source=scripts/require_staging_isolation.sh
+source "$ROOT/scripts/require_staging_isolation.sh"
+require_staging_isolation "$ROOT"
+
+STAGING_DART_DEFINES=(
+  --dart-define=FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID}"
+  --dart-define=SITE_API_BASE="${SITE_API_BASE}"
+  --dart-define=STAGING_FIREBASE_API_KEY="${STAGING_FIREBASE_API_KEY}"
+  --dart-define=STAGING_FIREBASE_APP_ID="${STAGING_FIREBASE_APP_ID}"
+  --dart-define=STAGING_FIREBASE_MESSAGING_SENDER_ID="${STAGING_FIREBASE_MESSAGING_SENDER_ID}"
+  --dart-define=MOBILE_BILLING_VERIFY_URL="${MOBILE_BILLING_VERIFY_URL}"
+  --dart-define=RETENTION_TRACK_URL="${RETENTION_TRACK_URL}"
+)
+if [[ -n "${STAGING_FIREBASE_IOS_BUNDLE_ID:-}" ]]; then
+  STAGING_DART_DEFINES+=(
+    --dart-define=STAGING_FIREBASE_IOS_BUNDLE_ID="${STAGING_FIREBASE_IOS_BUNDLE_ID}"
+  )
+fi
+if [[ -n "${STAGING_FIREBASE_STORAGE_BUCKET:-}" ]]; then
+  STAGING_DART_DEFINES+=(
+    --dart-define=STAGING_FIREBASE_STORAGE_BUCKET="${STAGING_FIREBASE_STORAGE_BUCKET}"
+  )
+fi
 
 # shellcheck source=scripts/_load_qa_credentials.sh
 source "$ROOT/scripts/_load_qa_credentials.sh"
@@ -171,7 +201,8 @@ run_device() {
     device_test_timeout="${IOS_FLUTTER_TEST_TIMEOUT:-15m}"
     if [[ "$IOS_PREINSTALL" == "1" ]]; then
       echo "==> $device: pre-installing iOS debug build (avoids VM Service / install hang)"
-      flutter install --debug -d "$device" >>"$flutter_log" 2>&1 || true
+      flutter install --debug -d "$device" \
+        "${STAGING_DART_DEFINES[@]}" >>"$flutter_log" 2>&1 || true
     fi
     ios_log_pid="$(capture_ios_logs "$device" "$platform_log")"
   fi
@@ -186,7 +217,8 @@ run_device() {
       --dart-define=QA_PASSWORD="${QA_PASSWORD:-}" \
       --dart-define=STREAMERSTIP_ENABLE_TESTER_ONBOARDING_RESET=false \
       --dart-define=STREAMERSTIP_DISABLE_PRODUCT_TOUR_TARGET_KEYS=true \
-      --dart-define=STREAMERSTIP_ANDROID_MEDIA3_HOME="${STREAMERSTIP_ANDROID_MEDIA3_HOME:-false}"
+      --dart-define=STREAMERSTIP_ANDROID_MEDIA3_HOME="${STREAMERSTIP_ANDROID_MEDIA3_HOME:-false}" \
+      "${STAGING_DART_DEFINES[@]}"
   ) >"$flutter_log" 2>&1 &
   local flutter_pid="$!"
   local status=""

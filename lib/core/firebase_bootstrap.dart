@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:streamers_tip/core/backend/backend_isolation.dart';
+import 'package:streamers_tip/core/backend/site_api_base.dart';
+import 'package:streamers_tip/features/billing/billing_backend_config.dart';
+import 'package:streamers_tip/services/retention_tracking_service.dart';
 
 /// Ensures the Dart Firebase default app exists before any plugin access.
 class FirebaseBootstrap {
@@ -38,6 +42,14 @@ class FirebaseBootstrap {
   static bool get isReady => Firebase.apps.isNotEmpty;
 
   static Future<bool> ensureInitialized() {
+    assertBackendTargets(
+      firebaseProjectId: kCompileTimeFirebaseProjectId,
+      siteApiBase: kSiteApiBase,
+      billingVerifyUrl: kMobileBillingVerifyUrl,
+      retentionTrackUrl: kRetentionTrackUrl,
+      hasStagingFirebaseOptions: hasCompleteStagingFirebaseOptions,
+    );
+    _assertLiveProjectMatchesCompileTime();
     if (isReady) {
       return Future<bool>.value(true);
     }
@@ -68,6 +80,9 @@ class FirebaseBootstrap {
           return;
         }
       } catch (e) {
+        if (e is BackendIsolationException) {
+          rethrow;
+        }
         if (_isDuplicateAppError(e) && isReady) {
           return;
         }
@@ -82,7 +97,33 @@ class FirebaseBootstrap {
     );
   }
 
+  static void _assertLiveProjectMatchesCompileTime() {
+    if (Firebase.apps.isEmpty) return;
+    final String liveProject = Firebase.app().options.projectId;
+    if (liveProject == kCompileTimeFirebaseProjectId) return;
+    throw BackendIsolationException(
+      'Live Firebase project $liveProject does not match '
+      'FIREBASE_PROJECT_ID=$kCompileTimeFirebaseProjectId.',
+    );
+  }
+
   static Future<void> _initializeForPlatform() async {
+    if (kCompileTimeFirebaseProjectId == kStagingFirebaseProjectId) {
+      final StagingFirebaseFields staging = requireStagingFirebaseFields();
+      await Firebase.initializeApp(
+        options: FirebaseOptions(
+          apiKey: staging.apiKey,
+          appId: staging.appId,
+          messagingSenderId: staging.messagingSenderId,
+          projectId: kStagingFirebaseProjectId,
+          storageBucket: staging.storageBucket,
+          authDomain: staging.authDomain,
+          iosBundleId: staging.iosBundleId,
+        ),
+      );
+      _assertLiveProjectMatchesCompileTime();
+      return;
+    }
     if (kIsWeb) {
       await Firebase.initializeApp(options: _webOptions);
       return;
