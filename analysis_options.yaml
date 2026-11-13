@@ -10,11 +10,6 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - "scripts/**"
-    - "check_*.dart"
-    - "fix_*.dart"
-    - "verify_*.dart"
-    - "simple_*.dart"
-    - "test_upload_debug.dart"
     - build/**
     - android/**
     - ios/**
