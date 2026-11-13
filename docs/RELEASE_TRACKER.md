@@ -9,9 +9,11 @@ Follow-ups, each still short of a device or deploy pass:
 - PR #17 pins Flutter 3.50.0 at `dfdeb633`. On Nov 13, 2026 around 12:35 AM ET the pull-request jobs passed: flutter, tests, cloud-functions lint, and web-e2e-config. android-feed-e2e, ios-feed-e2e, and web-e2e were skipped. `--no-fatal-infos` stays only because 3.50 deprecates `package:flutter/material.dart` and `material_ui` is not in that SDK.
 - PR #19 refuses device runs that are not `streamerstip-stg`. CI is green. Packaged configs are still production.
 - PR #20 adds iOS Dart VM Bonjour keys and an attach-failure classifier. CI is green. No physical attach has been run. Android `BAD_INDEX` is documented, not cleared.
-- PR #21 is this tracker. CI is green. It does not close a blocker.
-- PR #22 stops a failed account delete from being reported as success. Unit tests cover that decision. A disposable staging account has not been deleted.
-- PR #23 proves the staging guard refuses this checkout and passes only on a temporary tree. `staging.streamerstip.com` has no DNS record.
+- PR #21 is this tracker. At about 1:04 AM ET on Nov 13, 2026 the latest CI run for `a98453fb` passed flutter, tests, cloud-functions lint, and web-e2e-config. android-feed-e2e, ios-feed-e2e, and web-e2e were skipped. That does not close a blocker.
+- PR #22 CI passed the same pull-request jobs, including tests, at `5dbfee0d`. A disposable staging account has not been deleted.
+- PR #23 CI passed the same pull-request jobs, including tests, at `4331cbc5`. The guard still only passes on a temporary tree.
+
+Staging access check, about 1:05 AM ET: no Firebase CLI login and no Google Cloud credentials, so `streamerstip-stg` was not verified. No project was created. Requirements and the device-test decision are in `docs/STAGING_READINESS.md`. Device testing is NO-GO.
 
 R8, signing, and production rules deployment stay behind their written approval gates.
 
