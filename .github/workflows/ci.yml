@@ -33,15 +33,19 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: "3.50.0"
           channel: stable
 
       - name: Flutter pub get
         run: flutter pub get
 
       - name: Flutter analyze
-        # Flutter 3.50 treats infos as fatal and deprecates
-        # package:flutter/material.dart for the whole framework.
-        run: flutter analyze --no-fatal-infos
+        # Temporary: docs/FLUTTER_SDK.md. 3.50 deprecates material.dart
+        # and treats infos as fatal. Errors and warnings still fail.
+        run: |
+          flutter --version
+          flutter --version | head -n 1 | grep -q 'Flutter 3.50.0'
+          flutter analyze --no-fatal-infos
 
       - name: Firestore rules + follows emulator tests
         run: bash scripts/ci_tests.sh
