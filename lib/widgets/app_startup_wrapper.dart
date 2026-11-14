@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../core/firebase_bootstrap.dart';
+import '../features/launch/first_launch_intro.dart';
+import '../features/launch/first_launch_intro_store.dart';
 import '../core/firebase_bootstrap_ready_provider.dart';
 import '../core/theme/st_theme_tokens.dart';
 import '../services/auth_session_hint_storage.dart';
@@ -22,9 +24,15 @@ class AppStartupWrapper extends ConsumerStatefulWidget {
   const AppStartupWrapper({
     super.key,
     this.initialTabIndex = 0,
+    this.introStore,
+    this.hasPendingDeepLink = false,
   });
 
   final int initialTabIndex;
+  final FirstLaunchIntroStore? introStore;
+
+  /// Set when a notification or link should open content immediately.
+  final bool hasPendingDeepLink;
 
   @override
   ConsumerState<AppStartupWrapper> createState() => _AppStartupWrapperState();
@@ -76,6 +84,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   bool _firebaseStartupGracePeriodElapsed = false;
   bool _hadPriorSession = false;
   bool _sessionHintLoaded = false;
+  bool _showIntro = false;
   bool _calendarCleanupStarted = false;
   Timer? _firebaseReadyPollTimer;
   Timer? _firebaseStartupGraceTimer;
@@ -126,18 +135,59 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
 
   Future<void> _loadSessionHint() async {
     final bool hadSession = await AuthSessionHintStorage.readHadSession();
+    bool introSeen = true;
+    try {
+      introSeen =
+          await (widget.introStore ?? SharedPrefsFirstLaunchIntroStore())
+              .hasSeen();
+    } catch (_) {
+      introSeen = true;
+    }
     if (!mounted) {
       return;
     }
     setState(() {
       _hadPriorSession = hadSession;
       _sessionHintLoaded = true;
+      _showIntro = decideFirstLaunchIntro(
+        alreadySeen: introSeen,
+        hasPriorSession: hadSession,
+        hasPendingDeepLink: widget.hasPendingDeepLink,
+      ).play;
     });
   }
 
+  Future<void> _finishIntro() async {
+    if (!_showIntro) {
+      return;
+    }
+    setState(() => _showIntro = false);
+    try {
+      await (widget.introStore ?? SharedPrefsFirstLaunchIntroStore())
+          .markSeen();
+    } catch (_) {}
+  }
+
+  Widget _withIntro(Widget child) {
+    if (!_showIntro) {
+      return child;
+    }
+    final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Stack(
+      children: <Widget>[
+        child,
+        Positioned.fill(
+          child: FirstLaunchSequence(
+            reduceMotion: reduceMotion,
+            onFinished: () => unawaited(_finishIntro()),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Until SharedPreferences resolves, treat cold start as a possible return.
-  bool get _effectiveHadPriorSession =>
-      !_sessionHintLoaded || _hadPriorSession;
+  bool get _effectiveHadPriorSession => !_sessionHintLoaded || _hadPriorSession;
 
   void _startFirebaseReadyPolling() {
     if (FirebaseBootstrap.isReady) {
@@ -311,8 +361,8 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   Widget build(BuildContext context) {
     final RobustAuthenticationService authService =
         ref.watch(robustAuthServiceProvider);
-    final bool firebaseReady = ref.watch(firebaseBootstrapReadyProvider) &&
-        FirebaseBootstrap.isReady;
+    final bool firebaseReady =
+        ref.watch(firebaseBootstrapReadyProvider) && FirebaseBootstrap.isReady;
     if (!firebaseReady) {
       if (kDebugMode) {
         debugPrint(
@@ -333,18 +383,22 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
         hadPriorSession: _effectiveHadPriorSession,
       );
       if (shell == StartupShell.auth) {
-        return const KeyedSubtree(
-          key: ValueKey<String>('app_startup_auth'),
-          child: AuthModalView(),
+        return _withIntro(
+          const KeyedSubtree(
+            key: ValueKey<String>('app_startup_auth'),
+            child: AuthModalView(),
+          ),
         );
       }
-      return KeyedSubtree(
-        key: const ValueKey<String>('app_startup_loading'),
-        child: _buildLoadingScreen(),
+      return _withIntro(
+        KeyedSubtree(
+          key: const ValueKey<String>('app_startup_loading'),
+          child: _buildLoadingScreen(),
+        ),
       );
     }
 
-    return StreamBuilder<fa.User?>(
+    return _withIntro(StreamBuilder<fa.User?>(
       stream: fa.FirebaseAuth.instance.authStateChanges(),
       initialData: fa.FirebaseAuth.instance.currentUser,
       builder: (BuildContext context, AsyncSnapshot<fa.User?> snapshot) {
@@ -409,7 +463,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
         }
         return resolved;
       },
-    );
+    ));
   }
 
   Widget _buildResolvedShell(
