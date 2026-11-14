@@ -58,11 +58,12 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        
-        // Add 16KB page size support
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
+        // ABI selection is owned by the Flutter Gradle plugin. An ndk.abiFilters
+        // list here makes AGP emit ABI-named APKs (app-arm64-v8a-debug.apk).
+        // `flutter run` only looks for app-debug.apk, so the build looks
+        // successful and then fails with "Gradle build failed to produce an
+        // .apk file". 16 KB page alignment is packaging.jniLibs below, not an
+        // ABI filter.
     }
     
     buildFeatures {
@@ -94,7 +95,7 @@ android {
         }
     }
     
-    // Add 16KB page size support
+    // 16 KB page alignment: uncompressed JNI libs, aligned by the Flutter NDK.
     packagingOptions {
         jniLibs {
             useLegacyPackaging = false
@@ -132,4 +133,48 @@ flutter {
 // Suppress Java 8 obsolete warnings temporarily
 tasks.withType<JavaCompile> {
     options.compilerArgs.addAll(listOf("-Xlint:-options"))
+}
+
+// `flutter run` looks only for <repo>/build/app/outputs/flutter-apk/app-<mode>.apk.
+// ABI filters and a relocated Gradle build dir can leave the APK under an
+// ABI-specific name or under android/app/build. Copy the arm64 APK (Pixel 6
+// and Apple Silicon emulators) to the filename and directory Flutter expects.
+tasks.matching {
+    it.name == "assembleDebug" || it.name == "assembleProfile" || it.name == "assembleRelease"
+}.configureEach {
+    doLast {
+        val mode = name.removePrefix("assemble").replaceFirstChar { it.lowercase() }
+        val relocated = layout.buildDirectory.get().asFile
+        val repoAppBuild = rootProject.projectDir.resolve("../build/app")
+        val defaultAppBuild = project.projectDir.resolve("build")
+        val searchDirs = listOf(
+            relocated.resolve("outputs/flutter-apk"),
+            relocated.resolve("outputs/apk/$mode"),
+            repoAppBuild.resolve("outputs/flutter-apk"),
+            repoAppBuild.resolve("outputs/apk/$mode"),
+            defaultAppBuild.resolve("outputs/flutter-apk"),
+            defaultAppBuild.resolve("outputs/apk/$mode"),
+        )
+        fun apkFiles(dir: File): List<File> =
+            if (dir.isDirectory) {
+                dir.listFiles()?.filter { it.isFile && it.name.endsWith(".apk") }.orEmpty()
+            } else {
+                emptyList()
+            }
+        val pool = searchDirs.flatMap(::apkFiles).distinctBy { it.canonicalPath }
+        val chosen = pool.firstOrNull { it.name == "app-$mode.apk" }
+            ?: pool.firstOrNull { it.name.contains("arm64-v8a") && it.name.endsWith("-$mode.apk") }
+            ?: pool.firstOrNull { it.name.contains("x86_64") && it.name.endsWith("-$mode.apk") }
+            ?: pool.firstOrNull { it.name.endsWith("-$mode.apk") }
+            ?: return@doLast
+        listOf(
+            relocated.resolve("outputs/flutter-apk/app-$mode.apk"),
+            repoAppBuild.resolve("outputs/flutter-apk/app-$mode.apk"),
+        ).distinctBy { it.canonicalPath }.forEach { expected ->
+            if (!expected.isFile) {
+                expected.parentFile.mkdirs()
+                chosen.copyTo(expected, overwrite = true)
+            }
+        }
+    }
 }
