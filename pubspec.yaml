@@ -127,6 +127,7 @@ flutter:
     - assets/auth/
     - assets/share_icons/
     - assets/academy/
+    - assets/brand/official/
 
 # Flutter Launcher Icons Configuration
 # Note: Not using adaptive icons to avoid circular mask

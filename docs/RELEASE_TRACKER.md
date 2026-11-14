@@ -1,5 +1,9 @@
 # StreamersTip Release Tracker
 
+**2026-11-14 (America/New_York): production NO-GO. Device testing NO-GO.**
+
+Staging Firebase `streamerstip-stg` is still unverified. No store build, production rules deploy, or production device test is authorized. The first-launch Tippy and logo sequence does not close those blockers. See `docs/UX_LAUNCH_AUDIT.md`.
+
 Use this tracker during beta prep and final submission review.
 
 **Automation (Phase 2):**
